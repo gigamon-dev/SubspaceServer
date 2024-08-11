@@ -30,10 +30,7 @@ namespace SS.Core.Modules.Scoring
         private readonly DefaultObjectPool<Dictionary<short, IPeriodicRewardPoints.ITeamData>> _freqTeamDataDictionaryPool = new(new DictionaryPooledObjectPolicy<short, IPeriodicRewardPoints.ITeamData>() { InitialCapacity = Constants.TargetPlayerCount });
         private readonly DefaultObjectPool<Dictionary<short, short>> _freqPointsDictionaryPool = new(new DictionaryPooledObjectPolicy<short, short>() { InitialCapacity = Constants.TargetPlayerCount });
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public PeriodicReward(
             IAllPlayerStats allPlayerStats,
             IArenaManager arenaManager,
             IChat chat,
@@ -51,7 +48,12 @@ namespace SS.Core.Modules.Scoring
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
@@ -63,7 +65,7 @@ namespace SS.Core.Modules.Scoring
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _commandManager.RemoveCommand("periodicreward", Command_periodicreward);
             _commandManager.RemoveCommand("periodicreset", Command_periodicreset);
@@ -132,12 +134,12 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                ad.Settings = new(_configManager, arena.Cfg);
+                ad.Settings = new(_configManager, arena.Cfg!);
                 StartTimer(arena);
             }
             else if (action == ArenaAction.Destroy)
@@ -156,7 +158,11 @@ namespace SS.Core.Modules.Scoring
             Description = "Rewards teams in the current arena as if the periodic timer elapsed.")]
         private void Command_periodicreward(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ((IPeriodicReward)this).Reward(player.Arena);
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            ((IPeriodicReward)this).Reward(arena);
         }
 
         [CommandHelp(
@@ -165,7 +171,11 @@ namespace SS.Core.Modules.Scoring
             Description = "Resets the periodic timer in the current arena.")]
         private void Command_periodicreset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ((IPeriodicReward)this).Reset(player.Arena);
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            ((IPeriodicReward)this).Reset(arena);
             _chat.SendMessage(player, "Periodic reward timer reset.");
         }
 
@@ -175,7 +185,11 @@ namespace SS.Core.Modules.Scoring
             Description = "Stops the periodic timer in the current arena.")]
         private void Command_periodicstop(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ((IPeriodicReward)this).Stop(player.Arena);
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            ((IPeriodicReward)this).Stop(arena);
             _chat.SendMessage(player, "Periodic reward timer stopped.");
         }
 
@@ -192,7 +206,7 @@ namespace SS.Core.Modules.Scoring
 
         private void StartTimer(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad) || ad.Settings is null)
                 return;
 
             StopTimer(arena);
@@ -206,7 +220,7 @@ namespace SS.Core.Modules.Scoring
 
         private void StopTimer(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.TimerRunning)
@@ -218,7 +232,7 @@ namespace SS.Core.Modules.Scoring
 
         private void Reward(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad) || ad.Settings is null)
                 return;
 
             Dictionary<short, IPeriodicRewardPoints.ITeamData> teams = _freqTeamDataDictionaryPool.Get();
@@ -227,7 +241,7 @@ namespace SS.Core.Modules.Scoring
             {
                 int totalPlayerCount = 0;
 
-                IFlagGame flagGame = arena.GetInterface<IFlagGame>();
+                IFlagGame? flagGame = arena.GetInterface<IFlagGame>();
 
                 try
                 {
@@ -251,7 +265,7 @@ namespace SS.Core.Modules.Scoring
                             short freq = player.Freq;
 
                             TeamData teamData;
-                            if (!teams.TryGetValue(freq, out IPeriodicRewardPoints.ITeamData iTeamData))
+                            if (!teams.TryGetValue(freq, out IPeriodicRewardPoints.ITeamData? iTeamData))
                             {
                                 teamData = _teamDataPool.Get();
                                 teamData.FlagCount = flagGame != null ? flagGame.GetFlagCount(arena, freq) : 0;
@@ -288,7 +302,7 @@ namespace SS.Core.Modules.Scoring
                     // Find out how many points to award to each team.
                     //
 
-                    IPeriodicRewardPoints periodicRewardPoints = arena.GetInterface<IPeriodicRewardPoints>();
+                    IPeriodicRewardPoints? periodicRewardPoints = arena.GetInterface<IPeriodicRewardPoints>();
                     if (periodicRewardPoints == null)
                         periodicRewardPoints = this;
 
@@ -379,7 +393,7 @@ namespace SS.Core.Modules.Scoring
 
         private class ArenaData : IResettable
         {
-            public Settings Settings;
+            public Settings? Settings;
             public bool TimerRunning;
 
             public bool TryReset()

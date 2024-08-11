@@ -13,27 +13,22 @@ namespace SS.Core.Modules
     /// <remarks>
     /// This is the equivalent of the log_staff module in ASSS.
     /// </remarks>
-    public class CommandWatch : IModule
+    public class CommandWatch(
+        IChat chat,
+        IConfigManager configManager,
+        IObjectPoolManager objectPoolManager) : IModule
     {
-        private IChat _chat;
-        private IConfigManager _configManager;
-        private IObjectPoolManager _objectPoolManager;
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
         private readonly Trie _watchedCommands = new(false);
         private readonly object _lockObj = new();
 
         #region Module members
 
-        public bool Load(
-            ComponentBroker broker,
-            IChat chat,
-            IConfigManager configManager,
-            IObjectPoolManager objectPoolManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-
             Initialize();
 
             CommandExecutedCallback.Register(broker, Callback_CommandExecuted);
@@ -41,7 +36,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             CommandExecutedCallback.Unregister(broker, Callback_CommandExecuted);
             GlobalConfigChangedCallback.Unregister(broker, Initialize);
@@ -71,7 +66,7 @@ namespace SS.Core.Modules
                     sb.Append("(arena)");
                 else if (target.TryGetTeamTarget(out _, out short freq))
                     sb.Append($"(freq {freq})");
-                else if (target.TryGetPlayerTarget(out Player targetPlayer))
+                else if (target.TryGetPlayerTarget(out Player? targetPlayer))
                     sb.Append($"to [{targetPlayer.Name}]");
                 else
                     sb.Append("(other)");

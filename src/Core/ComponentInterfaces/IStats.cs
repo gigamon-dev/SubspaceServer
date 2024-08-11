@@ -277,7 +277,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena to send updates for. <see langword="null"/> for all arenas.</param>
         /// <param name="exclude">An optional player to exlude from both the check and any packet send.</param>
-        void SendUpdates(Arena arena, Player exclude);
+        void SendUpdates(Arena? arena, Player? exclude);
 
         /// <summary>
         /// Resets all of a player's stats for an interval.

@@ -17,16 +17,13 @@ namespace SS.Core.Modules.Enforcers
     [CoreModuleInfo]
     public class LegalShip : IModule, IArenaAttachableModule, IFreqManagerEnforcerAdvisor
     {
-        private IArenaManager _arenaManager;
-        private IConfigManager _configManager;
-        private IObjectPoolManager _objectPoolManager;
+        private readonly IArenaManager _arenaManager;
+        private readonly IConfigManager _configManager;
+        private readonly IObjectPoolManager _objectPoolManager;
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public LegalShip(
             IArenaManager arenaManager,
             IConfigManager configManager,
             IObjectPoolManager objectPoolManager)
@@ -34,14 +31,19 @@ namespace SS.Core.Modules.Enforcers
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
 
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             _arenaManager.FreeArenaData(ref _adKey);
@@ -51,7 +53,7 @@ namespace SS.Core.Modules.Enforcers
 
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             ad.AdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
@@ -61,7 +63,7 @@ namespace SS.Core.Modules.Enforcers
 
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.AdvisorToken != null)
@@ -80,15 +82,18 @@ namespace SS.Core.Modules.Enforcers
             Description = "The ship mask of allowed ships in the arena. 1=warbird, 2=javelin, etc.")]
         [ConfigHelp("Legalship", "Freq0Mask", ConfigScope.Arena, typeof(int), Range = "0-255", DefaultValue = "255",
             Description = "The ship mask of allowed ships for freq 0. Ships must also be allowed on the arena mask. You can define a mask for any freq (FreqXMask).")]
-        ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder errorMessage)
+        ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder? errorMessage)
         {
-            if (player.Arena == null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
+            Arena? arena = player.Arena;
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return ShipMask.None;
+
+            ConfigHandle ch = arena.Cfg!;
 
             // arena
             ShipMask arenaMask;
             if (ad.ArenaMask == null)
-                ad.ArenaMask = arenaMask = (ShipMask)_configManager.GetInt(player.Arena.Cfg, "Legalship", "ArenaMask", 255);
+                ad.ArenaMask = arenaMask = (ShipMask)_configManager.GetInt(ch, "Legalship", "ArenaMask", 255);
             else
                 arenaMask = ad.ArenaMask.Value;
 
@@ -106,7 +111,7 @@ namespace SS.Core.Modules.Enforcers
                     freqMaskKey = freqMaskKey[.."Freq0Mask".Length];
                 }
 
-                ad.FreqMasks[freq] = freqMask = (ShipMask)_configManager.GetInt(player.Arena.Cfg, "Legalship", freqMaskKey, 255);
+                ad.FreqMasks[freq] = freqMask = (ShipMask)_configManager.GetInt(ch, "Legalship", freqMaskKey, 255);
             }
 
             // combined
@@ -173,7 +178,7 @@ namespace SS.Core.Modules.Enforcers
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (action == ArenaAction.ConfChanged)
-                if (arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                if (arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                     arenaData.ClearSettings();
         }
 
@@ -183,7 +188,7 @@ namespace SS.Core.Modules.Enforcers
 
         private class ArenaData : IResettable
         {
-            public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> AdvisorToken = null;
+            public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor>? AdvisorToken = null;
 
             // settings
             public ShipMask? ArenaMask = null;

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using SS.Core.ComponentInterfaces;
+using System.Collections.Generic;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -11,17 +12,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="initialCrownedPlayers">The players that initially got a crown.</param>
         public delegate void KothStartedDelegate(Arena arena, IReadOnlySet<Player> initialCrownedPlayers);
 
-        public static void Register(ComponentBroker broker, KothStartedDelegate handler)
+        public static void Register(IComponentBroker broker, KothStartedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, KothStartedDelegate handler)
+        public static void Unregister(IComponentBroker broker, KothStartedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, IReadOnlySet<Player> initialCrownedPlayers)
+        public static void Fire(IComponentBroker broker, Arena arena, IReadOnlySet<Player> initialCrownedPlayers)
         {
             broker?.GetCallback<KothStartedDelegate>()?.Invoke(arena, initialCrownedPlayers);
 

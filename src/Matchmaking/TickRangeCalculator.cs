@@ -38,7 +38,7 @@ namespace SS.Matchmaking
                 return 0;
 
             int total = 0;
-            LinkedListNode<TickRange> node = _usedList.First;
+            LinkedListNode<TickRange>? node = _usedList.First;
             LinkedListNode<TickRange> newNode;
 
             while (node is not null)
@@ -88,7 +88,7 @@ namespace SS.Matchmaking
             ref TickRange range = ref node.ValueRef;
             while (end > range.End)
             {
-                LinkedListNode<TickRange> next = node.Next;
+                LinkedListNode<TickRange>? next = node.Next;
                 if (next is null)
                     break; // There are no more ranges.
 
@@ -125,7 +125,7 @@ namespace SS.Matchmaking
 
         public void Clear()
         {
-            LinkedListNode<TickRange> node;
+            LinkedListNode<TickRange>? node;
 
             while ((node = _usedList.First) is not null)
             {

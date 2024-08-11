@@ -28,33 +28,32 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class PlayerCommand : IModule
     {
-        private ComponentBroker _broker;
-
         // Regular dependencies (do not add any of these to a command group)
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private ILogManager _logManager;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
+        private readonly IComponentBroker _broker;
+        private readonly IChat _chat;
+        private readonly ICommandManager _commandManager;
+        private readonly ILogManager _logManager;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
 
         // Command group dependencies (these are set using reflection)
-        private IArenaManager _arenaManager;
-        private IArenaPlayerStats _arenaPlayerStats;
-        private IBalls _balls;
-        private ICapabilityManager _capabilityManager;
-        private IClientSettings _clientSettings;
-        private IConfigManager _configManager;
-        private IFileTransfer _fileTransfer;
-        private IGame _game;
-        private IGroupManager _groupManager;
-        private IJackpot _jackpot;
-        private ILagQuery _lagQuery;
-        private IMainloop _mainloop;
-        private IMapData _mapData;
-        private IModuleManager _mm;
-        private INetwork _network;
-        private IPersistExecutor _persistExecutor;
-        private IScoreStats _scoreStats;
+        private IArenaManager? _arenaManager;
+        private IArenaPlayerStats? _arenaPlayerStats;
+        private IBalls? _balls;
+        private ICapabilityManager? _capabilityManager;
+        private IClientSettings? _clientSettings;
+        private IConfigManager? _configManager;
+        private IFileTransfer? _fileTransfer;
+        private IGame? _game;
+        private IGroupManager? _groupManager;
+        private IJackpot? _jackpot;
+        private ILagQuery? _lagQuery;
+        private IMainloop? _mainloop;
+        private IMapData? _mapData;
+        private IModuleManager? _mm;
+        private INetwork? _network;
+        private IPersistExecutor? _persistExecutor;
+        private IScoreStats? _scoreStats;
 
         private DateTime _startedAt;
 
@@ -65,8 +64,21 @@ namespace SS.Core.Modules
         private readonly DefaultObjectPool<List<ArenaListItem>> _arenaListItemListPool = new(new ListPooledObjectPolicy<ArenaListItem>() { InitialCapacity = Constants.TargetArenaCount });
         private readonly DefaultObjectPool<List<PingHistogramBucket>> _pingHistogramBucketListPool = new(new ListPooledObjectPolicy<PingHistogramBucket>() { InitialCapacity = 32 });
 
-        public PlayerCommand()
+        public PlayerCommand(
+            IComponentBroker broker,
+            IChat chat,
+            ICommandManager commandManager,
+            ILogManager logManager,
+            IObjectPoolManager objectPoolManager,
+            IPlayerData playerData)
         {
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+
             foreach (FieldInfo fieldInfo in typeof(PlayerCommand).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
             {
                 if (fieldInfo.FieldType.IsInterface
@@ -83,9 +95,11 @@ namespace SS.Core.Modules
                     InterfaceDependencies = new()
                     {
                         typeof(IArenaManager),
-                        typeof(INetwork),
+                        typeof(ICapabilityManager),
+                        typeof(IConfigManager),
                         typeof(IMainloop),
                         typeof(IModuleManager),
+                        typeof(INetwork),
                     },
                     Commands = new[]
                     {
@@ -123,6 +137,7 @@ namespace SS.Core.Modules
                     InterfaceDependencies = new()
                     {
                         typeof(IArenaManager),
+                        typeof(ICapabilityManager),
                         typeof(IConfigManager),
                         typeof(IGame),
                         typeof(INetwork),
@@ -164,8 +179,8 @@ namespace SS.Core.Modules
                     InterfaceDependencies = new()
                     {
                         typeof(IArenaManager),
-                        typeof(IConfigManager),
                         typeof(IClientSettings),
+                        typeof(IConfigManager),
                     },
                     Commands = new[]
                     {
@@ -249,11 +264,11 @@ namespace SS.Core.Modules
                 {
                     InterfaceDependencies = new()
                     {
-                        typeof(ICapabilityManager),
-                        typeof(IGroupManager),
                         typeof(IArenaManager),
+                        typeof(ICapabilityManager),
                         typeof(IConfigManager),
                         typeof(IFileTransfer),
+                        typeof(IGroupManager),
                         typeof(IMapData),
                     },
                     Commands = new[]
@@ -275,8 +290,7 @@ namespace SS.Core.Modules
 
             void AddCommandGroup(CommandGroup group)
             {
-                if (group == null)
-                    throw new ArgumentNullException(nameof(group));
+                ArgumentNullException.ThrowIfNull(group);
 
                 _commandGroups.Add(group.Name, group);
             }
@@ -284,21 +298,8 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        public bool Load(
-            ComponentBroker broker,
-            IChat chat,
-            ICommandManager commandManager,
-            ILogManager logManager,
-            IObjectPoolManager objectPoolManager,
-            IPlayerData playerData)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-
             // Setting the command group dependencies to null to remove the warnings.
             // These will actually get set via reflection when the command groups are loaded.
             _arenaManager = null;
@@ -334,7 +335,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             foreach (CommandGroup group in _commandGroups.Values)
             {
@@ -351,15 +352,14 @@ namespace SS.Core.Modules
 
         private bool LoadCommandGroup(CommandGroup group)
         {
-            if (group == null)
-                throw new ArgumentNullException(nameof(group));
+            ArgumentNullException.ThrowIfNull(group);
 
             if (group.IsLoaded)
                 return false;
 
             foreach (Type dependencyType in group.InterfaceDependencies)
             {
-                if (!_interfaceFields.TryGetValue(dependencyType, out InterfaceFieldInfo interfaceFieldInfo))
+                if (!_interfaceFields.TryGetValue(dependencyType, out InterfaceFieldInfo? interfaceFieldInfo))
                 {
                     _logManager.LogM(LogLevel.Error, nameof(PlayerCommand), $"Failed to load command group '{group.Name}'. Error getting interface dependency '{dependencyType.Name}' field info.");
                     return false;
@@ -367,7 +367,7 @@ namespace SS.Core.Modules
 
                 if (interfaceFieldInfo.ReferenceCount == 0)
                 {
-                    IComponentInterface componentInterface = _broker.GetInterface(dependencyType);
+                    IComponentInterface? componentInterface = _broker.GetInterface(dependencyType);
                     if (componentInterface == null)
                     {
                         _logManager.LogM(LogLevel.Error, nameof(PlayerCommand), $"Failed to load command group '{group.Name}'. Error getting interface dependency '{dependencyType.Name}' from broker.");
@@ -394,8 +394,7 @@ namespace SS.Core.Modules
 
         private bool UnloadCommandGroup(CommandGroup group)
         {
-            if (group == null)
-                throw new ArgumentNullException(nameof(group));
+            ArgumentNullException.ThrowIfNull(group);
 
             if (!group.IsLoaded)
                 return false;
@@ -410,7 +409,7 @@ namespace SS.Core.Modules
 
             foreach (Type dependencyType in group.InterfaceDependencies)
             {
-                if (!_interfaceFields.TryGetValue(dependencyType, out InterfaceFieldInfo interfaceFieldInfo))
+                if (!_interfaceFields.TryGetValue(dependencyType, out InterfaceFieldInfo? interfaceFieldInfo))
                 {
                     _logManager.LogM(LogLevel.Error, nameof(PlayerCommand), $"Error unloading command group {group.Name}. Error getting interface field info for '{dependencyType.Name}'.");
                     return false;
@@ -460,7 +459,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                if (!_commandGroups.TryGetValue(parameters, out CommandGroup group))
+                if (!_commandGroups.TryGetValue(parameters, out CommandGroup? group))
                 {
                     _chat.SendMessage(player, $"Command group '{parameters}' not found.");
                     return;
@@ -506,7 +505,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                if (!_commandGroups.TryGetValue(parameters, out CommandGroup group))
+                if (!_commandGroups.TryGetValue(parameters, out CommandGroup? group))
                 {
                     _chat.SendMessage(player, $"Command group '{parameters}' not found.");
                     return;
@@ -549,7 +548,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_lag(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 targetPlayer = player;
 
             if (!targetPlayer.IsStandard)
@@ -558,7 +557,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing);
+            _lagQuery!.QueryPositionPing(targetPlayer, out PingSummary positionPing);
             _lagQuery.QueryClientPing(targetPlayer, out ClientPingSummary clientPing);
             _lagQuery.QueryReliablePing(targetPlayer, out PingSummary reliablePing);
             _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetloss);
@@ -566,7 +565,7 @@ namespace SS.Core.Modules
             // weight reliable ping twice the S2C and C2S
             int average = (positionPing.Average + clientPing.Average + 2 * reliablePing.Average) / 4;
 
-            string prefix = targetPlayer == player ? "lag" : targetPlayer.Name;
+            string prefix = targetPlayer == player ? "lag" : targetPlayer.Name!;
 
             if (!parameters.Contains("-v", StringComparison.OrdinalIgnoreCase))
             {
@@ -599,7 +598,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_laghist(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 targetPlayer = player;
 
             List<PingHistogramBucket> histogramData = _pingHistogramBucketListPool.Get();
@@ -608,8 +607,8 @@ namespace SS.Core.Modules
             {
 
                 if (parameters.Contains("-r", StringComparison.OrdinalIgnoreCase)
-                    ? _lagQuery.GetReliablePingHistogram(targetPlayer, histogramData)
-                    : _lagQuery.GetPositionPingHistogram(targetPlayer, histogramData))
+                    ? _lagQuery!.GetReliablePingHistogram(targetPlayer, histogramData)
+                    : _lagQuery!.GetPositionPingHistogram(targetPlayer, histogramData))
                 {
                     int max = 0;
                     int sum = 0;
@@ -622,7 +621,7 @@ namespace SS.Core.Modules
                     }
 
                     ReadOnlySpan<char> hist = "****************************************";
-                    string prefix = targetPlayer == player ? "laghist" : targetPlayer.Name;
+                    string prefix = targetPlayer == player ? "laghist" : targetPlayer.Name!;
                     for (int i = 0; i < histogramData.Count; i++)
                     {
                         float histRatio = (float)histogramData[i].Count / max;
@@ -730,11 +729,11 @@ namespace SS.Core.Modules
 
             if (!arenaGroup.IsEmpty)
             {
-                _persistExecutor.EndInterval(interval.Value, arenaGroup.ToString());
+                _persistExecutor!.EndInterval(interval.Value, arenaGroup.ToString());
             }
             else if (player.Arena != null)
             {
-                _persistExecutor.EndInterval(interval.Value, player.Arena);
+                _persistExecutor!.EndInterval(interval.Value, player.Arena);
             }
         }
 
@@ -745,11 +744,11 @@ namespace SS.Core.Modules
         private void Command_scorereset(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // For now, only reset PersistInterval.Reset scores, since those are the only ones the client sees.
-            if (target.TryGetArenaTarget(out Arena arena))
+            if (target.TryGetArenaTarget(out Arena? arena))
             {
-                if (_configManager.GetInt(arena.Cfg, "Misc", "SelfScoreReset", 0) != 0)
+                if (_configManager!.GetInt(arena.Cfg!, "Misc", "SelfScoreReset", 0) != 0)
                 {
-                    _scoreStats.ScoreReset(player, PersistInterval.Reset);
+                    _scoreStats!.ScoreReset(player, PersistInterval.Reset);
                     _scoreStats.SendUpdates(arena, null);
                     _chat.SendMessage(player, $"Your score has been reset.");
                 }
@@ -758,13 +757,13 @@ namespace SS.Core.Modules
                     _chat.SendMessage(player, $"This arena doesn't allow you to reset your own scores.");
                 }
             }
-            else if (target.TryGetPlayerTarget(out Player otherPlayer))
+            else if (target.TryGetPlayerTarget(out Player? otherPlayer))
             {
                 arena = otherPlayer.Arena;
 
                 if (arena != null)
                 {
-                    _scoreStats.ScoreReset(otherPlayer, PersistInterval.Reset);
+                    _scoreStats!.ScoreReset(otherPlayer, PersistInterval.Reset);
                     _scoreStats.SendUpdates(arena, null);
                     _chat.SendMessage(player, $"Player {otherPlayer.Name} has had their score reset.");
                 }
@@ -789,7 +788,7 @@ namespace SS.Core.Modules
 
                 foreach (Player targetPlayer in players)
                 {
-                    _arenaPlayerStats.IncrementStat(targetPlayer, StatCodes.FlagPoints, null, pointsToAdd);
+                    _arenaPlayerStats!.IncrementStat(targetPlayer, StatCodes.FlagPoints, null, pointsToAdd);
 
                     if (targetPlayer.Arena is not null)
                     {
@@ -799,7 +798,7 @@ namespace SS.Core.Modules
 
                 foreach (Arena arena in arenas)
                 {
-                    _scoreStats.SendUpdates(arena, null);
+                    _scoreStats!.SendUpdates(arena, null);
                 }
             }
             finally
@@ -823,14 +822,14 @@ namespace SS.Core.Modules
         {
             bool showAll = parameters.Contains("-a", StringComparison.OrdinalIgnoreCase);
             bool isChatOutput = player.Type == ClientType.Chat || parameters.Contains("-t", StringComparison.OrdinalIgnoreCase);
-            bool includePrivateArenas = _capabilityManager.HasCapability(player, Constants.Capabilities.SeePrivArena);
+            bool includePrivateArenas = _capabilityManager!.HasCapability(player, Constants.Capabilities.SeePrivArena);
 
             List<ArenaListItem> arenaList = _arenaListItemListPool.Get();
 
             try
             {
 
-                _arenaManager.Lock();
+                _arenaManager!.Lock();
 
                 try
                 {
@@ -873,7 +872,7 @@ namespace SS.Core.Modules
                     _arenaManager.Unlock();
                 }
 
-                IPeer peer = _broker.GetInterface<IPeer>();
+                IPeer? peer = _broker.GetInterface<IPeer>();
                 if (peer is not null)
                 {
                     bool showAllPeer = parameters.Contains("-p", StringComparison.OrdinalIgnoreCase);
@@ -919,7 +918,7 @@ namespace SS.Core.Modules
                                 if (!peerArena.IsConfigured && !showAllPeer)
                                     continue;
 
-                                ReadOnlySpan<char> arenaName = peerArena.Name.LocalName;
+                                ReadOnlySpan<char> arenaName = peerArena.Name!.LocalName;
                                 bool isPrivate = arenaName.Length > 0 && arenaName[0] == '#';
                                 if (!isPrivate || includePrivateArenas)
                                 {
@@ -967,7 +966,7 @@ namespace SS.Core.Modules
                         count++;
                     }
 
-                    byte[] bufferArray = null;
+                    byte[]? bufferArray = null;
 
                     try
                     {
@@ -988,7 +987,7 @@ namespace SS.Core.Modules
 
                         if (buffer.Length >= MinLength)
                         {
-                            _network.SendToOne(player, buffer, NetSendFlags.Reliable);
+                            _network!.SendToOne(player, buffer, NetSendFlags.Reliable);
                         }
                     }
                     finally
@@ -1012,10 +1011,9 @@ namespace SS.Core.Modules
 
             void AddOrUpdateArenaListItem(List<ArenaListItem> arenaList, ReadOnlySpan<char> arenaName, bool isRemote, int playerCount, bool isCurrent)
             {
-                if (arenaList is null)
-                    throw new ArgumentNullException(nameof(arenaList));
+                ArgumentNullException.ThrowIfNull(arenaList);
 
-                ArenaListItem item = null;
+                ArenaListItem? item = null;
                 for (int i = 0; i < arenaList.Count; i++)
                 {
                     if (arenaList[i].ArenaName.Equals(arenaName, StringComparison.OrdinalIgnoreCase))
@@ -1069,7 +1067,7 @@ namespace SS.Core.Modules
                 ? ExitCode.Recycle
                 : ExitCode.None;
 
-            _mainloop.Quit(code);
+            _mainloop!.Quit(code);
         }
 
         [CommandHelp(
@@ -1082,7 +1080,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_recyclezone(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            _mainloop.Quit(ExitCode.Recycle);
+            _mainloop!.Quit(ExitCode.Recycle);
         }
 
         [CommandHelp(
@@ -1091,7 +1089,11 @@ namespace SS.Core.Modules
             Description = "Recycles the current arena without kicking players off.")]
         private void Command_recyclearena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!_arenaManager.RecycleArena(player.Arena))
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            if (!_arenaManager!.RecycleArena(arena))
             {
                 _chat.SendMessage(player, "Arena recycle failed; check the log for details.");
             }
@@ -1103,11 +1105,11 @@ namespace SS.Core.Modules
             Description = "Displays the arena owner.")]
         private void Command_owner(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
-            if (arena == null)
+            Arena? arena = player.Arena;
+            if (arena is null)
                 return;
 
-            string ownerName = _configManager.GetStr(arena.Cfg, "Owner", "Name");
+            string? ownerName = _configManager!.GetStr(arena.Cfg!, "Owner", "Name");
 
             if (!string.IsNullOrWhiteSpace(ownerName))
             {
@@ -1125,7 +1127,7 @@ namespace SS.Core.Modules
             Description = "Displays the name of the zone.")]
         private void Command_zone(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            string zoneName = _configManager.GetStr(_configManager.Global, "Billing", "ServerName");
+            string? zoneName = _configManager!.GetStr(_configManager.Global, "Billing", "ServerName");
             _chat.SendMessage(player, $"Zone: {(!string.IsNullOrWhiteSpace(zoneName) ? zoneName : "(none)")}");
         }
 
@@ -1150,7 +1152,7 @@ namespace SS.Core.Modules
         {
             _chat.SendMessage(player, $"Subspace Server .NET");
 
-            if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
+            if (_capabilityManager!.HasCapability(player, Constants.Capabilities.IsStaff))
             {
                 _chat.SendMessage(player, $"{System.Runtime.InteropServices.RuntimeInformation.OSDescription} " +
                     $"{System.Runtime.InteropServices.RuntimeInformation.OSArchitecture} " +
@@ -1158,6 +1160,9 @@ namespace SS.Core.Modules
 
                 foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
                 {
+                    if (string.IsNullOrWhiteSpace(assembly.FullName))
+                        continue;
+
                     if (!parameters.Contains("v", StringComparison.OrdinalIgnoreCase)
                         && (assembly.FullName.StartsWith("System.", StringComparison.OrdinalIgnoreCase)
                             || assembly.FullName.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase)
@@ -1177,7 +1182,11 @@ namespace SS.Core.Modules
             if (target.Type != TargetType.Arena)
                 return;
 
-            string sheepMessage = _configManager.GetStr(player.Arena.Cfg, "Misc", "SheepMessage");
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            string? sheepMessage = _configManager!.GetStr(arena.Cfg!, "Misc", "SheepMessage");
 
             if (sheepMessage != null)
                 _chat.SendMessage(player, ChatSound.Sheep, sheepMessage);
@@ -1193,15 +1202,19 @@ namespace SS.Core.Modules
         {
             if (parameters.IsWhiteSpace())
             {
-                _chat.SendMessage(player, $"The jackpot is {_jackpot.GetJackpot(player.Arena)}.");
+                Arena? arena = player.Arena;
+                if (arena is null)
+                    return;
+
+                _chat.SendMessage(player, $"The jackpot is {_jackpot!.GetJackpot(arena)}.");
                 return;
             }
 
             if (parameters.Equals("all", StringComparison.OrdinalIgnoreCase))
             {
-                bool canSeePrivArena = _capabilityManager.HasCapability(player, Constants.Capabilities.SeePrivArena);
+                bool canSeePrivArena = _capabilityManager!.HasCapability(player, Constants.Capabilities.SeePrivArena);
 
-                _arenaManager.Lock();
+                _arenaManager!.Lock();
 
                 try
                 {
@@ -1210,7 +1223,7 @@ namespace SS.Core.Modules
                         int jackpotValue;
                         if (arena.Status == ArenaState.Running
                             && (!arena.IsPrivate || canSeePrivArena || player.Arena == arena)
-                            && (jackpotValue = _jackpot.GetJackpot(arena)) > 0)
+                            && (jackpotValue = _jackpot!.GetJackpot(arena)) > 0)
                         {
                             _chat.SendMessage(player, $"The jackpot in {arena.Name} is {jackpotValue}.");
                         }
@@ -1223,10 +1236,10 @@ namespace SS.Core.Modules
             }
             else
             {
-                Arena arena = _arenaManager.FindArena(parameters);
+                Arena? arena = _arenaManager!.FindArena(parameters);
                 if (arena != null)
                 {
-                    _chat.SendMessage(player, $"The jackpot in {arena.Name} is {_jackpot.GetJackpot(arena)}.");
+                    _chat.SendMessage(player, $"The jackpot in {arena.Name} is {_jackpot!.GetJackpot(arena)}.");
                 }
                 else
                 {
@@ -1241,14 +1254,18 @@ namespace SS.Core.Modules
             Description = "Sets the jackpot for this arena to a new value.")]
         private void Command_setjackpot(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
             if (!int.TryParse(parameters, out int value))
             {
                 _chat.SendMessage(player, $"setjackpot: bad value");
                 return;
             }
 
-            _jackpot.SetJackpot(player.Arena, value);
-            _chat.SendMessage(player, $"The jackpot is {_jackpot.GetJackpot(player.Arena)}.");
+            _jackpot!.SetJackpot(arena, value);
+            _chat.SendMessage(player, $"The jackpot is {_jackpot.GetJackpot(arena)}.");
         }
 
         [CommandHelp(
@@ -1280,8 +1297,21 @@ namespace SS.Core.Modules
             ReadOnlySpan<char> section = token;
             ReadOnlySpan<char> key = remaining;
 
-            ConfigHandle ch = command.Equals("geta", StringComparison.OrdinalIgnoreCase) ? player.Arena.Cfg : _configManager.Global;
-            string result = _configManager.GetStr(ch, section, key);
+            ConfigHandle ch;
+            if (command.Equals("geta", StringComparison.OrdinalIgnoreCase))
+            {
+                Arena? arena = player.Arena;
+                if (arena is null)
+                    return;
+
+                ch = arena.Cfg!;
+            }
+            else
+            {
+                ch = _configManager!.Global;
+            };
+
+            string? result = _configManager!.GetStr(ch, section, key);
             if (result != null)
             {
                 _chat.SendMessage(player, $"{section}:{key} = {result}");
@@ -1374,12 +1404,24 @@ namespace SS.Core.Modules
             if (section.IsEmpty || key.IsEmpty)
                 return;
 
-            ConfigHandle ch = command.Equals("seta", StringComparison.OrdinalIgnoreCase) ? player.Arena.Cfg : _configManager.Global;
+            ConfigHandle ch;
+            if (command.Equals("seta", StringComparison.OrdinalIgnoreCase))
+            {
+                Arena? arena = player.Arena;
+                if (arena is null)
+                    return;
+
+                ch = arena.Cfg!;
+            }
+            else
+            {
+                ch = _configManager!.Global;
+            };
 
             if (comment.IsEmpty)
-                _configManager.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow}", permanent, options);
+                _configManager!.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow}", permanent, options);
             else
-                _configManager.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow} - {comment}", permanent, options);
+                _configManager!.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow} - {comment}", permanent, options);
         }
 
         [CommandHelp(
@@ -1392,9 +1434,6 @@ namespace SS.Core.Modules
                 """)]
         private void Command_getcs(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (_clientSettings is null)
-                return;
-
             ReadOnlySpan<char> remaining = parameters;
             ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
             if (section.IsEmpty)
@@ -1410,18 +1449,18 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!_clientSettings.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
+            if (!_clientSettings!.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
             {
                 _chat.SendMessage(player, $"Invalid setting ({section}:{key}).");
                 return;
             }
 
-            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 int value = _clientSettings.GetSetting(targetPlayer, id);
                 _chat.SendMessage(player, $"The current client setting of player '{targetPlayer.Name}' for {section}:{key} is {value}");
             }
-            else if (target.TryGetArenaTarget(out Arena arena))
+            else if (target.TryGetArenaTarget(out Arena? arena))
             {
                 int value = _clientSettings.GetSetting(arena, id);
                 _chat.SendMessage(player, $"The configured client setting of arena '{arena.Name}' for {section}:{key} is {value}");
@@ -1439,9 +1478,6 @@ namespace SS.Core.Modules
             Description = "Gets a client setting override.")]
         private void Command_getcsoverride(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (_clientSettings is null)
-                return;
-
             ReadOnlySpan<char> remaining = parameters;
             ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
             if (section.IsEmpty)
@@ -1457,13 +1493,13 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!_clientSettings.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
+            if (!_clientSettings!.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
             {
                 _chat.SendMessage(player, $"Invalid setting ({section}:{key}).");
                 return;
             }
 
-            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 if (_clientSettings.TryGetSettingOverride(targetPlayer, id, out int value))
                 {
@@ -1474,7 +1510,7 @@ namespace SS.Core.Modules
                     _chat.SendMessage(player, $"There is no client setting override on player '{targetPlayer.Name}' for {section}:{key}");
                 }
             }
-            else if (target.TryGetArenaTarget(out Arena arena))
+            else if (target.TryGetArenaTarget(out Arena? arena))
             {
                 if (_clientSettings.TryGetSettingOverride(arena, id, out int value))
                 {
@@ -1498,9 +1534,6 @@ namespace SS.Core.Modules
             Description = "Sets a client setting override.")]
         private void Command_setcsoverride(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (_clientSettings is null)
-                return;
-
             ReadOnlySpan<char> remaining = parameters;
             ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
             if (section.IsEmpty)
@@ -1529,18 +1562,18 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!_clientSettings.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
+            if (!_clientSettings!.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
             {
                 _chat.SendMessage(player, $"Invalid setting ({section}:{key}).");
                 return;
             }
 
-            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 _clientSettings.OverrideSetting(targetPlayer, id, value);
                 _clientSettings.SendClientSettings(targetPlayer);
             }
-            else if (target.TryGetArenaTarget(out Arena arena))
+            else if (target.TryGetArenaTarget(out Arena? arena))
             {
                 _clientSettings.OverrideSetting(arena, id, value);
 
@@ -1572,9 +1605,6 @@ namespace SS.Core.Modules
             Description = "Removes a client setting override.")]
         private void Command_rmcsoverride(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (_clientSettings is null)
-                return;
-
             ReadOnlySpan<char> remaining = parameters;
             ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
             if (section.IsEmpty)
@@ -1590,18 +1620,18 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!_clientSettings.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
+            if (!_clientSettings!.TryGetSettingsIdentifier(section, key, out ClientSettingIdentifier id))
             {
                 _chat.SendMessage(player, $"Invalid setting ({section}:{key}).");
                 return;
             }
 
-            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 _clientSettings.UnoverrideSetting(targetPlayer, id);
                 _clientSettings.SendClientSettings(targetPlayer);
             }
-            else if (target.TryGetArenaTarget(out Arena arena))
+            else if (target.TryGetArenaTarget(out Arena? arena))
             {
                 _clientSettings.UnoverrideSetting(arena, id);
 
@@ -1635,7 +1665,7 @@ namespace SS.Core.Modules
         {
             ulong secs = Convert.ToUInt64((DateTime.UtcNow - _startedAt).TotalSeconds);
 
-            IReadOnlyNetStats stats = _network.GetStats();
+            IReadOnlyNetStats stats = _network!.GetStats();
             _chat.SendMessage(player, $"netstats: pings={stats.PingsReceived}  pkts sent={stats.PacketsSent}  pkts recvd={stats.PacketsReceived}");
 
             // IP Header (20 bytes) + UDP Header (8 bytes) = 28 bytes total overhead for each packet
@@ -1683,13 +1713,13 @@ namespace SS.Core.Modules
                 """)]
         private void Command_info(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 _chat.SendMessage(player, "info: must use on a player");
                 return;
             }
 
-            string prefix = targetPlayer.Name;
+            string prefix = targetPlayer.Name!;
             TimeSpan connectedTimeSpan = DateTime.UtcNow - targetPlayer.ConnectTime;
 
             _chat.SendMessage(player, $"{prefix}: pid: {targetPlayer.Id}  name: '{targetPlayer.Name}'  squad: '{targetPlayer.Squad}'  " +
@@ -1705,7 +1735,7 @@ namespace SS.Core.Modules
 
             if (targetPlayer.IsChat)
             {
-                IChatNetwork chatNetwork = _broker.GetInterface<IChatNetwork>();
+                IChatNetwork? chatNetwork = _broker.GetInterface<IChatNetwork>();
                 if (chatNetwork is not null)
                 {
                     try
@@ -1742,7 +1772,7 @@ namespace SS.Core.Modules
             Description = "Displays the text as an arena (green) message to the targets.")]
         private void Command_a(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target, ChatSound sound)
         {
-            if (target.TryGetArenaTarget(out Arena arena))
+            if (target.TryGetArenaTarget(out Arena? arena))
             {
                 // For arena, using SendArenaMessage instead of SendSetMessage so that the ChatMessageCallback can be fired.
                 _chat.SendArenaMessage(arena, sound, $"{parameters} -{player.Name}");
@@ -1769,7 +1799,7 @@ namespace SS.Core.Modules
             Description = "Displays the text as an anonymous arena (green) message to the targets.")]
         private void Command_aa(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target, ChatSound sound)
         {
-            if (target.TryGetArenaTarget(out Arena arena))
+            if (target.TryGetArenaTarget(out Arena? arena))
             {
                 // For arena, using SendArenaMessage instead of SendSetMessage so that the ChatMessageCallback can be fired.
                 _chat.SendArenaMessage(arena, sound, parameters);
@@ -1806,7 +1836,7 @@ namespace SS.Core.Modules
 
                 _chat.SendArenaMessage(null, sound, sb);
 
-                IPeer peer = _broker.GetInterface<IPeer>();
+                IPeer? peer = _broker.GetInterface<IPeer>();
                 if (peer is not null)
                 {
                     try
@@ -1833,7 +1863,7 @@ namespace SS.Core.Modules
         {
             _chat.SendArenaMessage(null, sound, parameters);
 
-            IPeer peer = _broker.GetInterface<IPeer>();
+            IPeer? peer = _broker.GetInterface<IPeer>();
             if (peer is not null)
             {
                 try
@@ -1853,7 +1883,7 @@ namespace SS.Core.Modules
             Description = "Sends a red warning message to a player.")]
         private void Command_warn(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 _chat.SendMessage(player, "You must target a player.");
                 return;
@@ -1865,7 +1895,7 @@ namespace SS.Core.Modules
             {
                 set.Add(targetPlayer);
 
-                if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
+                if (_capabilityManager!.HasCapability(player, Constants.Capabilities.IsStaff))
                 {
                     _chat.SendAnyMessage(set, ChatMessageType.SysopWarning, ChatSound.Beep1, null, $"WARNING: {parameters} -{player.Name}");
                 }
@@ -1891,7 +1921,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_reply(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 _chat.SendMessage(player, "You must target a player.");
                 return;
@@ -1986,7 +2016,7 @@ namespace SS.Core.Modules
             if (x == 0 && y == 0)
                 return;
 
-            _game.WarpTo(target, x, y);
+            _game!.WarpTo(target, x, y);
         }
 
         [CommandHelp(
@@ -1995,7 +2025,7 @@ namespace SS.Core.Modules
             Description = "Resets the ship of the target player(s).")]
         private void Command_shipreset(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            _game.ShipReset(target);
+            _game!.ShipReset(target);
         }
 
         private static readonly (string Name, int Type)[] _prizeLookup = new[]
@@ -2108,7 +2138,7 @@ namespace SS.Core.Modules
                             count = (short)-count;
                         }
 
-                        _game.GivePrize(target, (Prize)type, count);
+                        _game!.GivePrize(target, (Prize)type, count);
 
                         // Reset count to 1 once we hit a successful word.
                         count = 1;
@@ -2124,7 +2154,7 @@ namespace SS.Core.Modules
                     count = (short)-count;
 
                 // If the line ends in a count, give that many random prizes.
-                _game.GivePrize(target, 0, count); // TODO: investigate why this doesn't work
+                _game!.GivePrize(target, 0, count); // TODO: investigate why this doesn't work
             }
         }
 
@@ -2145,7 +2175,7 @@ namespace SS.Core.Modules
             if (index == -1 || !int.TryParse(parameters[(index + 2)..], out int timeout))
                 timeout = 0;
 
-            _game.Lock(
+            _game!.Lock(
                 target,
                 parameters.Contains("-n", StringComparison.OrdinalIgnoreCase),
                 parameters.Contains("-s", StringComparison.OrdinalIgnoreCase),
@@ -2161,7 +2191,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_unlock(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            _game.Unlock(target, parameters.Contains("-n", StringComparison.OrdinalIgnoreCase));
+            _game!.Unlock(target, parameters.Contains("-n", StringComparison.OrdinalIgnoreCase));
         }
 
         [CommandHelp(
@@ -2177,10 +2207,10 @@ namespace SS.Core.Modules
                 """)]
         private void Command_lockarena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetArenaTarget(out Arena arena))
+            if (!target.TryGetArenaTarget(out Arena? arena))
                 return;
 
-            _game.LockArena(
+            _game!.LockArena(
                 arena,
                 parameters.Contains("-n", StringComparison.OrdinalIgnoreCase),
                 parameters.Contains("-a", StringComparison.OrdinalIgnoreCase),
@@ -2199,10 +2229,10 @@ namespace SS.Core.Modules
                 """)]
         private void Command_unlockarena(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetArenaTarget(out Arena arena))
+            if (!target.TryGetArenaTarget(out Arena? arena))
                 return;
 
-            _game.UnlockArena(
+            _game!.UnlockArena(
                 arena,
                 parameters.Contains("-n", StringComparison.OrdinalIgnoreCase),
                 parameters.Contains("-a", StringComparison.OrdinalIgnoreCase));
@@ -2217,6 +2247,10 @@ namespace SS.Core.Modules
                 """)]
         private void Command_setfreq(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
             bool useFreqManager = true;
             short? freq = null;
 
@@ -2246,12 +2280,12 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (useFreqManager && _capabilityManager.HasCapability(player, Constants.Capabilities.ForceShipFreqChange))
+            if (useFreqManager && _capabilityManager!.HasCapability(player, Constants.Capabilities.ForceShipFreqChange))
             {
                 useFreqManager = false;
             }
 
-            IFreqManager freqManager = useFreqManager ? player.Arena.GetInterface<IFreqManager>() : null;
+            IFreqManager? freqManager = useFreqManager ? arena.GetInterface<IFreqManager>() : null;
             HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
             StringBuilder errorBuilder = _objectPoolManager.StringBuilderPool.Get();
 
@@ -2286,7 +2320,7 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        _game.SetFreq(targetPlayer, freq.Value);
+                        _game!.SetFreq(targetPlayer, freq.Value);
                     }
                 }
             }
@@ -2297,7 +2331,7 @@ namespace SS.Core.Modules
 
                 if (freqManager is not null)
                 {
-                    player.Arena.ReleaseInterface(ref freqManager);
+                    arena.ReleaseInterface(ref freqManager);
                 }
             }
         }
@@ -2312,6 +2346,10 @@ namespace SS.Core.Modules
                 """)]
         private void Command_setship(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
             bool useFreqManager = true;
             ShipType? ship = null;
 
@@ -2335,12 +2373,12 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (useFreqManager && _capabilityManager.HasCapability(player, Constants.Capabilities.ForceShipFreqChange))
+            if (useFreqManager && _capabilityManager!.HasCapability(player, Constants.Capabilities.ForceShipFreqChange))
             {
                 useFreqManager = false;
             }
 
-            IFreqManager freqManager = useFreqManager ? player.Arena.GetInterface<IFreqManager>() : null;
+            IFreqManager? freqManager = useFreqManager ? arena.GetInterface<IFreqManager>() : null;
             HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
             StringBuilder errorBuilder = _objectPoolManager.StringBuilderPool.Get();
 
@@ -2375,7 +2413,7 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        _game.SetShip(targetPlayer, ship.Value);
+                        _game!.SetShip(targetPlayer, ship.Value);
                     }
                 }
             }
@@ -2386,7 +2424,7 @@ namespace SS.Core.Modules
 
                 if (freqManager is not null)
                 {
-                    player.Arena.ReleaseInterface(ref freqManager);
+                    arena.ReleaseInterface(ref freqManager);
                 }
             }
         }
@@ -2405,7 +2443,11 @@ namespace SS.Core.Modules
 
                 foreach (Player targetPlayer in set)
                 {
-                    _game.SetShipAndFreq(targetPlayer, ShipType.Spec, targetPlayer.Arena.SpecFreq);
+                    Arena? arena = targetPlayer.Arena;
+                    if (arena is null)
+                        continue;
+
+                    _game!.SetShipAndFreq(targetPlayer, ShipType.Spec, arena.SpecFreq);
                 }
             }
             finally
@@ -2443,11 +2485,11 @@ namespace SS.Core.Modules
             if (arenaName.IsWhiteSpace())
                 return;
 
-            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 if (HasAllowedClient(targetPlayer))
                 {
-                    _arenaManager.SendToArena(targetPlayer, arenaName, 0, 0);
+                    _arenaManager!.SendToArena(targetPlayer, arenaName, 0, 0);
                     return;
                 }
             }
@@ -2463,7 +2505,7 @@ namespace SS.Core.Modules
                     {
                         foreach (Player otherPlayer in players)
                         {
-                            _arenaManager.SendToArena(otherPlayer, arenaName, 0, 0);
+                            _arenaManager!.SendToArena(otherPlayer, arenaName, 0, 0);
                         }
 
                         return;
@@ -2494,9 +2536,9 @@ namespace SS.Core.Modules
         private void Command_lsmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             bool sort = false;
-            string substr = null;
+            string? substr = null;
 
-            Arena arena = null;
+            Arena? arena = null;
 
             if (!parameters.IsWhiteSpace())
             {
@@ -2521,12 +2563,15 @@ namespace SS.Core.Modules
 
             List<string> modulesList = new(); // TODO: use a pool
 
-            _mm.EnumerateModules(
+            _mm!.EnumerateModules(
                 (moduleType, _) =>
                 {
-                    string name = moduleType.FullName;
-                    if (substr == null || name.Contains(substr))
-                        modulesList.Add(name);
+                    string? name = moduleType.FullName;
+                    if (!string.IsNullOrWhiteSpace(name))
+                    {
+                        if (substr == null || name.Contains(substr, StringComparison.OrdinalIgnoreCase))
+                            modulesList.Add(name);
+                    }
                 },
                 arena);
 
@@ -2569,60 +2614,71 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(parametersStr))
                 return;
 
-            var infoArray = _mm.GetModuleInfo(parametersStr);
-
-            if (infoArray.Length > 0)
+            int count = 0;
+            foreach (ModuleInfo info in _mm!.GetModuleInfo(parametersStr))
             {
-                foreach (var info in infoArray)
-                {
-                    _chat.SendMessage(player, info.ModuleTypeName);
-                    _chat.SendMessage(player, $"  Type: {info.ModuleQualifiedName}");
-                    _chat.SendMessage(player, $"  Assembly Path: {info.AssemblyPath}");
-                    _chat.SendMessage(player, $"  Module Type: {(info.IsPlugin ? "plug-in" : "built-in")}");
+                count++;
 
-                    if (info.AttachedArenas.Length > 0)
+                if (!string.IsNullOrWhiteSpace(info.Type.FullName))
+                    _chat.SendMessage(player, info.Type.FullName);
+
+                if (!string.IsNullOrWhiteSpace(info.Type.AssemblyQualifiedName))
+                    _chat.SendMessage(player, $"  Type: {info.Type.AssemblyQualifiedName}");
+
+                if(!string.IsNullOrWhiteSpace(info.Type.Assembly.Location))
+                    _chat.SendMessage(player, $"  Assembly Path: {info.Type.Assembly.Location}");
+
+                AssemblyInformationalVersionAttribute? attr = info.Type.Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+                if (attr is not null)
+                {
+                    _chat.SendMessage(player, $"  Assembly Version: {attr.InformationalVersion}");
+                }
+
+                _chat.SendMessage(player, $"  Module Type: {(info.IsPlugin ? "plug-in" : "built-in")}");
+
+                if (info.AttachedArenas.Count > 0)
+                {
+                    StringBuilder attachedBuilder = _objectPoolManager.StringBuilderPool.Get();
+                    try
                     {
-                        StringBuilder attachedBuilder = _objectPoolManager.StringBuilderPool.Get();
+                        foreach (Arena arena in info.AttachedArenas)
+                        {
+                            if (attachedBuilder.Length > 0)
+                                attachedBuilder.Append(", ");
+
+                            attachedBuilder.Append(arena.Name);
+                        }
+
+                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
                         try
                         {
-                            foreach (Arena arena in info.AttachedArenas)
-                            {
-                                if (attachedBuilder.Length > 0)
-                                    attachedBuilder.Append(", ");
+                            sb.Append("  Attached Arenas: ");
+                            sb.Append(attachedBuilder);
 
-                                attachedBuilder.Append(arena.Name);
-                            }
-
-                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-                            try
-                            {
-                                sb.Append("  Attached Arenas: ");
-                                sb.Append(attachedBuilder);
-
-                                _chat.SendMessage(player, sb);
-                            }
-                            finally
-                            {
-                                _objectPoolManager.StringBuilderPool.Return(sb);
-                            }
+                            _chat.SendMessage(player, sb);
                         }
                         finally
                         {
-                            _objectPoolManager.StringBuilderPool.Return(attachedBuilder);
+                            _objectPoolManager.StringBuilderPool.Return(sb);
                         }
                     }
-
-                    _chat.SendMessage(player, $"  Description:");
-                    ReadOnlySpan<char> remaining = info.Description;
-                    ReadOnlySpan<char> line;
-                    while (!(line = remaining.GetToken("\r\n", out remaining)).IsEmpty)
+                    finally
                     {
-                        _chat.SendMessage(player, $"    {line}");
+                        _objectPoolManager.StringBuilderPool.Return(attachedBuilder);
                     }
                 }
+
+                _chat.SendMessage(player, $"  Description:");
+                ReadOnlySpan<char> remaining = info.Description;
+                ReadOnlySpan<char> line;
+                while (!(line = remaining.GetToken("\r\n", out remaining)).IsEmpty)
+                {
+                    _chat.SendMessage(player, $"    {line}");
+                }
             }
-            else
+
+            if (count == 0)
             {
                 _chat.SendMessage(player, $"Module '{parameters}' not found.");
             }
@@ -2638,7 +2694,7 @@ namespace SS.Core.Modules
                 return;
 
             string moduleTypeName;
-            string path;
+            string? path;
 
             int index = parameters.IndexOf(' ');
             if (index == -1)
@@ -2652,7 +2708,7 @@ namespace SS.Core.Modules
                 path = parameters[(index + 1)..].Trim().Trim("\"\'").ToString();
             }
 
-            if (_mm.LoadModule(moduleTypeName, path))
+            if (_mm!.LoadModule(moduleTypeName, path))
                 _chat.SendMessage(player, $"Module '{moduleTypeName}' loaded.");
             else
                 _chat.SendMessage(player, $"Failed to load module '{moduleTypeName}'.");
@@ -2667,7 +2723,7 @@ namespace SS.Core.Modules
             if (parameters.IsWhiteSpace())
                 return;
 
-            if (_mm.UnloadModule(parameters.ToString()))
+            if (_mm!.UnloadModule(parameters.ToString()))
                 _chat.SendMessage(player, $"Module '{parameters}' unloaded.");
             else
                 _chat.SendMessage(player, $"Failed to unload module '{parameters}'.");
@@ -2718,19 +2774,23 @@ namespace SS.Core.Modules
 
         private void AttachDetachModule(Player player, string module, bool detach)
         {
-            if (player == null)
+            if (player is null)
+                return;
+
+            Arena? arena = player.Arena;
+            if (arena is null)
                 return;
 
             if (detach)
             {
-                if (_mm.DetachModule(module, player.Arena))
+                if (_mm!.DetachModule(module, arena))
                     _chat.SendMessage(player, $"Module '{module}' detached.");
                 else
                     _chat.SendMessage(player, $"Failed to detach module '{module}'.");
             }
             else
             {
-                if (_mm.AttachModule(module, player.Arena))
+                if (_mm!.AttachModule(module, arena))
                     _chat.SendMessage(player, $"Module '{module}' attached.");
                 else
                     _chat.SendMessage(player, $"Failed to attach module '{module}'.");
@@ -2743,13 +2803,13 @@ namespace SS.Core.Modules
             Description = "Displays the group of the player, or if none specified, you.")]
         private void Command_getgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
-                _chat.SendMessage(player, $"{targetPlayer.Name} is in group {_groupManager.GetGroup(targetPlayer)}.");
+                _chat.SendMessage(player, $"{targetPlayer.Name} is in group {_groupManager!.GetGroup(targetPlayer)}.");
             }
             else if (target.Type == TargetType.Arena)
             {
-                _chat.SendMessage(player, $"You are in group {_groupManager.GetGroup(player)}.");
+                _chat.SendMessage(player, $"You are in group {_groupManager!.GetGroup(player)}.");
             }
         }
 
@@ -2771,7 +2831,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_setgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 return;
 
             bool permanent = false;
@@ -2792,7 +2852,7 @@ namespace SS.Core.Modules
             if (groupName.IsWhiteSpace())
                 return;
 
-            if (!_capabilityManager.HasCapability(player, $"higher_than_{groupName}"))
+            if (!_capabilityManager!.HasCapability(player, $"higher_than_{groupName}"))
             {
                 _chat.SendMessage(player, $"You don't have permission to give people group {groupName}.");
                 _logManager.LogP(LogLevel.Warn, nameof(PlayerCommand), player, $"Doesn't have permission to set group '{groupName}'.");
@@ -2800,7 +2860,7 @@ namespace SS.Core.Modules
             }
 
             // make sure the target isn't in a group already
-            string currentGroup = _groupManager.GetGroup(targetPlayer);
+            string currentGroup = _groupManager!.GetGroup(targetPlayer);
             if (!string.Equals(currentGroup, "default"))
             {
                 _chat.SendMessage(player, $"Player {targetPlayer.Name} already has a group. You need to use ?rmgroup first.");
@@ -2833,11 +2893,11 @@ namespace SS.Core.Modules
                 """)]
         private void Command_rmgroup(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 return;
 
-            string currentGroup = _groupManager.GetGroup(targetPlayer);
-            if (!_capabilityManager.HasCapability(player, $"higher_than_{currentGroup}"))
+            string currentGroup = _groupManager!.GetGroup(targetPlayer);
+            if (!_capabilityManager!.HasCapability(player, $"higher_than_{currentGroup}"))
             {
                 _chat.SendMessage(player, $"You don't have permission to take away group {currentGroup}.");
                 _logManager.LogP(LogLevel.Warn, nameof(PlayerCommand), player, $"Doesn't have permission to take away group '{currentGroup}'.");
@@ -2866,7 +2926,7 @@ namespace SS.Core.Modules
             ReadOnlySpan<char> groupName = parameters[..index];
             ReadOnlySpan<char> passwordSpan = parameters[(index + 1)..];
 
-            if (_groupManager.CheckGroupPassword(groupName, passwordSpan))
+            if (_groupManager!.CheckGroupPassword(groupName, passwordSpan))
             {
                 _groupManager.SetTempGroup(player, groupName);
                 _chat.SendMessage(player, $"You are now in group {groupName}.");
@@ -2886,7 +2946,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_listmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            bool canSeePrivateArenas = _capabilityManager.HasCapability(player, Constants.Capabilities.SeePrivArena);
+            bool canSeePrivateArenas = _capabilityManager!.HasCapability(player, Constants.Capabilities.SeePrivArena);
             bool canSeeAllStaff = _capabilityManager.HasCapability(player, Constants.Capabilities.SeeAllStaff);
 
             _playerData.Lock();
@@ -2898,17 +2958,17 @@ namespace SS.Core.Modules
                     if (otherPlayer.Status != PlayerState.Playing)
                         continue;
 
-                    string group = _groupManager.GetGroup(otherPlayer);
+                    string group = _groupManager!.GetGroup(otherPlayer);
 
                     if (_capabilityManager.HasCapability(otherPlayer, Constants.Capabilities.IsStaff))
                     {
-                        _chat.SendMessage(player, $": {otherPlayer.Name,20} {((!otherPlayer.Arena.IsPrivate || canSeePrivateArenas || player.Arena == otherPlayer.Arena) ? otherPlayer.Arena.Name : "(private)"),10} {group}");
+                        _chat.SendMessage(player, $": {otherPlayer.Name,20} {((!otherPlayer.Arena!.IsPrivate || canSeePrivateArenas || player.Arena == otherPlayer.Arena) ? otherPlayer.Arena.Name : "(private)"),10} {group}");
                     }
                     else if (canSeeAllStaff
                         && !string.Equals(group, "default", StringComparison.Ordinal)
                         && !string.Equals(group, "none", StringComparison.Ordinal))
                     {
-                        _chat.SendMessage(player, $": {otherPlayer.Name,20} {((!otherPlayer.Arena.IsPrivate || canSeePrivateArenas || player.Arena == otherPlayer.Arena) ? otherPlayer.Arena.Name : "(private)"),10} ({group})");
+                        _chat.SendMessage(player, $": {otherPlayer.Name,20} {((!otherPlayer.Arena!.IsPrivate || canSeePrivateArenas || player.Arena == otherPlayer.Arena) ? otherPlayer.Arena.Name : "(private)"),10} ({group})");
                     }
                 }
             }
@@ -2980,7 +3040,7 @@ namespace SS.Core.Modules
 
             if (score > 0) // there's a chance there could be a better match in a peer zone
             {
-                IPeer peer = _broker.GetInterface<IPeer>();
+                IPeer? peer = _broker.GetInterface<IPeer>();
                 if (peer is not null)
                 {
                     try
@@ -2998,7 +3058,7 @@ namespace SS.Core.Modules
                 && bestArena.Length > 0)
             {
                 if (bestArena[0] != '#'
-                    || _capabilityManager.HasCapability(player, Constants.Capabilities.SeePrivArena)
+                    || _capabilityManager!.HasCapability(player, Constants.Capabilities.SeePrivArena)
                     || IsInArena(player, bestArena))
                 {
                     StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
@@ -3060,14 +3120,14 @@ namespace SS.Core.Modules
             Description = "Displays the current location (on the map) of the target player.")]
         private void Command_where(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 targetPlayer = player;
 
             // right shift by 4 is divide by 16 (each tile is 16 pixels)
             int x = targetPlayer.Position.X >> 4;
             int y = targetPlayer.Position.Y >> 4;
 
-            string name = (targetPlayer == player) ? "You" : targetPlayer.Name;
+            string name = (targetPlayer == player) ? "You" : targetPlayer.Name!;
             string verb = (targetPlayer == player) ? "are" : "is";
 
             if (targetPlayer.IsStandard)
@@ -3105,10 +3165,10 @@ namespace SS.Core.Modules
         private void Command_setcm(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             ChatMask mask;
-            Player targetPlayer = null;
+            Player? targetPlayer = null;
 
             // get the current mask
-            if (target.TryGetArenaTarget(out Arena arena))
+            if (target.TryGetArenaTarget(out Arena? arena))
             {
                 mask = _chat.GetArenaChatMask(arena);
             }
@@ -3198,7 +3258,7 @@ namespace SS.Core.Modules
         {
             ChatMask mask;
 
-            if (target.TryGetArenaTarget(out Arena arena))
+            if (target.TryGetArenaTarget(out Arena? arena))
             {
                 mask = _chat.GetArenaChatMask(arena);
 
@@ -3211,7 +3271,7 @@ namespace SS.Core.Modules
                     $" {(mask.IsRestricted(ChatMessageType.Chat) ? '-' : '+')}chat" +
                     $" {(mask.IsRestricted(ChatMessageType.ModChat) ? '-' : '+')}modchat");
             }
-            else if (target.TryGetPlayerTarget(out Player targetPlayer))
+            else if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 _chat.GetPlayerChatMask(targetPlayer, out mask, out TimeSpan? remaining);
 
@@ -3237,7 +3297,7 @@ namespace SS.Core.Modules
             if (arenaName.IsWhiteSpace())
                 return;
 
-            Arena arena = _arenaManager.FindArena(arenaName);
+            Arena? arena = _arenaManager!.FindArena(arenaName);
             if (arena == null)
             {
                 _chat.SendMessage(player, $"Arena '{arenaName}' doesn't exist.");
@@ -3291,11 +3351,11 @@ namespace SS.Core.Modules
             Description = "Displays information about the map in this arena.")]
         private void Command_mapinfo(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            string fileName = _mapData.GetMapFilename(arena, null);
+            string? fileName = _mapData!.GetMapFilename(arena, null);
 
             _chat.SendMessage(player, $"LVL file loaded from '{(!string.IsNullOrWhiteSpace(fileName) ? fileName : "<nowhere>")}'.");
 
@@ -3318,7 +3378,7 @@ namespace SS.Core.Modules
                 $"regions:{_mapData.GetRegionCount(arena)} " +
                 $"errors:{errors.Count}");
 
-            if (errors.Count > 0 && _capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
+            if (errors.Count > 0 && _capabilityManager!.HasCapability(player, Constants.Capabilities.IsStaff))
             {
                 _chat.SendMessage(player, "Error details:");
                 foreach (var error in errors)
@@ -3350,11 +3410,11 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
-            string mapPath = _mapData.GetMapFilename(arena, null);
+            string? mapPath = _mapData!.GetMapFilename(arena, null);
             if (string.IsNullOrWhiteSpace(mapPath))
                 return;
 
@@ -3393,7 +3453,7 @@ namespace SS.Core.Modules
             }
 
             // Send the image.
-            if (!_fileTransfer.SendFile(player, stream, imageFileName))
+            if (!_fileTransfer!.SendFile(player, stream, imageFileName))
             {
                 stream.Dispose();
                 _chat.SendMessage(player, $"Error sending image.");
@@ -3407,11 +3467,11 @@ namespace SS.Core.Modules
             Description = "Causes the flag game to immediately reset.")]
         private void Command_flagreset(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
-            IFlagGame flagGame = arena.GetInterface<IFlagGame>();
+            IFlagGame? flagGame = arena.GetInterface<IFlagGame>();
             if (flagGame is null)
             {
                 _chat.SendMessage(player, $"No flag game to reset.");
@@ -3420,7 +3480,7 @@ namespace SS.Core.Modules
 
             try
             {
-                flagGame.ResetGame(player.Arena);
+                flagGame.ResetGame(arena);
             }
             finally
             {
@@ -3434,11 +3494,11 @@ namespace SS.Core.Modules
             Description = "Displays information (status, location, carrier) about the flag(s) in the arena.")]
         private void Command_flaginfo(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
-            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            ICarryFlagGame? carryFlagGame = arena.GetInterface<ICarryFlagGame>();
             if (carryFlagGame is null)
                 return;
 
@@ -3452,7 +3512,7 @@ namespace SS.Core.Modules
                         return;
                     }
 
-                    if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                    if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo? flagInfo))
                     {
                         _chat.SendMessage(player, $"Flag {flagId} not found");
                         return;
@@ -3467,7 +3527,7 @@ namespace SS.Core.Modules
 
                     for (short flagId = 0; flagId < count; flagId++)
                     {
-                        if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                        if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo? flagInfo))
                             continue;
 
                         PrintFlagInfo(player, flagId, flagInfo);
@@ -3512,20 +3572,20 @@ namespace SS.Core.Modules
             Description = "Neuts the specified flag. The flag must be on the map.")]
         private void Command_neutflag(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
             if (!short.TryParse(parameters, out short flagId))
                 return;
 
-            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            ICarryFlagGame? carryFlagGame = arena.GetInterface<ICarryFlagGame>();
             if (carryFlagGame is null)
                 return;
 
             try
             {
-                if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo? flagInfo))
                     return;
 
                 if (flagInfo.State != FlagState.OnMap
@@ -3550,7 +3610,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_moveflag(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
@@ -3561,13 +3621,13 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            ICarryFlagGame? carryFlagGame = arena.GetInterface<ICarryFlagGame>();
             if (carryFlagGame is null)
                 return;
 
             try
             {
-                if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                if (!carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo? flagInfo))
                 {
                     _chat.SendMessage(player, $"Flag {flagId} not found.");
                     return;
@@ -3641,13 +3701,13 @@ namespace SS.Core.Modules
                 """)]
         private void Command_ballcount(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
             if (parameters.IsWhiteSpace())
             {
-                if (_balls.TryGetBallSettings(arena, out BallSettings ballSettings))
+                if (_balls!.TryGetBallSettings(arena, out BallSettings ballSettings))
                 {
                     _chat.SendMessage(player, $"Ball count: {ballSettings.BallCount}");
                 }
@@ -3655,7 +3715,7 @@ namespace SS.Core.Modules
             else if (parameters[0] == '+' || parameters[0] == '-')
             {
                 if (int.TryParse(parameters, out int numToAddOrRemove)
-                    && _balls.TryGetBallSettings(arena, out BallSettings ballSettings))
+                    && _balls!.TryGetBallSettings(arena, out BallSettings ballSettings))
                 {
                     _balls.TrySetBallCount(arena, ballSettings.BallCount + numToAddOrRemove);
                 }
@@ -3664,7 +3724,7 @@ namespace SS.Core.Modules
             {
                 if (int.TryParse(parameters, out int newBallCount))
                 {
-                    _balls.TrySetBallCount(arena, newBallCount);
+                    _balls!.TrySetBallCount(arena, newBallCount);
                 }
             }
         }
@@ -3682,7 +3742,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_giveball(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -3709,14 +3769,14 @@ namespace SS.Core.Modules
             }
             while (!remaining.IsEmpty);
 
-            if (!_balls.TryGetBallSettings(arena, out BallSettings ballSettings)
+            if (!_balls!.TryGetBallSettings(arena, out BallSettings ballSettings)
                 || ballId >= ballSettings.BallCount)
             {
                 _chat.SendMessage(player, $"Ball {ballId} doesn't exist. Use ?ballcount to add balls to the arena.");
                 return;
             }
 
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 targetPlayer = player;
 
             if (targetPlayer.Ship == ShipType.Spec)
@@ -3779,7 +3839,7 @@ namespace SS.Core.Modules
             Description = "Move the specified ball to the specified coordinates.")]
         private void Command_moveball(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -3790,7 +3850,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!_balls.TryGetBallSettings(arena, out BallSettings ballSettings)
+            if (!_balls!.TryGetBallSettings(arena, out BallSettings ballSettings)
                 || ballId >= ballSettings.BallCount)
             {
                 _chat.SendMessage(player, $"Ball {ballId} doesn't exist. Use ?ballcount to add balls to the arena.");
@@ -3842,7 +3902,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_spawnball(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -3858,7 +3918,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (_balls.TrySpawnBall(arena, ballId))
+            if (_balls!.TrySpawnBall(arena, ballId))
             {
                 _chat.SendMessage(player, $"Respawned ball {ballId}.");
             }
@@ -3877,11 +3937,11 @@ namespace SS.Core.Modules
                 """)]
         private void Command_ballinfo(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!_balls.TryGetBallSettings(arena, out BallSettings ballSettings))
+            if (!_balls!.TryGetBallSettings(arena, out BallSettings ballSettings))
                 return;
 
             for (int ballId = 0; ballId < ballSettings.BallCount; ballId++)
@@ -3908,7 +3968,7 @@ namespace SS.Core.Modules
                             break;
 
                         case BallState.Carried:
-                            _chat.SendMessage(player, $"Ball {ballId}: carried by {ballData.Carrier.Name} (freq {ballData.Freq}) " +
+                            _chat.SendMessage(player, $"Ball {ballId}: carried by {ballData.Carrier!.Name} (freq {ballData.Freq}) " +
                                 $"at {(char)('A' + x)}{y + 1} ({ballData.Carrier.Position.X / 16},{ballData.Carrier.Position.Y / 16})");
                             break;
 
@@ -3957,7 +4017,7 @@ namespace SS.Core.Modules
             // Object Pooling stats
             //
 
-            IObjectPoolManager poolManager = _broker.GetInterface<IObjectPoolManager>();
+            IObjectPoolManager? poolManager = _broker.GetInterface<IObjectPoolManager>();
             if (poolManager != null)
             {
                 try
@@ -3992,8 +4052,8 @@ namespace SS.Core.Modules
         private class CommandGroup
         {
             public string Name;
-            public HashSet<Type> InterfaceDependencies { get; init; }
-            public CommandInfo[] Commands { get; init; }
+            public required HashSet<Type> InterfaceDependencies { get; init; }
+            public required CommandInfo[] Commands { get; init; }
             public bool IsLoaded;
 
             public CommandGroup(string name)
@@ -4008,8 +4068,8 @@ namespace SS.Core.Modules
         private class CommandInfo
         {
             public readonly string CommandName;
-            public readonly CommandDelegate CommandDelegate;
-            public readonly CommandWithSoundDelegate CommandWithSoundDelegate;
+            public readonly CommandDelegate? CommandDelegate;
+            public readonly CommandWithSoundDelegate? CommandWithSoundDelegate;
 
             public CommandInfo(string commandName, CommandDelegate commandDelegate) : this(commandName)
             {
@@ -4087,8 +4147,22 @@ namespace SS.Core.Modules
         {
             public static readonly ArenaListItemComparer Instance = new();
 
-            public int Compare(ArenaListItem x, ArenaListItem y)
+            public int Compare(ArenaListItem? x, ArenaListItem? y)
             {
+                if (x is null)
+                {
+                    if (y is null)
+                    {
+                        return 0;
+                    }
+
+                    return -1;
+                }
+                else if (y is null)
+                {
+                    return 1;
+                }
+
                 // Local arenas before remote arenas
                 int value = x.IsRemote.CompareTo(y.IsRemote);
                 if (value != 0)

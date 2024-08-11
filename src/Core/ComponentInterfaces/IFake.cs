@@ -11,8 +11,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena"></param>
         /// <param name="ship"></param>
         /// <param name="freq"></param>
-        /// <returns></returns>
-        Player CreateFakePlayer(ReadOnlySpan<char> name, Arena arena, ShipType ship, short freq);
+        /// <returns>The fake player. <see langword="null"/> if there was an error.</returns>
+        Player? CreateFakePlayer(ReadOnlySpan<char> name, Arena arena, ShipType ship, short freq);
 
         /// <summary>
         /// Removes a fake player.

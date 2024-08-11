@@ -1,4 +1,5 @@
-﻿using SS.Packets.Game;
+﻿using SS.Core.ComponentInterfaces;
+using SS.Packets.Game;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -16,17 +17,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="prize">The type of prize picked up.</param>
         public delegate void GreenDelegate(Player player, int x, int y, Prize prize);
 
-        public static void Register(ComponentBroker broker, GreenDelegate handler)
+        public static void Register(IComponentBroker broker, GreenDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, GreenDelegate handler)
+        public static void Unregister(IComponentBroker broker, GreenDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, int x, int y, Prize prize)
+        public static void Fire(IComponentBroker broker, Player player, int x, int y, Prize prize)
         {
             broker?.GetCallback<GreenDelegate>()?.Invoke(player, x, y, prize);
 

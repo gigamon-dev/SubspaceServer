@@ -24,26 +24,31 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class CapabilityManager : IModule, ICapabilityManager, IGroupManager
+    public class CapabilityManager(
+        IComponentBroker broker,
+        IPlayerData playerData,
+        IArenaManager arenaManager,
+        ILogManager logManager,
+        IConfigManager configManager) : IModule, ICapabilityManager, IGroupManager
     {
-        private ComponentBroker _broker;
-        private IPlayerData _playerData;
-        private IArenaManager _arenaManager;
-        private ILogManager _logManager;
-        private IConfigManager _configManager;
-        private InterfaceRegistrationToken<ICapabilityManager> _iCapabilityManagerToken;
-        private InterfaceRegistrationToken<IGroupManager> _iGroupManagerToken;
+        private readonly IComponentBroker _broker = broker;
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private InterfaceRegistrationToken<ICapabilityManager>? _iCapabilityManagerToken;
+        private InterfaceRegistrationToken<IGroupManager>? _iGroupManagerToken;
 
         private PlayerDataKey<PlayerData> _pdkey;
         private readonly DefaultObjectPool<PlayerData> _playerDataPool = new(new DefaultPooledObjectPolicy<PlayerData>(), Constants.TargetPlayerCount);
 
-        private ConfigHandle _groupDefConfHandle;
-        private ConfigHandle _staffConfHandle;
+        private ConfigHandle? _groupDefConfHandle;
+        private ConfigHandle? _staffConfHandle;
 
         private const string Group_Default = "default";
         private const string Group_None = "none";
 
-        private Trie<string> _groupNameCache = new(false)
+        private readonly Trie<string> _groupNameCache = new(false)
         {
             { Group_Default, Group_Default },
             { Group_None, Group_None }
@@ -51,26 +56,26 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        public bool Load(
-            ComponentBroker broker,
-            IPlayerData playerData,
-            IArenaManager arenaManager,
-            ILogManager logManager,
-            IConfigManager configManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker;
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-
             _pdkey = _playerData.AllocatePlayerData(_playerDataPool);
 
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
             NewPlayerCallback.Register(_broker, Callback_NewPlayer);
 
             _groupDefConfHandle = _configManager.OpenConfigFile(null, "groupdef.conf");
+            if (_groupDefConfHandle is null)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(CapabilityManager), "Error opening groupdef.conf");
+                return false;
+            }
+
             _staffConfHandle = _configManager.OpenConfigFile(null, "staff.conf");
+            if (_staffConfHandle is null)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(CapabilityManager), "Error opening staff.conf");
+                return false;
+            }
 
             _iCapabilityManagerToken = _broker.RegisterInterface<ICapabilityManager>(this);
             _iGroupManagerToken = _broker.RegisterInterface<IGroupManager>(this);
@@ -78,7 +83,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iCapabilityManagerToken) != 0)
                 return false;
@@ -86,8 +91,17 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iGroupManagerToken) != 0)
                 return false;
 
-            _configManager.CloseConfigFile(_groupDefConfHandle);
-            _configManager.CloseConfigFile(_staffConfHandle);
+            if (_groupDefConfHandle is not null)
+            {
+                _configManager.CloseConfigFile(_groupDefConfHandle);
+                _groupDefConfHandle = null;
+            }
+
+            if (_staffConfHandle is not null)
+            {
+                _configManager.CloseConfigFile(_staffConfHandle);
+                _staffConfHandle = null;
+            }
 
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
             NewPlayerCallback.Unregister(_broker, Callback_NewPlayer);
@@ -103,10 +117,13 @@ namespace SS.Core.Modules
 
         bool ICapabilityManager.HasCapability(Player player, ReadOnlySpan<char> capability)
         {
+            if (_groupDefConfHandle is null)
+                throw new InvalidOperationException("Not loaded");
+
             if (player == null)
                 return false;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return false;
 
             return _configManager.GetStr(_groupDefConfHandle, pd.Group, capability) != null;
@@ -114,7 +131,10 @@ namespace SS.Core.Modules
 
         bool ICapabilityManager.HasCapability(ReadOnlySpan<char> name, ReadOnlySpan<char> capability)
         {
-            string group = _configManager.GetStr(_staffConfHandle, Constants.ArenaGroup_Global, name);
+            if (_staffConfHandle is null || _groupDefConfHandle is null)
+                throw new InvalidOperationException("Not loaded");
+
+            string? group = _configManager.GetStr(_staffConfHandle, Constants.ArenaGroup_Global, name);
             if (string.IsNullOrEmpty(group))
                 group = Group_Default;
 
@@ -123,6 +143,9 @@ namespace SS.Core.Modules
 
         bool ICapabilityManager.HasCapability(Player player, Arena arena, ReadOnlySpan<char> capability)
         {
+            if (_groupDefConfHandle is null)
+                throw new InvalidOperationException("Not loaded");
+
             if (player == null || arena == null)
                 return false;
 
@@ -143,7 +166,7 @@ namespace SS.Core.Modules
             if (a == null || b == null)
                 return false;
 
-            if (!b.TryGetExtraData(_pdkey, out PlayerData bPlayerData))
+            if (!b.TryGetExtraData(_pdkey, out PlayerData? bPlayerData))
                 return false;
 
             const string prefix = "higher_than_";
@@ -161,20 +184,23 @@ namespace SS.Core.Modules
         string IGroupManager.GetGroup(Player player)
         {
             if (player == null)
-                return null;
+                return Group_Default;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
-                return null;
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
+                return Group_Default;
 
             return playerData.Group;
         }
 
         void IGroupManager.SetPermGroup(Player player, ReadOnlySpan<char> group, bool global, string comment)
         {
+            if (_staffConfHandle is null)
+                throw new InvalidOperationException("Not loaded");
+
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             // first set it for the current session
@@ -183,12 +209,12 @@ namespace SS.Core.Modules
             // now set it permanently
             if (global)
             {
-                _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, player.Name, playerData.Group, comment, true);
+                _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, player.Name!, playerData.Group, comment, true);
                 playerData.Source = GroupSource.Global;
             }
             else if (player.Arena != null)
             {
-                _configManager.SetStr(_staffConfHandle, player.Arena.BaseName, player.Name, playerData.Group, comment, true);
+                _configManager.SetStr(_staffConfHandle, player.Arena.BaseName, player.Name!, playerData.Group, comment, true);
                 playerData.Source = GroupSource.Arena;
             }
         }
@@ -201,7 +227,7 @@ namespace SS.Core.Modules
             if (group.IsWhiteSpace())
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             playerData.Group = GetOrAddCachedGroupName(group);
@@ -210,10 +236,13 @@ namespace SS.Core.Modules
 
         void IGroupManager.RemoveGroup(Player player, string comment)
         {
+            if (_staffConfHandle is null)
+                throw new InvalidOperationException("Not loaded");
+
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             // in all cases, set current group to default
@@ -225,11 +254,11 @@ namespace SS.Core.Modules
                     break; // player is in the default group already, nothing to do
 
                 case GroupSource.Global:
-                    _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, player.Name, Group_Default, comment, true);
+                    _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, player.Name!, Group_Default, comment, true);
                     break;
 
                 case GroupSource.Arena:
-                    _configManager.SetStr(_staffConfHandle, player.Arena.BaseName, player.Name, Group_Default, comment, true);
+                    _configManager.SetStr(_staffConfHandle, player.Arena!.BaseName, player.Name!, Group_Default, comment, true);
                     break;
 #if CFG_USE_ARENA_STAFF_LIST
                 case GroupSource.ArenaList:
@@ -243,7 +272,10 @@ namespace SS.Core.Modules
 
         bool IGroupManager.CheckGroupPassword(ReadOnlySpan<char> group, ReadOnlySpan<char> pw)
         {
-            string correctPw = _configManager.GetStr(_staffConfHandle, "GroupPasswords", group);
+            if (_staffConfHandle is null)
+                throw new InvalidOperationException("Not loaded");
+
+            string? correctPw = _configManager.GetStr(_staffConfHandle, "GroupPasswords", group);
 
             if (string.IsNullOrWhiteSpace(correctPw))
                 return false;
@@ -255,12 +287,12 @@ namespace SS.Core.Modules
 
         #region Callbacks
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             switch (action)
@@ -287,7 +319,7 @@ namespace SS.Core.Modules
 
             if (isNew)
             {
-                if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+                if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                     return;
 
                 pd.Group = Group_None;
@@ -296,8 +328,11 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void UpdateGroup(Player player, PlayerData playerData, Arena arena, bool log)
+        private void UpdateGroup(Player player, PlayerData playerData, Arena? arena, bool log)
         {
+            if (_staffConfHandle is null)
+                throw new InvalidOperationException("Not loaded");
+
             if (player == null || playerData == null)
                 return;
 
@@ -310,7 +345,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            string group;
+            string? group;
             if (arena != null && !string.IsNullOrEmpty(group = _configManager.GetStr(_staffConfHandle, arena.BaseName, player.Name)))
             {
                 playerData.Group = GetOrAddCachedGroupName(group);
@@ -347,7 +382,7 @@ namespace SS.Core.Modules
 
         private string GetOrAddCachedGroupName(ReadOnlySpan<char> group)
         {
-            if (_groupNameCache.TryGetValue(group, out string groupStr))
+            if (_groupNameCache.TryGetValue(group, out string? groupStr))
                 return groupStr;
 
             // Add it to the cache.
@@ -395,7 +430,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// The player's current group.
             /// </summary>
-            public string Group;
+            public string Group = Group_Default;
 
             /// <summary>
             /// The source of the <see cref="Group"/>.

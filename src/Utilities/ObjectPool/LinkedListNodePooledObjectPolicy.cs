@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 
-#nullable enable
-
 namespace SS.Utilities.ObjectPool
 {
     /// <summary>

@@ -17,14 +17,14 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class ClientSettings : IModule, IClientSettings
     {
-        private ComponentBroker _broker;
-        private IArenaManager _arenaManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private INetwork _network;
-        private IPlayerData _playerData;
-        private IPrng _prng;
-        private InterfaceRegistrationToken<IClientSettings> _iClientSettingsToken;
+        private readonly IComponentBroker _broker;
+        private readonly IArenaManager _arenaManager;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly INetwork _network;
+        private readonly IPlayerData _playerData;
+        private readonly IPrng _prng;
+        private InterfaceRegistrationToken<IClientSettings>? _iClientSettingsToken;
 
         private ArenaDataKey<ArenaData> _adkey;
         private PlayerDataKey<PlayerData> _pdkey;
@@ -74,10 +74,8 @@ namespace SS.Core.Modules
 
         #endregion
 
-        #region IModule Members
-
-        public bool Load(
-            ComponentBroker broker,
+        public ClientSettings(
+            IComponentBroker broker,
             IArenaManager arenaManager,
             IConfigManager configManager,
             ILogManager logManager,
@@ -92,7 +90,12 @@ namespace SS.Core.Modules
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
+        }
 
+        #region IModule Members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
 #if DEBUG
             // Some sanity checks on conditions that should be true.
             {
@@ -118,7 +121,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iClientSettingsToken) != 0)
                 return false;
@@ -141,11 +144,11 @@ namespace SS.Core.Modules
             if (player is null)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
-            if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+            if (!arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
                 return;
 
             lock (_lockObj)
@@ -159,7 +162,7 @@ namespace SS.Core.Modules
             if (player is null)
                 return 0;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return 0;
 
             // ASSS calls DoMask() here which refreshes the player's settings.
@@ -180,7 +183,7 @@ namespace SS.Core.Modules
             if (arena is null)
                 return 0;
 
-            if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+            if (!arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
                 return 0;
 
             int max = arenaData.pwps[28];
@@ -400,7 +403,7 @@ namespace SS.Core.Modules
 
         void IClientSettings.OverrideSetting(Arena arena, ClientSettingIdentifier id, int value)
         {
-            if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+            if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
                 return;
 
             lock (_lockObj)
@@ -411,7 +414,7 @@ namespace SS.Core.Modules
 
         void IClientSettings.OverrideSetting(Player player, ClientSettingIdentifier id, int value)
         {
-            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             lock (_lockObj)
@@ -422,7 +425,7 @@ namespace SS.Core.Modules
 
         void IClientSettings.UnoverrideSetting(Arena arena, ClientSettingIdentifier id)
         {
-            if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+            if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
                 return;
 
             lock (_lockObj)
@@ -433,7 +436,7 @@ namespace SS.Core.Modules
 
         void IClientSettings.UnoverrideSetting(Player player, ClientSettingIdentifier id)
         {
-            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             lock (_lockObj)
@@ -444,7 +447,7 @@ namespace SS.Core.Modules
 
         bool IClientSettings.TryGetSettingOverride(Arena arena, ClientSettingIdentifier id, out int value)
         {
-            if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+            if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
             {
                 value = default;
                 return false;
@@ -458,7 +461,7 @@ namespace SS.Core.Modules
 
         bool IClientSettings.TryGetSettingOverride(Player player, ClientSettingIdentifier id, out int value)
         {
-            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
             {
                 value = default;
                 return false;
@@ -472,7 +475,7 @@ namespace SS.Core.Modules
 
         int IClientSettings.GetSetting(Arena arena, ClientSettingIdentifier id)
         {
-            if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+            if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
             {
                 return 0;
             }
@@ -485,7 +488,7 @@ namespace SS.Core.Modules
 
         int IClientSettings.GetSetting(Player player, ClientSettingIdentifier id)
         {
-            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
             {
                 return 0;
             }
@@ -507,22 +510,22 @@ namespace SS.Core.Modules
             if (arena is null)
                 return;
 
-            if (!arena.TryGetExtraData(_adkey, out ArenaData arenaData))
+            if (!arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
                 return;
 
             lock (_lockObj)
             {
                 if (action == ArenaAction.Create)
                 {
-                    LoadSettings(arenaData, arena.Cfg);
+                    LoadSettings(arenaData, arena.Cfg!);
                 }
                 else if (action == ArenaAction.ConfChanged)
                 {
-                    bool sendUpdated = _configManager.GetInt(arena.Cfg, "Misc", "SendUpdatedSettings", 1) != 0;
+                    bool sendUpdated = _configManager.GetInt(arena.Cfg!, "Misc", "SendUpdatedSettings", 1) != 0;
 
                     S2C_ClientSettings old = arenaData.Settings;
 
-                    LoadSettings(arenaData, arena.Cfg);
+                    LoadSettings(arenaData, arena.Cfg!);
 
                     if (sendUpdated)
                     {
@@ -558,9 +561,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
-            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             if (action == PlayerAction.LeaveArena || action == PlayerAction.Disconnect)
@@ -986,7 +989,7 @@ namespace SS.Core.Modules
             if (arenaData is null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             DoMask(ref playerData.Settings, ref arenaData.Settings, ref arenaData.OverrideData, ref playerData.OverrideData);

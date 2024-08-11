@@ -23,7 +23,7 @@ namespace SS.Core.Map
         /// <summary>
         /// Name of the region.
         /// </summary>
-        public string Name
+        public string? Name
         {
             get;
             private set;
@@ -39,7 +39,7 @@ namespace SS.Core.Map
         /// <returns>Enumerable containing chunk payloads (header not included).</returns>
         public IEnumerable<ReadOnlyMemory<byte>> ChunkData(uint chunkType)
         {
-            if (_chunks.TryGetValues(chunkType, out IEnumerable<ReadOnlyMemory<byte>> matches))
+            if (_chunks.TryGetValues(chunkType, out IEnumerable<ReadOnlyMemory<byte>>? matches))
                 return matches;
             else
                 return Enumerable.Empty<ReadOnlyMemory<byte>>();
@@ -92,7 +92,7 @@ namespace SS.Core.Map
 
         public class AutoWarpDestination
         {
-            public AutoWarpDestination(short x, short y, string arenaName)
+            public AutoWarpDestination(short x, short y, string? arenaName)
             {
                 X = x;
                 Y = y;
@@ -101,7 +101,7 @@ namespace SS.Core.Map
 
             public short X { get; }
             public short Y { get; }
-            public string ArenaName { get; }
+            public string? ArenaName { get; }
         }
 
         private readonly List<AutoWarpDestination> _autoWarpDestinations = new();
@@ -140,7 +140,7 @@ namespace SS.Core.Map
         {
             get
             {
-                LinkedListNode<RleEntry> node = _rleData.First;
+                LinkedListNode<RleEntry>? node = _rleData.First;
                 while (node != null)
                 {
                     RleEntry entry = node.Value;
@@ -162,7 +162,7 @@ namespace SS.Core.Map
         /// <returns></returns>
         public bool ContainsCoordinate(short x, short y)
         {
-            LinkedListNode<RleEntry> node = _rleData.First;
+            LinkedListNode<RleEntry>? node = _rleData.First;
 
             while (node != null)
             {
@@ -202,7 +202,7 @@ namespace SS.Core.Map
             }
 
             int index = Random.Shared.Next(0, TileCount);
-            LinkedListNode<RleEntry> node = _rleData.First;
+            LinkedListNode<RleEntry>? node = _rleData.First;
 
             while (node != null)
             {
@@ -288,7 +288,7 @@ namespace SS.Core.Map
                     va.Read(position, out RegionAutoWarpChunk destination);
 
                     // Arena name is optional.
-                    string arenaName = null;
+                    string? arenaName = null;
                     if (length - RegionAutoWarpChunk.Length >= 16)
                     {
                         // Read the arena name.
@@ -405,7 +405,7 @@ namespace SS.Core.Map
                         if (cx != 0 || cy == 0)
                             return false;
 
-                        for (LinkedListNode<RleEntry> node = lastRowData.First;
+                        for (LinkedListNode<RleEntry>? node = lastRowData.First;
                             node != null;
                             node = node.Next)
                         {

@@ -8,15 +8,22 @@ namespace SS.Core.Modules
     /// Module that allows players to buy items with points.
     /// </summary>
     [CoreModuleInfo]
-    public class Buy : IModule, IArenaAttachableModule
+    public class Buy(
+        IArenaPlayerStats arenaPlayerStats,
+        IChat chat,
+        ICommandManager commandManager,
+        IConfigManager configManager,
+        IGame game,
+        ILogManager logManager,
+        IScoreStats scoreStats) : IModule, IArenaAttachableModule
     {
-        private IArenaPlayerStats _arenaPlayerStats;
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private IGame _game;
-        private ILogManager _logManager;
-        private IScoreStats _scoreStats;
+        private readonly IArenaPlayerStats _arenaPlayerStats = arenaPlayerStats ?? throw new ArgumentNullException(nameof(arenaPlayerStats));
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly IGame _game = game ?? throw new ArgumentNullException(nameof(game));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IScoreStats _scoreStats = scoreStats ?? throw new ArgumentNullException(nameof(scoreStats));
 
         [ConfigHelp("Cost", "XRadar", ConfigScope.Arena, typeof(int), DefaultValue = "0",
             Description = "Points cost for XRadar. 0 to disallow purchase.")]
@@ -96,28 +103,12 @@ namespace SS.Core.Modules
 
         #region Module members
 
-        public bool Load(
-            ComponentBroker broker,
-            IArenaPlayerStats arenaPlayerStats,
-            IChat chat,
-            ICommandManager commandManager,
-            IConfigManager configManager,
-            IGame game,
-            ILogManager logManager,
-            IScoreStats scoreStats)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _arenaPlayerStats = arenaPlayerStats ?? throw new ArgumentNullException(nameof(arenaPlayerStats));
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _game = game ?? throw new ArgumentNullException(nameof(game));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _scoreStats = scoreStats ?? throw new ArgumentNullException(nameof(scoreStats));
-
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             return true;
         }
@@ -142,13 +133,13 @@ namespace SS.Core.Modules
             Description = "Buys an item with points.")]
         private void Command_buy(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
             if (parameters.IsEmpty)
             {
-                PrintCosts(arena.Cfg, player);
+                PrintCosts(arena.Cfg!, player);
                 return;
             }
 
@@ -167,7 +158,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            int cost = _configManager.GetInt(arena.Cfg, "Cost", _items[itemIndex].SettingKey, 0);
+            int cost = _configManager.GetInt(arena.Cfg!, "Cost", _items[itemIndex].SettingKey, 0);
             if (cost == 0)
             {
                 _chat.SendMessage(player, "That item isn't available for purchase.");
@@ -180,7 +171,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            bool anywhere = _configManager.GetInt(arena.Cfg, "Cost", "PurchaseAnytime", 0) != 0;
+            bool anywhere = _configManager.GetInt(arena.Cfg!, "Cost", "PurchaseAnytime", 0) != 0;
             if (!anywhere && (player.Position.Status & PlayerPositionStatus.Safezone) != PlayerPositionStatus.Safezone)
             {
                 _chat.SendMessage(player, "You must be in a safe zone to purchase items.");

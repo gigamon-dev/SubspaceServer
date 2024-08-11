@@ -11,6 +11,6 @@
     /// </remarks>
     public interface IConfFileProvider
     {
-        public ConfFile GetFile(string name);
+        public ConfFile? GetFile(string? name);
     }
 }

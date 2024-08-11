@@ -36,7 +36,7 @@ namespace SS.Core.Configuration
         /// </summary>
         /// <param name="path">The path of the file.</param>
         /// <param name="logger">A logger to report errors to.</param>
-        public ConfFile(string path, IConfigLogger logger)
+        public ConfFile(string path, IConfigLogger? logger)
         {
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(path));
@@ -45,23 +45,23 @@ namespace SS.Core.Configuration
             _logger = logger;
         }
 
-        private string _path;
+        private string? _path;
 
         /// <summary>
         /// Gets the path of the <see cref="ConfFile"/>.
         /// <see langword="null"/> for a <see cref="ConfFile"/> that is not yet saved to disk.
         /// </summary>
-        public string Path
+        public string? Path
         {
             get => _path;
             private set
             {
                 _path = value;
-                _fileInfo = string.IsNullOrWhiteSpace(value) ? null : new FileInfo(Path);
+                _fileInfo = string.IsNullOrWhiteSpace(_path) ? null : new FileInfo(_path);
             }
         }
 
-        private FileInfo _fileInfo;
+        private FileInfo? _fileInfo;
 
         /// <summary>
         /// Gets the last known timestamp that a <see cref="ConfFile"/> was last modified on disk.
@@ -91,10 +91,10 @@ namespace SS.Core.Configuration
         /// </summary>
         public bool IsDirty { get; private set; } = false;
 
-        public event EventHandler Changed;
+        public event EventHandler? Changed;
 
         private int _lineNumber = 0;
-        private readonly IConfigLogger _logger = null;
+        private readonly IConfigLogger? _logger = null;
 
         /// <summary>
         /// Loads or reloads from the <see cref="Path"/>.
@@ -114,7 +114,7 @@ namespace SS.Core.Configuration
 
             RefreshLastModified();
 
-            string line;
+            string? line;
             StringBuilder lineBuilder = s_stringBuilderPool.Get();
             StringBuilder rawBuilder = s_stringBuilderPool.Get(); // the original
 
@@ -349,7 +349,7 @@ namespace SS.Core.Configuration
             {
                 ParseConfProperty(
                     line,
-                    out string sectionOverride,
+                    out string? sectionOverride,
                     out string key,
                     out ReadOnlySpan<char> value,
                     out bool hasValueDelimiter);
@@ -381,7 +381,7 @@ namespace SS.Core.Configuration
         /// <param name="hasValueDelimiter"></param>
         public static void ParseConfProperty(
             ReadOnlySpan<char> line,
-            out string sectionOverride,
+            out string? sectionOverride,
             out string key,
             out ReadOnlySpan<char> value,
             out bool hasValueDelimiter)
@@ -420,10 +420,9 @@ namespace SS.Core.Configuration
             value = hasValueDelimiter ? line[1..].Trim() : ReadOnlySpan<char>.Empty;
         }
 
-        private static void ParseKey(StringBuilder sb, out string sectionOverride, out string key)
+        private static void ParseKey(StringBuilder sb, out string? sectionOverride, out string key)
         {
-            if (sb == null)
-                throw new ArgumentNullException(nameof(sb));
+            ArgumentNullException.ThrowIfNull(sb);
 
             // Find the last non-whitespace character
             int end;
@@ -479,7 +478,7 @@ namespace SS.Core.Configuration
 
         protected virtual void OnChanged()
         {
-            EventHandler handler = Changed;
+            EventHandler? handler = Changed;
             handler?.Invoke(this, EventArgs.Empty);
         }
 

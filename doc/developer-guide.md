@@ -53,7 +53,9 @@ Here's what it should like:
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <OutDir>$(SolutionDir)SubspaceServer\Zone\bin\modules\Example</OutDir>
   </PropertyGroup>
@@ -70,28 +72,31 @@ Here's what it should like:
 
 ### How to create a module
 
-To create a module, simply create a class and have it implement the `SS.Core.IModule` interface. The `IModule` interface has one method, `Unload`. Create an identical method named `Load`. Here's what it should look like:
+To create a module, simply create a class and have it implement the `SS.Core.IModule` interface. Here's what it should look like:
 
 ```C#
 using SS.Core;
+using SS.Core.ComponentInterfaces;
+
+namespace Example;
 
 public class ExampleModule : IModule
 {
-    public bool Load(ComponentBroker broker)
+    bool IModule.Load(IComponentBroker broker)
     {
         return true;
     }
 
-    public bool Unload(ComponentBroker broker)
+    bool IModule.Unload(IComponentBroker broker)
     {
         return true;
     }
 }
+
+
 ```
 
-Both the `Load` and `Unload` methods return a `bool`, which indicates success (`true`) or failure (`false`). Also, both have a parameter of type `ComponentBroker`. More on that later (see the [ComponentBroker](#ComponentBroker) section below).
-
-You also may be wondering, why the `Load` method is not part of the `IModule` interface. This is because the `Load` method can have additional parameters after the `ComponentBroker` which indicate dependencies that are required.  More on this later.
+Both the `Load` and `Unload` methods return a `bool`, which indicates success (`true`) or failure (`false`). Also, both have a parameter of type `IComponentBroker`. More on that later (see the [ComponentBroker](#ComponentBroker) section below).
 
 As you may have guessed from the name, `Load` is called when the server wants to load the module. This normally happens during the [startup](#startup) process mentioned earlier. Likewise, the `Unload` method is called when the server wants to unload the module. Unloading normally happens when the server is shutting down or restarting.
 
@@ -99,12 +104,12 @@ To load the `ExampleModule` module on startup, you'd simply edit the Modules.con
 ```xml
 <module type="Example.ExampleModule" path="bin/modules/Example/Example.dll" />
 ```
-That is, you want the server to create an instance of the `ExampleModule` class in the  `Example` namespace of your `Example.dll` assembly which is in the "bin/modules/Example" folder.
+That is, you want the server to create an instance of the `ExampleModule` class in the  `SS.Example` namespace of your `SS.Example.dll` assembly which is in the "bin/modules/Example" folder.
 
 > **Fun fact:** Modules can also be manually loaded or unloaded using in-game commands <nobr>`?insmod`</nobr> and <nobr>`?rmmod`</nobr> respectively.
 
 ## Module life-cycle
-The `Load` and `IModule.Unload` methods are the two required methods of a module. In addition to `IModule`, there are interfaces that can be used to further hook into the steps of a module's life-cycle: `IModuleLoaderAware` and `IArenaAttachableModule`.
+The `IModule.Load` and `IModule.Unload` methods are the two required methods of a module. In addition to `IModule`, there are interfaces that can be used to further hook into the steps of a module's life-cycle: `IModuleLoaderAware` and `IArenaAttachableModule`.
 
 Here's the order of method calls to a module:
 1. `Load`
@@ -141,10 +146,10 @@ A `ComponentBroker` acts like a container. There is one root `ComponentBroker` w
 
 > ***Fun fact:*** In Subspace Server .NET, there also is a `ModuleManager` and it happens to be the 'root' `ComponentBroker`.
 
-Remember, the `Load` and `Unload` methods? Their first parameter is a `ComponentBroker`.  It's the 'root' `ComponentBroker` that gets passed in.
+Remember, the `Load` and `Unload` methods? Their first parameter is an `IComponentBroker`.  It's the 'root' `ComponentBroker` that gets passed in.
 
 ## Component Interfaces
-Component Interfaces are exactly what they sound like, they're normal C# interfaces that a component can register on a `ComponentBroker` for others to find and use.
+Component Interfaces are exactly what they sound like, they're normal C# interfaces that a component can register on a `ComponentBroker` for others to find and use. To help distinguish any interface from a component interface, they derive from `SS.Core.IComponentInterface`.
 
 Normally, there is only one implementation of an Component Interface. However, it is possible for multiple modules to each register an instance for the same ComponentInterface. In this case, the last one registered becomes the 'current' implementation, effectively overriding the previous. Authentication modules which implement the `IAuth` Component Interface use this feature to chain authentication logic on top of each other. That is, one authentication module gets the prior implementation before overriding it. Then, when and if it needs to, it can fail over and call the original implementation.
 
@@ -155,13 +160,13 @@ Normally, there is only one implementation of an Component Interface. However, i
 First and foremost, you'll probably want to access the interfaces of other parts that are built into the server. So you'll need to know which interface you want. You can find the available built-in interfaces in the [SS.Core.ComponentInterfaces](../src/Core/ComponentInterfaces) namespace. Also, for a listing see the [ASSS Equivalents](asss-equivalents.md) document.
 
 Getting the currently registered instance implementing a Component Interface can be done in two ways:
-- Inject required Component Interface dependencies into your module's `Load` method.
-- Manually get an interface using `ComponentBroker`.
+- Inject required Component Interface dependencies into your module's constructor.
+- Manually get an interface using `IComponentBroker`.
 
 #### **Injection**
-The first parameter to a module's `Load` method is always of type `ComponentBroker`. It is through this parameter that the root broker is supplied. A module's `Load` method can have additional parameters after the `ComponentBroker` parameter. It is through these parameters that required dependencies are declared. These dependencies can be of any Component Interface type. Keep in mind, these dependencies are of interfaces that are considered  ***required***. The server will only load a module if it can find **all** of the required dependencies to call the `Load` method. Optional, interface dependencies should use the Manual method.
+Dependencies that are **required** can be injected into a module's constructor. The server will only be able to call the constructor if it can find **all** of the required dependencies. Optional, interface dependencies should use the Manual method.
 
-> **Fun fact:** The Component Interface functionality of the `ComponentBroker` is a form of *service locator*. The injection of Component Interfaces into a module `Load` method is a form of *dependency injection* that is performed by the `ModuleManager`. Together, they provide a form of *Inversion of Control (IoC)*.
+> **Fun fact:** The Component Interface functionality of the `ComponentBroker` is a form of *service locator*. The injection of Component Interfaces into a module's constructor is a form of *dependency injection* that is performed by the `ModuleManager`. Together, they provide a form of *Inversion of Control (IoC)*.
 
 Here is an example of using injection:
 
@@ -169,39 +174,35 @@ Here is an example of using injection:
 using SS.Core;
 using SS.Core.ComponentInterfaces;
 
-public class ExampleModule : IModule
+public class InjectionExample : IModule
 {
-    private ILogManager _logManager;
+    private readonly ILogManager _logManager;
 
     // Here we declare ILogManager as being a required dependency.
-    public bool Load(ComponentBroker broker, ILogManager logManager)
+    public InjectionExample(ILogManager logManager)
     {
-        // You can hold onto the reference and use it until Unload is called.
-        // Technically, it's not going to be null.
-        // But I like to do the check just in case it gets used
-        // by something other than the server, like a unit test.
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+    }
 
+    bool IModule.Load(IComponentBroker broker)
+    {
         // Use it.
         _logManager.LogM(LogLevel.Info, nameof(ExampleModule), "Subspace Server .NET is awesome!");
 
         return true;
     }
 
-    public bool Unload(ComponentBroker broker)
+    bool IModule.Unload(IComponentBroker broker)
     {
         // For the injected component interfaces, 
         // getting the interface is done for you, and
         // releasing it is too. There's nothing to do.
-
-        // However, we can get rid of the reference.
-        // Optional, for the pedantic.
-        _logManager = null;
-
         return true;
     }
 }
 ```
+
+> View the full example code at: [InjectionExample](../src/Example/InterfaceExamples/InjectionExample.cs)
 
 #### **Manually**
 Component Interfaces can be manually gotten using the `GetInterface` method of `ComponentBroker`. It will return a reference to the currently registered instance, or null if not found. Getting an Component Interface manually is done when it's an optional dependency. That is, your module can still work without it.
@@ -214,32 +215,34 @@ Here's an example of manually getting a Component Interface:
 using SS.Core;
 using SS.Core.ComponentInterfaces;
 
-// This example shows a manually gotten Component Interface
-// that is used for the entire life of the module.
-public class ExampleModule : IModule
+/// <summary>
+/// This example shows a manually gotten Component Interface
+/// that is used for the entire life of the module.
+/// </summary>
+public class ManualExample : IModule
 {
-    private ILogManager _logManager;
+    private ILogManager? _logManager;
 
-    public bool Load(ComponentBroker broker)
+    bool IModule.Load(IComponentBroker broker)
     {
-        // You can hold onto the reference,  
+        // You can hold onto the reference,
         // but you must release it at some point.
         _logManager = broker.GetInterface<ILogManager>();
 
         // Use it, only if it was available.
         // Keep in mind, GetInterface could have returned null.
         // Therefore, checking for null with the ?. (null-conditional operator)
-        _logManager?.LogM(LogLevel.Info, nameof(ExampleModule), "Subspace Server .NET is awesome!");
+        _logManager?.LogM(LogLevel.Info, nameof(ManualExample), "Subspace Server .NET is awesome!");
 
         return true;
     }
 
-    public bool Unload(ComponentBroker broker)
+    bool IModule.Unload(IComponentBroker broker)
     {
         // Manually gotten Component Interfaces must be manually released.
         // This is necessary!
         // If we had forgotten to do it, the LogManager module would not Unload.
-        if (_logManager != null)
+        if (_logManager is not null)
             broker.ReleaseInterface(ref _logManager);
 
         return true;
@@ -247,45 +250,42 @@ public class ExampleModule : IModule
 }
 ```
 
-Here's another variation of manually getting an interface and releasing it, but this one does not hold onto the interface.
+> View the full example code at: [ManualExample](../src/Example/InterfaceExamples/ManualExample.cs)
+
+Here's another variation of manually getting an interface and releasing it, but this one does not hold onto the interface. Additionally, it shows how you can use a primary constructor to inject the IComponentBroker.
 ```C#
-using SS.Core;
-using SS.Core.ComponentInterfaces;
-
-// This is an example that shows getting a Component Interface
-// for a short period, using it, and releasing it when done.
-public class ExampleModule : IModule
+/// <summary>
+/// This is an example that shows getting a Component Interface
+/// for a short period, using it, and releasing it when done.
+/// </summary>
+public class ManualExample2(IComponentBroker broker) : IModule
 {
-    private ComponentBroker _broker;
+    private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
 
-    public bool Load(ComponentBroker broker)
+    bool IModule.Load(IComponentBroker broker)
     {
-        // You can hold a reference to the root broker for later use.
-        _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-        
+        LogSomething("Hello Subspace!");
         return true;
     }
 
-    public bool Unload(ComponentBroker broker)
+    bool IModule.Unload(IComponentBroker broker)
     {
         return true;
     }
 
-    // Make believe something calls this method.
-    public void DoSomething()
+    public void LogSomething(string message)
     {
         // Try to get it.
-        ILogManager logManager = _broker.GetInterface<ILogManager>();
+        ILogManager? logManager = _broker.GetInterface<ILogManager>();
 
         // Check whether it was available.
-        if (logManager != null)
+        if (logManager is not null)
         {
             // It was available.
             try
             {
                 // Use it.
-                logManager.LogM(LogLevel.Info, nameof(ExampleModule), 
-                    "Subspace Server .NET is awesome!");
+                logManager.LogM(LogLevel.Info, nameof(ManualExample2), message);
             }
             finally
             {
@@ -296,6 +296,8 @@ public class ExampleModule : IModule
     }
 }
 ```
+
+> View the full example code at: [ManualExample2](../src/Example/InterfaceExamples/ManualExample2.cs)
 
 ### Registering and Unregistering a Component Interface
 
@@ -321,31 +323,29 @@ Next, implement the interface. Normally, the module itself will implement the in
 
 Here's an example of registering an interface in the `Load` method and unregistering it in the `Unload` method:
 ```C#
-using SS.Core;
-
-public class ExampleModule : IModule, IMyExample
+public class RegistrationExample : IModule, IMyExample
 {
-    private InterfaceRegistrationToken<IMyExample> _iMyExampleRegistrationToken;
+    private InterfaceRegistrationToken<IMyExample>? _iMyExampleToken;
 
-    public bool Load(ComponentBroker broker)
+    bool IModule.Load(IComponentBroker broker)
     {
-        // Initialize and get ready.
-
         // Register the interface.
         // This is normally done at the end of Load, when everything is initialized and ready.
         // Notice the return value is a token that we'll later use to unregister.
-        _iMyExampleRegistrationToken = broker.RegisterInterface<IMyExample>(this);
+        _iMyExampleToken = broker.RegisterInterface<IMyExample>(this);
+
         return true;
     }
 
-    public bool Unload(ComponentBroker broker)
+    bool IModule.Unload(IComponentBroker broker)
     {
         // Unregister the interface.
         // This is normally the first thing done in Unload.
-        if (broker.UnregisterInterface(ref _iMyExampleRegistrationToken) != 0)
+        if (broker.UnregisterInterface(ref _iMyExampleToken) != 0)
             return false;
 
         // Do other cleanup now that others should no longer be accessing us.
+        // ...
 
         return true;
     }
@@ -358,6 +358,8 @@ public class ExampleModule : IModule, IMyExample
     }
 }
 ```
+
+> View the full example code at: [ManualExample](../src/Example/InterfaceExamples/RegistrationExample.cs)
 
 ### Arena-specific Component Interfaces
 As mentioned previously, an `Arena` is a `ComponentBroker`. Interfaces can be registered on an `Arena` to customize behavior for that arena. When `GetInterface` is called on an `Arena`, the `Arena` will try to find the interface locally, but if not found fall back to its parent, the root `ComponentBroker` to find it. This means there can be a "default" implementation registered on the root `ComponentBroker`, and `Arena`-specific implementations to override the default implementation.
@@ -384,38 +386,41 @@ Here's an example of registering and unregistering for the PlayerAction callback
 ```C#
 using SS.Core;
 using SS.Core.ComponentCallbacks;
+using SS.Core.ComponentInterfaces;
 
-public class ExampleModule : IModule
+public class RegistrationExample(IChat chat) : IModule
 {
-    public bool Load(ComponentBroker broker)
+    private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+
+    public bool Load(IComponentBroker broker)
     {
         // Register on the root broker.
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
-
         return true;
     }
 
-    public bool Unload(ComponentBroker broker)
+    public bool Unload(IComponentBroker broker)
     {
         // Unregister on the root broker.
         PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
-
         return true;
     }
 
-    private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+    private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
     {
         if (action == PlayerAction.EnterArena)
         {
-            // Do whatever is needed for a player entering an arena.
+            _chat.SendArenaMessage(arena, $"Huzzah! {player.Name} entered the arena!");
         }
         else if (action == PlayerAction.LeaveArena)
         {
-            // Do whatever is needed for a player leaving an arena.
+            _chat.SendArenaMessage(arena, $"Poof! {player.Name} left!");
         }
     }
 }
 ```
+
+> View the full example code at: [RegistrationExample](../src/Example/CallbackExamples/RegistrationExample.cs)
 
 ### Register for an Component Callback on an arena
 Registering for a Component Callback on an arena is similar, you just have to use the arena, not the root `ComponentBroker`. Here's an example where the `IArenaAttachableModule` interface (which was discussed [earlier](#iarenaattachablemodule)), is used to only register for the PlayerAction Component Callback on arenas that the module is attached to.
@@ -423,15 +428,18 @@ Registering for a Component Callback on an arena is similar, you just have to us
 ```C#
 using SS.Core;
 using SS.Core.ComponentCallbacks;
+using SS.Core.ComponentInterfaces;
 
-public class ExampleModule : IModule, IArenaAttachableModule
+public class ArenaRegistrationExample(IChat chat) : IModule, IArenaAttachableModule
 {
-    public bool Load(ComponentBroker broker)
+    private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+
+    bool IModule.Load(IComponentBroker broker)
     {
         return true;
     }
 
-    public bool Unload(ComponentBroker broker)
+    bool IModule.Unload(IComponentBroker broker)
     {
         return true;
     }
@@ -452,19 +460,21 @@ public class ExampleModule : IModule, IArenaAttachableModule
         return true;
     }
 
-    private void Callback_PlayerAction(Player p, PlayerAction action, Arena arena)
+    private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
     {
         if (action == PlayerAction.EnterArena)
         {
-            // Do whatever is needed for a player entering an arena.
+            _chat.SendArenaMessage(arena, $"Huzzah! {player.Name} entered the arena!");
         }
         else if (action == PlayerAction.LeaveArena)
         {
-            // Do whatever is needed for a player leaving an arena.
+            _chat.SendArenaMessage(arena, $"Poof! {player.Name} left!");
         }
     }
 }
 ```
+
+> View the full example code at: [ArenaRegistrationExample](../src/Example/CallbackExamples/ArenaRegistrationExample.cs)
 
 ### Creating a new Component Callback
 To create a new Component Callback, the bare minimum needed is to define a delegate. However, as mentioned earlier, it's nicer to wrap it all up in a static helper class. Here's an example of how to do that.
@@ -472,6 +482,9 @@ To create a new Component Callback, the bare minimum needed is to define a deleg
 > On the helper class, there's no requirement that the names of the methods be `Register`, `Unregister`, and `Fire`. However, it is easy to understand and so it's recommended to just stick with those names as a convention.
 
 ```C#
+/// <summary>
+/// A static helper class to assist with firing the Component Callback.
+/// </summary>
 public static class MyExampleCallback
 {
     // Here is the delegate itself.
@@ -487,14 +500,14 @@ public static class MyExampleCallback
 
     // This is the helper method for registering.
     // It just wraps the call to the ComponentBroker.
-    public static void Register(ComponentBroker broker, MyExampleDelegate handler)
+    public static void Register(IComponentBroker broker, MyExampleDelegate handler)
     {
         broker?.RegisterCallback(handler);
     }
 
     // This is the helper method for unregistering.
     // It just wraps the call to the ComponentBroker.
-    public static void Unregister(ComponentBroker broker, MyExampleDelegate handler)
+    public static void Unregister(IComponentBroker broker, MyExampleDelegate handler)
     {
         broker?.UnregisterCallback(handler);
     }
@@ -507,7 +520,7 @@ public static class MyExampleCallback
     // it will invoke the delegate on the arena-level first.
     // Next, it will go to the the parent, which is the root
     // broker, and do the same there.
-    public static void Fire(ComponentBroker broker, int foo, string bar, bool baz)
+    public static void Fire(IComponentBroker broker, int foo, string bar, bool baz)
     {
         // Invoke it on the broker.
         broker?.GetCallback<MyExampleDelegate>()?.Invoke(foo, bar, baz);
@@ -525,13 +538,14 @@ When you want to fire (invoke) a Component Callback just use the helper class `F
 ```C#
 // For example, if you had the root broker in a variable named 'broker', 
 // you could fire a zone-wide Component Callback by doing:
-MyExampleCallback.Fire(broker, 123, "Subspace forever!", true);
+MyExampleCallback.Fire(broker, 123, "Hello entire zone!", true);
 
 // Or, let's say you had an Arena varible named 'arena'
 // you could fire it on that arena with:
-MyExampleCallback.Fire(arena, 123, "Subspace forever!", true);
-
+MyExampleCallback.Fire(arena, 123, "Hello single arena!", true);
 ```
+
+> View the full example code at: [CustomExample](../src/Example/CallbackExamples/CustomExample.cs)
 
 Of course, you are not limited to only firing callbacks you defined. You can also fire any of the built-in callbacks if it makes sense for your use case. However, most likely, you'll be firing callbacks that you defined.
 
@@ -571,24 +585,30 @@ public interface IMyExampleAdvisor : IComponentAdvisor
 }
 ```
 
+> View the full example code at: [IMyExampleAdvisor](../src/Example/AdvisorExamples/IMyExampleAdvisor.cs)
+
 ### Registering and Unregistering an instance of Component Advisor
 ```C#
 using SS.Core;
+using SS.Core.ComponentInterfaces;
 
-public class ExampleAdvisorModule : IModule, IMyExampleAdvisor
+/// <summary>
+/// This is an example on how to register and unregister a custom advisor.
+/// </summary>
+public class RegistrationExample : IModule, IMyExampleAdvisor
 {
-    private AdvisorRegistrationToken<IMyExampleAdvisor> _iMyExampleAdvisorRegistrationToken;
+    private AdvisorRegistrationToken<IMyExampleAdvisor>? _iMyExampleAdvisorRegistrationToken;
 
-    public bool Load(ComponentBroker broker)
+    bool IModule.Load(IComponentBroker broker)
     {
-        // Register the module as an implementer 
+        // Register the module as an implementer
         // of the IMyExampleAdvisor component advisor interface.
         _iMyExampleAdvisorRegistrationToken = broker.RegisterAdvisor<IMyExampleAdvisor>(this);
 
         return true;
     }
 
-    public bool Unload(ComponentBroker broker)
+    bool IModule.Unload(IComponentBroker broker)
     {
         // Unregister
         broker.UnregisterAdvisor(ref _iMyExampleAdvisorRegistrationToken);
@@ -609,23 +629,29 @@ public class ExampleAdvisorModule : IModule, IMyExampleAdvisor
 }
 ```
 
+> View the full example code at: [RegistrationExample](../src/Example/AdvisorExamples/RegistrationExample.cs)
+
 ### Using a Component Advisor to get advice.
 ```C#
 using SS.Core;
+using SS.Core.ComponentInterfaces;
 
-public class UseAdvisorExampleModule : IModule
+namespace Example.AdvisorExamples;
+
+/// <summary>
+/// An example on how to use an advisor.
+/// </summary>
+/// <param name="broker">The global (zone-wide) broker.</param>
+public class UseAdvisorExample(IComponentBroker broker) : IModule
 {
-    private ComponentBroker _broker;
+    private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
 
-    public bool Load(ComponentBroker broker)
+    bool IModule.Load(IComponentBroker broker)
     {
-        // Hold a reference to the root broker for later use.
-        _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-
         return true;
     }
 
-    public bool Unload(ComponentBroker broker)
+    bool IModule.Unload(IComponentBroker broker)
     {
         return true;
     }
@@ -643,7 +669,7 @@ public class UseAdvisorExampleModule : IModule
         // How you decide to use advice from an advisor is up to you.
         // Here we'll consider something to be allowed, only if
         // every advisor says it's allowed.
-        foreach (var advisor in advsiors)
+        foreach (var advisor in advisors)
         {
             if (!advisor.IsAllowedToDoSomething(player))
             {
@@ -665,6 +691,8 @@ public class UseAdvisorExampleModule : IModule
     }
 }
 ```
+
+> View the full example code at: [UseAdvisorExample](../src/Example/AdvisorExamples/UseAdvisorExample.cs)
 
 
 ## The `Player` class and Per-player data

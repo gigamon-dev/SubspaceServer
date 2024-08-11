@@ -241,7 +241,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">The player to check.</param>
         /// <param name="playersAntiwarping">An optional list to populate with the players that are antiwarping.</param>
         /// <returns>True if antiwarped, false otherwise.</returns>
-        bool IsAntiwarped(Player player, HashSet<Player> playersAntiwarping);
+        bool IsAntiwarped(Player player, HashSet<Player>? playersAntiwarping);
 
         /// <summary>
         /// Forcefully attach a player to another player.

@@ -18,19 +18,19 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class MapData : IModule, IMapData
     {
-        private ComponentBroker _broker;
-        private IMainloop _mainloop;
-        private IConfigManager _configManager;
-        private IArenaManager _arenaManager;
-        private ILogManager _logManager;
-        private InterfaceRegistrationToken<IMapData> _iMapDataToken;
+        private readonly IComponentBroker _broker;
+        private readonly IMainloop _mainloop;
+        private readonly IConfigManager _configManager;
+        private readonly IArenaManager _arenaManager;
+        private readonly ILogManager _logManager;
+        private InterfaceRegistrationToken<IMapData>? _iMapDataToken;
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        #region IModule Members
+        private const string Error_ArenaDataNotLoaded = $"Data for the arena is not yet loaded. It is only available after the {nameof(ArenaAction.PreCreate)} step.";
 
-        public bool Load(
-            ComponentBroker broker,
+        public MapData(
+            IComponentBroker broker,
             IMainloop mainloop,
             IConfigManager configManager,
             IArenaManager arenaManager,
@@ -41,7 +41,12 @@ namespace SS.Core.Modules
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(broker));
+        }
 
+        #region IModule Members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
             _iMapDataToken = _broker.RegisterInterface<IMapData>(this);
@@ -49,7 +54,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iMapDataToken) != 0)
                 return false;
@@ -64,23 +69,18 @@ namespace SS.Core.Modules
 
         #region IMapData Members
 
-        string IMapData.GetMapFilename(Arena arena, string mapname)
-        {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
-
-            return GetMapFilename(arena, mapname);
-        }
-
         [ConfigHelp("General", "Map", ConfigScope.Arena, typeof(string), Description = "The name of the level file for the arena.")]
-        private string GetMapFilename(Arena arena, string mapName)
+        string? IMapData.GetMapFilename(Arena arena, string? mapName)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
             if (string.IsNullOrWhiteSpace(mapName))
             {
-                mapName = _configManager.GetStr(arena.Cfg, "General", "Map");
+                string? filename = _configManager.GetStr(arena.Cfg!, "General", "Map");
+                if (string.IsNullOrWhiteSpace(filename))
+                    return null;
+
+                mapName = filename;
             }
 
             bool isLvl = !string.IsNullOrWhiteSpace(mapName)
@@ -96,25 +96,25 @@ namespace SS.Core.Modules
             "The list of lvz files for the arena. LevelFiles1 through LevelFiles15 are also supported.")]
         IEnumerable<LvzFileInfo> IMapData.LvzFilenames(Arena arena)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
+            ConfigHandle ch = arena.Cfg!;
             int count = 0;
 
             for (int x = 0; x <= 15; x++)
             {
-                string lvz;
+                string? lvz;
 
                 if (x == 0)
                 {
-                    lvz = _configManager.GetStr(arena.Cfg, "General", "LevelFiles");
+                    lvz = _configManager.GetStr(ch, "General", "LevelFiles");
 
                     if (string.IsNullOrWhiteSpace(lvz))
-                        lvz = _configManager.GetStr(arena.Cfg, "Misc", "LevelFiles");
+                        lvz = _configManager.GetStr(ch, "Misc", "LevelFiles");
                 }
                 else
                 {
-                    lvz = _configManager.GetStr(arena.Cfg, "General", "LevelFiles" + x);
+                    lvz = _configManager.GetStr(ch, "General", "LevelFiles" + x);
                 }
 
                 if (string.IsNullOrWhiteSpace(lvz))
@@ -124,7 +124,7 @@ namespace SS.Core.Modules
                 foreach (string lvzName in lvzNameArray)
                 {
                     string real = lvzName[0] == '+' ? lvzName[1..] : lvzName;
-                    string fname = GetMapFilename(arena, real);
+                    string? fname = ((IMapData)this).GetMapFilename(arena, real);
                     if (string.IsNullOrWhiteSpace(fname))
                         continue;
 
@@ -136,19 +136,21 @@ namespace SS.Core.Modules
             }
         }
 
-        string IMapData.GetAttribute(Arena arena, string key)
+        string? IMapData.GetAttribute(Arena arena, string key)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
             try
             {
-                if (ad.Lvl.TryGetAttribute(key, out string attributeValue))
+                if (ad.Lvl.TryGetAttribute(key, out string? attributeValue))
                     return attributeValue;
                 else
                     return null;
@@ -161,11 +163,13 @@ namespace SS.Core.Modules
 
         IEnumerable<ReadOnlyMemory<byte>> IMapData.ChunkData(Arena arena, uint chunkType)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -181,11 +185,13 @@ namespace SS.Core.Modules
 
         int IMapData.GetTileCount(Arena arena)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -201,11 +207,13 @@ namespace SS.Core.Modules
 
         int IMapData.GetFlagCount(Arena arena)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -221,11 +229,13 @@ namespace SS.Core.Modules
 
         IReadOnlyList<string> IMapData.GetErrors(Arena arena)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -241,11 +251,13 @@ namespace SS.Core.Modules
 
         MapTile? IMapData.GetTile(Arena arena, MapCoordinate coord)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -261,7 +273,7 @@ namespace SS.Core.Modules
 
         bool IMapData.TryGetFlagCoordinate(Arena arena, short flagId, out MapCoordinate coordinate)
         {
-            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad) || ad.Lvl is null)
             {
                 coordinate = default;
                 return false;
@@ -290,11 +302,13 @@ namespace SS.Core.Modules
 
         bool IMapData.TryFindEmptyTileNear(Arena arena, ref short x, ref short y)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -358,11 +372,13 @@ namespace SS.Core.Modules
 
         uint IMapData.GetChecksum(Arena arena, uint key)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             int saveKey = (int)key;
 
@@ -391,11 +407,13 @@ namespace SS.Core.Modules
 
         int IMapData.GetRegionCount(Arena arena)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -409,13 +427,15 @@ namespace SS.Core.Modules
             }
         }
 
-        MapRegion IMapData.FindRegionByName(Arena arena, string name)
+        MapRegion? IMapData.FindRegionByName(Arena arena, string name)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -436,11 +456,13 @@ namespace SS.Core.Modules
 
         ImmutableHashSet<MapRegion> IMapData.RegionsAt(Arena arena, short x, short y)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -459,8 +481,11 @@ namespace SS.Core.Modules
             ArgumentNullException.ThrowIfNull(arena);
             ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -479,8 +504,11 @@ namespace SS.Core.Modules
             ArgumentNullException.ThrowIfNull(arena);
             ArgumentNullException.ThrowIfNull(stream);
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
-                throw new Exception("missing lvl data");
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ad.Lvl is null)
+                throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
             ad.Lock.EnterReadLock();
 
@@ -498,10 +526,7 @@ namespace SS.Core.Modules
 
         private async void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (arena == null)
-                return;
-
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.PreCreate)
@@ -549,11 +574,10 @@ namespace SS.Core.Modules
 
         private async Task<ExtendedLvl> LoadMapAsync(Arena arena)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            string path = GetMapFilename(arena, null);
-            ExtendedLvl lvl = null;
+            string? path = ((IMapData)this).GetMapFilename(arena, null);
+            ExtendedLvl? lvl = null;
 
             if (!string.IsNullOrWhiteSpace(path))
             {
@@ -588,7 +612,7 @@ namespace SS.Core.Modules
 
         private class ArenaData : IResettable
         {
-            public ExtendedLvl Lvl = null;
+            public ExtendedLvl? Lvl = null;
             public readonly ReaderWriterLockSlim Lock = new();
 
             public bool TryReset()

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SS.Core.Map
 {
@@ -10,7 +11,7 @@ namespace SS.Core.Map
             this[new MapCoordinate(x, y)] = value;
         }
 
-        public bool TryGetValue(short x, short y, out TValue value)
+        public bool TryGetValue(short x, short y, [MaybeNullWhen(false)] out TValue value)
         {
             return TryGetValue(new MapCoordinate(x, y), out value);
         }

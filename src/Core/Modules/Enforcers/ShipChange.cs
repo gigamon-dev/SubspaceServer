@@ -27,18 +27,15 @@ namespace SS.Core.Modules.Enforcers
     [CoreModuleInfo]
     public class ShipChange : IModule, IArenaAttachableModule, IFreqManagerEnforcerAdvisor
     {
-        private IArenaManager _arenaManager;
-        private IConfigManager _configManager;
-        private IGame _game;
-        private IPlayerData _playerData;
+        private readonly IArenaManager _arenaManager;
+        private readonly IConfigManager _configManager;
+        private readonly IGame _game;
+        private readonly IPlayerData _playerData;
 
         private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public ShipChange(
             IArenaManager arenaManager,
             IConfigManager configManager,
             IGame game,
@@ -48,7 +45,12 @@ namespace SS.Core.Modules.Enforcers
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
@@ -57,7 +59,7 @@ namespace SS.Core.Modules.Enforcers
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
 
@@ -69,7 +71,7 @@ namespace SS.Core.Modules.Enforcers
 
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
@@ -79,7 +81,7 @@ namespace SS.Core.Modules.Enforcers
 
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (!arena.UnregisterAdvisor(ref ad.AdvisorToken))
@@ -93,14 +95,14 @@ namespace SS.Core.Modules.Enforcers
 
         #region IFreqManagerEnforcerAdvisor
 
-        ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder errorMessage)
+        ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder? errorMessage)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
             {
                 return ShipMask.All;
             }
 
-            if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData? ad))
             {
                 return ShipMask.All;
             }
@@ -148,20 +150,21 @@ namespace SS.Core.Modules.Enforcers
             Description = "Whether to prevent players with flags from changing ships while antiwarped.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                ad.ShipChangeInterval = TimeSpan.FromMilliseconds(_configManager.GetInt(arena.Cfg, "Misc", "ShipChangeInterval", 500) * 10);
-                ad.AntiwarpNonFlagger = _configManager.GetInt(arena.Cfg, "Misc", "AntiwarpShipChange", 0) != 0;
-                ad.AntiwarpFlagger = _configManager.GetInt(arena.Cfg, "Misc", "AntiwarpFlagShipChange", 0) != 0;
+                ConfigHandle ch = arena.Cfg!;
+                ad.ShipChangeInterval = TimeSpan.FromMilliseconds(_configManager.GetInt(ch, "Misc", "ShipChangeInterval", 500) * 10);
+                ad.AntiwarpNonFlagger = _configManager.GetInt(ch, "Misc", "AntiwarpShipChange", 0) != 0;
+                ad.AntiwarpFlagger = _configManager.GetInt(ch, "Misc", "AntiwarpFlagShipChange", 0) != 0;
             }
         }
 
         private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             if (newShip != oldShip && newShip != ShipType.Spec)
@@ -176,7 +179,7 @@ namespace SS.Core.Modules.Enforcers
 
         private class ArenaData : IResettable
         {
-            public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> AdvisorToken = null;
+            public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor>? AdvisorToken = null;
 
             #region Settings
 

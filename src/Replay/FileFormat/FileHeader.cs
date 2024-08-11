@@ -158,7 +158,7 @@ namespace SS.Replay.FileFormat
                 Set(name);
             }
 
-            public static implicit operator RecorderInlineArray(string value)
+            public static implicit operator RecorderInlineArray(string? value)
             {
                 return new(value);
             }

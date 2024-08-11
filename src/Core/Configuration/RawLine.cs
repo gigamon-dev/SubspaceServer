@@ -34,7 +34,7 @@ namespace SS.Core.Configuration
         /// The raw text of the line.  Only for lines read from a file, otherwise <see langword="null"/>.
         /// This allows the line to be re-written exactly as it originally was (including any white-space) when saving a <see cref="ConfFile"/>.
         /// </summary>
-        public string Raw { get; init; }
+        public string? Raw { get; init; }
 
         /// <summary>
         /// The type of line. Derived classes must override this.
@@ -54,8 +54,7 @@ namespace SS.Core.Configuration
         /// <returns>True if there was <see cref="Raw"/> text to write. Otherwise, false.</returns>
         protected bool TryWriteRaw(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (Raw != null)
             {
@@ -82,8 +81,7 @@ namespace SS.Core.Configuration
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             TryWriteRaw(writer); // guaranteed to write since Raw cannot be null
         }
@@ -108,8 +106,7 @@ namespace SS.Core.Configuration
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (!TryWriteRaw(writer))
                 writer.WriteLine();
@@ -148,8 +145,7 @@ namespace SS.Core.Configuration
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (!TryWriteRaw(writer))
                 writer.WriteLine($"{CommentChar} {Text}");
@@ -175,8 +171,7 @@ namespace SS.Core.Configuration
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (!TryWriteRaw(writer))
                 writer.WriteLine($"{StartChar}{Name}{EndChar}");
@@ -191,7 +186,7 @@ namespace SS.Core.Configuration
         public const char SectionOverrideDelimiter = ':';
         public const char KeyValueDelimiter = '=';
 
-        public RawProperty(string sectionOverride, string key, string value, bool hasDelimiter)
+        public RawProperty(string? sectionOverride, string key, string value, bool hasDelimiter)
         {
             SectionOverride = sectionOverride;
             Key = key;
@@ -201,15 +196,14 @@ namespace SS.Core.Configuration
 
         public override ConfLineType LineType => ConfLineType.Property;
 
-        public string SectionOverride { get; } // for <section>:<key>
+        public string? SectionOverride { get; } // for <section>:<key>
         public string Key { get; }
         public string Value { get; }
         public bool HasDelimiter { get; }
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (TryWriteRaw(writer))
                 return;
@@ -266,8 +260,7 @@ namespace SS.Core.Configuration
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (!TryWriteRaw(writer))
             {
@@ -290,7 +283,7 @@ namespace SS.Core.Configuration
         {
         }
 
-        public RawPreprocessorDefine(string name, string value)
+        public RawPreprocessorDefine(string name, string? value)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(name));
@@ -302,12 +295,11 @@ namespace SS.Core.Configuration
         public override ConfLineType LineType => ConfLineType.PreprocessorDefine;
 
         public string Name { get; }
-        public string Value { get; }
+        public string? Value { get; }
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (!TryWriteRaw(writer))
             {
@@ -337,8 +329,7 @@ namespace SS.Core.Configuration
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (!TryWriteRaw(writer))
             {
@@ -365,8 +356,7 @@ namespace SS.Core.Configuration
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (!TryWriteRaw(writer))
             {
@@ -393,8 +383,7 @@ namespace SS.Core.Configuration
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (!TryWriteRaw(writer))
             {
@@ -414,8 +403,7 @@ namespace SS.Core.Configuration
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (!TryWriteRaw(writer))
             {
@@ -435,8 +423,7 @@ namespace SS.Core.Configuration
 
         public override void WriteTo(TextWriter writer)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
+            ArgumentNullException.ThrowIfNull(writer);
 
             if (!TryWriteRaw(writer))
             {

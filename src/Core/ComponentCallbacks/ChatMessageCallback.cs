@@ -18,19 +18,19 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="toPlayer">The player that message was sent to. <see langword="null"/> for messages not sent to a specific player.</param>
         /// <param name="freq">The team the message was sent to. -1 for messages not sent to a specific team.</param>
         /// <param name="message">The message text that was sent.</param>
-        public delegate void ChatMessageDelegate(Arena arena, Player player, ChatMessageType type, ChatSound sound, Player toPlayer, short freq, ReadOnlySpan<char> message);
+        public delegate void ChatMessageDelegate(Arena? arena, Player? player, ChatMessageType type, ChatSound sound, Player? toPlayer, short freq, ReadOnlySpan<char> message);
 
-        public static void Register(ComponentBroker broker, ChatMessageDelegate handler)
+        public static void Register(IComponentBroker broker, ChatMessageDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, ChatMessageDelegate handler)
+        public static void Unregister(IComponentBroker broker, ChatMessageDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, Player player, ChatMessageType type, ChatSound sound, Player toPlayer, short freq, ReadOnlySpan<char> message)
+        public static void Fire(IComponentBroker broker, Arena? arena, Player? player, ChatMessageType type, ChatSound sound, Player? toPlayer, short freq, ReadOnlySpan<char> message)
         {
             broker?.GetCallback<ChatMessageDelegate>()?.Invoke(arena, player, type, sound, toPlayer, freq, message);
 

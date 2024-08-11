@@ -1,4 +1,5 @@
-﻿using SS.Core.Map;
+﻿using SS.Core.ComponentInterfaces;
+using SS.Core.Map;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -17,17 +18,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="entering">True if the region is being entered.  False if being exited.</param>
         public delegate void MapRegionDelegate(Player player, MapRegion region, short x, short y, bool entering);
 
-        public static void Register(ComponentBroker broker, MapRegionDelegate handler)
+        public static void Register(IComponentBroker broker, MapRegionDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, MapRegionDelegate handler)
+        public static void Unregister(IComponentBroker broker, MapRegionDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, MapRegion region, short x, short y, bool entering)
+        public static void Fire(IComponentBroker broker, Player player, MapRegion region, short x, short y, bool entering)
         {
             broker?.GetCallback<MapRegionDelegate>()?.Invoke(player, region, x, y, entering);
 

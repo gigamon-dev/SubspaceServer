@@ -16,13 +16,13 @@ namespace SS.Core
     /// </summary>
     public class Server
     {
-        private volatile ModuleManager _mm;
+        private volatile ModuleManager? _mm;
 
         /// <summary>
         /// The root broker.  Available after the server has been started. Otherwise, null.
         /// Use this to get the various <see cref="IComponentInterface"/>s that the loaded modules provide.
         /// </summary>
-        public ComponentBroker Broker { get { return _mm; } }
+        public ComponentBroker? Broker { get { return _mm; } }
 
         /// <summary>
         /// Starts the server such that the calling thread runs the loop in the Mainloop module.
@@ -61,14 +61,14 @@ namespace SS.Core
         /// </summary>
         public void Quit()
         {
-            ModuleManager mm = _mm;
+            ModuleManager? mm = _mm;
             if (mm is null)
             {
                 Console.WriteLine("The server is not running.");
                 return;
             }
 
-            IMainloop mainloop = mm.GetInterface<IMainloop>();
+            IMainloop? mainloop = mm.GetInterface<IMainloop>();
             if (mainloop is null)
             {
                 Console.WriteLine("Mainloop is not loaded.");
@@ -105,7 +105,7 @@ namespace SS.Core
 
         private bool LoadModulesFromConfig(string moduleConfigFilename)
         {
-            IModuleLoader loader = _mm.GetInterface<IModuleLoader>();
+            IModuleLoader? loader = _mm!.GetInterface<IModuleLoader>();
             if (loader is null)
             {
                 if (!_mm.LoadModule<ModuleLoader>())
@@ -137,7 +137,7 @@ namespace SS.Core
             ExitCode ret;
 
             // Run the mainloop.
-            IMainloop mainloop = _mm.GetInterface<IMainloop>();
+            IMainloop? mainloop = _mm!.GetInterface<IMainloop>();
             if (mainloop is null)
             {
                 Console.Error.WriteLine("Unable to get IMainloop. Check that the Mainloop module is in the Modules.config.");
@@ -152,7 +152,7 @@ namespace SS.Core
 
                 // Try to send a friendly message to anyone connected.
                 // Note: There is no guarantee the Network module will send it before being unloaded.
-                IChat chat = _mm.GetInterface<IChat>();
+                IChat? chat = _mm.GetInterface<IChat>();
                 if (chat is not null)
                 {
                     try
@@ -165,7 +165,7 @@ namespace SS.Core
                     }
                 }
 
-                IPersistExecutor persistExecutor = _mm.GetInterface<IPersistExecutor>();
+                IPersistExecutor? persistExecutor = _mm.GetInterface<IPersistExecutor>();
                 if (persistExecutor is not null)
                 {
                     try

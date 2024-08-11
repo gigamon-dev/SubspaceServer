@@ -20,12 +20,12 @@ namespace SS.Core.Modules
         /// </summary>
         private const int ChannelCapacity = 8192;
 
-        private ComponentBroker _broker;
-        private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken<ILogManager> _iLogManagerToken;
+        private readonly IComponentBroker _broker;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private InterfaceRegistrationToken<ILogManager>? _iLogManagerToken;
 
         // Optional dependency that gets loaded after this module.
-        private IConfigManager _configManager;
+        private IConfigManager? _configManager;
 
         private readonly ReaderWriterLockSlim _rwLock = new();
 
@@ -43,11 +43,16 @@ namespace SS.Core.Modules
             );
 
         private readonly Channel<LogEntry> _logChannel;
-        private Task _loggingTask;
+        private Task? _loggingTask;
         private int _dropCount = 0;
 
-        public LogManager()
+        public LogManager(
+            IComponentBroker broker,
+            IObjectPoolManager objectPoolManager)
         {
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+
             _logChannel = Channel.CreateBounded<LogEntry>(
                 new BoundedChannelOptions(ChannelCapacity)
                 {
@@ -61,16 +66,13 @@ namespace SS.Core.Modules
 
         #region Module Members
 
-        public bool Load(ComponentBroker broker, IObjectPoolManager objectPoolManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-
             _iLogManagerToken = broker.RegisterInterface<ILogManager>(this);
             return true;
         }
 
-        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
+        void IModuleLoaderAware.PostLoad(IComponentBroker broker)
         {
             _rwLock.EnterWriteLock();
 
@@ -84,11 +86,9 @@ namespace SS.Core.Modules
             }
 
             _loggingTask = Task.Run(ProcessLogs);
-
-            return true;
         }
 
-        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
+        void IModuleLoaderAware.PreUnload(IComponentBroker broker)
         {
             _rwLock.EnterWriteLock();
 
@@ -96,8 +96,6 @@ namespace SS.Core.Modules
             {
                 if (_configManager is not null)
                     broker.ReleaseInterface(ref _configManager);
-
-                return true;
             }
             finally
             {
@@ -105,7 +103,7 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iLogManagerToken) != 0)
                 return false;
@@ -400,11 +398,11 @@ namespace SS.Core.Modules
                 if (_configManager is null)
                     return true; // filtering disabled
 
-                string origin = logEntry.Module;
+                string? origin = logEntry.Module;
                 if (string.IsNullOrWhiteSpace(origin))
                     origin = "unknown";
 
-                string settingValue = _configManager.GetStr(_configManager.Global, logModuleName, origin);
+                string? settingValue = _configManager.GetStr(_configManager.Global, logModuleName, origin);
                 if (settingValue is null)
                 {
                     settingValue = _configManager.GetStr(_configManager.Global, logModuleName, "all");
@@ -458,7 +456,7 @@ namespace SS.Core.Modules
             sb.Append($"<{module}>");
         }
 
-        private static void Append(StringBuilder sb, LogLevel level, string module, Arena arena)
+        private static void Append(StringBuilder sb, LogLevel level, string module, Arena? arena)
         {
             ArgumentNullException.ThrowIfNull(sb);
 
@@ -468,11 +466,11 @@ namespace SS.Core.Modules
             sb.Append('}');
         }
 
-        private static void Append(StringBuilder sb, LogLevel level, string module, Player player)
+        private static void Append(StringBuilder sb, LogLevel level, string module, Player? player)
         {
             ArgumentNullException.ThrowIfNull(sb);
 
-            Append(sb, level, module, player.Arena);
+            Append(sb, level, module, player?.Arena);
             sb.Append(" [");
 
             if (player is not null)

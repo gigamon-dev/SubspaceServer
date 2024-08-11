@@ -13,25 +13,22 @@ namespace SS.Core.Modules.Scoring
     [CoreModuleInfo]
     public class Koth : IModule, IArenaAttachableModule, ICrownsBehavior
     {
-        private IAllPlayerStats _allPlayerStats;
-        private IArenaManager _arenaManager;
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private ICrowns _crowns;
-        private ILogManager _logManager;
-        private IMainloopTimer _mainloopTimer;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private IScoreStats _scoreStats;
+        private readonly IAllPlayerStats _allPlayerStats;
+        private readonly IArenaManager _arenaManager;
+        private readonly IChat _chat;
+        private readonly ICommandManager _commandManager;
+        private readonly IConfigManager _configManager;
+        private readonly ICrowns _crowns;
+        private readonly ILogManager _logManager;
+        private readonly IMainloopTimer _mainloopTimer;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
+        private readonly IScoreStats _scoreStats;
 
         private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public Koth(
             IAllPlayerStats allPlayerStats,
             IArenaManager arenaManager,
             IChat chat,
@@ -55,14 +52,19 @@ namespace SS.Core.Modules.Scoring
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _scoreStats = scoreStats ?? throw new ArgumentNullException(nameof(scoreStats));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _arenaManager.FreeArenaData(ref _adKey);
             _playerData.FreePlayerData(ref _pdKey);
@@ -72,7 +74,7 @@ namespace SS.Core.Modules.Scoring
 
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             ArenaActionCallback.Register(arena, Callback_ArenaAction);
@@ -89,7 +91,7 @@ namespace SS.Core.Modules.Scoring
 
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (arena.UnregisterInterface(ref ad.ICrownsBehaviorRegistrationToken) != 0)
@@ -116,7 +118,7 @@ namespace SS.Core.Modules.Scoring
             if (player == null)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -129,12 +131,12 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                ad.Settings = new Settings(_configManager, arena.Cfg);
+                ad.Settings = new Settings(_configManager, arena.Cfg!);
 
                 if (ad.GameState == GameState.Stopped
                     && ad.Settings.AutoStart)
@@ -149,7 +151,7 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             if (player.Packet.HasCrown)
@@ -163,13 +165,13 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short points, Prize green)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
-            if (!killer.TryGetExtraData(_pdKey, out PlayerData killerData))
+            if (!killer.TryGetExtraData(_pdKey, out PlayerData? killerData))
                 return;
 
-            if (!killed.TryGetExtraData(_pdKey, out PlayerData killedData))
+            if (!killed.TryGetExtraData(_pdKey, out PlayerData? killedData))
                 return;
 
             bool killedHadCrown = killed.Packet.HasCrown;
@@ -196,7 +198,7 @@ namespace SS.Core.Modules.Scoring
                 {
                     // killer gets some time added to their timer
                     DateTime max = DateTime.UtcNow + ad.Settings.ExpireTimeSpan;
-                    killerData.ExpireTimestamp = killerData.ExpireTimestamp.Value + ad.Settings.NonCrownAdjustTimeSpan;
+                    killerData.ExpireTimestamp = killerData.ExpireTimestamp!.Value + ad.Settings.NonCrownAdjustTimeSpan;
                     if (killerData.ExpireTimestamp.Value > max)
                         killedData.ExpireTimestamp = max;
 
@@ -236,11 +238,11 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.EnterArena || action == PlayerAction.LeaveArena)
             {
-                if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 {
                     pd.Deaths = 0;
                     pd.CrownKills = 0;
@@ -249,12 +251,12 @@ namespace SS.Core.Modules.Scoring
 
             if (action == PlayerAction.LeaveArena)
             {
-                CheckWinAndExpiration(arena);
+                CheckWinAndExpiration(arena!);
             }
 
             if (action == PlayerAction.EnterArena || action == PlayerAction.LeaveArena)
             {
-                CheckStart(arena);
+                CheckStart(arena!);
             }
         }
 
@@ -269,9 +271,9 @@ namespace SS.Core.Modules.Scoring
 
         #endregion
 
-        private void ResetGame(Arena arena, bool allowAutoStart)
+        private void ResetGame(Arena? arena, bool allowAutoStart)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.GameState == GameState.Running)
@@ -330,9 +332,9 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void CheckStart(Arena arena)
+        private void CheckStart(Arena? arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.GameState != GameState.Starting)
@@ -377,7 +379,7 @@ namespace SS.Core.Modules.Scoring
 
         private bool MainloopTimer_StartGameTimer(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.GameState != GameState.Starting)
@@ -397,7 +399,7 @@ namespace SS.Core.Modules.Scoring
 
         private bool StartGame(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.GameState != GameState.Starting)
@@ -431,7 +433,7 @@ namespace SS.Core.Modules.Scoring
 
                 foreach (Player player in crownSet)
                 {
-                    if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                    if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                         continue;
 
                     pd.ExpireTimestamp = expireTimestamp;
@@ -457,7 +459,7 @@ namespace SS.Core.Modules.Scoring
 
         private void RemoveCrown(Player player)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             pd.ExpireTimestamp = null;
@@ -467,9 +469,9 @@ namespace SS.Core.Modules.Scoring
             _crowns.ToggleOff(player);
         }
 
-        private void CheckWinAndExpiration(Arena arena)
+        private void CheckWinAndExpiration(Arena? arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.GameState != GameState.Running)
@@ -564,7 +566,7 @@ namespace SS.Core.Modules.Scoring
                 if (players.Count == 1)
                     return true;
 
-                Player p = null;
+                Player? p = null;
                 foreach (Player player in players)
                 {
                     if (p == null)
@@ -582,7 +584,7 @@ namespace SS.Core.Modules.Scoring
 
                 foreach (Player player in players)
                 {
-                    if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                    if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                         continue;
 
                     if (!pd.ExpireTimestamp.HasValue)
@@ -601,7 +603,7 @@ namespace SS.Core.Modules.Scoring
 
                 foreach (Player player in players)
                 {
-                    if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                    if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                         continue;
 
                     if (pd.ExpireTimestamp == oldestExpired) // TODO: maybe just compare up to the centisecond?
@@ -628,7 +630,7 @@ namespace SS.Core.Modules.Scoring
                     return;
 
                 // jackpot
-                IJackpot jackpot = arena.GetInterface<IJackpot>();
+                IJackpot? jackpot = arena.GetInterface<IJackpot>();
                 if (jackpot != null)
                 {
                     try
@@ -665,7 +667,7 @@ namespace SS.Core.Modules.Scoring
                 KothWonCallback.Fire(arena, arena, winners, points);
 
                 // End the 'game' interval for the arena.
-                IPersistExecutor persistExecutor = arena.GetInterface<IPersistExecutor>();
+                IPersistExecutor? persistExecutor = arena.GetInterface<IPersistExecutor>();
                 if (persistExecutor != null)
                 {
                     try
@@ -743,7 +745,7 @@ namespace SS.Core.Modules.Scoring
         private class ArenaData : IResettable
         {
             public Settings Settings;
-            public InterfaceRegistrationToken<ICrownsBehavior> ICrownsBehaviorRegistrationToken;
+            public InterfaceRegistrationToken<ICrownsBehavior>? ICrownsBehaviorRegistrationToken;
             public GameState GameState = GameState.Stopped;
             public DateTime? StartAfter;
             public int InitialPlayerCount;

@@ -24,7 +24,7 @@ namespace SS.Matchmaking.TeamVersus
         /// The arena the match is in.
         /// </summary>
         /// <remarks><see langword="null"/> if the arena does not exist (e.g. no players in it).</remarks>
-        Arena Arena { get; }
+        Arena? Arena { get; }
 
         /// <summary>
         /// The teams in the match.

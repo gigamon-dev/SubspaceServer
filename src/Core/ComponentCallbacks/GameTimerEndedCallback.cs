@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentCallbacks
+﻿using SS.Core.ComponentInterfaces;
+
+namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper for the <see cref="GameTimerEndedCallback"/> callback.
@@ -10,17 +12,17 @@
     {
         public delegate void GameTimerEndedDelegate(Arena arena);
 
-        public static void Register(ComponentBroker broker, GameTimerEndedDelegate handler)
+        public static void Register(IComponentBroker broker, GameTimerEndedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, GameTimerEndedDelegate handler)
+        public static void Unregister(IComponentBroker broker, GameTimerEndedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena)
+        public static void Fire(IComponentBroker broker, Arena arena)
         {
             broker?.GetCallback<GameTimerEndedDelegate>()?.Invoke(arena);
 

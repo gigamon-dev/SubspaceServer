@@ -14,18 +14,15 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class Redirect : IModule, IRedirect
     {
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private INetwork _network;
+        private readonly ICommandManager _commandManager;
+        private readonly IConfigManager _configManager;
+        private readonly INetwork _network;
 
-        private InterfaceRegistrationToken<IRedirect> _iRedirectRegistrationToken;
+        private InterfaceRegistrationToken<IRedirect>? _iRedirectRegistrationToken;
 
         private readonly Trie<RegisteredRedirect> _redirectCache = new(false);
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public Redirect(
             ICommandManager commandManager,
             IConfigManager configManager,
             INetwork network)
@@ -33,13 +30,18 @@ namespace SS.Core.Modules
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _network = network ?? throw new ArgumentNullException(nameof(network));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _commandManager.AddCommand("redirect", Command_redirect);
             _iRedirectRegistrationToken = broker.RegisterInterface<IRedirect>(this);
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             broker.UnregisterInterface(ref _iRedirectRegistrationToken);
             _commandManager.RemoveCommand("redirect", Command_redirect);
@@ -62,7 +64,7 @@ namespace SS.Core.Modules
             if (target == null)
                 return false;
 
-            if (!_redirectCache.TryGetValue(destination, out RegisteredRedirect registeredRedirect))
+            if (!_redirectCache.TryGetValue(destination, out RegisteredRedirect? registeredRedirect))
             {
                 bool isAlias = true;
                 ReadOnlySpan<char> value = _configManager.GetStr(_configManager.Global, "Redirects", destination);
@@ -79,7 +81,7 @@ namespace SS.Core.Modules
 
                 // ip
                 token = remaining.GetToken(':', out remaining);
-                if (token.IsEmpty || token.IsWhiteSpace() || !IPAddress.TryParse(token, out IPAddress address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+                if (token.IsEmpty || token.IsWhiteSpace() || !IPAddress.TryParse(token, out IPAddress? address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
                     return false;
 
                 // port
@@ -88,7 +90,7 @@ namespace SS.Core.Modules
                     return false;
 
                 // (optional) arena name
-                string arenaName = null;
+                string? arenaName = null;
                 remaining = remaining.TrimStart(':');
                 if (!remaining.IsEmpty && !remaining.IsWhiteSpace())
                 {
@@ -171,9 +173,9 @@ namespace SS.Core.Modules
         public class RegisteredRedirect
         {
             public readonly IPEndPoint IPEndPoint;
-            public readonly string ArenaName;
+            public readonly string? ArenaName;
 
-            public RegisteredRedirect(IPEndPoint ipEndPoint, string arenaName)
+            public RegisteredRedirect(IPEndPoint ipEndPoint, string? arenaName)
             {
                 IPEndPoint = ipEndPoint;
                 ArenaName = arenaName;

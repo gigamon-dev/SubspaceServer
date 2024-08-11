@@ -25,21 +25,21 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class DirectoryPublisher : IModule
     {
-        private ComponentBroker _broker;
-        private IArenaManager _arenaManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private INetwork _network;
-        private IPlayerData _playerData;
-        private IServerTimer _serverTimer;
+        private readonly IComponentBroker _broker;
+        private readonly IArenaManager _arenaManager;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly INetwork _network;
+        private readonly IPlayerData _playerData;
+        private readonly IServerTimer _serverTimer;
 
         private readonly Dictionary<IPAddress, Socket> _socketDictionary = [];
         private readonly List<DirectoryListing> _listings = [];
         private readonly List<(IPEndPoint, SocketAddress)> _servers = [];
         private readonly object _lock = new();
 
-        public bool Load(
-            ComponentBroker broker,
+        public DirectoryPublisher(
+            IComponentBroker broker,
             IArenaManager arenaManager,
             IConfigManager configManager,
             ILogManager logManager,
@@ -54,13 +54,16 @@ namespace SS.Core.Modules
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+        }
 
+        bool IModule.Load(IComponentBroker broker)
+        {
             Initialize();
 
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _serverTimer.ClearTimer(Timer_SendAnnouncements, null);
 
@@ -113,18 +116,18 @@ namespace SS.Core.Modules
 
                 _listings.Clear();
 
-                string password = _configManager.GetStr(_configManager.Global, "Directory", "Password");
+                string? password = _configManager.GetStr(_configManager.Global, "Directory", "Password");
                 if (string.IsNullOrEmpty(password))
                     password = "cane";
 
-                string defaultName = _configManager.GetStr(_configManager.Global, "Directory", "Name");
-                string defaultDescription = _configManager.GetStr(_configManager.Global, "Directory", "Description");
+                string? defaultName = _configManager.GetStr(_configManager.Global, "Directory", "Name");
+                string? defaultDescription = _configManager.GetStr(_configManager.Global, "Directory", "Description");
 
                 int index = 0;
-                while (_network.TryGetListenData(index++, out IPEndPoint endPoint, out string connectAs))
+                while (_network.TryGetListenData(index++, out IPEndPoint? endPoint, out string? connectAs))
                 {
-                    string name = null;
-                    string description = null;
+                    string? name = null;
+                    string? description = null;
 
                     if (!string.IsNullOrWhiteSpace(connectAs))
                     {
@@ -150,8 +153,8 @@ namespace SS.Core.Modules
                         continue;
                     }
 
-                    Socket socket = GetOrCreateSocket(endPoint.Address);
-                    if (socket == null)
+                    Socket? socket = GetOrCreateSocket(endPoint.Address);
+                    if (socket is null)
                         continue;
 
                     _listings.Add(
@@ -189,7 +192,7 @@ namespace SS.Core.Modules
                     if (!keySpan.TryWrite($"Server{index}", out int charsWritten))
                         break;
 
-                    string server = _configManager.GetStr(_configManager.Global, "Directory", keySpan[..charsWritten]);
+                    string? server = _configManager.GetStr(_configManager.Global, "Directory", keySpan[..charsWritten]);
                     if (string.IsNullOrWhiteSpace(server))
                         break;
 
@@ -199,12 +202,12 @@ namespace SS.Core.Modules
                     int port = _configManager.GetInt(_configManager.Global, "Directory", keySpan[..charsWritten], defaultPort);
 
                     IPHostEntry entry;
-                    IPEndPoint directoryEndpoint = null;
+                    IPEndPoint? directoryEndpoint = null;
 
                     try
                     {
                         entry = Dns.GetHostEntry(server);
-                        IPAddress address = entry?.AddressList?.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
+                        IPAddress? address = entry.AddressList.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
 
                         if (address == null)
                         {
@@ -234,12 +237,12 @@ namespace SS.Core.Modules
             _serverTimer.SetTimer(Timer_SendAnnouncements, 10000, 60000, null);
         }
 
-        private Socket GetOrCreateSocket(IPAddress bindAddress)
+        private Socket? GetOrCreateSocket(IPAddress bindAddress)
         {
-            if (bindAddress == null)
+            if (bindAddress is null)
                 return null;
 
-            if (_socketDictionary.TryGetValue(bindAddress, out Socket socket))
+            if (_socketDictionary.TryGetValue(bindAddress, out Socket? socket))
                 return socket;
 
             try
@@ -275,7 +278,7 @@ namespace SS.Core.Modules
             _arenaManager.GetPopulationSummary(out int globalTotal, out _);
 
             // Peer arenas
-            IPeer peer = _broker.GetInterface<IPeer>();
+            IPeer? peer = _broker.GetInterface<IPeer>();
             if (peer is not null)
             {
                 try
@@ -330,9 +333,9 @@ namespace SS.Core.Modules
 
         private class DirectoryListing
         {
-            public Socket Socket { get; init; }
-            public string ConnectAs { get; init; }
-            public S2D_Announcement Packet;
+            public required Socket Socket { get; init; }
+            public required string? ConnectAs { get; init; }
+            public required S2D_Announcement Packet;
         }
     }
 }

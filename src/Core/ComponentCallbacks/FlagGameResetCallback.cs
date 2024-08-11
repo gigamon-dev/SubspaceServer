@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentCallbacks
+﻿using SS.Core.ComponentInterfaces;
+
+namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="FlagGameResetDelegate"/> callback.
@@ -13,17 +15,17 @@
         /// <param name="points">The # of points awarded to the winning team.</param>
         public delegate void FlagGameResetDelegate(Arena arena, short winnerFreq, int points);
 
-        public static void Register(ComponentBroker broker, FlagGameResetDelegate handler)
+        public static void Register(IComponentBroker broker, FlagGameResetDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, FlagGameResetDelegate handler)
+        public static void Unregister(IComponentBroker broker, FlagGameResetDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, short winnerFreq, int points)
+        public static void Fire(IComponentBroker broker, Arena arena, short winnerFreq, int points)
         {
             broker?.GetCallback<FlagGameResetDelegate>()?.Invoke(arena, winnerFreq, points);
 

@@ -12,13 +12,13 @@ namespace SubspaceServer
 {
     class Program
     {
-        private static Server server;
-        private static Task<ExitCode> runTask;
+        private static Server? server;
+        private static Task<ExitCode>? runTask;
 
         static int Main(string[] args)
         {
             bool interactiveMode = false;
-            string directory = null;
+            string? directory = null;
 
             if (args.Length > 0)
             {
@@ -98,7 +98,7 @@ namespace SubspaceServer
 
         // This handles Ctrl + C (SIGINT) and Ctrl + Break (SIGBREAK).
         // SIGBREAK is Windows only (not a POSIX signal).
-        private static void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        private static void Console_CancelKeyPress(object? sender, ConsoleCancelEventArgs e)
         {
             server?.Quit();
             e.Cancel = true; // The main thread should gracefully end.
@@ -118,7 +118,7 @@ namespace SubspaceServer
             Console.WriteLine(propertyName);
             Console.WriteLine(new string('-', propertyName.Length));
 
-            string paths = AppContext.GetData(propertyName) as string;
+            string? paths = AppContext.GetData(propertyName) as string;
             if (string.IsNullOrWhiteSpace(paths))
                 return;
 
@@ -140,7 +140,7 @@ namespace SubspaceServer
 X. Exit
 > ");
 
-                string input = Console.ReadLine();
+                string? input = Console.ReadLine();
 
                 if (string.Equals(input, "x", StringComparison.OrdinalIgnoreCase))
                 {
@@ -179,7 +179,7 @@ X. Exit
                 return;
             }
 
-            runTask = server.RunAsync();
+            runTask = server!.RunAsync();
 
             Console.WriteLine($"Started Server at {DateTime.UtcNow:s}");
 
@@ -203,18 +203,18 @@ X. Exit
             }
 
             Console.WriteLine($"Stopping the server...");
-            server.Quit();
+            server!.Quit();
             runTask.Wait();
             runTask = null;
         }
 
         private static void PrintNetworkStats()
         {
-            ComponentBroker broker = server.Broker;
+            ComponentBroker? broker = server!.Broker;
             if (broker == null)
                 return;
 
-            INetwork network = broker.GetInterface<INetwork>();
+            INetwork? network = broker.GetInterface<INetwork>();
             if (network == null)
                 return;
 

@@ -151,7 +151,7 @@ namespace SS.Packets.Directory
                 Set(name);
             }
 
-            public static implicit operator DescriptionInlineArray(string value)
+            public static implicit operator DescriptionInlineArray(string? value)
             {
                 return new(value);
             }

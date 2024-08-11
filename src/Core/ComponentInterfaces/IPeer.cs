@@ -102,7 +102,7 @@ namespace SS.Core.ComponentInterfaces
             /// <summary>
             /// The name of the arena (local and remote).
             /// </summary>
-            IPeerArenaName Name { get; }
+            IPeerArenaName? Name { get; }
 
             /// <summary>
             /// Whether the arena was specified in the config.
@@ -232,7 +232,7 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="endpoint">IP address and port to match.</param>
         /// <returns>The first match, or <see langword="null"/> if not found.</returns>
-        IPeerZone FindZone(IPEndPoint endpoint);
+        IPeerZone? FindZone(IPEndPoint endpoint);
 
         /// <summary>
         /// Find a peer zone using the given address and port.
@@ -242,7 +242,7 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="address">IP address and port to match.</param>
         /// <returns>The first match, or <see langword="null"/> if not found.</returns>
-        IPeerZone FindZone(SocketAddress address);
+        IPeerZone? FindZone(SocketAddress address);
 
         /// <summary>
         /// Find a peer arena with the given <paramref name="arenaName"/>. 
@@ -254,7 +254,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arenaName">The name of the arena to match.</param>
         /// <param name="remote"><see langword="false"/> to match using the arena 'localName'. <see langword="true"/> to match using the arena 'remoteName'.</param>
         /// <returns>The first match, or <see langword="null"/> if not found.</returns>
-        IPeerArena FindArena(ReadOnlySpan<char> arenaName, bool remote);
+        IPeerArena? FindArena(ReadOnlySpan<char> arenaName, bool remote);
 
         /// <summary>
         /// This is a list of all the configured peer zones.

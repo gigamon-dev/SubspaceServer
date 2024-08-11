@@ -129,7 +129,7 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="target">The target to get data for.</param>
         /// <param name="outStream">The stream to write the data to.</param>
-        public abstract void GetData(T target, Stream outStream);
+        public abstract void GetData(T? target, Stream outStream);
 
         /// <summary>
         /// Sets data that was retrieved from the persist database.
@@ -144,33 +144,33 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="target">The target to set data for.</param>
         /// <param name="inStream">The stream to read the data from.</param>
-        public abstract void SetData(T target, Stream inStream);
+        public abstract void SetData(T? target, Stream inStream);
 
         /// <summary>
         /// Clears/resets the data being persisted for the <paramref name="target"/>.
         /// </summary>
         /// <param name="target">The target to clear/reset data for.</param>
-        public abstract void ClearData(T target);
+        public abstract void ClearData(T? target);
     }
 
     public class DelegatePersistentData<T> : PersistentData<T>
     {
-        public delegate void GetDataDelegate(T target, Stream outStream);
-        public GetDataDelegate GetDataCallback { get; init; }
+        public delegate void GetDataDelegate(T? target, Stream outStream);
+        public GetDataDelegate? GetDataCallback { get; init; }
 
-        public delegate void SetDataDelegate(T target, Stream inStream);
-        public SetDataDelegate SetDataCallback { get; init; }
+        public delegate void SetDataDelegate(T? target, Stream inStream);
+        public SetDataDelegate? SetDataCallback { get; init; }
 
-        public delegate void ClearDataDelegate(T target);
-        public ClearDataDelegate ClearDataCallback { get; init; }
+        public delegate void ClearDataDelegate(T? target);
+        public ClearDataDelegate? ClearDataCallback { get; init; }
 
-        public DelegatePersistentData(int key, PersistInterval interval, PersistScope scope)
-            : base(key, interval, scope)
-        {
-        }
+        //public DelegatePersistentData(int key, PersistInterval interval, PersistScope scope)
+        //    : base(key, interval, scope)
+        //{
+        //}
 
         public DelegatePersistentData(int key, PersistInterval interval, PersistScope scope,
-            GetDataDelegate getDataCallback, SetDataDelegate setDataCallback, ClearDataDelegate clearDataCallback)
+            GetDataDelegate? getDataCallback, SetDataDelegate? setDataCallback, ClearDataDelegate? clearDataCallback)
             : base(key, interval, scope)
         {
             GetDataCallback = getDataCallback;
@@ -178,11 +178,11 @@ namespace SS.Core.ComponentInterfaces
             ClearDataCallback = clearDataCallback;
         }
 
-        public override void GetData(T target, Stream outStream) => GetDataCallback?.Invoke(target, outStream);
+        public override void GetData(T? target, Stream outStream) => GetDataCallback?.Invoke(target, outStream);
 
-        public override void SetData(T target, Stream inStream) => SetDataCallback?.Invoke(target, inStream);
+        public override void SetData(T? target, Stream inStream) => SetDataCallback?.Invoke(target, inStream);
 
-        public override void ClearData(T target) => ClearDataCallback?.Invoke(target);
+        public override void ClearData(T? target) => ClearDataCallback?.Invoke(target);
     }
 
     public abstract class PersistentData<T, TState> : PersistentData<T>
@@ -197,19 +197,19 @@ namespace SS.Core.ComponentInterfaces
 
     public class DelegatePersistentData<T, TState> : PersistentData<T, TState>
     {
-        public delegate void GetDataDelegate(T target, Stream outStream, TState state);
-        public GetDataDelegate GetDataCallback { get; init; }
+        public delegate void GetDataDelegate(T? target, Stream outStream, TState state);
+        public GetDataDelegate? GetDataCallback { get; init; }
 
-        public delegate void SetDataDelegate(T target, Stream inStream, TState state);
-        public SetDataDelegate SetDataCallback { get; init; }
+        public delegate void SetDataDelegate(T? target, Stream inStream, TState state);
+        public SetDataDelegate? SetDataCallback { get; init; }
 
-        public delegate void ClearDataDelegate(T target, TState state);
-        public ClearDataDelegate ClearDataCallback { get; init; }
+        public delegate void ClearDataDelegate(T? target, TState state);
+        public ClearDataDelegate? ClearDataCallback { get; init; }
 
-        public DelegatePersistentData(int key, PersistInterval interval, PersistScope scope, TState state)
-            : base(key, interval, scope, state)
-        {
-        }
+        //public DelegatePersistentData(int key, PersistInterval interval, PersistScope scope, TState state)
+        //    : base(key, interval, scope, state)
+        //{
+        //}
 
         public DelegatePersistentData(int key, PersistInterval interval, PersistScope scope, TState state,
             GetDataDelegate getDataCallback, SetDataDelegate setDataCallback, ClearDataDelegate clearDataCallback)
@@ -220,11 +220,11 @@ namespace SS.Core.ComponentInterfaces
             ClearDataCallback = clearDataCallback;
         }
 
-        public override void GetData(T target, Stream outStream) => GetDataCallback?.Invoke(target, outStream, State);
+        public override void GetData(T? target, Stream outStream) => GetDataCallback?.Invoke(target, outStream, State);
 
-        public override void SetData(T target, Stream inStream) => SetDataCallback?.Invoke(target, inStream, State);
+        public override void SetData(T? target, Stream inStream) => SetDataCallback?.Invoke(target, inStream, State);
 
-        public override void ClearData(T target) => ClearDataCallback?.Invoke(target, State);
+        public override void ClearData(T? target) => ClearDataCallback?.Invoke(target, State);
     }
 
     /// <summary>
@@ -311,7 +311,7 @@ namespace SS.Core.ComponentInterfaces
         /// An optional callback to be called after the <paramref name="player"/>'s persistent data has been saved.
         /// It is guaranteed to be executed on the mainloop thread.
         /// </param>
-        void PutPlayer(Player player, Arena arena, Action<Player> callback);
+        void PutPlayer(Player player, Arena? arena, Action<Player>? callback);
 
         /// <summary>
         /// Adds a request to get a <see cref="Player"/>'s persistent data from the database.
@@ -326,7 +326,7 @@ namespace SS.Core.ComponentInterfaces
         /// An optional callback to be called after the <paramref name="player"/>'s persistent data has been retrieved.
         /// It is guaranteed to be executed on the mainloop thread.
         /// </param>
-        void GetPlayer(Player player, Arena arena, Action<Player> callback);
+        void GetPlayer(Player player, Arena? arena, Action<Player>? callback);
 
         #endregion
 
@@ -343,7 +343,7 @@ namespace SS.Core.ComponentInterfaces
         /// An optional callback to be called after the <paramref name="arena"/>'s persistent data has been saved.
         /// It is guaranteed to be executed on the mainloop thread.
         /// </param>
-        void PutArena(Arena arena, Action<Arena> callback);
+        void PutArena(Arena arena, Action<Arena>? callback);
 
         /// <summary>
         /// Adds a request to retrieve an <see cref="Arena"/>'s persistent data from the database.
@@ -356,7 +356,7 @@ namespace SS.Core.ComponentInterfaces
         /// An optional callback to be called after the <paramref name="arena"/>'s persistent data has been retrieved.
         /// It is guaranteed to be executed on the mainloop thread.
         /// </param>
-        void GetArena(Arena arena, Action<Arena> callback);
+        void GetArena(Arena arena, Action<Arena>? callback);
 
         #endregion
 
@@ -374,7 +374,7 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="interval">The interval to end.</param>
         /// <param name="arenaGroupOrArenaName">The arena group or arena name to end the interval for. <see langword="null"/> means global data.</param>
-        void EndInterval(PersistInterval interval, string arenaGroupOrArenaName);
+        void EndInterval(PersistInterval interval, string? arenaGroupOrArenaName);
 
         /// <summary>
         /// Adds a request to end an interval.
@@ -384,7 +384,7 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="interval">The interval to end.</param>
         /// <param name="arena">The arena to end the interval for. <see langword="null"/> means global data.</param>
-        void EndInterval(PersistInterval interval, Arena arena);
+        void EndInterval(PersistInterval interval, Arena? arena);
 
         #endregion
 
@@ -406,7 +406,7 @@ namespace SS.Core.ComponentInterfaces
         /// This method does not block. It adds a request into a work queue which will be processed by a worker thread.
         /// </remarks>
         /// <param name="completed">An optional callback, to be called after all data has been saved.</param>
-        void SaveAll(Action completed);
+        void SaveAll(Action? completed);
     }
 
     /// <summary>

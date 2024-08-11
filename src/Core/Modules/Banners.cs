@@ -13,40 +13,32 @@ namespace SS.Core.Modules
     /// Module that provides functionality for banners (the small 12 x 8 bitmap image a player can choose to display next to their name).
     /// </summary>
     [CoreModuleInfo]
-    public class Banners : IModule, IBanners, IBannersAdvisor
+    public class Banners(
+        IComponentBroker broker,
+        ICapabilityManager capabilityManager,
+        IChat chat,
+        IConfigManager configManager,
+        ILogManager logManager,
+        INetwork network,
+        IPlayerData playerData) : IModule, IBanners, IBannersAdvisor
     {
-        private ComponentBroker _broker;
-        private ICapabilityManager _capabilityManager;
-        private IChat _chat;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private INetwork _network;
-        private IPlayerData _playerData;
+        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
-        private AdvisorRegistrationToken<IBannersAdvisor> _iBannersAdvisor;
-        private InterfaceRegistrationToken<IBanners> _iBannersToken;
+        private AdvisorRegistrationToken<IBannersAdvisor>? _iBannersAdvisor;
+        private InterfaceRegistrationToken<IBanners>? _iBannersToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
 
         #region Module members
 
-        public bool Load(
-            ComponentBroker broker,
-            ICapabilityManager capabilityManager,
-            IChat chat,
-            IConfigManager configManager,
-            ILogManager logManager,
-            INetwork network,
-            IPlayerData playerData)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             _network.AddPacket(C2SPacketType.Banner, Packet_Banner);
@@ -56,7 +48,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (_broker.UnregisterInterface(ref _iBannersToken) != 0)
                 return false;
@@ -78,7 +70,7 @@ namespace SS.Core.Modules
         bool IBanners.TryGetBanner(Player player, out Banner banner)
         {
             if (player is null
-                || !player.TryGetExtraData(_pdKey, out PlayerData pd))
+                || !player.TryGetExtraData(_pdKey, out PlayerData? pd))
             {
                 banner = default;
                 return false;
@@ -121,7 +113,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
             {
                 return false;
@@ -130,10 +122,10 @@ namespace SS.Core.Modules
             // TODO: Add logic to automatically use a pending banner when the player passes the required point threshold.
             // This would require adding a StatChangedCallback (for being able to watch KillPoints a FlagPoints).
 
-            int bannerPoints = _configManager.GetInt(arena.Cfg, "Misc", "BannerPoints", 0);
+            int bannerPoints = _configManager.GetInt(arena.Cfg!, "Misc", "BannerPoints", 0);
             if (bannerPoints > 0)
             {
-                IScoreStats scoreStats = arena.GetInterface<IScoreStats>();
+                IScoreStats? scoreStats = arena.GetInterface<IScoreStats>();
                 if (scoreStats is not null)
                 {
                     try
@@ -157,7 +149,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.EnterArena)
             {
@@ -176,7 +168,7 @@ namespace SS.Core.Modules
                         if (other.Status == PlayerState.Playing
                             && other.Arena == arena
                             && other != player
-                            && other.TryGetExtraData(_pdKey, out PlayerData opd))
+                            && other.TryGetExtraData(_pdKey, out PlayerData? opd))
                         {
                             lock (opd.Lock)
                             {
@@ -196,7 +188,7 @@ namespace SS.Core.Modules
             }
             else if (action == PlayerAction.LeaveArena)
             {
-                if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                     return;
 
                 lock (pd.Lock)
@@ -235,7 +227,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             // Rate limit banner changes.
@@ -258,7 +250,7 @@ namespace SS.Core.Modules
 
         private void SetBanner(Player player, ref readonly Banner banner, bool isFromPlayer)
         {
-            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             lock (pd.Lock)
@@ -299,11 +291,11 @@ namespace SS.Core.Modules
             if (player.Status != PlayerState.Playing)
                 return; // The player is not playing yet, nothing to do.
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             lock (pd.Lock)
@@ -329,7 +321,7 @@ namespace SS.Core.Modules
 
             static bool IsAllowedBanner(Player player)
             {
-                Arena arena = player.Arena;
+                Arena? arena = player.Arena;
                 if (arena is null)
                     return false;
 

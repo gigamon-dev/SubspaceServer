@@ -14,40 +14,31 @@ namespace SS.Core.Modules
     /// This module addes the ?kick command and other associated commands to manage bans.
     /// </summary>
     [CoreModuleInfo]
-    public class AuthBan : IModule, IAuth
+    public class AuthBan(
+        IAuth auth,
+        ICapabilityManager capabilityManager,
+        IChat chat,
+        ICommandManager commandManager,
+        ILogManager logManager,
+        IObjectPoolManager objectPoolManager,
+        IPlayerData playerData) : IModule, IAuth
     {
-        private IAuth _oldAuth;
-        private ICapabilityManager _capabilityManager;
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private ILogManager _logManager;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private InterfaceRegistrationToken<IAuth> _iAuthToken;
+        private readonly IAuth _oldAuth = auth ?? throw new ArgumentNullException(nameof(auth));
+        private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private InterfaceRegistrationToken<IAuth>? _iAuthToken;
 
         private readonly Dictionary<uint, BanRecord> _banDictionary = new();
         private readonly object _lockObj = new();
 
         #region Module methods
 
-        public bool Load(
-            ComponentBroker broker,
-            IAuth auth,
-            ICapabilityManager capabilityManager,
-            IChat chat,
-            ICommandManager commandManager,
-            ILogManager logManager,
-            IObjectPoolManager objectPoolManager,
-            IPlayerData playerData)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _oldAuth = auth ?? throw new ArgumentNullException(nameof(auth));
-            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-
             _commandManager.AddCommand("kick", Command_kick);
             _commandManager.AddCommand("listkick", Command_listkick);
             _commandManager.AddCommand("listmidbans", Command_listkick);
@@ -60,7 +51,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iAuthToken) != 0)
                 return false;
@@ -82,7 +73,7 @@ namespace SS.Core.Modules
             if (authRequest is null)
                 return;
 
-            Player player = authRequest.Player;
+            Player? player = authRequest.Player;
             if (player is null
                 || authRequest.LoginBytes.Length < LoginPacket.VIELength)
             {
@@ -97,7 +88,7 @@ namespace SS.Core.Modules
             lock (_lockObj)
             {
                 if (player.IsStandard // only standard clients have a MacId
-                    && _banDictionary.TryGetValue(loginPacket.MacId, out BanRecord ban))
+                    && _banDictionary.TryGetValue(loginPacket.MacId, out BanRecord? ban))
                 {
                     DateTime now = DateTime.UtcNow;
                     if (now < ban.Expire)
@@ -161,7 +152,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_kick(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 _chat.SendMessage(player, "This comand only operates when targeting a specific player.");
                 return;
@@ -222,7 +213,7 @@ namespace SS.Core.Modules
 
                 if (timeout > TimeSpan.Zero)
                 {
-                    BanRecord ban = new(DateTime.UtcNow + timeout, player.Name, reason.Trim().ToString());
+                    BanRecord ban = new(DateTime.UtcNow + timeout, player.Name!, reason.Trim().ToString());
 
                     lock (_lockObj)
                     {

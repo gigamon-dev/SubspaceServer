@@ -58,7 +58,7 @@ namespace SS.Utilities
 
         public static implicit operator ServerTick(uint tickcount) => new(tickcount);
 
-        public override bool Equals(object obj) => obj is ServerTick tick && Equals(tick);
+        public override bool Equals(object? obj) => obj is ServerTick tick && Equals(tick);
 
         public override int GetHashCode() => (int)tickcount;
 

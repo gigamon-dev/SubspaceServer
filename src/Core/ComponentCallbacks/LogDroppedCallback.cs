@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentCallbacks
+﻿using SS.Core.ComponentInterfaces;
+
+namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="LogDroppedDelegate"/> callback.
@@ -15,17 +17,17 @@
         /// <param name="totalDropped">The total # of log entries dropped.</param>
         public delegate void LogDroppedDelegate(int totalDropped);
 
-        public static void Register(ComponentBroker broker, LogDroppedDelegate handler)
+        public static void Register(IComponentBroker broker, LogDroppedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, LogDroppedDelegate handler)
+        public static void Unregister(IComponentBroker broker, LogDroppedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, int totalDropped)
+        public static void Fire(IComponentBroker broker, int totalDropped)
         {
             broker?.GetCallback<LogDroppedDelegate>()?.Invoke(totalDropped);
 

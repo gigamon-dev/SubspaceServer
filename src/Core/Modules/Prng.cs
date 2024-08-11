@@ -11,20 +11,20 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class Prng : IModule, IPrng
     {
-        private InterfaceRegistrationToken<IPrng> _iPrngToken;
+        private InterfaceRegistrationToken<IPrng>? _iPrngToken;
 
         private readonly Random _random = Random.Shared; // thread-safe instance
 
         private readonly object _rngLock = new();
         private readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
 
-        public bool Load(ComponentBroker broker)
+        bool IModule.Load(IComponentBroker broker)
         {
             _iPrngToken = broker.RegisterInterface<IPrng>(this);
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iPrngToken) != 0)
                 return false;

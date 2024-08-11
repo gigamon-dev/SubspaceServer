@@ -20,18 +20,17 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class Quickfix : IModule
     {
-        private ICommandManager _commandManager;
-        private ICapabilityManager _capabilityManager;
-        private IChat _chat;
-        private IConfigHelp _configHelp;
-        private IConfigManager _configManager;
-        private IFileTransfer _fileTransfer;
-        private ILogManager _logManager;
-        private INetwork _network;
-        private IObjectPoolManager _objectPoolManager;
+        private readonly ICommandManager _commandManager;
+        private readonly ICapabilityManager _capabilityManager;
+        private readonly IChat _chat;
+        private readonly IConfigHelp _configHelp;
+        private readonly IConfigManager _configManager;
+        private readonly IFileTransfer _fileTransfer;
+        private readonly ILogManager _logManager;
+        private readonly INetwork _network;
+        private readonly IObjectPoolManager _objectPoolManager;
 
-        public bool Load(
-            ComponentBroker broker,
+        public Quickfix(
             ICapabilityManager capabilityManager,
             ICommandManager commandManager,
             IChat chat,
@@ -51,15 +50,18 @@ namespace SS.Core.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        }
 
-            network.AddPacket(C2SPacketType.SettingChange, Packet_SettingChange);
-            commandManager.AddCommand("quickfix", Command_quickfix);
-            commandManager.AddCommand("getsettings", Command_quickfix);
+        bool IModule.Load(IComponentBroker broker)
+        {
+            _network.AddPacket(C2SPacketType.SettingChange, Packet_SettingChange);
+            _commandManager.AddCommand("quickfix", Command_quickfix);
+            _commandManager.AddCommand("getsettings", Command_quickfix);
 
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _network.RemovePacket(C2SPacketType.SettingChange, Packet_SettingChange);
             _commandManager.RemoveCommand("quickfix", Command_quickfix);
@@ -75,8 +77,8 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ConfigHandle arenaConfigHandle = player.Arena?.Cfg;
-            if (arenaConfigHandle == null)
+            ConfigHandle? arenaConfigHandle = player.Arena?.Cfg;
+            if (arenaConfigHandle is null)
                 return;
 
             string comment = $"Set by {player.Name} with ?quickfix on {DateTime.UtcNow}";
@@ -100,7 +102,7 @@ namespace SS.Core.Modules
 
             bool ProcessOneChange(Player player, ReadOnlySpan<byte> strBytes, ref bool permanent)
             {
-                char[] buffer = null;
+                char[]? buffer = null;
                 try
                 {
                     int charCount = StringUtils.DefaultEncoding.GetCharCount(strBytes);
@@ -167,7 +169,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ConfigHandle arenaConfigHandle = player.Arena?.Cfg;
+            ConfigHandle? arenaConfigHandle = player.Arena?.Cfg;
             if (arenaConfigHandle is null)
             {
                 _chat.SendMessage(player, "You must be in an arena to view or change settings.");
@@ -243,7 +245,7 @@ namespace SS.Core.Modules
         {
             bool sectionMatch = filter.IsWhiteSpace() || sectionName.AsSpan().Contains(filter, StringComparison.OrdinalIgnoreCase);
 
-            if (!_configHelp.TryGetSectionKeys(helpSection, out IReadOnlyList<string> keyList))
+            if (!_configHelp.TryGetSectionKeys(helpSection, out IReadOnlyList<string>? keyList))
                 return;
 
             for (int keyIndex = 0; keyIndex < keyList.Count; keyIndex++)
@@ -254,7 +256,7 @@ namespace SS.Core.Modules
                 if (!sectionMatch && !keyMatch)
                     continue;
 
-                if (!_configHelp.TryGetSettingHelp(helpSection, key, out IReadOnlyList<ConfigHelpRecord> helpList))
+                if (!_configHelp.TryGetSettingHelp(helpSection, key, out IReadOnlyList<ConfigHelpRecord>? helpList))
                     continue;
 
                 for (int helpIndex = 0; helpIndex < helpList.Count; helpIndex++)
@@ -264,7 +266,7 @@ namespace SS.Core.Modules
                     if (attribute.Scope == ConfigScope.Arena
                         && string.IsNullOrWhiteSpace(attribute.FileName))
                     {
-                        string value = _configManager.GetStr(configHandle, sectionName, attribute.Key);
+                        string? value = _configManager.GetStr(configHandle, sectionName, attribute.Key);
                         value ??= "<unset>";
 
                         if (!string.IsNullOrWhiteSpace(attribute.Range))

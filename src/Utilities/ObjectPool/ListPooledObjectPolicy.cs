@@ -1,8 +1,6 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using System.Collections.Generic;
 
-#nullable enable
-
 namespace SS.Utilities.ObjectPool
 {
     /// <summary>

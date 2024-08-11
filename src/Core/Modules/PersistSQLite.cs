@@ -14,32 +14,36 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public sealed class PersistSQLite : IModule, IPersistDatastore, IDisposable
     {
-        private ILogManager _logManager;
-        private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken<IPersistDatastore> _iPersistDatastoreToken;
+        private readonly ILogManager _logManager;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private InterfaceRegistrationToken<IPersistDatastore>? _iPersistDatastoreToken;
 
         private const string DatabasePath = "./data";
         private const string DatabaseFileName = "SS.Core.Modules.PersistSQLite.db";
         private const string ConnectionString = $"DataSource={DatabasePath}/{DatabaseFileName};Foreign Keys=True;Pooling=True";
 
-        private static SqliteConnection _connection;
+        private static SqliteConnection? _connection;
         private static readonly Dictionary<string, SqliteCommand> _commandDictionary = [];
 
-        #region Module methods
+        private const string Error_NoConnection = "No connection. Use IPersistDatastore.Open first.";
 
-        public bool Load(
-            ComponentBroker broker,
+        public PersistSQLite(
             ILogManager logManager,
             IObjectPoolManager objectPoolManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        }
 
+        #region Module methods
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _iPersistDatastoreToken = broker.RegisterInterface<IPersistDatastore>(this);
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iPersistDatastoreToken) != 0)
                 return false;
@@ -199,7 +203,7 @@ namespace SS.Core.Modules
             ArgumentException.ThrowIfNullOrWhiteSpace(arenaGroup);
 
             if (_connection is null)
-                throw new InvalidOperationException("No connection. Use IPersistDatastore.Open first.");
+                throw new InvalidOperationException(Error_NoConnection);
 
             try
             {
@@ -225,10 +229,13 @@ namespace SS.Core.Modules
             ArgumentException.ThrowIfNullOrWhiteSpace(arenaGroup);
             ArgumentNullException.ThrowIfNull(outStream);
 
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             try
             {
                 using SqliteTransaction transaction = _connection.BeginTransaction();
-                bool ret = DbGetPlayerData(transaction, player.Name, arenaGroup, interval, key, outStream);
+                bool ret = DbGetPlayerData(transaction, player.Name!, arenaGroup, interval, key, outStream);
                 transaction.Commit();
 
                 return ret;
@@ -250,10 +257,13 @@ namespace SS.Core.Modules
             ArgumentException.ThrowIfNullOrWhiteSpace(arenaGroup);
             ArgumentNullException.ThrowIfNull(inStream);
 
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             try
             {
                 using SqliteTransaction transaction = _connection.BeginTransaction();
-                DbSetPlayerData(transaction, player.Name, arenaGroup, interval, key, inStream);
+                DbSetPlayerData(transaction, player.Name!, arenaGroup, interval, key, inStream);
                 transaction.Commit();
 
                 return true;
@@ -274,10 +284,13 @@ namespace SS.Core.Modules
             ArgumentNullException.ThrowIfNull(player);
             ArgumentException.ThrowIfNullOrWhiteSpace(arenaGroup);
 
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             try
             {
                 using SqliteTransaction transaction = _connection.BeginTransaction();
-                DbDeletePlayerData(transaction, player.Name, arenaGroup, interval, key);
+                DbDeletePlayerData(transaction, player.Name!, arenaGroup, interval, key);
                 transaction.Commit();
 
                 return true;
@@ -297,6 +310,9 @@ namespace SS.Core.Modules
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(arenaGroup);
             ArgumentNullException.ThrowIfNull(outStream);
+
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
 
             try
             {
@@ -321,6 +337,9 @@ namespace SS.Core.Modules
             ArgumentException.ThrowIfNullOrWhiteSpace(arenaGroup);
             ArgumentNullException.ThrowIfNull(inStream);
 
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             try
             {
                 using SqliteTransaction transaction = _connection.BeginTransaction();
@@ -343,6 +362,9 @@ namespace SS.Core.Modules
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(arenaGroup);
 
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             try
             {
                 using SqliteTransaction transaction = _connection.BeginTransaction();
@@ -364,6 +386,9 @@ namespace SS.Core.Modules
         bool IPersistDatastore.ResetGameInterval(string arenaGroup)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(arenaGroup);
+
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
 
             try
             {
@@ -398,6 +423,9 @@ namespace SS.Core.Modules
 
         private static int DbGetOrCreateArenaGroupId(SqliteTransaction transaction, string arenaGroup)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             try
             {
                 const string sql = """
@@ -406,7 +434,7 @@ namespace SS.Core.Modules
 					WHERE ArenaGroup = @ArenaGroup
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -422,7 +450,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    object arenaGroupIdObj = command.ExecuteScalar();
+                    object? arenaGroupIdObj = command.ExecuteScalar();
                     if (arenaGroupIdObj != null && arenaGroupIdObj != DBNull.Value)
                     {
                         return Convert.ToInt32(arenaGroupIdObj);
@@ -446,7 +474,7 @@ namespace SS.Core.Modules
 					RETURNING ArenaGroupId
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -462,7 +490,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    object arenaGroupIdObj = command.ExecuteScalar();
+                    object? arenaGroupIdObj = command.ExecuteScalar();
                     if (arenaGroupIdObj != null && arenaGroupIdObj != DBNull.Value)
                     {
                         return Convert.ToInt32(arenaGroupIdObj);
@@ -485,6 +513,9 @@ namespace SS.Core.Modules
 
         private static int DbCreateArenaGroupIntervalAndSetCurrent(SqliteTransaction transaction, string arenaGroup, PersistInterval interval)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             int arenaGroupId = DbGetOrCreateArenaGroupId(transaction, arenaGroup);
 
             DateTime now = DateTime.UtcNow; // For the EndTimestamp of the previous AccountGroupInterval AND the StartTimestamp of the new AccountGroupInterval to match.
@@ -503,7 +534,7 @@ namespace SS.Core.Modules
                     WHERE agi.ArenaGroupIntervalId = c.ArenaGroupIntervalId
                     """;
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -553,7 +584,7 @@ namespace SS.Core.Modules
 					RETURNING ArenaGroupIntervalId
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -573,7 +604,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    object arenaGroupIntervalIdObj = command.ExecuteScalar();
+                    object? arenaGroupIntervalIdObj = command.ExecuteScalar();
                     if (arenaGroupIntervalIdObj != null && arenaGroupIntervalIdObj != DBNull.Value)
                     {
                         arenaGroupIntervalId = Convert.ToInt32(arenaGroupIntervalIdObj);
@@ -602,7 +633,7 @@ namespace SS.Core.Modules
 					    AND Interval = @Interval
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -652,7 +683,7 @@ namespace SS.Core.Modules
 					)
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -689,6 +720,9 @@ namespace SS.Core.Modules
 
         private static int? DbGetCurrentArenaGroupIntervalId(SqliteTransaction transaction, string arenaGroup, PersistInterval interval)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             try
             {
                 const string sql = """
@@ -700,7 +734,7 @@ namespace SS.Core.Modules
 					    AND cagi.Interval = @Interval
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -718,7 +752,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    object arenaGroupIntervalIdObj = command.ExecuteScalar();
+                    object? arenaGroupIntervalIdObj = command.ExecuteScalar();
                     if (arenaGroupIntervalIdObj != null && arenaGroupIntervalIdObj != DBNull.Value)
                     {
                         return Convert.ToInt32(arenaGroupIntervalIdObj);
@@ -748,6 +782,9 @@ namespace SS.Core.Modules
 
         private static int DbGetOrCreatePersistPlayerId(SqliteTransaction transaction, string playerName)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             try
             {
                 const string sql = """
@@ -756,7 +793,7 @@ namespace SS.Core.Modules
 					WHERE PlayerName = @PlayerName
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -772,7 +809,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    object persistPlayerIdObj = command.ExecuteScalar();
+                    object? persistPlayerIdObj = command.ExecuteScalar();
                     if (persistPlayerIdObj != null && persistPlayerIdObj != DBNull.Value)
                     {
                         return Convert.ToInt32(persistPlayerIdObj);
@@ -796,7 +833,7 @@ namespace SS.Core.Modules
 					RETURNING PersistPlayerId
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -812,7 +849,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    object persistPlayerIdObj = command.ExecuteScalar();
+                    object? persistPlayerIdObj = command.ExecuteScalar();
                     if (persistPlayerIdObj != null && persistPlayerIdObj != DBNull.Value)
                     {
                         return Convert.ToInt32(persistPlayerIdObj);
@@ -835,6 +872,9 @@ namespace SS.Core.Modules
 
         private static bool DbGetPlayerData(SqliteTransaction transaction, string playerName, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(transaction, arenaGroup, interval);
 
             int persistPlayerId = DbGetOrCreatePersistPlayerId(transaction, playerName);
@@ -851,7 +891,7 @@ namespace SS.Core.Modules
 					    AND PersistKeyId = @PersistKeyId
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -895,6 +935,9 @@ namespace SS.Core.Modules
 
         private static void DbSetPlayerData(SqliteTransaction transaction, string playerName, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(transaction, arenaGroup, interval);
 
             int persistPlayerId = DbGetOrCreatePersistPlayerId(transaction, playerName);
@@ -918,7 +961,7 @@ namespace SS.Core.Modules
 					SELECT last_insert_rowid();
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -940,7 +983,13 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    long rowId = (long)command.ExecuteScalar();
+                    object? rowIdObj = command.ExecuteScalar();
+                    if (rowIdObj is null || rowIdObj == DBNull.Value)
+                    {
+                        throw new Exception("Expected a rowId, but got null.");
+                    }
+
+                    long rowId = (long)rowIdObj;
 
                     // Write the blob.
                     using SqliteBlob blob = new(_connection, "PlayerData", "Data", rowId);
@@ -959,6 +1008,9 @@ namespace SS.Core.Modules
 
         private static void DbDeletePlayerData(SqliteTransaction transaction, string playerName, string arenaGroup, PersistInterval interval, int persistKey)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(transaction, arenaGroup, interval);
 
             int persistPlayerId = DbGetOrCreatePersistPlayerId(transaction, playerName);
@@ -972,7 +1024,7 @@ namespace SS.Core.Modules
 					    AND PersistKeyId = @PersistKeyId
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -1007,6 +1059,9 @@ namespace SS.Core.Modules
 
         private static bool DbGetArenaData(SqliteTransaction transaction, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(transaction, arenaGroup, interval);
 
             try
@@ -1020,7 +1075,7 @@ namespace SS.Core.Modules
 					    AND PersistKeyId = @PersistKeyId
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -1062,6 +1117,9 @@ namespace SS.Core.Modules
 
         private static void DbSetArenaData(SqliteTransaction transaction, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(transaction, arenaGroup, interval);
 
             try
@@ -1081,7 +1139,7 @@ namespace SS.Core.Modules
 					SELECT last_insert_rowid();
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -1101,7 +1159,13 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    long rowId = (long)command.ExecuteScalar();
+                    object? rowIdObj = command.ExecuteScalar();
+                    if (rowIdObj is null || rowIdObj == DBNull.Value)
+                    {
+                        throw new Exception("Expected a rowId, but got null.");
+                    }
+
+                    long rowId = (long)rowIdObj;
 
                     // Write the blob.
                     using SqliteBlob blob = new(_connection, "ArenaData", "Data", rowId);
@@ -1120,6 +1184,9 @@ namespace SS.Core.Modules
 
         private static void DbDeleteArenaData(SqliteTransaction transaction, string arenaGroup, PersistInterval interval, int persistKey)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             int arenaGroupIntervalId = DbGetOrCreateCurrentArenaGroupIntervalId(transaction, arenaGroup, interval);
 
             try
@@ -1130,7 +1197,7 @@ namespace SS.Core.Modules
 					    AND PersistKeyId = @PersistKeyId
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -1163,6 +1230,9 @@ namespace SS.Core.Modules
 
         private static void DbResetGameInterval(SqliteTransaction transaction, string arenaGroup)
         {
+            if (_connection is null)
+                throw new InvalidOperationException(Error_NoConnection);
+
             int? arenaGroupIntervalId = DbGetCurrentArenaGroupIntervalId(transaction, arenaGroup, PersistInterval.Game);
             if (arenaGroupIntervalId == null)
                 return;
@@ -1174,7 +1244,7 @@ namespace SS.Core.Modules
 					WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -1209,7 +1279,7 @@ namespace SS.Core.Modules
 					WHERE ArenaGroupIntervalId = @ArenaGroupIntervalId
 					""";
 
-                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand command))
+                if (!_commandDictionary.TryGetValue(sql, out SqliteCommand? command))
                 {
                     command = _connection.CreateCommand();
                     command.CommandText = sql;
@@ -1262,7 +1332,7 @@ namespace SS.Core.Modules
         #region Logging helper methods
 
         // TODO: Add methods to LogManager for logging exceptions.
-        private void LogException(string message, Exception ex)
+        private void LogException(string message, Exception? ex)
         {
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
@@ -1294,7 +1364,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void LogException(Player player, string message, Exception ex)
+        private void LogException(Player player, string message, Exception? ex)
         {
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
@@ -1326,7 +1396,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void LogException(Arena arena, string message, Exception ex)
+        private void LogException(Arena arena, string message, Exception? ex)
         {
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 

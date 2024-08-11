@@ -19,22 +19,22 @@ namespace SS.Core
         {
         }
 
-        public ConfigHelpAttribute(string section, string key, ConfigScope scope, string fileName, Type type)
+        public ConfigHelpAttribute(string section, string key, ConfigScope scope, string? fileName, Type type)
             : this(section, key, scope, fileName, type, null)
         {
         }
 
-        public ConfigHelpAttribute(string section, string key, ConfigScope scope, Type type, string description)
+        public ConfigHelpAttribute(string section, string key, ConfigScope scope, Type type, string? description)
             : this(section, key, scope, null, type, null, null, description)
         {
         }
 
-        public ConfigHelpAttribute(string section, string key, ConfigScope scope, string fileName, Type type, string description)
+        public ConfigHelpAttribute(string section, string key, ConfigScope scope, string? fileName, Type type, string? description)
             : this(section, key, scope, fileName, type, null, null, description)
         {
         }
 
-        public ConfigHelpAttribute(string section, string key, ConfigScope scope, string fileName, Type type, string range, string defaultValue, string description)
+        public ConfigHelpAttribute(string section, string key, ConfigScope scope, string? fileName, Type type, string? range, string? defaultValue, string? description)
         {
             if (string.IsNullOrWhiteSpace(section))
                 throw new ArgumentException("Cannot be null or white-space", nameof(section));
@@ -55,10 +55,10 @@ namespace SS.Core
         public string Section { get; set; }
         public string Key { get; set; }
         public ConfigScope Scope { get; set; }
-        public string FileName { get; set; }
+        public string? FileName { get; set; }
         public Type Type { get; set; }
-        public string Range { get; set; }
-        public string DefaultValue { get; set; }
-        public string Description { get; set; }
+        public string? Range { get; set; }
+        public string? DefaultValue { get; set; }
+        public string? Description { get; set; }
     }
 }

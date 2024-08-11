@@ -21,34 +21,49 @@ namespace SS.Core.Modules
     /// Module that manages the core game state.
     /// </summary>
     [CoreModuleInfo]
-    public class Game : IModule, IGame
+    public class Game(
+        IComponentBroker broker,
+        IArenaManager arenaManager,
+        ICapabilityManager capabilityManager,
+        IChat chat,
+        IClientSettings clientSettings,
+        ICommandManager commandManager,
+        IConfigManager configManager,
+        ILagCollect lagCollect,
+        ILogManager logManager,
+        IMainloop mainloop,
+        IMapData mapData,
+        INetwork network,
+        IObjectPoolManager objectPoolManager,
+        IPlayerData playerData,
+        IPrng prng) : IModule, IGame
     {
-        private ComponentBroker _broker;
-        private IArenaManager _arenaManager;
-        private ICapabilityManager _capabilityManager;
-        private IChat _chat;
-        private IChatNetwork _chatNetwork;
-        private IClientSettings _clientSettings;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private ILagCollect _lagCollect;
-        private ILogManager _logManager;
-        private IMainloop _mainloop;
-        private IMapData _mapData;
-        private INetwork _network;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private IPrng _prng;
+        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+        private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly IClientSettings _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ILagCollect _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+        private readonly IMapData _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private readonly IPrng _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
-        private IPersist _persist;
+        private IChatNetwork? _chatNetwork;
+        private IPersist? _persist;
 
-        private InterfaceRegistrationToken<IGame> _iGameToken;
+        private InterfaceRegistrationToken<IGame>? _iGameToken;
 
         private PlayerDataKey<PlayerData> _pdkey;
         private ArenaDataKey<ArenaData> _adkey;
         private readonly ClientSettingIdentifier[] _shipBombFireDelayIds = new ClientSettingIdentifier[8];
 
-        private DelegatePersistentData<Player> _persistRegistration;
+        private DelegatePersistentData<Player>? _persistRegistration;
 
         private readonly object _specmtx = new();
         private readonly object _freqshipmtx = new();
@@ -57,39 +72,8 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        public bool Load(
-            ComponentBroker broker,
-            IArenaManager arenaManager,
-            ICapabilityManager capabilityManager,
-            IChat chat,
-            IClientSettings clientSettings,
-            ICommandManager commandManager,
-            IConfigManager configManager,
-            ILagCollect lagCollect,
-            ILogManager logManager,
-            IMainloop mainloop,
-            IMapData mapData,
-            INetwork network,
-            IObjectPoolManager objectPoolManager,
-            IPlayerData playerData,
-            IPrng prng)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
-            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _prng = prng ?? throw new ArgumentNullException(nameof(prng));
-
             _chatNetwork = broker.GetInterface<IChatNetwork>();
             _persist = broker.GetInterface<IPersist>();
 
@@ -143,7 +127,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iGameToken) != 0)
                 return false;
@@ -248,7 +232,7 @@ namespace SS.Core.Modules
 
         bool IGame.HasLock(Player player)
         {
-            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return false;
 
             return pd.lockship;
@@ -256,7 +240,7 @@ namespace SS.Core.Modules
 
         void IGame.LockArena(Arena arena, bool notify, bool onlyArenaState, bool initial, bool spec)
         {
-            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return;
 
             ad.initLockship = true;
@@ -271,7 +255,7 @@ namespace SS.Core.Modules
 
         void IGame.UnlockArena(Arena arena, bool notify, bool onlyArenaState)
         {
-            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return;
 
             ad.initLockship = false;
@@ -285,7 +269,7 @@ namespace SS.Core.Modules
 
         bool IGame.HasLock(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adkey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return false;
 
             return ad.initLockship;
@@ -312,7 +296,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return 0;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return 0;
 
             return pd.ignoreWeapons / (double)Constants.RandMax;
@@ -323,7 +307,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             pd.ignoreWeapons = (int)(Constants.RandMax * proportion);
@@ -378,7 +362,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             pd.S2CWeaponSent = (uint)(pd.S2CWeaponSent + packets);
@@ -389,7 +373,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             pd.pl_epd.seeNrg = value;
@@ -400,7 +384,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             pd.pl_epd.seeNrgSpec = value;
@@ -408,10 +392,10 @@ namespace SS.Core.Modules
 
         void IGame.ResetPlayerEnergyViewing(Player player)
         {
-            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
-            if (player.Arena == null || !player.Arena.TryGetExtraData(_adkey, out ArenaData ad))
+            if (player.Arena == null || !player.Arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return;
 
             SeeEnergy seeNrg = SeeEnergy.None;
@@ -429,10 +413,10 @@ namespace SS.Core.Modules
 
         void IGame.ResetSpectatorEnergyViewing(Player player)
         {
-            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
-            if (player.Arena == null || !player.Arena.TryGetExtraData(_adkey, out ArenaData ad))
+            if (player.Arena == null || !player.Arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return;
 
             SeeEnergy seeNrgSpec = SeeEnergy.None;
@@ -450,7 +434,7 @@ namespace SS.Core.Modules
 
         void IGame.AddExtraPositionDataWatch(Player player)
         {
-            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             if (playerData.EpdWatchCount == 0)
@@ -463,7 +447,7 @@ namespace SS.Core.Modules
 
         void IGame.RemoveExtraPositionDataWatch(Player player)
         {
-            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             playerData.EpdModuleWatchCount--;
@@ -474,12 +458,12 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IGame.IsAntiwarped(Player player, HashSet<Player> playersAntiwarping)
+        bool IGame.IsAntiwarped(Player player, HashSet<Player>? playersAntiwarping)
         {
-            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return false;
 
-            if (player.Arena == null || !player.Arena.TryGetExtraData(_adkey, out ArenaData ad))
+            if (player.Arena == null || !player.Arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return false;
 
             if (pd.MapRegionNoAnti)
@@ -493,7 +477,7 @@ namespace SS.Core.Modules
             {
                 foreach (Player i in _playerData.Players)
                 {
-                    if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData iData))
+                    if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData? iData))
                         continue;
 
                     if (i.Arena == player.Arena
@@ -532,17 +516,19 @@ namespace SS.Core.Modules
             return antiwarped;
         }
 
-        void IGame.Attach(Player player, Player to)
+        void IGame.Attach(Player player, Player? to)
         {
-            if (player == null
-                || player.Status != PlayerState.Playing
-                || player.Arena == null)
+            if (player is null)
+                return;
+
+            if (player.Status != PlayerState.Playing
+                || player.Arena is null)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(Game), $"Failed to force attach player {player.Id} as a turret.");
                 return;
             }
 
-            if (to != null)
+            if (to is not null)
             {
                 if (to == player
                     || to.Status != PlayerState.Playing
@@ -561,9 +547,9 @@ namespace SS.Core.Modules
 
         #region Persist methods
 
-        private void Persist_GetShipLockData(Player player, Stream outStream)
+        private void Persist_GetShipLockData(Player? player, Stream outStream)
         {
-            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             lock (_freqshipmtx)
@@ -580,9 +566,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Persist_SetShipLockData(Player player, Stream inStream)
+        private void Persist_SetShipLockData(Player? player, Stream inStream)
         {
-            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             lock (_freqshipmtx)
@@ -598,7 +584,7 @@ namespace SS.Core.Modules
                 if (pd.lockship)
                 {
                     player.Ship = ShipType.Spec;
-                    player.Freq = player.Arena.SpecFreq;
+                    player.Freq = player.Arena!.SpecFreq;
                 }
             }
         }
@@ -647,56 +633,58 @@ namespace SS.Core.Modules
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
+                if (!arena.TryGetExtraData(_adkey, out ArenaData? ad))
                     return;
 
-                ad.FlaggerKillMultiplier = _configManager.GetInt(arena.Cfg, "Flag", "FlaggerKillMultiplier", 0);
+                ConfigHandle ch = arena.Cfg!;
 
-                ad.RegionCheckTime = TimeSpan.FromMilliseconds(_configManager.GetInt(arena.Cfg, "Misc", "RegionCheckInterval", 100) * 10);
+                ad.FlaggerKillMultiplier = _configManager.GetInt(ch, "Flag", "FlaggerKillMultiplier", 0);
 
-                ad.SpecSeeExtra = _configManager.GetInt(arena.Cfg, "Misc", "SpecSeeExtra", 1) != 0;
+                ad.RegionCheckTime = TimeSpan.FromMilliseconds(_configManager.GetInt(ch, "Misc", "RegionCheckInterval", 100) * 10);
 
-                ad.SpecSeeEnergy = _configManager.GetEnum(arena.Cfg, "Misc", "SpecSeeEnergy", SeeEnergy.All);
+                ad.SpecSeeExtra = _configManager.GetInt(ch, "Misc", "SpecSeeExtra", 1) != 0;
 
-                ad.AllSeeEnergy = _configManager.GetEnum(arena.Cfg, "Misc", "SeeEnergy", SeeEnergy.None);
+                ad.SpecSeeEnergy = _configManager.GetEnum(ch, "Misc", "SpecSeeEnergy", SeeEnergy.All);
 
-                ad.MaxDeathWithoutFiring = _configManager.GetInt(arena.Cfg, "Security", "MaxDeathWithoutFiring", 5);
+                ad.AllSeeEnergy = _configManager.GetEnum(ch, "Misc", "SeeEnergy", SeeEnergy.None);
 
-                ad.NoSafeAntiwarp = _configManager.GetInt(arena.Cfg, "Misc", "NoSafeAntiwarp", 0) != 0;
+                ad.MaxDeathWithoutFiring = _configManager.GetInt(ch, "Security", "MaxDeathWithoutFiring", 5);
 
-                ad.WarpThresholdDelta = _configManager.GetInt(arena.Cfg, "Misc", "WarpTresholdDelta", 320);
+                ad.NoSafeAntiwarp = _configManager.GetInt(ch, "Misc", "NoSafeAntiwarp", 0) != 0;
+
+                ad.WarpThresholdDelta = _configManager.GetInt(ch, "Misc", "WarpTresholdDelta", 320);
                 ad.WarpThresholdDelta *= ad.WarpThresholdDelta;
 
-                ad.CheckFastBombing = _configManager.GetEnum(arena.Cfg, "Misc", "CheckFastBombing", CheckFastBombing.None);
-                ad.FastBombingThreshold = (short)Math.Abs(_configManager.GetInt(arena.Cfg, "Misc", "FastBombingThreshold", 30));
+                ad.CheckFastBombing = _configManager.GetEnum(ch, "Misc", "CheckFastBombing", CheckFastBombing.None);
+                ad.FastBombingThreshold = (short)Math.Abs(_configManager.GetInt(ch, "Misc", "FastBombingThreshold", 30));
 
                 PersonalGreen pg = PersonalGreen.None;
 
-                if (_configManager.GetInt(arena.Cfg, "Prize", "DontShareThor", 0) != 0)
+                if (_configManager.GetInt(ch, "Prize", "DontShareThor", 0) != 0)
                     pg |= PersonalGreen.Thor;
 
-                if (_configManager.GetInt(arena.Cfg, "Prize", "DontShareBurst", 0) != 0)
+                if (_configManager.GetInt(ch, "Prize", "DontShareBurst", 0) != 0)
                     pg |= PersonalGreen.Burst;
 
-                if (_configManager.GetInt(arena.Cfg, "Prize", "DontShareBrick", 0) != 0)
+                if (_configManager.GetInt(ch, "Prize", "DontShareBrick", 0) != 0)
                     pg |= PersonalGreen.Brick;
 
                 ad.PersonalGreen = pg;
 
-                int cfg_bulletpix = _configManager.GetInt(arena.Cfg, "Net", "BulletPixels", 1500);
+                int cfg_bulletpix = _configManager.GetInt(ch, "Net", "BulletPixels", 1500);
 
-                int cfg_wpnpix = _configManager.GetInt(arena.Cfg, "Net", "WeaponPixels", 2000);
+                int cfg_wpnpix = _configManager.GetInt(ch, "Net", "WeaponPixels", 2000);
 
-                ad.cfg_pospix = _configManager.GetInt(arena.Cfg, "Net", "PositionExtraPixels", 8000);
+                ad.cfg_pospix = _configManager.GetInt(ch, "Net", "PositionExtraPixels", 8000);
 
-                ad.cfg_sendanti = _configManager.GetInt(arena.Cfg, "Net", "AntiwarpSendPercent", 5);
+                ad.cfg_sendanti = _configManager.GetInt(ch, "Net", "AntiwarpSendPercent", 5);
                 ad.cfg_sendanti = Constants.RandMax / 100 * ad.cfg_sendanti;
 
-                int cfg_AntiwarpPixels = _configManager.GetInt(arena.Cfg, "Toggle", "AntiwarpPixels", 1);
+                int cfg_AntiwarpPixels = _configManager.GetInt(ch, "Toggle", "AntiwarpPixels", 1);
                 ad.cfg_AntiwarpRange = cfg_AntiwarpPixels * cfg_AntiwarpPixels;
 
                 // continuum clients take EnterDelay + 100 ticks to respawn after death
-                ad.cfg_EnterDelay = _configManager.GetInt(arena.Cfg, "Kill", "EnterDelay", 0) + 100;
+                ad.cfg_EnterDelay = _configManager.GetInt(ch, "Kill", "EnterDelay", 0) + 100;
                 // setting of 0 or less means respawn in place, with 1 second delay
                 if (ad.cfg_EnterDelay <= 0)
                     ad.cfg_EnterDelay = 100;
@@ -716,12 +704,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
-            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
-            if (arena == null || !arena.TryGetExtraData(_adkey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return;
 
             if (action == PlayerAction.PreEnterArena)
@@ -800,7 +788,7 @@ namespace SS.Core.Modules
                     {
                         foreach (Player i in _playerData.Players)
                         {
-                            if (!i.TryGetExtraData(_pdkey, out PlayerData idata))
+                            if (!i.TryGetExtraData(_pdkey, out PlayerData? idata))
                                 continue;
 
                             if (idata.speccing == player)
@@ -846,7 +834,7 @@ namespace SS.Core.Modules
                     {
                         foreach (Player i in _playerData.Players)
                         {
-                            if (!i.TryGetExtraData(_pdkey, out PlayerData idata))
+                            if (!i.TryGetExtraData(_pdkey, out PlayerData? idata))
                                 continue;
 
                             if (idata.speccing == player)
@@ -920,7 +908,7 @@ namespace SS.Core.Modules
                 {
                     if (data.pl_epd.seeEpd)
                     {
-                        if (!data.speccing.TryGetExtraData(_pdkey, out PlayerData odata))
+                        if (!data.speccing.TryGetExtraData(_pdkey, out PlayerData? odata))
                             return;
 
                         if (odata.EpdPlayerWatchCount > 0)
@@ -950,7 +938,7 @@ namespace SS.Core.Modules
 
                 if (data.pl_epd.seeEpd)
                 {
-                    if (!t.TryGetExtraData(_pdkey, out PlayerData tdata))
+                    if (!t.TryGetExtraData(_pdkey, out PlayerData? tdata))
                         return;
 
                     if (tdata.EpdWatchCount == 0)
@@ -1000,7 +988,7 @@ namespace SS.Core.Modules
             if (player is null || player.Status != PlayerState.Playing)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null || arena.Status != ArenaState.Running)
                 return;
 
@@ -1019,10 +1007,10 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
-            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return;
 
             DateTime now = DateTime.UtcNow;
@@ -1283,7 +1271,7 @@ namespace SS.Core.Modules
 
                     foreach (Player i in _playerData.Players)
                     {
-                        if (!i.TryGetExtraData(_pdkey, out PlayerData idata))
+                        if (!i.TryGetExtraData(_pdkey, out PlayerData? idata))
                             continue;
 
                         if (i.Status == PlayerState.Playing
@@ -1465,12 +1453,15 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
             ImmutableHashSet<MapRegion> oldRegions = pd.LastRegionSet;
-            ImmutableHashSet<MapRegion> newRegions = _mapData.RegionsAt(player.Arena, x, y);
+            ImmutableHashSet<MapRegion> newRegions = _mapData.RegionsAt(arena, x, y);
 
             pd.MapRegionNoAnti = pd.MapRegionNoWeapons = false;
 
@@ -1510,7 +1501,7 @@ namespace SS.Core.Modules
             if (player is null || player.Status != PlayerState.Playing || player.Ship != ShipType.Spec)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             ref C2S_SpecRequest packet = ref MemoryMarshal.AsRef<C2S_SpecRequest>(data[..C2S_SpecRequest.Length]);
@@ -1522,7 +1513,7 @@ namespace SS.Core.Modules
 
                 if (targetPlayerId >= 0)
                 {
-                    Player t = _playerData.PidToPlayer(targetPlayerId);
+                    Player? t = _playerData.PidToPlayer(targetPlayerId);
                     if (t != null && t.Status == PlayerState.Playing && t.Ship != ShipType.Spec && t.Arena == player.Arena)
                         AddSpeccing(pd, t);
                 }
@@ -1540,14 +1531,14 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (player.Status != PlayerState.Playing || arena is null)
             {
                 _logManager.LogP(LogLevel.Warn, nameof(Game), player, "State sync problem: Ship request from bad status.");
                 return;
             }
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             ShipType ship = (ShipType)data[1];
@@ -1589,7 +1580,7 @@ namespace SS.Core.Modules
             }
 
 
-            IFreqManager fm = arena.GetInterface<IFreqManager>();
+            IFreqManager? fm = arena.GetInterface<IFreqManager>();
             if (fm is not null)
             {
                 try
@@ -1646,10 +1637,10 @@ namespace SS.Core.Modules
             if (player is null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             ShipType ship = player.Ship;
 
             if (player.Status != PlayerState.Playing || arena == null)
@@ -1673,7 +1664,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            IFreqManager fm = _broker.GetInterface<IFreqManager>();
+            IFreqManager? fm = _broker.GetInterface<IFreqManager>();
             if (fm != null)
             {
                 try
@@ -1710,11 +1701,11 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             ShipType oldShip = player.Ship;
@@ -1808,7 +1799,7 @@ namespace SS.Core.Modules
             if (freq < 0 || freq > 9999)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -1858,7 +1849,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
             lock (_freqshipmtx)
@@ -1891,17 +1882,17 @@ namespace SS.Core.Modules
             if (player.Status != PlayerState.Playing)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return;
 
             ref C2S_Die packet = ref MemoryMarshal.AsRef<C2S_Die>(data[..C2S_Die.Length]);
             short bounty = packet.Bounty;
 
-            Player killer = _playerData.PidToPlayer(packet.Killer);
+            Player? killer = _playerData.PidToPlayer(packet.Killer);
             if (killer == null || killer.Status != PlayerState.Playing || killer.Arena != arena)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Reported kill by bad pid {packet.Killer}.");
@@ -1949,14 +1940,14 @@ namespace SS.Core.Modules
 
             // Pick the green.
             Prize green;
-            if ((player.Freq == killer.Freq) && (_configManager.GetInt(arena.Cfg, "Prize", "UseTeamkillPrize", 0) != 0))
+            if ((player.Freq == killer.Freq) && (_configManager.GetInt(arena.Cfg!, "Prize", "UseTeamkillPrize", 0) != 0))
             {
-                green = (Prize)_configManager.GetInt(arena.Cfg, "Prize", "TeamkillPrize", 0);
+                green = (Prize)_configManager.GetInt(arena.Cfg!, "Prize", "TeamkillPrize", 0);
             }
             else
             {
                 // Pick a random green.
-                IClientSettings cset = arena.GetInterface<IClientSettings>();
+                IClientSettings? cset = arena.GetInterface<IClientSettings>();
                 if (cset != null)
                 {
                     try
@@ -1982,7 +1973,7 @@ namespace SS.Core.Modules
             }
 
             // Allow a module to modify the green sent in the packet.
-            IKillGreen killGreen = arena.GetInterface<IKillGreen>();
+            IKillGreen? killGreen = arena.GetInterface<IKillGreen>();
             if (killGreen != null)
             {
                 try
@@ -1997,7 +1988,7 @@ namespace SS.Core.Modules
 
             // Find out how many flags will get transferred to the killer.
             short flagTransferCount = flagCount;
-            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            ICarryFlagGame? carryFlagGame = arena.GetInterface<ICarryFlagGame>();
             if (carryFlagGame != null)
             {
                 try
@@ -2024,7 +2015,7 @@ namespace SS.Core.Modules
                 }
 
                 // Record the kill points on our side.
-                IAllPlayerStats allPlayerStats = _broker.GetInterface<IAllPlayerStats>();
+                IAllPlayerStats? allPlayerStats = _broker.GetInterface<IAllPlayerStats>();
                 if (allPlayerStats != null)
                 {
                     try
@@ -2044,7 +2035,7 @@ namespace SS.Core.Modules
 
             if (!player.Flags.SentWeaponPacket)
             {
-                if (player.TryGetExtraData(_pdkey, out PlayerData pd))
+                if (player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 {
                     if (pd.deathWithoutFiring++ == ad.MaxDeathWithoutFiring)
                     {
@@ -2071,9 +2062,13 @@ namespace SS.Core.Modules
             if (killer == null || killed == null)
                 return;
 
+            Arena? arena = killed.Arena;
+            if (arena is null)
+                return;
+
             S2C_Kill packet = new(green, (short)killer.Id, (short)killed.Id, pts, flagCount);
-            _network.SendToArena(killer.Arena, null, ref packet, NetSendFlags.Reliable);
-            _chatNetwork?.SendToArena(killer.Arena, null, $"KILL:{killer.Name}:{killed.Name}:{pts:D}:{flagCount:D}");
+            _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
+            _chatNetwork?.SendToArena(arena, null, $"KILL:{killer.Name}:{killed.Name}:{pts:D}:{flagCount:D}");
         }
 
         private void Packet_Green(Player player, Span<byte> data, NetReceiveFlags flags)
@@ -2090,11 +2085,11 @@ namespace SS.Core.Modules
             if (player.Status != PlayerState.Playing)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adkey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return;
 
             ref C2S_Green c2s = ref MemoryMarshal.AsRef<C2S_Green>(data);
@@ -2124,7 +2119,7 @@ namespace SS.Core.Modules
         }
 
         // Note: This method assumes all validation checks have been done beforehand (playing, same arena, same team, etc...).
-        private void Attach(Player player, Player to)
+        private void Attach(Player player, Player? to)
         {
             if (player == null)
                 return;
@@ -2142,7 +2137,7 @@ namespace SS.Core.Modules
                 player.Attached = toPlayerId;
 
                 // Invoke the callback
-                Arena arena = player.Arena;
+                Arena? arena = player.Arena;
                 if (arena is null)
                     return;
 
@@ -2179,21 +2174,21 @@ namespace SS.Core.Modules
             if (player.Status != PlayerState.Playing)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
             ref C2S_AttachTo packet = ref MemoryMarshal.AsRef<C2S_AttachTo>(data[..C2S_AttachTo.Length]);
             short pid2 = packet.PlayerId;
 
-            Player to = null;
+            Player? to = null;
 
             // -1 means detaching
             if (pid2 != -1)
             {
                 to = _playerData.PidToPlayer(pid2);
 
-                if (to == null
+                if (to is null
                     || to == player
                     || to.Status != PlayerState.Playing
                     || player.Arena != to.Arena
@@ -2221,7 +2216,7 @@ namespace SS.Core.Modules
             if (player.Status != PlayerState.Playing)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -2259,7 +2254,7 @@ namespace SS.Core.Modules
 
                 foreach (Player p in set)
                 {
-                    if (!p.TryGetExtraData(_pdkey, out PlayerData pd))
+                    if (!p.TryGetExtraData(_pdkey, out PlayerData? pd))
                         continue;
 
                     if (spec && (p.Arena != null) && (p.Ship != ShipType.Spec))
@@ -2304,7 +2299,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_spec(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 targetPlayer = player;
 
             int specCount = 0;
@@ -2319,7 +2314,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player playerToCheck in _playerData.Players)
                     {
-                        if (!playerToCheck.TryGetExtraData(_pdkey, out PlayerData pd))
+                        if (!playerToCheck.TryGetExtraData(_pdkey, out PlayerData? pd))
                             continue;
 
                         if (pd.speccing == targetPlayer
@@ -2377,7 +2372,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_energy(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            target.TryGetPlayerTarget(out Player targetPlayer);
+            target.TryGetPlayerTarget(out Player? targetPlayer);
 
             SeeEnergy nval = SeeEnergy.All;
             bool spec = false;
@@ -2393,7 +2388,7 @@ namespace SS.Core.Modules
 
             if (targetPlayer != null)
             {
-                if (!targetPlayer.TryGetExtraData(_pdkey, out PlayerData pd))
+                if (!targetPlayer.TryGetExtraData(_pdkey, out PlayerData? pd))
                     return;
 
                 if (spec)
@@ -2403,7 +2398,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                if (player.Arena == null || !player.Arena.TryGetExtraData(_adkey, out ArenaData ad))
+                if (player.Arena == null || !player.Arena.TryGetExtraData(_adkey, out ArenaData? ad))
                     return;
 
                 if (spec)
@@ -2415,7 +2410,7 @@ namespace SS.Core.Modules
 
         private void DoSpawnCallback(Player player, SpawnCallback.SpawnReason reason)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
@@ -2439,7 +2434,7 @@ namespace SS.Core.Modules
 
         private void DoShipFreqChangeCallback(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
@@ -2470,7 +2465,7 @@ namespace SS.Core.Modules
         {
             public required Arena Arena;
             public required Player Player;
-            public required Player To;
+            public required Player? To;
         }
 
         private struct SpawnDTO
@@ -2527,7 +2522,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// who the player is spectating, null means not spectating
             /// </summary>
-            public Player speccing;
+            public Player? speccing;
 
             /// <summary>
             /// The # of S2C weapon packets sent to the player.

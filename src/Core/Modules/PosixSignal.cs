@@ -40,13 +40,13 @@ namespace SS.Core.Modules
     /// </remarks>
     public class PosixSignal : IModule
     {
-        private ComponentBroker _broker;
+        private readonly IComponentBroker _broker;
 
-        private PosixSignalRegistration _sighup;
-        private PosixSignalRegistration _sigint;
-        private PosixSignalRegistration _sigterm;
-        private PosixSignalRegistration _sigusr1;
-        private PosixSignalRegistration _sigusr2;
+        private PosixSignalRegistration? _sighup;
+        private PosixSignalRegistration? _sigint;
+        private PosixSignalRegistration? _sigterm;
+        private PosixSignalRegistration? _sigusr1;
+        private PosixSignalRegistration? _sigusr2;
 
         /// <summary>
         /// User-defined signal 1
@@ -58,12 +58,15 @@ namespace SS.Core.Modules
         /// </summary>
         private const int SIGUSR2 = 12;
 
-        #region Module members
-
-        public bool Load(ComponentBroker broker)
+        public PosixSignal(IComponentBroker broker)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _sighup = PosixSignalRegistration.Create(System.Runtime.InteropServices.PosixSignal.SIGHUP, PosixSignalHandler_SIGHUP);
             _sigint = PosixSignalRegistration.Create(System.Runtime.InteropServices.PosixSignal.SIGINT, PosixSignalHandler_SIGINT);
             _sigterm = PosixSignalRegistration.Create(System.Runtime.InteropServices.PosixSignal.SIGTERM, PosixSignalHandler_SIGTERM);
@@ -77,7 +80,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _sighup?.Dispose();
             _sighup = null;
@@ -105,7 +108,7 @@ namespace SS.Core.Modules
         {
             context.Cancel = true;
 
-            ILogFile logfile = _broker.GetInterface<ILogFile>();
+            ILogFile? logfile = _broker.GetInterface<ILogFile>();
             if (logfile is not null)
             {
                 try
@@ -125,7 +128,7 @@ namespace SS.Core.Modules
         {
             context.Cancel = true;
 
-            IMainloop mainloop = _broker.GetInterface<IMainloop>();
+            IMainloop? mainloop = _broker.GetInterface<IMainloop>();
             if (mainloop is not null)
             {
                 try
@@ -179,7 +182,7 @@ namespace SS.Core.Modules
 
                 if (!buffer.IsEmpty)
                 {
-                    IChat chat = _broker.GetInterface<IChat>();
+                    IChat? chat = _broker.GetInterface<IChat>();
                     if (chat is not null)
                     {
                         try
@@ -208,7 +211,7 @@ namespace SS.Core.Modules
 
         private void RequestPersistToSave()
         {
-            IPersistExecutor persistExector = _broker.GetInterface<IPersistExecutor>();
+            IPersistExecutor? persistExector = _broker.GetInterface<IPersistExecutor>();
             if (persistExector is not null)
             {
                 try

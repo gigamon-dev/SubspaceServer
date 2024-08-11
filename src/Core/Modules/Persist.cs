@@ -16,29 +16,29 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public sealed class Persist : IModule, IPersist, IPersistExecutor, IDisposable
     {
-        private ComponentBroker _broker;
-        private IArenaManager _arenaManager;
-        private IConfigManager _configManager;
-        private IMainloop _mainloop;
-        private IObjectPoolManager _objectPoolManager;
-        private IPersistDatastore _persistDatastore;
-        private IPlayerData _playerData;
+        private readonly IComponentBroker _broker;
+        private readonly IArenaManager _arenaManager;
+        private readonly IConfigManager _configManager;
+        private readonly IMainloop _mainloop;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPersistDatastore _persistDatastore;
+        private readonly IPlayerData _playerData;
 
-        private InterfaceRegistrationToken<IPersist> _iPersistToken;
-        private InterfaceRegistrationToken<IPersistExecutor> _iPersistExecutorToken;
+        private InterfaceRegistrationToken<IPersist>? _iPersistToken;
+        private InterfaceRegistrationToken<IPersistExecutor>? _iPersistExecutorToken;
 
         private readonly List<PersistentData<Player>> _playerRegistrations = new();
         private readonly List<PersistentData<Arena>> _arenaRegistrations = new();
 
-        private Pool<PlayerWorkItem> _playerWorkItemPool;
-        private Pool<ArenaWorkItem> _arenaWorkItemPool;
-        private Pool<IntervalWorkItem> _intervalWorkItemPool;
-        private Pool<ResetGameIntervalWorkItem> _resetGameIntervalWorkItemPool;
-        private Pool<PutAllWorkItem> _putAllWorkItemPool;
-        private ObjectPool<MemoryStream> _memoryStreamPool = ObjectPool.Create(new MemoryStreamPooledObjectPolicy()); // Note: This creates a DisposableObjectPool.
+        private readonly Pool<PlayerWorkItem> _playerWorkItemPool;
+        private readonly Pool<ArenaWorkItem> _arenaWorkItemPool;
+        private readonly Pool<IntervalWorkItem> _intervalWorkItemPool;
+        private readonly Pool<ResetGameIntervalWorkItem> _resetGameIntervalWorkItemPool;
+        private readonly Pool<PutAllWorkItem> _putAllWorkItemPool;
+        private readonly ObjectPool<MemoryStream> _memoryStreamPool = ObjectPool.Create(new MemoryStreamPooledObjectPolicy()); // Note: This creates a DisposableObjectPool.
 
         private readonly BlockingCollection<PersistWorkItem> _workQueue = new();
-        private Thread _workerThread;
+        private Thread? _workerThread;
         private TimeSpan _syncTimeSpan;
         private DateTime? _nextSync;
         private readonly object _lock = new();
@@ -50,19 +50,8 @@ namespace SS.Core.Modules
 
         private readonly Action<PersistWorkItem> _mainloopWorkItem_ExecuteCallbacksAndDispose;
 
-        public Persist()
-        {
-            _mainloopWorkItem_ExecuteCallbacksAndDispose = MainloopWorkItem_ExecuteCallbacksAndDispose;
-        }
-
-        #region Module memebers
-
-        [ConfigHelp("Persist", "SyncSeconds", ConfigScope.Global, typeof(int), DefaultValue = "180",
-            Description = "The interval at which all persistent data is synced to the database.")]
-        [ConfigHelp("Persist", "MaxRecordLength", ConfigScope.Global, typeof(int), DefaultValue = "4096",
-            Description = "The maximum # of bytes to store per record.")]
-        public bool Load(
-            ComponentBroker broker,
+        public Persist(
+            IComponentBroker broker,
             IArenaManager arenaManager,
             IConfigManager configManager,
             IMainloop mainloop,
@@ -78,14 +67,25 @@ namespace SS.Core.Modules
             _persistDatastore = persistDatastore ?? throw new ArgumentNullException(nameof(persistDatastore));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
-            if (!_persistDatastore.Open())
-                return false;
-
             _playerWorkItemPool = _objectPoolManager.GetPool<PlayerWorkItem>();
             _arenaWorkItemPool = _objectPoolManager.GetPool<ArenaWorkItem>();
             _intervalWorkItemPool = _objectPoolManager.GetPool<IntervalWorkItem>();
             _resetGameIntervalWorkItemPool = _objectPoolManager.GetPool<ResetGameIntervalWorkItem>();
             _putAllWorkItemPool = _objectPoolManager.GetPool<PutAllWorkItem>();
+
+            _mainloopWorkItem_ExecuteCallbacksAndDispose = MainloopWorkItem_ExecuteCallbacksAndDispose;
+        }
+
+        #region Module memebers
+
+        [ConfigHelp("Persist", "SyncSeconds", ConfigScope.Global, typeof(int), DefaultValue = "180",
+            Description = "The interval at which all persistent data is synced to the database.")]
+        [ConfigHelp("Persist", "MaxRecordLength", ConfigScope.Global, typeof(int), DefaultValue = "4096",
+            Description = "The maximum # of bytes to store per record.")]
+        bool IModule.Load(IComponentBroker broker)
+        {
+            if (!_persistDatastore.Open())
+                return false;
 
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
@@ -108,7 +108,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iPersistToken) != 0)
                 return false;
@@ -117,7 +117,7 @@ namespace SS.Core.Modules
                 return false;
 
             _workQueue.CompleteAdding();
-            _workerThread.Join();
+            _workerThread?.Join();
 
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             _arenaManager.FreeArenaData(ref _adKey);
@@ -169,7 +169,7 @@ namespace SS.Core.Modules
 
         #region IPersistExecutor
 
-        void IPersistExecutor.PutPlayer(Player player, Arena arena, Action<Player> callback)
+        void IPersistExecutor.PutPlayer(Player player, Arena? arena, Action<Player>? callback)
         {
             if (!player.Flags.Authenticated)
             {
@@ -180,7 +180,7 @@ namespace SS.Core.Modules
             QueuePlayerWorkItem(PersistCommand.PutPlayer, player, arena, callback);
         }
 
-        void IPersistExecutor.GetPlayer(Player player, Arena arena, Action<Player> callback)
+        void IPersistExecutor.GetPlayer(Player player, Arena? arena, Action<Player>? callback)
         {
             if (!player.Flags.Authenticated)
             {
@@ -191,7 +191,7 @@ namespace SS.Core.Modules
             QueuePlayerWorkItem(PersistCommand.GetPlayer, player, arena, callback);
         }
 
-        private void QueuePlayerWorkItem(PersistCommand command, Player player, Arena arena, Action<Player> callback)
+        private void QueuePlayerWorkItem(PersistCommand command, Player player, Arena? arena, Action<Player>? callback)
         {
             PlayerWorkItem workItem = _playerWorkItemPool.Get();
             workItem.Command = command;
@@ -202,13 +202,13 @@ namespace SS.Core.Modules
             _workQueue.Add(workItem);
         }
 
-        void IPersistExecutor.PutArena(Arena arena, Action<Arena> callback)
+        void IPersistExecutor.PutArena(Arena arena, Action<Arena>? callback)
             => QueueArenaWorkItem(PersistCommand.PutArena, arena, callback);
 
-        void IPersistExecutor.GetArena(Arena arena, Action<Arena> callback)
+        void IPersistExecutor.GetArena(Arena arena, Action<Arena>? callback)
             => QueueArenaWorkItem(PersistCommand.GetArena, arena, callback);
 
-        private void QueueArenaWorkItem(PersistCommand command, Arena arena, Action<Arena> callback)
+        private void QueueArenaWorkItem(PersistCommand command, Arena arena, Action<Arena>? callback)
         {
             ArenaWorkItem workItem = _arenaWorkItemPool.Get();
             workItem.Command = command;
@@ -218,7 +218,7 @@ namespace SS.Core.Modules
             _workQueue.Add(workItem);
         }
 
-        void IPersistExecutor.EndInterval(PersistInterval interval, string arenaGroupOrArenaName)
+        void IPersistExecutor.EndInterval(PersistInterval interval, string? arenaGroupOrArenaName)
         {
             if (string.IsNullOrWhiteSpace(arenaGroupOrArenaName))
                 arenaGroupOrArenaName = Constants.ArenaGroup_Global;
@@ -226,7 +226,7 @@ namespace SS.Core.Modules
             QueueIntervalWorkItem(PersistCommand.EndInterval, interval, arenaGroupOrArenaName);
         }
 
-        void IPersistExecutor.EndInterval(PersistInterval interval, Arena arena)
+        void IPersistExecutor.EndInterval(PersistInterval interval, Arena? arena)
         {
             QueueIntervalWorkItem(PersistCommand.EndInterval, interval, GetArenaGroup(arena, interval));
         }
@@ -254,7 +254,7 @@ namespace SS.Core.Modules
             _workQueue.Add(workItem);
         }
 
-        void IPersistExecutor.SaveAll(Action completed)
+        void IPersistExecutor.SaveAll(Action? completed)
         {
             PutAllWorkItem workItem = _putAllWorkItemPool.Get();
             workItem.Command = PersistCommand.PutAll;
@@ -272,7 +272,6 @@ namespace SS.Core.Modules
             if (_memoryStreamPool is IDisposable disposable)
             {
                 disposable.Dispose();
-                _memoryStreamPool = null;
             }
         }
 
@@ -288,12 +287,12 @@ namespace SS.Core.Modules
                 """)]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create)
             {
-                string arenaGroup = _configManager.GetStr(arena.Cfg, "General", "ScoreGroup");
+                string? arenaGroup = _configManager.GetStr(arena.Cfg!, "General", "ScoreGroup");
                 if (!string.IsNullOrWhiteSpace(arenaGroup))
                     ad.ArenaGroup = arenaGroup;
                 else
@@ -316,7 +315,7 @@ namespace SS.Core.Modules
                         waitTimeSpan = TimeSpan.Zero;
                 }
 
-                if (!_workQueue.TryTake(out PersistWorkItem workItem, waitTimeSpan))
+                if (!_workQueue.TryTake(out PersistWorkItem? workItem, waitTimeSpan))
                 {
                     // Did not get a workitem. This means either:
                     // we've either been signaled to shut down (no more items will be added)
@@ -340,8 +339,8 @@ namespace SS.Core.Modules
                     continue;
                 }
 
-                PlayerWorkItem playerWorkItem;
-                ArenaWorkItem arenaWorkItem;
+                PlayerWorkItem? playerWorkItem;
+                ArenaWorkItem? arenaWorkItem;
 
                 switch (workItem.Command)
                 {
@@ -356,7 +355,7 @@ namespace SS.Core.Modules
                             {
                                 foreach (PersistentData<Player> registration in _playerRegistrations)
                                 {
-                                    GetOnePlayer(registration, playerWorkItem.Player, playerWorkItem.Arena);
+                                    GetOnePlayer(registration, playerWorkItem.Player!, playerWorkItem.Arena);
                                 }
                             }
                         }
@@ -366,7 +365,7 @@ namespace SS.Core.Modules
                         playerWorkItem = workItem as PlayerWorkItem;
                         if (playerWorkItem != null)
                         {
-                            DoPutPlayer(playerWorkItem.Player, playerWorkItem.Arena);
+                            DoPutPlayer(playerWorkItem.Player!, playerWorkItem.Arena);
                         }
                         break;
 
@@ -378,7 +377,7 @@ namespace SS.Core.Modules
                             {
                                 foreach (PersistentData<Arena> registration in _arenaRegistrations)
                                 {
-                                    GetOneArena(registration, arenaWorkItem.Arena);
+                                    GetOneArena(registration, arenaWorkItem.Arena!);
                                 }
                             }
                         }
@@ -392,7 +391,7 @@ namespace SS.Core.Modules
                             {
                                 foreach (PersistentData<Arena> registration in _arenaRegistrations)
                                 {
-                                    PutOneArena(registration, arenaWorkItem.Arena);
+                                    PutOneArena(registration, arenaWorkItem.Arena!);
                                 }
                             }
                         }
@@ -410,7 +409,7 @@ namespace SS.Core.Modules
                         {
                             lock (_lock)
                             {
-                                DoEndInterval(intervalWorkItem.Interval, intervalWorkItem.ArenaGroup);
+                                DoEndInterval(intervalWorkItem.Interval, intervalWorkItem.ArenaGroup!);
                             }
                         }
                         break;
@@ -446,7 +445,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            void DoResetGameInterval(Arena arena)
+            void DoResetGameInterval(Arena? arena)
             {
                 if (arena == null)
                     return;
@@ -464,7 +463,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player p in _playerData.Players)
                     {
-                        Arena playerArena = p.Arena;
+                        Arena? playerArena = p.Arena;
 
                         if (p.Status >= minStatus
                             && p.Status <= maxStatus
@@ -542,7 +541,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player p in _playerData.Players)
                     {
-                        Arena arena = p.Arena;
+                        Arena? arena = p.Arena;
 
                         if (p.Status >= minStatus
                             && p.Status <= maxStatus
@@ -624,7 +623,7 @@ namespace SS.Core.Modules
                 _persistDatastore.CreateArenaGroupIntervalAndMakeCurrent(arenaGroup, interval);
             }
 
-            void DoPutPlayer(Player player, Arena arena)
+            void DoPutPlayer(Player player, Arena? arena)
             {
                 if (player == null)
                     return;
@@ -638,7 +637,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            void DoPutArena(Arena arena)
+            void DoPutArena(Arena? arena)
             {
                 lock (_lock)
                 {
@@ -701,7 +700,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void PutOneArena(PersistentData<Arena> registration, Arena arena)
+        private void PutOneArena(PersistentData<Arena> registration, Arena? arena)
         {
             if (registration == null)
                 return;
@@ -781,7 +780,7 @@ namespace SS.Core.Modules
                 if (workItem.Command == PersistCommand.EndInterval
                     && workItem is IntervalWorkItem intervalWorkItem)
                 {
-                    PersistIntervalEndedCallback.Fire(_broker, intervalWorkItem.Interval, intervalWorkItem.ArenaGroup);
+                    PersistIntervalEndedCallback.Fire(_broker, intervalWorkItem.Interval, intervalWorkItem.ArenaGroup!);
                 }
             }
             finally
@@ -791,7 +790,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void PutOnePlayer(PersistentData<Player> registration, Player player, Arena arena)
+        private void PutOnePlayer(PersistentData<Player> registration, Player player, Arena? arena)
         {
             if (registration == null)
                 return;
@@ -830,7 +829,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void GetOnePlayer(PersistentData<Player> registration, Player player, Arena arena)
+        private void GetOnePlayer(PersistentData<Player> registration, Player player, Arena? arena)
         {
             if (registration == null)
                 return;
@@ -865,15 +864,15 @@ namespace SS.Core.Modules
             }
         }
 
-        private string GetArenaGroup(Arena arena, PersistInterval interval)
+        private string GetArenaGroup(Arena? arena, PersistInterval interval)
         {
             if (arena == null)
                 return Constants.ArenaGroup_Global;
 
             if (interval.IsShared()
-                && arena.TryGetExtraData(_adKey, out ArenaData ad))
+                && arena.TryGetExtraData(_adKey, out ArenaData? ad))
             {
-                return ad.ArenaGroup;
+                return ad.ArenaGroup!;
             }
             else
             {
@@ -886,7 +885,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// For shared intervals.
             /// </summary>
-            public string ArenaGroup { get; set; }
+            public string? ArenaGroup { get; set; }
 
             public bool TryReset()
             {
@@ -948,12 +947,12 @@ namespace SS.Core.Modules
                 }
             }
 
-            public Arena Arena { get; set; }
-            public Action<Arena> Callback { get; set; }
+            public Arena? Arena { get; set; }
+            public Action<Arena>? Callback { get; set; }
 
             public override void ExecuteCallback()
             {
-                Callback?.Invoke(Arena);
+                Callback?.Invoke(Arena!);
             }
 
             protected override void Dispose(bool isDisposing)
@@ -982,13 +981,13 @@ namespace SS.Core.Modules
                 }
             }
 
-            public Player Player { get; set; }
-            public Arena Arena { get; set; }
-            public Action<Player> Callback { get; set; }
+            public Player? Player { get; set; }
+            public Arena? Arena { get; set; }
+            public Action<Player>? Callback { get; set; }
 
             public override void ExecuteCallback()
             {
-                Callback?.Invoke(Player);
+                Callback?.Invoke(Player!);
             }
 
             protected override void Dispose(bool isDisposing)
@@ -1018,7 +1017,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            public Action Callback { get; set; }
+            public Action? Callback { get; set; }
 
             public override void ExecuteCallback()
             {
@@ -1051,7 +1050,7 @@ namespace SS.Core.Modules
             }
 
             public PersistInterval Interval { get; set; }
-            public string ArenaGroup { get; set; }
+            public string? ArenaGroup { get; set; }
 
             protected override void Dispose(bool isDisposing)
             {
@@ -1079,13 +1078,13 @@ namespace SS.Core.Modules
                 }
             }
 
-            public Arena Arena { get; set; }
+            public Arena? Arena { get; set; }
 
-            public Action<Arena> Callback { get; set; }
+            public Action<Arena>? Callback { get; set; }
 
             public override void ExecuteCallback()
             {
-                Callback(Arena);
+                Callback?.Invoke(Arena!);
             }
 
             protected override void Dispose(bool isDisposing)

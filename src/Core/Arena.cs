@@ -3,6 +3,7 @@ using SS.Core.Modules;
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace SS.Core
@@ -161,7 +162,7 @@ namespace SS.Core
         /// <summary>
         /// A handle to the main config file for this arena.
         /// </summary>
-        public ConfigHandle Cfg { get; internal set; }
+        public ConfigHandle? Cfg { get; internal set; }
 
         /// <summary>
         /// The frequency for spectators in this arena.
@@ -215,7 +216,7 @@ namespace SS.Core
         /// <param name="parent">The parent broker.</param>
         /// <param name="name">The name of the arena.</param>
         /// <param name="manager">The creator.</param>
-        internal Arena(ComponentBroker parent, string name, ArenaManager manager) : base(parent)
+        internal Arena(IComponentBroker parent, string name, ArenaManager manager) : base(parent)
         {
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(name));
@@ -272,9 +273,9 @@ namespace SS.Core
         /// <param name="key">The key of the data to get, from <see cref="IPlayerData.AllocatePlayerData{T}"/>.</param>
         /// <param name="data">The data if found and was of type <typeparamref name="T"/>. Otherwise, <see langword="null"/>.</param>
         /// <returns>True if the data was found and was of type <typeparamref name="T"/>. Otherwise, false.</returns>
-        public bool TryGetExtraData<T>(ArenaDataKey<T> key, out T data) where T : class
+        public bool TryGetExtraData<T>(ArenaDataKey<T> key, [MaybeNullWhen(false)] out T data) where T : class
         {
-            if (_extraData.TryGetValue(key.Id, out object obj)
+            if (_extraData.TryGetValue(key.Id, out object? obj)
                 && obj is T tData)
             {
                 data = tData;
@@ -304,7 +305,7 @@ namespace SS.Core
         /// <param name="keyId">Id of the data to remove.</param>
         /// <param name="data">The data removed, or the default value if nothing was removed.</param>
         /// <returns><see langword="true"/> if the data was removed; otherwise <see langword="false"/>.</returns>
-        internal bool TryRemoveExtraData(int keyId, out object data)
+        internal bool TryRemoveExtraData(int keyId, [MaybeNullWhen(false)] out object data)
         {
             return _extraData.TryRemove(keyId, out data);
         }
@@ -345,7 +346,7 @@ namespace SS.Core
             if (_teamTargets.IsEmpty)
                 return;
 
-            IPlayerData playerData = GetInterface<IPlayerData>();
+            IPlayerData? playerData = GetInterface<IPlayerData>();
 
             if (playerData != null)
             {

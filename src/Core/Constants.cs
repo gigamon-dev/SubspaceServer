@@ -324,5 +324,10 @@ namespace SS.Core
             /// </summary>
             public const string SetBanner = "setbanner";
         }
+
+        public static class ErrorMessages
+        {
+            public const string ModuleNotLoaded = "The module is not loaded.";
+        }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SS.Core.ComponentInterfaces;
+using System;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -49,17 +50,17 @@ namespace SS.Core.ComponentCallbacks
         /// </param>
         public delegate void SpawnDelegate(Player player, SpawnReason reason);
 
-        public static void Register(ComponentBroker broker, SpawnDelegate handler)
+        public static void Register(IComponentBroker broker, SpawnDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, SpawnDelegate handler)
+        public static void Unregister(IComponentBroker broker, SpawnDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, SpawnReason reason)
+        public static void Fire(IComponentBroker broker, Player player, SpawnReason reason)
         {
             broker?.GetCallback<SpawnDelegate>()?.Invoke(player, reason);
 

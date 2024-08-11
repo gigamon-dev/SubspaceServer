@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentCallbacks
+﻿using SS.Core.ComponentInterfaces;
+
+namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Callback for when a player:
@@ -14,17 +16,17 @@
     {
         public delegate void BallShootDelegate(Arena arena, Player player, byte ballId);
 
-        public static void Register(ComponentBroker broker, BallShootDelegate handler)
+        public static void Register(IComponentBroker broker, BallShootDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, BallShootDelegate handler)
+        public static void Unregister(IComponentBroker broker, BallShootDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, Player player, byte ballId)
+        public static void Fire(IComponentBroker broker, Arena arena, Player player, byte ballId)
         {
             broker?.GetCallback<BallShootDelegate>()?.Invoke(arena, player, ballId);
 

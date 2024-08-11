@@ -26,30 +26,25 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public class AuthVIE : IModule, IAuth
+    public class AuthVIE(
+        IAuth auth,
+        IConfigManager configManager,
+        ILogManager logManager) : IModule, IAuth
     {
-        private IAuth _oldAuth;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private InterfaceRegistrationToken<IAuth> _iAuthToken;
+        private readonly IAuth _oldAuth = auth ?? throw new ArgumentNullException(nameof(auth));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private InterfaceRegistrationToken<IAuth>? _iAuthToken;
 
         #region Module members
 
-        public bool Load(
-            ComponentBroker broker,
-            IAuth auth,
-            IConfigManager configManager,
-            ILogManager logManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _oldAuth = auth ?? throw new ArgumentNullException(nameof(auth));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-
             _iAuthToken = broker.RegisterInterface<IAuth>(this);
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iAuthToken) != 0)
                 return false;
@@ -63,7 +58,7 @@ namespace SS.Core.Modules
 
         void IAuth.Authenticate(IAuthRequest authRequest)
         {
-            Player player = authRequest.Player;
+            Player? player = authRequest.Player;
             if (player is null)
                 return;
 
@@ -78,10 +73,10 @@ namespace SS.Core.Modules
             int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameChars);
             Debug.Assert(decodedCharCount == nameChars.Length);
 
-            string ipStr = _configManager.GetStr(_configManager.Global, "VIEnames", nameChars);
+            string? ipStr = _configManager.GetStr(_configManager.Global, "VIEnames", nameChars);
 
             if (string.IsNullOrWhiteSpace(ipStr)
-                || (!ipStr.Equals("any", StringComparison.OrdinalIgnoreCase) && !IsMatch(ipStr, player.IPAddress)))
+                || (!ipStr.Equals("any", StringComparison.OrdinalIgnoreCase) && !IsMatch(ipStr, player.IPAddress!)))
             {
                 authRequest.Result.Authenticated = false;
                 authRequest.Result.Code = AuthCode.NoPermission2;

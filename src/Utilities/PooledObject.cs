@@ -17,7 +17,7 @@ namespace SS.Utilities
         /// <summary>
         /// The pool that this object originated from.
         /// </summary>
-        internal IPoolInternal Pool { get; init; }
+        internal IPoolInternal? Pool { get; init; }
 
         /// <summary>
         /// Set the availablity of the object (whether it's in the pool).

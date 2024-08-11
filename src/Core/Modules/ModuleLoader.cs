@@ -11,24 +11,21 @@ namespace SS.Core.Modules
     /// Module that loads modules based on an xml configuration file.
     /// </summary>
     [CoreModuleInfo]
-    public class ModuleLoader : IModule, IModuleLoader
+    public class ModuleLoader(IComponentBroker broker, IModuleManager mm) : IModule, IModuleLoader
     {
-        private ComponentBroker _broker;
-        private IModuleManager _mm;
-        private InterfaceRegistrationToken<IModuleLoader> _iModuleLoaderToken;
+        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly IModuleManager _mm = mm ?? throw new ArgumentNullException(nameof(mm));
+        private InterfaceRegistrationToken<IModuleLoader>? _iModuleLoaderToken;
 
         #region IModule Members
 
-        public bool Load(ComponentBroker broker, IModuleManager mm)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _mm = mm ?? throw new ArgumentNullException(nameof(mm));
-
             _iModuleLoaderToken = _broker.RegisterInterface<IModuleLoader>(this);
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iModuleLoaderToken) != 0)
                 return false;

@@ -3,6 +3,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Linq;
@@ -200,15 +201,15 @@ namespace SS.Core.Map
             get { return _regionMemberSetLookup.Count; }
         }
 
-        public MapRegion FindRegionByName(string name)
+        public MapRegion? FindRegionByName(string name)
         {
-            _regionLookup.TryGetValue(name, out MapRegion region);
+            _regionLookup.TryGetValue(name, out MapRegion? region);
             return region;
         }
 
         public ImmutableHashSet<MapRegion> RegionsAtCoord(short x, short y)
         {
-            if (!_regionSetCoordinateLookup.TryGetValue(x, y, out ImmutableHashSet<MapRegion> regionSet))
+            if (!_regionSetCoordinateLookup.TryGetValue(x, y, out ImmutableHashSet<MapRegion>? regionSet))
                 return ImmutableHashSet<MapRegion>.Empty;
 
             return regionSet;
@@ -226,9 +227,9 @@ namespace SS.Core.Map
 
             foreach (MapCoordinate coords in region.Coords)
             {
-                ImmutableHashSet<MapRegion> newRegionSet = null;
+                ImmutableHashSet<MapRegion>? newRegionSet = null;
 
-                if (_regionSetCoordinateLookup.TryGetValue(coords, out ImmutableHashSet<MapRegion> oldRegionSet))
+                if (_regionSetCoordinateLookup.TryGetValue(coords, out ImmutableHashSet<MapRegion>? oldRegionSet))
                 {
                     // there is already a set at this coordinate
 
@@ -283,7 +284,7 @@ namespace SS.Core.Map
 
                 _regionSetCoordinateLookup[coords] = newRegionSet;
 
-                if (!_regionMemberSetLookup.TryGetValue(region, out HashSet<ImmutableHashSet<MapRegion>> memberOfSet))
+                if (!_regionMemberSetLookup.TryGetValue(region, out HashSet<ImmutableHashSet<MapRegion>>? memberOfSet))
                 {
                     memberOfSet = new HashSet<ImmutableHashSet<MapRegion>>();
                     _regionMemberSetLookup.Add(region, memberOfSet);
@@ -426,7 +427,7 @@ namespace SS.Core.Map
             }
         }
 
-        public bool TryGetAttribute(string key, out string value)
+        public bool TryGetAttribute(string key, [MaybeNullWhen(false)] out string value)
         {
             return _attributeLookup.TryGetValue(key, out value);
         }
@@ -439,7 +440,7 @@ namespace SS.Core.Map
         /// <returns>Enumeration containing chunk payloads (header not included).</returns>
         public IEnumerable<ReadOnlyMemory<byte>> ChunkData(uint chunkType)
         {
-            if (_chunks.TryGetValues(chunkType, out IEnumerable<ReadOnlyMemory<byte>> matches))
+            if (_chunks.TryGetValues(chunkType, out IEnumerable<ReadOnlyMemory<byte>>? matches))
                 return matches;
             else
                 return Enumerable.Empty<ReadOnlyMemory<byte>>();

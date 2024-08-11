@@ -6,6 +6,7 @@ using SS.Packets.Game;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace SS.Core.Modules.FlagGame
@@ -20,27 +21,24 @@ namespace SS.Core.Modules.FlagGame
         public const int MaxFlags = 256; // continuum supports 303
 
         // required dependencies
-        private IArenaManager _arenaManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMapData _mapData;
-        private IMainloopTimer _mainloopTimer;
-        private INetwork _network;
-        private IPrng _prng;
+        private readonly IArenaManager _arenaManager;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IMainloopTimer _mainloopTimer;
+        private readonly IMapData _mapData;
+        private readonly INetwork _network;
+        private readonly IPrng _prng;
 
         // optional dependencies
-        private IChatNetwork _chatNetwork;
+        private IChatNetwork? _chatNetwork;
 
         private readonly DefaultObjectPool<FlagInfo> _flagInfoPool = new(new DefaultPooledObjectPolicy<FlagInfo>(), Constants.TargetArenaCount * MaxFlags);
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        private DefaultCarryFlagBehavior _defaultCarryFlagBehavior;
+        private readonly DefaultCarryFlagBehavior _defaultCarryFlagBehavior;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public CarryFlags(
             IArenaManager arenaManager,
             IConfigManager configManager,
             ILogManager logManager,
@@ -57,9 +55,14 @@ namespace SS.Core.Modules.FlagGame
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
-            _chatNetwork = broker.GetInterface<IChatNetwork>();
-
             _defaultCarryFlagBehavior = new(this, _logManager, _mapData, _prng);
+        }
+
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
+            _chatNetwork = broker.GetInterface<IChatNetwork>();
 
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
@@ -74,7 +77,7 @@ namespace SS.Core.Modules.FlagGame
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
@@ -108,7 +111,7 @@ namespace SS.Core.Modules.FlagGame
             if (arena == null)
                 return 0;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return 0;
 
             if (ad.GameState != GameState.Running)
@@ -122,7 +125,7 @@ namespace SS.Core.Modules.FlagGame
             if (arena == null)
                 return 0;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return 0;
 
             if (ad.GameState != GameState.Running)
@@ -138,9 +141,9 @@ namespace SS.Core.Modules.FlagGame
             return count;
         }
 
-        ICarryFlagSettings ICarryFlagGame.GetSettings(Arena arena)
+        ICarryFlagSettings? ICarryFlagGame.GetSettings(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return null;
 
             return ad.Settings;
@@ -148,13 +151,13 @@ namespace SS.Core.Modules.FlagGame
 
         bool ICarryFlagGame.StartGame(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.GameState == GameState.Stopped)
             {
                 ad.GameState = GameState.Starting;
-                ad.StartTimestamp = DateTime.UtcNow + ad.Settings.ResetDelay;
+                ad.StartTimestamp = DateTime.UtcNow + ad.Settings!.ResetDelay;
 
                 // The flag spawn timer will place the flags.
 
@@ -174,11 +177,11 @@ namespace SS.Core.Modules.FlagGame
             if (player == null)
                 return 0;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return 0;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return 0;
 
             if (ad.GameState != GameState.Running)
@@ -197,7 +200,7 @@ namespace SS.Core.Modules.FlagGame
         short ICarryFlagGame.TransferFlagsForPlayerKill(Arena arena, Player killed, Player killer)
         {
             if (arena == null
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
                 || ad.GameState != GameState.Running
                 || ad.CarryFlagBehavior == null)
             {
@@ -236,7 +239,7 @@ namespace SS.Core.Modules.FlagGame
         bool ICarryFlagGame.TryAddFlag(Arena arena, out short flagId)
         {
             if (arena == null
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
                 || ad.GameState != GameState.Running
                 || ad.Flags.Count == MaxFlags)
             {
@@ -250,10 +253,10 @@ namespace SS.Core.Modules.FlagGame
             return true;
         }
 
-        bool ICarryFlagGame.TryGetFlagInfo(Arena arena, short flagId, out IFlagInfo flagInfo)
+        bool ICarryFlagGame.TryGetFlagInfo(Arena arena, short flagId, [MaybeNullWhen(false)] out IFlagInfo flagInfo)
         {
             if (arena == null
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
                 || ad.GameState != GameState.Running
                 || flagId >= ad.Flags.Count)
             {
@@ -268,7 +271,7 @@ namespace SS.Core.Modules.FlagGame
         bool ICarryFlagGame.TrySetFlagNeuted(Arena arena, short flagId, MapCoordinate? location, short freq)
         {
             if (arena == null
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
                 || ad.GameState != GameState.Running
                 || flagId >= ad.Flags.Count)
             {
@@ -345,7 +348,7 @@ namespace SS.Core.Modules.FlagGame
         bool ICarryFlagGame.TrySetFlagOnMap(Arena arena, short flagId, MapCoordinate location, short freq)
         {
             if (arena == null
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
                 || ad.GameState != GameState.Running
                 || flagId >= ad.Flags.Count)
             {
@@ -396,7 +399,7 @@ namespace SS.Core.Modules.FlagGame
         {
             if (arena == null
                 || carrier == null
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
                 || ad.GameState != GameState.Running
                 || flagId >= ad.Flags.Count)
             {
@@ -459,14 +462,14 @@ namespace SS.Core.Modules.FlagGame
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, "C2S_TouchFlag packet but not in an arena.");
                 return;
             }
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.GameState != GameState.Running)
@@ -513,7 +516,7 @@ namespace SS.Core.Modules.FlagGame
                 return;
             }
 
-            ad.CarryFlagBehavior.TouchFlag(arena, player, flagId);
+            ad.CarryFlagBehavior?.TouchFlag(arena, player, flagId);
         }
 
         private void Packet_DropFlags(Player player, Span<byte> data, NetReceiveFlags flags)
@@ -527,7 +530,7 @@ namespace SS.Core.Modules.FlagGame
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null || player.Status != PlayerState.Playing)
             {
                 _logManager.LogP(LogLevel.Info, nameof(CarryFlags), player, "Flag drop from bad state/arena.");
@@ -540,7 +543,7 @@ namespace SS.Core.Modules.FlagGame
                 return;
             }
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (player.Packet.FlagsCarried == 0)
@@ -561,49 +564,50 @@ namespace SS.Core.Modules.FlagGame
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                Settings config = new(_configManager, arena.Cfg);
-
-                ConfigCarryFlags carryFlags = _configManager.GetEnum(arena.Cfg, "Flag", "CarryFlags", (ConfigCarryFlags)(-1));
-                if (carryFlags >= ConfigCarryFlags.Yes && config.MinFlags > 0)
+                ConfigCarryFlags carryFlags = _configManager.GetEnum(arena.Cfg!, "Flag", "CarryFlags", (ConfigCarryFlags)(-1));
+                if (carryFlags >= ConfigCarryFlags.Yes)
                 {
+                    Settings config = new(_configManager, arena.Cfg!);
                     ad.Settings = config;
 
-                    ClearCarryFlagBehavior(arena, ad);
-                    ad.CarryFlagBehavior = arena.GetInterface<ICarryFlagBehavior>() ?? _defaultCarryFlagBehavior;
-
-                    ResetGame(arena, -1, 0, true);
-
-                    _mainloopTimer.ClearTimer<Arena>(MainloopTimer_SpawnFlagTimer, arena);
-                    _mainloopTimer.SetTimer(MainloopTimer_SpawnFlagTimer, 5000, 5000, arena, arena);
-
-                    if (ad.FlagGameRegistrationToken == null)
-                        ad.FlagGameRegistrationToken = arena.RegisterInterface<IFlagGame>(this);
-
-                    if (ad.CarryFlagGameRegistrationToken == null)
-                        ad.CarryFlagGameRegistrationToken = arena.RegisterInterface<ICarryFlagGame>(this);
-                }
-                else
-                {
-                    if (ad.GameState != GameState.Stopped)
+                    if (config.MinFlags > 0)
                     {
-                        ResetGame(arena, -1, 0, false);
+                        ResetGame(arena, -1, 0, true);
+
+                        ClearCarryFlagBehavior(arena, ad);
+                        ad.CarryFlagBehavior = arena.GetInterface<ICarryFlagBehavior>() ?? _defaultCarryFlagBehavior;
+
+                        _mainloopTimer.ClearTimer<Arena>(MainloopTimer_SpawnFlagTimer, arena);
+                        _mainloopTimer.SetTimer(MainloopTimer_SpawnFlagTimer, 5000, 5000, arena, arena);
+
+                        ad.FlagGameRegistrationToken ??= arena.RegisterInterface<IFlagGame>(this);
+                        ad.CarryFlagGameRegistrationToken ??= arena.RegisterInterface<ICarryFlagGame>(this);
+
+                        return;
                     }
-
-                    _mainloopTimer.ClearTimer<Arena>(MainloopTimer_SpawnFlagTimer, arena);
-
-                    ClearCarryFlagBehavior(arena, ad);
-
-                    if (ad.FlagGameRegistrationToken != null)
-                        arena.UnregisterInterface(ref ad.FlagGameRegistrationToken);
-
-                    if (ad.CarryFlagGameRegistrationToken != null)
-                        arena.UnregisterInterface(ref ad.CarryFlagGameRegistrationToken);
                 }
+
+                ad.Settings = null;
+
+                if (ad.GameState != GameState.Stopped)
+                {
+                    ResetGame(arena, -1, 0, false);
+                }
+
+                _mainloopTimer.ClearTimer<Arena>(MainloopTimer_SpawnFlagTimer, arena);
+
+                ClearCarryFlagBehavior(arena, ad);
+
+                if (ad.FlagGameRegistrationToken != null)
+                    arena.UnregisterInterface(ref ad.FlagGameRegistrationToken);
+
+                if (ad.CarryFlagGameRegistrationToken != null)
+                    arena.UnregisterInterface(ref ad.CarryFlagGameRegistrationToken);
             }
             else if (action == ArenaAction.Destroy)
             {
@@ -634,11 +638,11 @@ namespace SS.Core.Modules.FlagGame
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.EnterArena)
             {
-                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                if (!arena!.TryGetExtraData(_adKey, out ArenaData? ad))
                     return;
 
                 if (ad.GameState == GameState.Running)
@@ -649,7 +653,7 @@ namespace SS.Core.Modules.FlagGame
                         if (flagInfo.State == FlagState.OnMap)
                         {
                             S2C_FlagLocation locationPacket = new(
-                                flagId, flagInfo.Location.Value.X, flagInfo.Location.Value.Y, flagInfo.Freq);
+                                flagId, flagInfo.Location!.Value.X, flagInfo.Location.Value.Y, flagInfo.Freq);
 
                             _network.SendToOne(player, ref locationPacket, NetSendFlags.Reliable);
                         }
@@ -659,7 +663,7 @@ namespace SS.Core.Modules.FlagGame
             else if (action == PlayerAction.LeaveArena)
             {
                 // Cleanup any flags the player was carrying.
-                AdjustCarriedFlags(arena, player, AdjustFlagReason.LeftArena);
+                AdjustCarriedFlags(arena!, player, AdjustFlagReason.LeftArena);
             }
         }
 
@@ -688,18 +692,18 @@ namespace SS.Core.Modules.FlagGame
 
         private bool MainloopTimer_SpawnFlagTimer(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.GameState == GameState.Starting
                 && DateTime.UtcNow >= ad.StartTimestamp)
             {
                 ad.GameState = GameState.Running;
-                ad.CarryFlagBehavior.StartGame(arena);
+                ad.CarryFlagBehavior!.StartGame(arena);
             }
             else if (ad.GameState == GameState.Running)
             {
-                ad.CarryFlagBehavior.SpawnFlags(arena);
+                ad.CarryFlagBehavior!.SpawnFlags(arena);
             }
 
             return true;
@@ -707,7 +711,7 @@ namespace SS.Core.Modules.FlagGame
 
         private bool ResetGame(Arena arena, short winnerFreq, int points, bool allowAutoStart)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.GameState == GameState.Running)
@@ -752,7 +756,7 @@ namespace SS.Core.Modules.FlagGame
 
             bool started = false;
 
-            if (allowAutoStart && ad.Settings.AutoStart)
+            if (allowAutoStart && ad.Settings is not null && ad.Settings.AutoStart)
             {
                 started = ((ICarryFlagGame)this).StartGame(arena);
             }
@@ -766,12 +770,12 @@ namespace SS.Core.Modules.FlagGame
             return started;
         }
 
-        private void AdjustCarriedFlags(Arena arena, Player player, AdjustFlagReason reason)
+        private void AdjustCarriedFlags(Arena? arena, Player player, AdjustFlagReason reason)
         {
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             Span<short> flagIds = stackalloc short[ad.Flags.Count];
@@ -794,7 +798,7 @@ namespace SS.Core.Modules.FlagGame
 
             if (i > 0)
             {
-                ad.CarryFlagBehavior.AdjustFlags(arena, flagIds[..i], reason, player, ad.Flags[flagIds[0]].Freq);
+                ad.CarryFlagBehavior?.AdjustFlags(arena, flagIds[..i], reason, player, ad.Flags[flagIds[0]].Freq);
             }
         }
 
@@ -937,7 +941,7 @@ namespace SS.Core.Modules.FlagGame
         private class FlagInfo : IFlagInfo, IResettable
         {
             public FlagState State { get; set; } = FlagState.None;
-            public Player Carrier { get; set; } = null;
+            public Player? Carrier { get; set; } = null;
             public MapCoordinate? Location { get; set; } = null;
             public short Freq { get; set; } = -1;
 
@@ -953,11 +957,11 @@ namespace SS.Core.Modules.FlagGame
 
         private class ArenaData : IResettable
         {
-            public InterfaceRegistrationToken<IFlagGame> FlagGameRegistrationToken;
-            public InterfaceRegistrationToken<ICarryFlagGame> CarryFlagGameRegistrationToken;
+            public InterfaceRegistrationToken<IFlagGame>? FlagGameRegistrationToken;
+            public InterfaceRegistrationToken<ICarryFlagGame>? CarryFlagGameRegistrationToken;
 
-            public Settings Settings;
-            public ICarryFlagBehavior CarryFlagBehavior;
+            public Settings? Settings;
+            public ICarryFlagBehavior? CarryFlagBehavior;
 
             public readonly List<FlagInfo> Flags = new(MaxFlags);
             public GameState GameState = GameState.Stopped;

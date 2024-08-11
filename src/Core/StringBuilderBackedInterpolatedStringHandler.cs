@@ -33,8 +33,9 @@ namespace SS.Core
     public struct StringBuilderBackedInterpolatedStringHandler
     {
         private readonly IStringBuilderPoolProvider _stringBuilderPoolProvider;
-        private StringBuilder _stringBuilder;
+        private readonly StringBuilder _stringBuilder;
         private StringBuilder.AppendInterpolatedStringHandler _wrappedHandler;
+        private bool _isCleared = false;
 
         public StringBuilderBackedInterpolatedStringHandler(int literalLength, int formatCount, object stringBuilderPoolProvider)
             : this(literalLength, formatCount, (stringBuilderPoolProvider ?? throw new ArgumentNullException(nameof(stringBuilderPoolProvider))) as IStringBuilderPoolProvider, null)
@@ -46,7 +47,7 @@ namespace SS.Core
         {
         }
 
-        internal StringBuilderBackedInterpolatedStringHandler(int literalLength, int formatCount, IStringBuilderPoolProvider stringBuilderPoolProvider, IFormatProvider provider)
+        internal StringBuilderBackedInterpolatedStringHandler(int literalLength, int formatCount, IStringBuilderPoolProvider? stringBuilderPoolProvider, IFormatProvider? provider)
         {
             _stringBuilderPoolProvider = stringBuilderPoolProvider ?? throw new ArgumentNullException(nameof(stringBuilderPoolProvider));
             _stringBuilder = _stringBuilderPoolProvider.StringBuilderPool.Get();
@@ -64,11 +65,11 @@ namespace SS.Core
 
         public void AppendFormatted<T>(T value) => _wrappedHandler.AppendFormatted<T>(value);
 
-        public void AppendFormatted<T>(T value, string format) => _wrappedHandler.AppendFormatted<T>(value, format);
+        public void AppendFormatted<T>(T value, string? format) => _wrappedHandler.AppendFormatted<T>(value, format);
 
         public void AppendFormatted<T>(T value, int alignment) => _wrappedHandler.AppendFormatted<T>(value, alignment);
 
-        public void AppendFormatted<T>(T value, int alignment, string format) => _wrappedHandler.AppendFormatted<T>(value, alignment, format);
+        public void AppendFormatted<T>(T value, int alignment, string? format) => _wrappedHandler.AppendFormatted<T>(value, alignment, format);
 
         #endregion
 
@@ -76,21 +77,21 @@ namespace SS.Core
 
         public void AppendFormatted(ReadOnlySpan<char> value) => _wrappedHandler.AppendFormatted(value);
 
-        public void AppendFormatted(ReadOnlySpan<char> value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
+        public void AppendFormatted(ReadOnlySpan<char> value, int alignment = 0, string? format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
 
         #endregion
 
         #region AppendFormatted string
 
-        public void AppendFormatted(string value) => _wrappedHandler.AppendFormatted(value);
+        public void AppendFormatted(string? value) => _wrappedHandler.AppendFormatted(value);
 
-        public void AppendFormatted(string value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
+        public void AppendFormatted(string? value, int alignment = 0, string? format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
 
         #endregion
 
         #region AppendFormatted object
 
-        public void AppendFormatted(object value, int alignment = 0, string format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
+        public void AppendFormatted(object? value, int alignment = 0, string? format = null) => _wrappedHandler.AppendFormatted(value, alignment, format);
 
         #endregion
 
@@ -99,19 +100,28 @@ namespace SS.Core
         /// <summary>
         /// Gets the <see cref="System.Text.StringBuilder"/>.
         /// </summary>
-        public StringBuilder StringBuilder => _stringBuilder;
+        public StringBuilder StringBuilder
+        {
+            get
+            {
+                if (_isCleared)
+                    throw new InvalidOperationException();
+
+                return _stringBuilder;
+            }
+        }
 
         /// <summary>
         /// Returns the <see cref="StringBuilder"/> to the pool.
         /// </summary>
         public void Clear()
         {
-            if (_stringBuilder is not null)
-            {
-                _stringBuilderPoolProvider.StringBuilderPool.Return(_stringBuilder);
-                _stringBuilder = null;
-                _wrappedHandler = default;
-            }
+            if (_isCleared)
+                throw new InvalidOperationException();
+
+            _stringBuilderPoolProvider.StringBuilderPool.Return(_stringBuilder);
+            _wrappedHandler = default;
+            _isCleared = true;
         }
 
         /// <summary>
@@ -124,13 +134,13 @@ namespace SS.Core
             if (destination is null)
                 throw new ArgumentNullException(nameof(destination));
 
-            if (_stringBuilder is not null)
-            {
-                destination.Append(_stringBuilder);
-                _stringBuilderPoolProvider.StringBuilderPool.Return(_stringBuilder);
-                _stringBuilder = null;
-                _wrappedHandler = default;
-            }
+            if (_isCleared)
+                throw new InvalidOperationException();
+
+            destination.Append(_stringBuilder);
+            _stringBuilderPoolProvider.StringBuilderPool.Return(_stringBuilder);
+            _wrappedHandler = default;
+            _isCleared = true;
         }
     }
 }

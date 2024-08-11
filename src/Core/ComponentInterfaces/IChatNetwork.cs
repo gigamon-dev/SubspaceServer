@@ -89,7 +89,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send the message to.</param>
         /// <param name="except">The player to exclude from the send. <see langword="null"/> for no exclusion.</param>
         /// <param name="message">The message to send.</param>
-        void SendToArena(Arena arena, Player except, ReadOnlySpan<char> message);
+        void SendToArena(Arena arena, Player? except, ReadOnlySpan<char> message);
 
         /// <summary>
         /// Sends a message to players in a specific arena, with the ability to exclude a specified player from the send.
@@ -97,7 +97,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send the message to.</param>
         /// <param name="except">The player to exclude from the send. <see langword="null"/> for no exclusion.</param>
         /// <param name="message">The message to send.</param>
-        void SendToArena(Arena arena, Player except, StringBuilder message);
+        void SendToArena(Arena arena, Player? except, StringBuilder message);
 
         /// <summary>
         /// Sends a message to players in a specific arena, with the ability to exclude a specified player from the send.
@@ -105,7 +105,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send the message to.</param>
         /// <param name="except">The player to exclude from the send. <see langword="null"/> for no exclusion.</param>
         /// <param name="handler">The message to send.</param>
-        void SendToArena(Arena arena, Player except, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
+        void SendToArena(Arena arena, Player? except, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a message to players in a specific arena, with the ability to exclude a specified player from the send.
@@ -113,7 +113,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send the message to.</param>
         /// <param name="except">The player to exclude from the send. <see langword="null"/> for no exclusion.</param>
         /// <param name="handler">The message to send.</param>
-        void SendToArena(Arena arena, Player except, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
+        void SendToArena(Arena arena, Player? except, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         #endregion
 

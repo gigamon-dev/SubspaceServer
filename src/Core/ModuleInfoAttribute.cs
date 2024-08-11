@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SS.Core
 {
@@ -20,7 +21,7 @@ namespace SS.Core
         /// </summary>
         public string Description { get; }
 
-        public static bool TryGetAttribute(Type type, out ModuleInfoAttribute attribute)
+        public static bool TryGetAttribute(Type type, [MaybeNullWhen(false)] out ModuleInfoAttribute attribute)
         {
             if (type == null)
             {
@@ -28,7 +29,7 @@ namespace SS.Core
                 return false;
             }
 
-            attribute = Attribute.GetCustomAttribute(type, typeof(ModuleInfoAttribute)) as ModuleInfoAttribute;
+            attribute = GetCustomAttribute(type, typeof(ModuleInfoAttribute)) as ModuleInfoAttribute;
             return attribute != null;
         }
     }

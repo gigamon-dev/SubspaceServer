@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using SS.Core.ComponentInterfaces;
+using System.Reflection;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -13,17 +14,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="assembly">The plug-in assembly that was loaded.</param>
         public delegate void PluginAssemblyLoadedDelegate(Assembly assembly);
 
-        public static void Register(ComponentBroker broker, PluginAssemblyLoadedDelegate handler)
+        public static void Register(IComponentBroker broker, PluginAssemblyLoadedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, PluginAssemblyLoadedDelegate handler)
+        public static void Unregister(IComponentBroker broker, PluginAssemblyLoadedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Assembly assembly)
+        public static void Fire(IComponentBroker broker, Assembly assembly)
         {
             broker?.GetCallback<PluginAssemblyLoadedDelegate>()?.Invoke(assembly);
 

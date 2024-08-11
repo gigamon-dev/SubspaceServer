@@ -14,21 +14,18 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class WatchDamage : IModule, IWatchDamage
     {
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private ILogManager _logManager;
-        private INetwork _network;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
+        private readonly IChat _chat;
+        private readonly ICommandManager _commandManager;
+        private readonly ILogManager _logManager;
+        private readonly INetwork _network;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
 
-        private InterfaceRegistrationToken<IWatchDamage> _iWatchDamageRegistrationToken;
+        private InterfaceRegistrationToken<IWatchDamage>? _iWatchDamageRegistrationToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public WatchDamage(
             IChat chat,
             ICommandManager commandManager,
             ILogManager logManager,
@@ -42,7 +39,12 @@ namespace SS.Core.Modules
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             _network.AddPacket(C2SPacketType.Damage, Packet_Damage);
@@ -53,7 +55,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             broker.UnregisterInterface(ref _iWatchDamageRegistrationToken);
 
@@ -74,7 +76,7 @@ namespace SS.Core.Modules
             if (player == null || target == null)
                 return false;
 
-            if (!target.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
+            if (!target.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData))
                 return false;
 
             bool added = targetPlayerData.PlayersWatching.Add(player);
@@ -92,7 +94,7 @@ namespace SS.Core.Modules
             if (player == null || target == null)
                 return false;
 
-            if (!target.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
+            if (!target.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData))
                 return false;
 
             bool removed = targetPlayerData.PlayersWatching.Remove(player);
@@ -126,7 +128,7 @@ namespace SS.Core.Modules
 
             if (includeWatchesOnPlayer)
             {
-                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                     return;
 
                 HashSet<Player> toRemove = _objectPoolManager.PlayerSetPool.Get();
@@ -149,7 +151,7 @@ namespace SS.Core.Modules
 
         void IWatchDamage.AddCallbackWatch(Player player)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             if (playerData.WatchCount == 0)
@@ -160,7 +162,7 @@ namespace SS.Core.Modules
 
         void IWatchDamage.RemoveCallbackWatch(Player player)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             playerData.CallbackWatchCount--;
@@ -171,7 +173,7 @@ namespace SS.Core.Modules
 
         bool IWatchDamage.TryGetWatchCount(Player player, out int playersWatching, out int callbackWatchCount)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
             {
                 playersWatching = default;
                 callbackWatchCount = default;
@@ -185,7 +187,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.LeaveArena)
             {
@@ -198,11 +200,11 @@ namespace SS.Core.Modules
             if (player.Status != PlayerState.Playing)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             if (data.Length < C2S_WatchDamageHeader.Length + DamageData.Length)
@@ -251,7 +253,7 @@ namespace SS.Core.Modules
                     _chat.SendMessage(player, "All damage watching turned off.");
                 }
             }
-            else if (target.TryGetPlayerTarget(out Player targetPlayer))
+            else if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 if (targetPlayer.Type != ClientType.Continuum)
                 {

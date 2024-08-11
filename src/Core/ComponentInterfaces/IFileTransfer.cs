@@ -12,7 +12,7 @@ namespace SS.Core.ComponentInterfaces
     /// On failure, <see langword="null"/>.
     /// </param>
     /// <param name="arg">The state object.</param>
-    public delegate void FileUploadedDelegate<T>(string filename, T arg);
+    public delegate void FileUploadedDelegate<T>(string? filename, T arg);
 
     /// <summary>
     /// Interface for a service that provides functionality to transfer files between players and the server (to and from).
@@ -63,7 +63,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="player">The player to get the working directory for.</param>
         /// <returns>The working directory.</returns>
-        string GetWorkingDirectory(Player player);
+        string? GetWorkingDirectory(Player player);
 
         /// <summary>
         /// Sets the current working directory on the server for a player.

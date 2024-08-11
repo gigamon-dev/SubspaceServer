@@ -16,17 +16,14 @@ namespace SS.Core.Modules.Scoring
     [CoreModuleInfo]
     public class FlagGamePoints : IModule, IArenaAttachableModule
     {
-        private IArenaManager _arenaManager;
-        private IChat _chat;
-        private IConfigManager _configManager;
-        private IPlayerData _playerData;
+        private readonly IArenaManager _arenaManager;
+        private readonly IChat _chat;
+        private readonly IConfigManager _configManager;
+        private readonly IPlayerData _playerData;
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public FlagGamePoints(
             IArenaManager arenaManager,
             IChat chat,
             IConfigManager configManager,
@@ -36,13 +33,18 @@ namespace SS.Core.Modules.Scoring
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _arenaManager.FreeArenaData(ref _adKey);
 
@@ -64,13 +66,14 @@ namespace SS.Core.Modules.Scoring
             Description = "Whether to play victory music or not.")]
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
-            ad.FlagMode = _configManager.GetEnum(arena.Cfg, "Flag", "FlagMode", FlagMode.None);
-            ad.FlagRewardRatio = _configManager.GetInt(arena.Cfg, "Flag", "FlagReward", 5000) / 1000.0;
-            ad.SplitPoints = _configManager.GetInt(arena.Cfg, "Flag", "SplitPoints", 0) != 0;
-            ad.IsVictoryMusicEnabled = _configManager.GetInt(arena.Cfg, "Misc", "VictoryMusic", 1) != 0;
+            ConfigHandle ch = arena.Cfg!;
+            ad.FlagMode = _configManager.GetEnum(ch, "Flag", "FlagMode", FlagMode.None);
+            ad.FlagRewardRatio = _configManager.GetInt(ch, "Flag", "FlagReward", 5000) / 1000.0;
+            ad.SplitPoints = _configManager.GetInt(ch, "Flag", "SplitPoints", 0) != 0;
+            ad.IsVictoryMusicEnabled = _configManager.GetInt(ch, "Misc", "VictoryMusic", 1) != 0;
 
             FlagGainCallback.Register(arena, Callback_FlagGain);
             FlagLostCallback.Register(arena, Callback_FlagLost);
@@ -81,7 +84,7 @@ namespace SS.Core.Modules.Scoring
 
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             FlagGainCallback.Unregister(arena, Callback_FlagGain);
@@ -95,10 +98,10 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_FlagGain(Arena arena, Player player, short flagId, FlagPickupReason reason)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
-            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            ICarryFlagGame? carryFlagGame = arena.GetInterface<ICarryFlagGame>();
             if (carryFlagGame == null)
                 return;
 
@@ -110,7 +113,7 @@ namespace SS.Core.Modules.Scoring
                     bool isWin = true;
                     for (short i = 0; i < flagCount; i++)
                     {
-                        if (!carryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo flagInfo)
+                        if (!carryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo? flagInfo)
                             || flagInfo.State != FlagState.Carried
                             || flagInfo.Freq != player.Freq)
                         {
@@ -143,7 +146,7 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_FlagLost(Arena arena, Player player, short flagId, FlagLostReason reason)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.IsMusicPlaying)
@@ -155,7 +158,7 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_FlagOnMap(Arena arena, short flagId, MapCoordinate mapCoordinate, short freq)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.FlagMode != FlagMode.OwnAllDropped)
@@ -164,7 +167,7 @@ namespace SS.Core.Modules.Scoring
             if (freq == -1)
                 return; // unowned
 
-            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            ICarryFlagGame? carryFlagGame = arena.GetInterface<ICarryFlagGame>();
             if (carryFlagGame == null)
                 return;
 
@@ -177,7 +180,7 @@ namespace SS.Core.Modules.Scoring
                 flagCount = carryFlagGame.GetFlagCount(arena);
                 for (short i = 0; i < flagCount; i++)
                 {
-                    if (!carryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo flagInfo)
+                    if (!carryFlagGame.TryGetFlagInfo(arena, i, out IFlagInfo? flagInfo)
                         || flagInfo.State != FlagState.OnMap
                         || flagInfo.Freq != freq)
                     {
@@ -230,7 +233,7 @@ namespace SS.Core.Modules.Scoring
             int points = (int)(playerCount * playerCount * ad.FlagRewardRatio);
 
             // jackpot
-            IJackpot jackpot = arena.GetInterface<IJackpot>();
+            IJackpot? jackpot = arena.GetInterface<IJackpot>();
             if (jackpot != null)
             {
                 try
@@ -250,7 +253,7 @@ namespace SS.Core.Modules.Scoring
             }
 
             // Reset the game with a win.
-            ICarryFlagGame carryFlagGame = arena.GetInterface<ICarryFlagGame>();
+            ICarryFlagGame? carryFlagGame = arena.GetInterface<ICarryFlagGame>();
             if (carryFlagGame != null)
             {
                 try
@@ -264,7 +267,7 @@ namespace SS.Core.Modules.Scoring
             }
 
             // End the 'game' interval for the arena.
-            IPersistExecutor persistExecutor = arena.GetInterface<IPersistExecutor>();
+            IPersistExecutor? persistExecutor = arena.GetInterface<IPersistExecutor>();
             if (persistExecutor != null)
             {
                 try

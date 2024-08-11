@@ -26,34 +26,27 @@ namespace SS.Core.Modules
         /// </summary>
         private const int MaxMessageSize = 2035;
 
-        private ComponentBroker _broker;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMainloop _mainloop;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private InterfaceRegistrationToken<IChatNetwork> _iChatNetworkToken;
+        private readonly IComponentBroker _broker;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IMainloop _mainloop;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
+        private InterfaceRegistrationToken<IChatNetwork>? _iChatNetworkToken;
 
         private TimeSpan _messageDelay;
         private readonly TimeSpan _keepAliveTimeSpan = TimeSpan.FromMinutes(3);
         private PlayerDataKey<ClientData> _clientDataKey;
-        private Socket _listenSocket;
-        private CancellationTokenSource _cancellationTokenSource;
-        private Thread _chatThread;
+        private Socket? _listenSocket;
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly CancellationToken _cancellationToken;
+        private Thread? _chatThread;
         private readonly Trie<ChatMessageHandler> _handlerTrie = new(false);
 
         private static readonly DefaultObjectPool<LinkedListNode<OutBuffer>> s_outBufferLinkedListNodePool = new(new LinkedListNodePooledObjectPolicy<OutBuffer>(), Constants.TargetPlayerCount * 64);
 
-        #region Module members
-
-        [ConfigHelp("Net", "ChatMessageDelay", ConfigScope.Global, typeof(int), DefaultValue = "20",
-            Description = """
-                The delay between sending messages to clients using the
-                text-based chat protocol. (To limit bandwidth used by
-                non-playing cilents.)
-                """)]
-        public bool Load(
-            ComponentBroker broker,
+        public ChatNetwork(
+            IComponentBroker broker,
             IConfigManager configManager,
             ILogManager logManager,
             IMainloop mainloop,
@@ -67,6 +60,19 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
+            _cancellationToken = _cancellationTokenSource.Token;
+        }
+
+        #region Module members
+
+        [ConfigHelp("Net", "ChatMessageDelay", ConfigScope.Global, typeof(int), DefaultValue = "20",
+            Description = """
+                The delay between sending messages to clients using the
+                text-based chat protocol. (To limit bandwidth used by
+                non-playing cilents.)
+                """)]
+        bool IModule.Load(IComponentBroker broker)
+        {
             _messageDelay = TimeSpan.FromMilliseconds(_configManager.GetInt(_configManager.Global, "Net", "ChatMessageDelay", 20) * 10);
 
             _clientDataKey = _playerData.AllocatePlayerData<ClientData>();
@@ -78,10 +84,9 @@ namespace SS.Core.Modules
             }
 
             // Start the worker thread. It will be the only thread to use the listening socket, until it ends.
-            _cancellationTokenSource = new();
             _chatThread = new(ChatThread);
             _chatThread.Name = nameof(ChatNetwork);
-            _chatThread.Start(_cancellationTokenSource.Token);
+            _chatThread.Start();
 
             _iChatNetworkToken = broker.RegisterInterface<IChatNetwork>(this);
 
@@ -100,12 +105,12 @@ namespace SS.Core.Modules
                     """)]
             bool Initialize()
             {
-                string endpointStr = _configManager.GetStr(_configManager.Global, "Net", "ChatListen");
-                IPEndPoint endPoint;
+                string? endpointStr = _configManager.GetStr(_configManager.Global, "Net", "ChatListen");
+                IPEndPoint? endPoint;
                 if (string.IsNullOrWhiteSpace(endpointStr))
                 {
                     // Not configured, try to use the Net:Listen
-                    INetwork network = _broker.GetInterface<INetwork>();
+                    INetwork? network = _broker.GetInterface<INetwork>();
                     if (network is null)
                         return false;
 
@@ -206,7 +211,7 @@ namespace SS.Core.Modules
             }
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             broker.UnregisterInterface(ref _iChatNetworkToken);
             Cleanup();
@@ -226,7 +231,7 @@ namespace SS.Core.Modules
             if (handler is null)
                 throw new ArgumentNullException(nameof(handler));
 
-            if (_handlerTrie.Remove(type, out ChatMessageHandler handlers))
+            if (_handlerTrie.Remove(type, out ChatMessageHandler? handlers))
             {
                 handlers += handler;
                 _handlerTrie.Add(type, handlers);
@@ -245,7 +250,7 @@ namespace SS.Core.Modules
             if (handler is null)
                 throw new ArgumentNullException(nameof(handler));
 
-            if (_handlerTrie.Remove(type, out ChatMessageHandler handlers))
+            if (_handlerTrie.Remove(type, out ChatMessageHandler? handlers))
             {
                 handlers -= handler;
 
@@ -260,7 +265,7 @@ namespace SS.Core.Modules
         {
             if (player is null
                 || !player.IsChat
-                || !player.TryGetExtraData(_clientDataKey, out ClientData clientData))
+                || !player.TryGetExtraData(_clientDataKey, out ClientData? clientData))
             {
                 return;
             }
@@ -306,7 +311,7 @@ namespace SS.Core.Modules
             ((IChatNetwork)this).SendToOne(player, ref handler);
         }
 
-        void IChatNetwork.SendToArena(Arena arena, Player except, ReadOnlySpan<char> message)
+        void IChatNetwork.SendToArena(Arena arena, Player? except, ReadOnlySpan<char> message)
         {
             _playerData.Lock();
 
@@ -329,14 +334,14 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChatNetwork.SendToArena(Arena arena, Player except, StringBuilder message)
+        void IChatNetwork.SendToArena(Arena arena, Player? except, StringBuilder message)
         {
             Span<char> text = stackalloc char[Math.Min(MaxMessageSize, message.Length)];
             message.CopyTo(0, text, text.Length);
             ((IChatNetwork)this).SendToArena(arena, except, text);
         }
 
-        void IChatNetwork.SendToArena(Arena arena, Player except, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler)
+        void IChatNetwork.SendToArena(Arena arena, Player? except, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             try
             {
@@ -348,7 +353,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IChatNetwork.SendToArena(Arena arena, Player except, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler)
+        void IChatNetwork.SendToArena(Arena arena, Player? except, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler)
         {
             ((IChatNetwork)this).SendToArena(arena, except, ref handler);
         }
@@ -392,7 +397,7 @@ namespace SS.Core.Modules
         {
             if (player is null
                 || !player.IsChat
-                || !player.TryGetExtraData(_clientDataKey, out ClientData clientData)
+                || !player.TryGetExtraData(_clientDataKey, out ClientData? clientData)
                 || clientData.Socket?.RemoteEndPoint is not IPEndPoint ipEndPoint
                 || !ipEndPoint.Address.TryFormat(ip, out ipBytesWritten))
             {
@@ -432,12 +437,9 @@ namespace SS.Core.Modules
         /// Thread that does all the socket operations.
         /// </summary>
         /// <param name="obj"></param>
-        private void ChatThread(object obj)
+        private void ChatThread()
         {
-            if (obj is not CancellationToken cancellationToken)
-                return;
-
-            WaitHandle waitHandle = cancellationToken.WaitHandle;
+            WaitHandle waitHandle = _cancellationToken.WaitHandle;
             List<Socket> readList = new();
             List<Socket> writeList = new();
             Dictionary<Socket, (Player Player, ClientData ClientData)> playerSocketDictionary = new();
@@ -450,7 +452,7 @@ namespace SS.Core.Modules
                 writeList.Clear();
 
                 // listening socket
-                readList.Add(_listenSocket);
+                readList.Add(_listenSocket!);
 
                 // client sockets
                 playerSocketDictionary.Clear();
@@ -462,7 +464,7 @@ namespace SS.Core.Modules
                     {
                         if (player.IsChat
                             && player.Status >= PlayerState.Connected
-                            && player.TryGetExtraData(_clientDataKey, out ClientData clientData)
+                            && player.TryGetExtraData(_clientDataKey, out ClientData? clientData)
                             && clientData.Socket is not null)
                         {
                             if (player.Status < PlayerState.TimeWait)
@@ -551,7 +553,7 @@ namespace SS.Core.Modules
                     {
                         if (player.IsChat
                             && player.Status < PlayerState.TimeWait
-                            && player.TryGetExtraData(_clientDataKey, out ClientData clientData)
+                            && player.TryGetExtraData(_clientDataKey, out ClientData? clientData)
                             && clientData.Socket is not null
                             && clientData.InIsDirty
                             && DateTime.UtcNow - clientData.LastProcessed > _messageDelay)
@@ -581,7 +583,7 @@ namespace SS.Core.Modules
                     {
                         if (player.IsChat
                             && player.Status < PlayerState.TimeWait
-                            && player.TryGetExtraData(_clientDataKey, out ClientData clientData)
+                            && player.TryGetExtraData(_clientDataKey, out ClientData? clientData)
                             && clientData.Socket is not null
                             && DateTime.UtcNow - clientData.LastProcessed > _keepAliveTimeSpan
                             && DateTime.UtcNow - clientData.LastSend > _keepAliveTimeSpan)
@@ -598,7 +600,7 @@ namespace SS.Core.Modules
 
 
             // Local function that accepts a connection from the listening socket.
-            Player DoAccept()
+            Player? DoAccept()
             {
                 Socket clientSocket;
 
@@ -632,7 +634,7 @@ namespace SS.Core.Modules
 
                 Player player = _playerData.NewPlayer(ClientType.Chat);
 
-                if (!player.TryGetExtraData(_clientDataKey, out ClientData clientData))
+                if (!player.TryGetExtraData(_clientDataKey, out ClientData? clientData))
                 {
                     clientSocket.Dispose();
                     _playerData.FreePlayer(player);
@@ -725,7 +727,7 @@ namespace SS.Core.Modules
                     return WriteResult.Error;
                 }
 
-                LinkedListNode<OutBuffer> node;
+                LinkedListNode<OutBuffer>? node;
                 lock (clientData.OutLock)
                 {
                     node = clientData.OutList.First;
@@ -797,7 +799,7 @@ namespace SS.Core.Modules
                 const byte CR = 0x0D;
                 const byte LF = 0x0A;
 
-                if (player is null || !player.TryGetExtraData(_clientDataKey, out ClientData clientData))
+                if (player is null || !player.TryGetExtraData(_clientDataKey, out ClientData? clientData) || clientData.InData is null)
                     return;
 
                 // Try to parse out a line.
@@ -888,7 +890,7 @@ namespace SS.Core.Modules
                             line = line[(typeIndex + 1)..];
                         }
 
-                        if (_handlerTrie.TryGetValue(type, out ChatMessageHandler handlers))
+                        if (_handlerTrie.TryGetValue(type, out ChatMessageHandler? handlers))
                         {
                             handlers(player, line);
                         }
@@ -907,11 +909,13 @@ namespace SS.Core.Modules
         private void Cleanup()
         {
             // Stop the worker thread and wait for it to terminate.
-            _cancellationTokenSource?.Cancel();
-            _chatThread?.Join();
-            _chatThread = null;
-            _cancellationTokenSource?.Dispose();
-            _cancellationTokenSource = null;
+            if (_chatThread is not null)
+            {
+                _cancellationTokenSource.Cancel();
+                _chatThread?.Join();
+                _chatThread = null;
+                _cancellationTokenSource.Dispose();
+            }
 
             // Cleanup the listening socket.
             if (_listenSocket is not null)
@@ -930,7 +934,7 @@ namespace SS.Core.Modules
                     foreach (Player player in _playerData.Players)
                     {
                         if (player.Type != ClientType.Chat
-                            || !player.TryGetExtraData(_clientDataKey, out ClientData clientData))
+                            || !player.TryGetExtraData(_clientDataKey, out ClientData? clientData))
                         {
                             continue;
                         }
@@ -969,7 +973,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// The socket that we accepted a connection for.
             /// </summary>
-            public Socket Socket;
+            public Socket? Socket;
 
             #region Timestamps
 
@@ -995,7 +999,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// A buffer of incoming data. Rented from the <see cref="ArrayPool{T}"/>. <see langword="null"/> when there is no incoming data.
             /// </summary>
-            public byte[] InData;
+            public byte[]? InData;
 
             /// <summary>
             /// The next position in <see cref="InData"/> that incoming data will be written to. This can also be used to tell the length of the data received so far.
@@ -1054,7 +1058,7 @@ namespace SS.Core.Modules
 
                 lock (OutLock)
                 {
-                    LinkedListNode<OutBuffer> node;
+                    LinkedListNode<OutBuffer>? node;
                     while ((node = OutList.First) is not null)
                     {
                         OutList.Remove(node);

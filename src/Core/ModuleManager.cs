@@ -1,7 +1,9 @@
+using Microsoft.Extensions.DependencyInjection;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -50,9 +52,9 @@ namespace SS.Core
         private readonly object _moduleLockObj = new();
 
         /// <summary>
-        /// All registered (and possibly loaded) modules.
+        /// Data for all loaded modules.
         /// </summary>
-        private readonly Dictionary<Type, ModuleData> _moduleTypeLookup = new();
+        private readonly Dictionary<Type, ModuleData> _moduleTypeLookup = new(256);
 
         /// <summary>
         /// Modules that are loaded, in the order that they were loaded.
@@ -66,10 +68,10 @@ namespace SS.Core
         private readonly Dictionary<string, Assembly> _loadedPluginAssemblies = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// Types of 'plug-in' modules that are registered.
+        /// Types of 'plug-in' modules that are loaded.
         /// Plug-in modules are modules that are in assemblies loaded (and isolated) into their own <see cref="ModulePluginLoadContext"/> as a 'plug-in'.
         /// </summary>
-        private readonly HashSet<Type> _pluginModuleTypeSet = new();
+        private readonly HashSet<Type> _pluginModuleTypeSet = new(256);
 
         /// <summary>
         /// Whether the post-load stage of the startup sequence has been run.
@@ -79,23 +81,21 @@ namespace SS.Core
         /// <summary>
         /// Constructs a <see cref="ModuleManager"/>.
         /// </summary>
-        public ModuleManager()
+        public ModuleManager() : base(null)
         {
             RegisterInterface<IModuleManager>(this);
+            RegisterInterface<IComponentBroker>(this);
         }
 
         #region Arena Attach/Detach
 
         public bool AttachModule(string moduleTypeName, Arena arena)
         {
-            if (string.IsNullOrWhiteSpace(moduleTypeName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(moduleTypeName));
+            ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
-
-            Type type = Type.GetType(moduleTypeName);
-            if (type != null)
+            Type? type = Type.GetType(moduleTypeName);
+            if (type is not null)
             {
                 return AttachModule(type, arena);
             }
@@ -124,11 +124,8 @@ namespace SS.Core
 
         public bool AttachModule(Type type, Arena arena)
         {
-            if (type == null)
-                throw new ArgumentNullException(nameof(type));
-
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(type);
+            ArgumentNullException.ThrowIfNull(arena);
 
             if (!IsModule(type))
             {
@@ -138,7 +135,7 @@ namespace SS.Core
 
             lock (_moduleLockObj)
             {
-                if (!_moduleTypeLookup.TryGetValue(type, out ModuleData moduleData))
+                if (!_moduleTypeLookup.TryGetValue(type, out ModuleData? moduleData))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' is not registered, it needs to be loaded first.");
                     return false;
@@ -175,14 +172,11 @@ namespace SS.Core
 
         public bool DetachModule(string moduleTypeName, Arena arena)
         {
-            if (string.IsNullOrWhiteSpace(moduleTypeName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(moduleTypeName));
+            ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
-
-            Type type = Type.GetType(moduleTypeName);
-            if (type != null)
+            Type? type = Type.GetType(moduleTypeName);
+            if (type is not null)
             {
                 return DetachModule(type, arena);
             }
@@ -211,11 +205,8 @@ namespace SS.Core
 
         public bool DetachModule(Type type, Arena arena)
         {
-            if (type == null)
-                throw new ArgumentNullException(nameof(type));
-
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(type);
+            ArgumentNullException.ThrowIfNull(arena);
 
             if (!IsModule(type))
             {
@@ -225,7 +216,7 @@ namespace SS.Core
 
             lock (_moduleLockObj)
             {
-                if (!_moduleTypeLookup.TryGetValue(type, out ModuleData moduleData))
+                if (!_moduleTypeLookup.TryGetValue(type, out ModuleData? moduleData))
                 {
                     WriteLogA(LogLevel.Error, arena, $"DetachModule failed: Module '{type.FullName}' is not registered.");
                     return false;
@@ -256,8 +247,7 @@ namespace SS.Core
 
         public bool DetachAllFromArena(Arena arena)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
             bool ret = true;
 
@@ -278,134 +268,15 @@ namespace SS.Core
 
         #endregion
 
-        #region Add Module
-
-        public bool AddModule(string moduleTypeName, string path) => AddAndLoadModule(moduleTypeName, path, false);
-
-
-        public bool AddModule(string moduleTypeName) => AddAndLoadModule(moduleTypeName, null, false);
-
-
-        public bool AddModule(IModule module) => AddAndLoadModule(module, false);
-
-
-        public bool AddModule<TModule>(TModule module) where TModule : class, IModule => AddAndLoadModule(module, false);
-
-
-        public bool AddModule<TModule>() where TModule : class, IModule => AddAndLoadModule<TModule>(false);
-
-        #endregion
-
         #region Load Module
-
-        public bool LoadModule(string moduleTypeName, string path)
-        {
-            //
-            // Check if the module is already registered.
-            //
-
-            lock (_moduleLockObj)
-            {
-                List<ModuleData> matchingModules = new();
-
-                if (string.IsNullOrWhiteSpace(path))
-                {
-                    // Look for built-in modules that match the type name.
-                    Type type = Type.GetType(moduleTypeName);
-
-                    if (type != null)
-                    {
-                        if (_moduleTypeLookup.TryGetValue(type, out ModuleData moduleData))
-                            matchingModules.Add(moduleData);
-                    }
-
-                    // Look for plug-in modules that match the type name.
-                    matchingModules.AddRange(
-                        from moduleType in GetPluginModuleTypes(moduleTypeName)
-                        let md = _moduleTypeLookup[moduleType]
-                        select md);
-                }
-                else
-                {
-                    // Look for plugin modules that match the type name and path.
-                    path = Path.GetFullPath(path);
-
-                    matchingModules.AddRange(
-                        from type in GetPluginModuleTypes(moduleTypeName)
-                        let md = _moduleTypeLookup[type]
-                        where string.Equals(md.ModuleType.Assembly.Location, path, StringComparison.OrdinalIgnoreCase)
-                        select md
-                    );
-                }
-
-                if (matchingModules.Count > 0)
-                {
-                    // Found at least one registered module that matched the criteria.
-                    bool failedLoad = false;
-
-                    foreach (var moduleData in matchingModules)
-                    {
-                        if (moduleData.IsLoaded)
-                            continue; // already loaded
-
-                        // Not loaded yet, try to load it.
-                        if (!LoadModule(moduleData))
-                            failedLoad = true;
-                    }
-
-                    return !failedLoad;
-                }
-            }
-
-            //
-            // The module is not already registered, try to add and load it.
-            //
-
-            return AddAndLoadModule(moduleTypeName, path, true);
-        }
 
         public bool LoadModule(string moduleTypeName) => LoadModule(moduleTypeName, null);
 
-        public bool LoadModule(IModule module) => AddAndLoadModule(module, true);
-
-        public bool LoadModule<TModule>(TModule module) where TModule : class, IModule => AddAndLoadModule(module, true);
-
-        public bool LoadModule<TModule>() where TModule : class, IModule
+        public bool LoadModule(string moduleTypeName, string? path)
         {
-            //
-            // Check if the module is already registered.
-            //
+            ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
 
-            lock (_moduleLockObj)
-            {
-                Type moduleType = typeof(TModule);
-                if (_moduleTypeLookup.TryGetValue(moduleType, out ModuleData moduleData))
-                {
-                    if (moduleData.IsLoaded)
-                        return true;
-
-                    return LoadModule(moduleData);
-                }
-            }
-
-            //
-            // The module is not already registered, try to add and load it.
-            //
-
-            return AddAndLoadModule<TModule>(true);
-        }
-
-        #endregion
-
-        #region Add / Load Helper methods
-
-        private bool AddAndLoadModule(string moduleTypeName, string path, bool load)
-        {
-            if (string.IsNullOrWhiteSpace(moduleTypeName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(moduleTypeName));
-
-            Type type;
-
+            Type? type;
             if (string.IsNullOrWhiteSpace(path))
             {
                 type = Type.GetType(moduleTypeName);
@@ -415,80 +286,92 @@ namespace SS.Core
                 type = GetTypeFromPluginAssemblyPath(moduleTypeName, path);
             }
 
-            if (type == null)
+            if (type is null)
             {
+                // Not found.
                 WriteLogM(LogLevel.Error, $"Unable to find module '{moduleTypeName}'.");
                 return false;
             }
 
-            IModule module = CreateModuleObject(type);
-            if (module == null)
+            return LoadModule(type);
+        }
+
+        public bool LoadModule<TModule>() where TModule : class, IModule
+        {
+            Type type = typeof(TModule);
+            return LoadModule(type);
+        }
+
+        public bool LoadModule(Type moduleType)
+        {
+            ArgumentNullException.ThrowIfNull(moduleType);
+
+            if (!IsModule(moduleType))
+            {
+                // Not a module.
                 return false;
+            }
 
-            return AddAndLoadModule(type, module, load);
-        }
-
-        private bool AddAndLoadModule(IModule module, bool load)
-        {
-            if (module == null)
-                throw new ArgumentNullException(nameof(module));
-
-            Type moduleType = module.GetType();
-            return AddAndLoadModule(moduleType, module, load);
-        }
-
-        private bool AddAndLoadModule<TModule>(TModule module, bool load) where TModule : class, IModule
-        {
-            if (module == null)
-                throw new ArgumentNullException(nameof(module));
-
-            Type moduleType = typeof(TModule);
-            return AddAndLoadModule(moduleType, module, load);
-        }
-
-        private bool AddAndLoadModule<TModule>(bool load) where TModule : class, IModule
-        {
-            if (CreateModuleObject(typeof(TModule)) is not TModule module)
-                return false;
-
-            return AddAndLoadModule(module, load);
-        }
-
-        private bool AddAndLoadModule(Type moduleType, IModule module, bool load)
-        {
-            if (moduleType == null)
-                throw new ArgumentNullException(nameof(moduleType));
-
-            if (module == null)
-                throw new ArgumentNullException(nameof(module));
+            ModuleData? moduleData;
 
             lock (_moduleLockObj)
             {
                 if (_moduleTypeLookup.ContainsKey(moduleType))
-                    return false;
-
-                ModuleData moduleData = new(module);
-                _moduleTypeLookup.Add(moduleType, moduleData);
-
-                Assembly assembly = moduleType.Assembly;
-                AssemblyLoadContext loadContext = AssemblyLoadContext.GetLoadContext(assembly);
-                if (loadContext != AssemblyLoadContext.Default
-                    && loadContext is ModulePluginLoadContext moduleLoadContext)
                 {
-                    _pluginModuleTypeSet.Add(moduleType);
+                    // Already loaded.
+                    return false;
                 }
 
-                if (load)
-                    return LoadModule(moduleData);
-
-                return true;
+                moduleData = CreateInstance(moduleType);
+                if (moduleData is null)
+                {
+                    // Unable to construct.
+                    return false;
+                }
             }
+
+            return LoadModule(moduleData);
         }
+
+        public bool LoadModule(IModule module)
+        {
+            ArgumentNullException.ThrowIfNull(module);
+
+            return LoadModule(module.GetType(), module);
+        }
+
+        public bool LoadModule<TModule>(TModule module) where TModule : class, IModule
+        {
+            ArgumentNullException.ThrowIfNull(module);
+
+            return LoadModule(typeof(TModule), module);
+        }
+
+        private bool LoadModule(Type moduleType, IModule module)
+        {
+            ArgumentNullException.ThrowIfNull(moduleType);
+            ArgumentNullException.ThrowIfNull(module);
+
+            lock (_moduleLockObj)
+            {
+                if (_moduleTypeLookup.ContainsKey(moduleType))
+                {
+                    // Already loaded.
+                    return false;
+                }
+            }
+
+            ModuleData moduleData = new(module);
+            return LoadModule(moduleData);
+        }
+
+        #endregion
+
+        #region Load Helper methods
 
         private static bool IsModule(Type type)
         {
-            if (type == null)
-                return false;
+            ArgumentNullException.ThrowIfNull(type);
 
             // Verify it's a class.
             if (type.IsClass == false)
@@ -501,15 +384,108 @@ namespace SS.Core
             return true;
         }
 
-        private static IModule CreateModuleObject(Type type)
+        private ModuleData? CreateInstance(Type type)
         {
-            if (type == null)
-                throw new ArgumentNullException(nameof(type));
+            ArgumentNullException.ThrowIfNull(type);
 
-            if (IsModule(type) == false)
+            if (!IsModule(type))
                 return null;
 
-            return Activator.CreateInstance(type) as IModule;
+            ConstructorInfo[] constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            Array.Sort(constructors, (x, y) => -x.GetParameters().Length.CompareTo(y.GetParameters().Length));
+
+            int attempts = 0;
+
+            foreach (ConstructorInfo constructorInfo in constructors)
+            {
+                ParameterInfo[] parameters = constructorInfo.GetParameters();
+                bool isOk = true;
+
+                // Validate the parameters.
+                foreach (ParameterInfo parameterInfo in parameters)
+                {
+                    if (!parameterInfo.ParameterType.IsInterface
+                        || !typeof(IComponentInterface).IsAssignableFrom(parameterInfo.ParameterType)
+                        || parameterInfo.IsIn
+                        || parameterInfo.IsOut
+                        || parameterInfo.IsRetval
+                        || parameterInfo.IsOptional)
+                    {
+                        isOk = false;
+                    }
+                }
+
+                if (!isOk)
+                    continue;
+
+                attempts++;
+
+                // Get the dependencies for each parameter.
+                DependencyInfo[] dependencies = new DependencyInfo[parameters.Length];
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    Type parameterType = parameters[i].ParameterType;
+
+                    object? key = null;
+                    FromKeyedServicesAttribute? attribute = parameterType.GetCustomAttribute<FromKeyedServicesAttribute>(inherit: false);
+                    if (attribute is not null)
+                        key = attribute.Key;
+
+                    IComponentInterface? dependency = GetInterface(parameterType, key);
+                    if (dependency is null)
+                    {
+                        isOk = false;
+                        break;
+                    }
+
+                    dependencies[i] = new DependencyInfo
+                    {
+                        Type = parameterType,
+                        Key = key,
+                        Instance = dependency
+                    };
+                }
+
+                if (!isOk)
+                {
+                    ReleaseDependencies(dependencies);
+                    continue;
+                }
+
+                // Create the arguments array to call the constructor with.
+                object[] args = new object[parameters.Length];
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    args[i] = dependencies[i].Instance!;
+                }
+
+                IModule module;
+
+                try
+                {
+                    // Call the constructor.
+                    module = (IModule)constructorInfo.Invoke(args);
+                }
+                catch (Exception ex)
+                {
+                    WriteLogM(LogLevel.Error, $"Unable to create an instance of '{type.FullName}'. The constructor threw an exception: {ex}");
+                    ReleaseDependencies(dependencies);
+                    return null;
+                }
+
+                return new ModuleData(module, dependencies);
+            }
+
+            if (attempts > 0)
+            {
+                WriteLogM(LogLevel.Error, $"Unable to create an instance of '{type.FullName}'. Found {attempts} constructor{(attempts > 1 ? "s" : "")} but was missing dependencies.");
+            }
+            else
+            {
+                WriteLogM(LogLevel.Error, $"Unable to create an instance of '{type.FullName}'. A suitable constructor could not be found.");
+            }
+
+            return null;
         }
 
         #endregion
@@ -518,11 +494,10 @@ namespace SS.Core
 
         public bool UnloadModule(string moduleTypeName)
         {
-            if (string.IsNullOrWhiteSpace(moduleTypeName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(moduleTypeName));
+            ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
 
-            Type type = Type.GetType(moduleTypeName);
-            if (type != null)
+            Type? type = Type.GetType(moduleTypeName);
+            if (type is not null)
                 return UnloadModule(type);
 
             return UnloadPluginModule(moduleTypeName);
@@ -553,13 +528,12 @@ namespace SS.Core
 
         public bool UnloadModule(Type type)
         {
-            if (type == null)
-                throw new ArgumentNullException(nameof(type));
+            ArgumentNullException.ThrowIfNull(type);
 
             lock (_moduleLockObj)
             {
-                LinkedListNode<Type> node = _loadedModules.FindLast(type);
-                if (node == null)
+                LinkedListNode<Type>? node = _loadedModules.FindLast(type);
+                if (node is null)
                 {
                     WriteLogM(LogLevel.Error, $"Can't unload module [{type.FullName}] because it is not loaded.");
                     return false;
@@ -571,15 +545,14 @@ namespace SS.Core
 
         private bool UnloadModule(LinkedListNode<Type> node)
         {
-            if (node == null)
-                throw new ArgumentNullException(nameof(node));
+            ArgumentNullException.ThrowIfNull(node);
 
             if (node.List != _loadedModules)
                 return false;
 
             Type type = node.Value;
 
-            if (_moduleTypeLookup.TryGetValue(type, out ModuleData moduleData) == false)
+            if (_moduleTypeLookup.TryGetValue(type, out ModuleData? moduleData) == false)
             {
                 return false;
             }
@@ -593,7 +566,7 @@ namespace SS.Core
             _moduleTypeLookup.Remove(moduleData.ModuleType);
 
             Assembly assembly = type.Assembly;
-            AssemblyLoadContext loadContext = AssemblyLoadContext.GetLoadContext(assembly);
+            AssemblyLoadContext? loadContext = AssemblyLoadContext.GetLoadContext(assembly);
             if (loadContext != AssemblyLoadContext.Default
                 && loadContext is ModulePluginLoadContext moduleLoadContext)
             {
@@ -619,53 +592,14 @@ namespace SS.Core
 
         #region Bulk Operations
 
-        public bool LoadAllModules()
-        {
-            lock (_moduleLockObj)
-            {
-                int numModulesLeftToLoad;
-                int numModulesLoadedDuringLastPass;
-
-                do
-                {
-                    numModulesLeftToLoad = 0;
-                    numModulesLoadedDuringLastPass = 0;
-
-                    // go through all the modules and try to load each
-                    foreach (KeyValuePair<Type, ModuleData> kvp in _moduleTypeLookup)
-                    {
-                        ModuleData moduleData = kvp.Value;
-                        if (moduleData.IsLoaded)
-                            continue; // already loaded
-
-                        if (LoadModule(moduleData) == true)
-                        {
-                            // loaded module
-                            numModulesLoadedDuringLastPass++;
-                        }
-                        else
-                        {
-                            // not able to load yet
-                            numModulesLeftToLoad++;
-                        }
-                    }
-                }
-                while ((numModulesLeftToLoad > 0) && (numModulesLoadedDuringLastPass > 0));
-
-                // at this point, we loaded everything we could
-                // anything left unloaded is missing at least one dependency
-                return numModulesLeftToLoad == 0;
-            }
-        }
-
         public void UnloadAllModules()
         {
             lock (_moduleLockObj)
             {
-                LinkedListNode<Type> node = _loadedModules.Last;
+                LinkedListNode<Type>? node = _loadedModules.Last;
                 while (node is not null)
                 {
-                    LinkedListNode<Type> previous = node.Previous;
+                    LinkedListNode<Type>? previous = node.Previous;
                     UnloadModule(node);
                     node = previous;
                 }
@@ -676,7 +610,7 @@ namespace SS.Core
 
         #region Utility
 
-        public void EnumerateModules(EnumerateModulesDelegate enumerationCallback, Arena arena)
+        public void EnumerateModules(EnumerateModulesDelegate enumerationCallback, Arena? arena)
         {
             lock (_moduleLockObj)
             {
@@ -690,77 +624,46 @@ namespace SS.Core
             }
         }
 
-        /// <summary>
-        /// For returning data from <see cref="GetModuleInfo(string)"/> and <see cref="GetModuleInfo(Type)"/>.
-        /// </summary>
-        public class ModuleInfo
+        public IEnumerable<ModuleInfo> GetModuleInfo(string moduleTypeName)
         {
-            internal ModuleInfo(
-                string moduleTypeName,
-                string moduleQualifiedName,
-                string assemblyPath,
-                bool isPlugin,
-                string description,
-                IEnumerable<Arena> attachedArenas)
+            ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
+
+            Type? moduleType = Type.GetType(moduleTypeName);
+            if (moduleType is not null && TryGetModuleInfo(moduleType, out ModuleInfo info))
             {
-                ModuleTypeName = moduleTypeName;
-                ModuleQualifiedName = moduleQualifiedName;
-                AssemblyPath = assemblyPath;
-                IsPlugin = isPlugin;
-                Description = description;
-                AttachedArenas = attachedArenas.ToArray();
+                yield return info;
             }
-
-            public string ModuleTypeName { get; }
-            public string ModuleQualifiedName { get; }
-            public string AssemblyPath { get; }
-            public bool IsPlugin { get; }
-            public string Description { get; }
-            public Arena[] AttachedArenas { get; }
-        }
-
-        public ModuleInfo[] GetModuleInfo(string moduleTypeName)
-        {
-            if (string.IsNullOrWhiteSpace(moduleTypeName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(moduleTypeName));
-
-            Type moduleType = Type.GetType(moduleTypeName);
-            if (moduleType != null)
-                return new ModuleInfo[] { GetModuleInfo(moduleType) };
 
             lock (_moduleLockObj)
             {
-                IEnumerable<Type> types = GetPluginModuleTypes(moduleTypeName);
-
-                var moduleInfoArray = (
-                    from type in types
-                    let moduleInfo = GetModuleInfo(type)
-                    where moduleInfo != null
-                    select moduleInfo
-                ).ToArray();
-
-                return moduleInfoArray;
+                foreach (Type type in GetPluginModuleTypes(moduleTypeName))
+                {
+                    if (TryGetModuleInfo(type, out info))
+                        yield return info;
+                }
             }
         }
 
-        public ModuleInfo GetModuleInfo(Type type)
+        public bool TryGetModuleInfo(Type type, [MaybeNullWhen(false)] out ModuleInfo moduleInfo)
         {
-            if (type == null)
-                throw new ArgumentNullException(nameof(type));
+            ArgumentNullException.ThrowIfNull(type);
 
             lock (_moduleLockObj)
             {
-                if (_moduleTypeLookup.TryGetValue(type, out ModuleData moduleInfo) == false)
-                    return null;
+                if (_moduleTypeLookup.TryGetValue(type, out ModuleData? moduleData) == false)
+                {
+                    moduleInfo = default;
+                    return false;
+                }
 
-                Assembly assembly = type.Assembly;
-                return new ModuleInfo(
-                    type.FullName,
-                    type.AssemblyQualifiedName,
-                    assembly.Location,
-                    _pluginModuleTypeSet.Contains(type),
-                    moduleInfo.Description,
-                    moduleInfo.AttachedArenas);
+                moduleInfo = new ModuleInfo()
+                {
+                    Type = type,
+                    IsPlugin = _pluginModuleTypeSet.Contains(type),
+                    Description = moduleData.Description,
+                    AttachedArenas = moduleData.AttachedArenas,
+                };
+                return true;
             }
         }
 
@@ -779,10 +682,10 @@ namespace SS.Core
                 {
                     _isPostLoaded = true;
 
-                    LinkedListNode<Type> node = _loadedModules.First;
+                    LinkedListNode<Type>? node = _loadedModules.First;
                     while (node is not null)
                     {
-                        if (_moduleTypeLookup.TryGetValue(node.Value, out ModuleData moduleData))
+                        if (_moduleTypeLookup.TryGetValue(node.Value, out ModuleData? moduleData))
                         {
                             PostLoad(moduleData);
                         }
@@ -804,15 +707,9 @@ namespace SS.Core
             {
                 try
                 {
-                    if (loaderAwareModule.PostLoad(this))
-                    {
-                        moduleData.IsPostLoaded = true;
-                        return true;
-                    }
-                    else
-                    {
-                        WriteLogM(LogLevel.Warn, $"Error post-loading module [{moduleData.ModuleType.FullName}].");
-                    }
+                    loaderAwareModule.PostLoad(this);
+                    moduleData.IsPostLoaded = true;
+                    return true;
                 }
                 catch (Exception ex)
                 {
@@ -834,10 +731,10 @@ namespace SS.Core
                 {
                     _isPostLoaded = false;
 
-                    LinkedListNode<Type> node = _loadedModules.Last;
+                    LinkedListNode<Type>? node = _loadedModules.Last;
                     while (node is not null)
                     {
-                        if (_moduleTypeLookup.TryGetValue(node.Value, out ModuleData moduleData))
+                        if (_moduleTypeLookup.TryGetValue(node.Value, out ModuleData? moduleData))
                         {
                             PreUnload(moduleData);
                         }
@@ -859,15 +756,9 @@ namespace SS.Core
             {
                 try
                 {
-                    if (loaderAwareModule.PreUnload(this))
-                    {
-                        moduleData.IsPostLoaded = false;
-                        return true;
-                    }
-                    else
-                    {
-                        WriteLogM(LogLevel.Warn, $"Error pre-unloading module [{moduleData.ModuleType.FullName}].");
-                    }
+                    loaderAwareModule.PreUnload(this);
+                    moduleData.IsPostLoaded = false;
+                    return true;
                 }
                 catch (Exception ex)
                 {
@@ -884,70 +775,22 @@ namespace SS.Core
 
         private class ModuleData
         {
-            private static readonly Type brokerType = typeof(ComponentBroker);
-            private static readonly Type dependencyType = typeof(IComponentInterface);
-            private static readonly Type returnType = typeof(bool);
-
-            public ModuleData(IModule module)
+            public ModuleData(IModule module) : this(module, null)
             {
-                if (module == null)
-                    throw new ArgumentNullException(nameof(module));
+            }
+
+            public ModuleData(IModule module, DependencyInfo[]? dependencies)
+            {
+                ArgumentNullException.ThrowIfNull(module);
 
                 ModuleType = module.GetType();
 
-                if (ModuleInfoAttribute.TryGetAttribute(ModuleType, out ModuleInfoAttribute attribute))
+                if (ModuleInfoAttribute.TryGetAttribute(ModuleType, out ModuleInfoAttribute? attribute))
                     Description = attribute.Description;
 
                 Module = module;
                 IsLoaded = false;
-
-                //
-                // Find the Load method
-                //
-
-                MethodInfo[] methods = ModuleType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                var filteredMethods = (
-                    from method in methods
-                    where !method.IsStatic
-                        && !method.IsGenericMethod
-                        && method.ReturnType == returnType
-                        && string.Equals(method.Name, "Load", StringComparison.Ordinal)
-                    let parameters = method.GetParameters()
-                    where parameters.Length >= 1 && parameters[0].ParameterType == brokerType
-                    let otherParameters = parameters.Skip(1)
-                    where otherParameters.All(otherParameter =>
-                        otherParameter.ParameterType.IsInterface
-                        && !otherParameter.IsIn
-                        && !otherParameter.IsOut
-                        && !otherParameter.IsRetval
-                        && !otherParameter.IsOptional
-                        && dependencyType.IsAssignableFrom(otherParameter.ParameterType))
-                    select (method, parameters)
-                ).ToArray();
-
-                if (filteredMethods.Length <= 0)
-                    throw new ArgumentException("Does not have an acceptable Load method.", nameof(module));
-
-                if (filteredMethods.Length > 1)
-                    throw new ArgumentException($"Ambiguous Load method. Found {filteredMethods.Length} possiblities.", nameof(module));
-
-                LoadMethod = filteredMethods[0].method;
-                LoadParameters = filteredMethods[0].parameters;
-
-                if (LoadParameters.Length == 1)
-                {
-                    InterfaceDependencies = new Dictionary<Type, IComponentInterface>(0);
-                }
-                else
-                {
-                    InterfaceDependencies = new Dictionary<Type, IComponentInterface>(LoadParameters.Length - 1);
-
-                    for (int i = 1; i < LoadParameters.Length; i++)
-                    {
-                        InterfaceDependencies[LoadParameters[i].ParameterType] = null;
-                    }
-                }
+                Dependencies = dependencies;
             }
 
             /// <summary>
@@ -969,7 +812,7 @@ namespace SS.Core
             /// <summary>
             /// A description of the module, retrieved from <see cref="ModuleInfoAttribute.Description"/>.
             /// </summary>
-            public string Description
+            public string? Description
             {
                 get;
             }
@@ -996,28 +839,10 @@ namespace SS.Core
                 set;
             }
 
-            /// <summary>
-            /// The load method.
-            /// </summary>
-            public MethodInfo LoadMethod
+            public DependencyInfo[]? Dependencies
             {
                 get;
-            }
-
-            /// <summary>
-            /// The parameters to the <see cref="LoadMethod"/>.
-            /// </summary>
-            public ParameterInfo[] LoadParameters
-            {
-                get;
-            }
-
-            /// <summary>
-            /// Dependencies required to load the module.
-            /// </summary>
-            public Dictionary<Type, IComponentInterface> InterfaceDependencies
-            {
-                get;
+                private init;
             }
 
             /// <summary>
@@ -1026,58 +851,37 @@ namespace SS.Core
             public HashSet<Arena> AttachedArenas
             {
                 get;
-            } = new HashSet<Arena>();
+            } = [];
+        }
+
+        private record class DependencyInfo
+        {
+            public required Type Type { get; init; }
+            public required object? Key { get; init; }
+            public required IComponentInterface? Instance { get; set; }
         }
 
         private bool LoadModule(ModuleData moduleData)
         {
-            if (moduleData == null)
-                throw new ArgumentNullException(nameof(moduleData));
+            ArgumentNullException.ThrowIfNull(moduleData);
 
             if (moduleData.IsLoaded)
-                return false;
-
-            // try to get interfaces
-            bool isMissingInterface = false;
-            Type[] interfaceKeys = moduleData.InterfaceDependencies.Keys.ToArray();
-
-            foreach (Type interfaceKey in interfaceKeys)
             {
-                IComponentInterface moduleInterface = GetInterface(interfaceKey);
-                if (moduleInterface == null)
-                {
-                    // unable to get an interface
-                    isMissingInterface = true;
-                    break;
-                }
-
-                moduleData.InterfaceDependencies[interfaceKey] = moduleInterface;
-            }
-
-            if (isMissingInterface)
-            {
-                ReleaseInterfaces(moduleData);
+                // Already loaded.
                 return false;
             }
 
-            // we got all the interfaces, now we should have all of the parameters
-            object[] parameters = new object[moduleData.LoadParameters.Length];
-            parameters[0] = this;
-
-            for (int i = 1; i < parameters.Length; i++)
+            if (_moduleTypeLookup.ContainsKey(moduleData.ModuleType))
             {
-                if (moduleData.InterfaceDependencies.TryGetValue(moduleData.LoadParameters[i].ParameterType, out IComponentInterface dependency))
-                {
-                    parameters[i] = dependency;
-                }
+                // Another instance already loaded.
+                return false;
             }
 
-            // load the module
             bool success;
 
             try
             {
-                success = (bool)moduleData.LoadMethod.Invoke(moduleData.Module, parameters);
+                success = moduleData.Module.Load(this);
 
                 if (!success)
                 {
@@ -1093,12 +897,23 @@ namespace SS.Core
             if (!success)
             {
                 // module loading failed
-                ReleaseInterfaces(moduleData);
+                ReleaseDependencies(moduleData);
                 return false;
             }
 
             moduleData.IsLoaded = true;
+
+            _moduleTypeLookup.Add(moduleData.ModuleType, moduleData);
             _loadedModules.AddLast(moduleData.ModuleType);
+
+            Assembly assembly = moduleData.ModuleType.Assembly;
+            AssemblyLoadContext? loadContext = AssemblyLoadContext.GetLoadContext(assembly);
+            if (loadContext != AssemblyLoadContext.Default
+                && loadContext is ModulePluginLoadContext)
+            {
+                _pluginModuleTypeSet.Add(moduleData.ModuleType);
+            }
+
             WriteLogM(LogLevel.Info, $"Loaded module [{moduleData.ModuleType.FullName}].");
 
             if (_isPostLoaded)
@@ -1113,8 +928,7 @@ namespace SS.Core
 
         private bool UnloadModule(ModuleData moduleData)
         {
-            if (moduleData == null)
-                throw new ArgumentNullException(nameof(moduleData));
+            ArgumentNullException.ThrowIfNull(moduleData);
 
             if (!moduleData.IsLoaded)
                 return true; // it's not loaded, nothing to do
@@ -1159,27 +973,38 @@ namespace SS.Core
                 disposable.Dispose();
             }
 
-            ReleaseInterfaces(moduleData);
+            ReleaseDependencies(moduleData);
 
             moduleData.IsLoaded = false;
             WriteLogM(LogLevel.Info, $"Unloaded module [{moduleData.ModuleType.FullName}].");
             return true;
         }
 
-        private void ReleaseInterfaces(ModuleData moduleData)
+        private void ReleaseDependencies(ModuleData moduleData)
         {
-            if (moduleData == null)
-                throw new ArgumentNullException(nameof(moduleData));
+            ArgumentNullException.ThrowIfNull(moduleData);
 
-            // release the interfaces we were able to get
-            Type[] interfaceKeys = moduleData.InterfaceDependencies.Keys.ToArray();
-
-            foreach (Type interfaceKey in interfaceKeys)
+            if (moduleData.Dependencies is not null)
             {
-                if (moduleData.InterfaceDependencies[interfaceKey] != null)
+                ReleaseDependencies(moduleData.Dependencies);
+            }
+        }
+
+        private void ReleaseDependencies(DependencyInfo[] dependencies)
+        {
+            ArgumentNullException.ThrowIfNull(dependencies);
+
+            for (int i = 0; i < dependencies.Length; i++)
+            {
+                DependencyInfo dependency = dependencies[i];
+                if (dependency is not null && dependency.Instance is not null)
                 {
-                    ReleaseInterface(interfaceKey, moduleData.InterfaceDependencies[interfaceKey]);
-                    moduleData.InterfaceDependencies[interfaceKey] = null;
+                    ReleaseInterface(
+                        dependency.Type,
+                        dependency.Instance,
+                        dependency.Key);
+
+                    dependency.Instance = null;
                 }
             }
         }
@@ -1201,32 +1026,44 @@ namespace SS.Core
             return _pluginModuleTypeSet.Where(t => string.Equals(t.FullName, typeName, StringComparison.Ordinal));
         }
 
-        private Type GetTypeFromPluginAssemblyPath(string typeName, string path)
+        private Type? GetTypeFromPluginAssemblyPath(string typeName, string path)
         {
-            if (string.IsNullOrWhiteSpace(typeName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(typeName));
-
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
+            ArgumentException.ThrowIfNullOrWhiteSpace(typeName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
             try
             {
                 path = Path.GetFullPath(path);
 
-                if (!_loadedPluginAssemblies.TryGetValue(path, out Assembly assembly))
+                Assembly? assembly;
+                Type? type;
+
+                lock (_moduleLockObj)
                 {
+                    if (_loadedPluginAssemblies.TryGetValue(path, out assembly))
+                    {
+                        return assembly.GetType(typeName);
+                    }
+
                     // Assembly not loaded yet, try to load it.
                     ModulePluginLoadContext loadContext = new(path);
                     AssemblyName assemblyName = new(Path.GetFileNameWithoutExtension(path));
                     assembly = loadContext.LoadFromAssemblyName(assemblyName);
+
+                    type = assembly.GetType(typeName);
+                    if (type is null)
+                    {
+                        loadContext.Unload();
+                        return null;
+                    }
+
                     _loadedPluginAssemblies[path] = assembly;
-
-                    WriteLogM(LogLevel.Info, $"Loaded assembly [{assembly.FullName}] from path \"{path}\".");
-
-                    PluginAssemblyLoadedCallback.Fire(this, assembly);
                 }
 
-                Type type = assembly.GetType(typeName);
+                WriteLogM(LogLevel.Info, $"Loaded assembly [{assembly.FullName}] from path \"{path}\".");
+
+                PluginAssemblyLoadedCallback.Fire(this, assembly);
+
                 return type;
             }
             catch (Exception ex)
@@ -1241,26 +1078,16 @@ namespace SS.Core
         /// This class is <see langword="private"/> to the <see cref="ModuleManager"/> 
         /// which fully manages loading each plugin assembly into a separate, isolated context.
         /// </summary>
-        private class ModulePluginLoadContext : AssemblyLoadContext
+        private class ModulePluginLoadContext(string moduleAssemblyPath) : AssemblyLoadContext(Path.GetFileNameWithoutExtension(moduleAssemblyPath), true)
         {
-            private readonly AssemblyDependencyResolver _resolver;
+            private readonly AssemblyDependencyResolver _resolver = new(moduleAssemblyPath);
 
-            public ModulePluginLoadContext(string moduleAssemblyPath)
-                : base(Path.GetFileNameWithoutExtension(moduleAssemblyPath), true)
-            {
-                AssemblyPath = moduleAssemblyPath;
-                _resolver = new AssemblyDependencyResolver(moduleAssemblyPath);
-            }
+            public string AssemblyPath { get; } = moduleAssemblyPath;
 
-            public string AssemblyPath
+            protected override Assembly? Load(AssemblyName assemblyName)
             {
-                get;
-            }
-
-            protected override Assembly Load(AssemblyName assemblyName)
-            {
-                string assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
-                if (assemblyPath != null)
+                string? assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
+                if (assemblyPath is not null)
                 {
                     return LoadFromAssemblyPath(assemblyPath);
                 }
@@ -1270,8 +1097,8 @@ namespace SS.Core
 
             protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
             {
-                string libraryPath = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
-                if (libraryPath != null)
+                string? libraryPath = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
+                if (libraryPath is not null)
                 {
                     return LoadUnmanagedDllFromPath(libraryPath);
                 }

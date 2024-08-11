@@ -12,22 +12,17 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class LogFile : IModule, ILogFile
     {
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IObjectPoolManager _objectPoolManager;
-        private IServerTimer _serverTimer;
-        private InterfaceRegistrationToken<ILogFile> _iLogFileToken;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IServerTimer _serverTimer;
+        private InterfaceRegistrationToken<ILogFile>? _iLogFileToken;
 
         private readonly object _lockObj = new();
-        private StreamWriter _streamWriter = null;
+        private StreamWriter? _streamWriter = null;
         private DateTime? _fileDate;
 
-        #region Module methods
-
-        [ConfigHelp("Log", "FileFlushPeriod", ConfigScope.Global, typeof(int), DefaultValue = "10",
-            Description = "How often to flush the log file to disk (in minutes).")]
-        public bool Load(
-            ComponentBroker broker,
+        public LogFile(
             IConfigManager configManager,
             ILogManager logManager,
             IObjectPoolManager objectPoolManager,
@@ -37,7 +32,14 @@ namespace SS.Core.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
+        }
 
+        #region Module methods
+
+        [ConfigHelp("Log", "FileFlushPeriod", ConfigScope.Global, typeof(int), DefaultValue = "10",
+            Description = "How often to flush the log file to disk (in minutes).")]
+        bool IModule.Load(IComponentBroker broker)
+        {
             ReopenLog();
 
             LogCallback.Register(broker, Callback_Log);
@@ -51,7 +53,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iLogFileToken) != 0)
                 return false;
@@ -171,7 +173,7 @@ namespace SS.Core.Modules
 
                 // TODO: add logic to clean up old log files based on a config setting
 
-                string path = _configManager.GetStr(_configManager.Global, "Log", "DatedLogsPath");
+                string? path = _configManager.GetStr(_configManager.Global, "Log", "DatedLogsPath");
                 if (string.IsNullOrWhiteSpace(path))
                     path = "log";
 

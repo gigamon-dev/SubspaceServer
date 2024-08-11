@@ -29,27 +29,26 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public sealed class BillingUdp : IModule, IModuleLoaderAware, IBilling, IAuth, IClientConnectionHandler, IDisposable
     {
-        private ComponentBroker _broker;
-
         // required dependencies
-        private ICapabilityManager _capabilityManager;
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMainloop _mainloop;
-        private IMainloopTimer _mainloopTimer;
-        private INetwork _network;
-        private INetworkClient _networkClient;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
+        private readonly IComponentBroker _broker;
+        private readonly ICapabilityManager _capabilityManager;
+        private readonly IChat _chat;
+        private readonly ICommandManager _commandManager;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IMainloop _mainloop;
+        private readonly IMainloopTimer _mainloopTimer;
+        private readonly INetwork _network;
+        private readonly INetworkClient _networkClient;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
 
         // optional dependencies
-        private IArenaPlayerStats _arenaPlayerStats;
-        private IBillingFallback _billingFallback;
+        private IArenaPlayerStats? _arenaPlayerStats;
+        private IBillingFallback? _billingFallback;
 
-        private InterfaceRegistrationToken<IAuth> _iAuthToken;
-        private InterfaceRegistrationToken<IBilling> _iBillingToken;
+        private InterfaceRegistrationToken<IAuth>? _iAuthToken;
+        private InterfaceRegistrationToken<IBilling>? _iBillingToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
 
@@ -63,10 +62,10 @@ namespace SS.Core.Modules
         private int _interruptedAuths;
         private DateTime? _interruptedAuthsDampTime;
         private BillingState _state = BillingState.NoSocket;
-        private IClientConnection _cc;
+        private IClientConnection? _cc;
         private readonly AutoResetEvent _disconnectedAutoResetEvent = new(false);
         private DateTime _lastEvent;
-        private byte[] _identity = null;
+        private byte[]? _identity = null;
         private readonly Dictionary<int, S2B_UserBanner> _bannerUploadDictionary = new();
         private int _bannerUploadPendingCount = 0;
         private readonly object _lockObj = new();
@@ -76,23 +75,8 @@ namespace SS.Core.Modules
         private readonly ClientReliableCallback _mainloop_ReliableCallback_BannerComplete;
         private readonly BillingFallbackDoneDelegate<Player> _fallbackDone;
 
-        public BillingUdp()
-        {
-            _mainloop_ReliableCallback_ServerDisconnect = Mainloop_ReliableCallback_ServerDisconnect;
-            _mainloop_ReliableCallback_BannerComplete = Mainloop_ReliableCallback_BannerComplete;
-            _fallbackDone = FallbackDone;
-        }
-
-        #region Module methods
-
-        [ConfigHelp("Billing", "RetryInterval", ConfigScope.Global, typeof(int), DefaultValue = "180",
-            Description = "How many seconds to wait between tries to connect to the user database server.")]
-        [ConfigHelp("Billing", "LoadPublicPlayerScores", ConfigScope.Global, typeof(bool), DefaultValue = "0",
-            Description = "Whether player scores (for the public arena) should be loaded from the biller. Not recommended, so off by default.")]
-        [ConfigHelp("Billing", "SavePublicPlayerScores", ConfigScope.Global, typeof(bool), DefaultValue = "1",
-            Description = "Whether player scores (for the public arena) should be saved to the biller.")]
-        public bool Load(
-            ComponentBroker broker,
+        public BillingUdp(
+            IComponentBroker broker,
             ICapabilityManager capabilityManager,
             IChat chat,
             ICommandManager commandManager,
@@ -118,6 +102,21 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
+            _mainloop_ReliableCallback_ServerDisconnect = Mainloop_ReliableCallback_ServerDisconnect;
+            _mainloop_ReliableCallback_BannerComplete = Mainloop_ReliableCallback_BannerComplete;
+            _fallbackDone = FallbackDone;
+        }
+
+        #region Module methods
+
+        [ConfigHelp("Billing", "RetryInterval", ConfigScope.Global, typeof(int), DefaultValue = "180",
+            Description = "How many seconds to wait between tries to connect to the user database server.")]
+        [ConfigHelp("Billing", "LoadPublicPlayerScores", ConfigScope.Global, typeof(bool), DefaultValue = "0",
+            Description = "Whether player scores (for the public arena) should be loaded from the biller. Not recommended, so off by default.")]
+        [ConfigHelp("Billing", "SavePublicPlayerScores", ConfigScope.Global, typeof(bool), DefaultValue = "1",
+            Description = "Whether player scores (for the public arena) should be saved to the biller.")]
+        bool IModule.Load(IComponentBroker broker)
+        {
             _arenaPlayerStats = broker.GetInterface<IArenaPlayerStats>();
             _billingFallback = broker.GetInterface<IBillingFallback>();
 
@@ -146,15 +145,13 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
+        void IModuleLoaderAware.PostLoad(IComponentBroker broker)
         {
             _pendingAuths = _interruptedAuths = 0;
             _mainloopTimer.SetTimer(MainloopTimer_DoWork, 100, 100, null);
-
-            return true;
         }
 
-        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
+        void IModuleLoaderAware.PreUnload(IComponentBroker broker)
         {
             _mainloopTimer.ClearTimer(MainloopTimer_DoWork, null);
 
@@ -190,11 +187,9 @@ namespace SS.Core.Modules
                 _disconnectedAutoResetEvent.WaitOne(10);
                 _mainloop.WaitForMainWorkItemDrain();
             }
-
-            return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iBillingToken) != 0)
                 return false;
@@ -257,7 +252,7 @@ namespace SS.Core.Modules
 
         bool IBilling.TryGetUserId(Player player, out uint userId)
         {
-            if (player is not null && player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is not null && player.TryGetExtraData(_pdKey, out PlayerData? playerData))
             {
                 lock (_lockObj)
                 {
@@ -275,7 +270,7 @@ namespace SS.Core.Modules
 
         bool IBilling.TryGetUsage(Player player, out TimeSpan usage, out DateTime? firstLoginTimestamp)
         {
-            if (player is not null && player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is not null && player.TryGetExtraData(_pdKey, out PlayerData? playerData))
             {
                 lock(_lockObj)
                 {
@@ -302,9 +297,9 @@ namespace SS.Core.Modules
             if (authRequest is null)
                 return;
 
-            Player player = authRequest.Player;
+            Player? player = authRequest.Player;
             if (player is null
-                || !player.TryGetExtraData(_pdKey, out PlayerData playerData)
+                || !player.TryGetExtraData(_pdKey, out PlayerData? playerData)
                 || authRequest.LoginBytes.Length < LoginPacket.VIELength)
             {
                 authRequest.Result.Code = AuthCode.CustomText;
@@ -328,7 +323,7 @@ namespace SS.Core.Modules
                     {
                         uint ipAddress = 0;
                         Span<byte> ipBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref ipAddress, 1));
-                        if (!player.IPAddress.TryWriteBytes(ipBytes, out int bytesWritten))
+                        if (!player.IPAddress!.TryWriteBytes(ipBytes, out int bytesWritten))
                         {
                             FallbackDone(player, BillingFallbackResult.NotFound);
                             return;
@@ -360,7 +355,7 @@ namespace SS.Core.Modules
                             extraBytes.CopyTo(clientExtraData);
                         }
 
-                        _networkClient.SendPacket(_cc, packetBytes[..(S2B_UserLogin.Length + extraBytes.Length)], NetSendFlags.Reliable);
+                        _networkClient.SendPacket(_cc!, packetBytes[..(S2B_UserLogin.Length + extraBytes.Length)], NetSendFlags.Reliable);
                         playerData.IsKnownToBiller = true;
                         _pendingAuths++;
                     }
@@ -422,7 +417,7 @@ namespace SS.Core.Modules
         void IClientConnectionHandler.Connected()
         {
             ushort port;
-            if (_network.TryGetListenData(0, out IPEndPoint endPoint, out _))
+            if (_network.TryGetListenData(0, out IPEndPoint? endPoint, out _))
                 port = (ushort)endPoint.Port;
             else
                 port = 0;
@@ -437,7 +432,7 @@ namespace SS.Core.Modules
 
             lock (_lockObj)
             {
-                _networkClient.SendPacket(_cc, ref packet, NetSendFlags.Reliable);
+                _networkClient.SendPacket(_cc!, ref packet, NetSendFlags.Reliable);
                 _state = BillingState.WaitLogin;
                 _lastEvent = DateTime.UtcNow;
             }
@@ -526,7 +521,7 @@ namespace SS.Core.Modules
 
         private void Packet_RegData(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             if (data.Length < 1 || data.Length - 1 > S2B_UserDemographics.DataInlineArray.Length)
@@ -549,7 +544,7 @@ namespace SS.Core.Modules
                     ref S2B_UserDemographics packet = ref MemoryMarshal.AsRef<S2B_UserDemographics>(packetBytes);
                     packet = new(player.Id);
                     int packetLength = packet.SetData(data[1..]);
-                    _networkClient.SendPacket(_cc, packetBytes[..packetLength], NetSendFlags.Reliable);
+                    _networkClient.SendPacket(_cc!, packetBytes[..packetLength], NetSendFlags.Reliable);
 
                     playerData.HasDemographics = true;
                 }
@@ -569,7 +564,7 @@ namespace SS.Core.Modules
             {
                 if (_state == BillingState.NoSocket)
                 {
-                    string ipAddressStr = _configManager.GetStr(_configManager.Global, "Billing", "IP");
+                    string? ipAddressStr = _configManager.GetStr(_configManager.Global, "Billing", "IP");
                     int port = _configManager.GetInt(_configManager.Global, "Billing", "Port", 1850);
                     string encryptorName = _configManager.GetStr(_configManager.Global, "Billing", "Encryptor") ?? EncryptionVIE.InterfaceIdentifier;
                     string bandwidthLimiterProviderName = _configManager.GetStr(_configManager.Global, "Billing", "BandwidthLimiterProvider") ?? BandwidthNoLimit.InterfaceIdentifier;
@@ -588,7 +583,7 @@ namespace SS.Core.Modules
                         return true;
                     }
 
-                    if (!IPAddress.TryParse(ipAddressStr, out IPAddress ipAddress))
+                    if (!IPAddress.TryParse(ipAddressStr, out IPAddress? ipAddress))
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), "Invalid Billing:IP. Unable to parse as an IP address. User database connectivity disabled.");
                         DropConnection(BillingState.Disabled);
@@ -655,7 +650,7 @@ namespace SS.Core.Modules
                     if ((now - _lastEvent).TotalSeconds >= 60)
                     {
                         ReadOnlySpan<byte> packet = [(byte)S2BPacketType.Ping];
-                        _networkClient.SendPacket(_cc, packet, NetSendFlags.Reliable);
+                        _networkClient.SendPacket(_cc!, packet, NetSendFlags.Reliable);
                         _lastEvent = now;
                     }
 
@@ -677,7 +672,7 @@ namespace SS.Core.Modules
                         {
                             playerId = kvp.Key;
                             S2B_UserBanner packet = kvp.Value;
-                            _networkClient.SendWithCallback(_cc, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), _mainloop_ReliableCallback_BannerComplete);
+                            _networkClient.SendWithCallback(_cc!, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref packet, 1)), _mainloop_ReliableCallback_BannerComplete);
                             Interlocked.Increment(ref _bannerUploadPendingCount);
                             break;
                         }
@@ -711,9 +706,9 @@ namespace SS.Core.Modules
             CleanupPlayer(player);
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
-            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             lock (_lockObj)
@@ -722,7 +717,7 @@ namespace SS.Core.Modules
                 {
                     CleanupPlayer(player);
                 }
-                else if (action == PlayerAction.EnterArena && arena.IsPublic)
+                else if (action == PlayerAction.EnterArena && arena!.IsPublic)
                 {
                     if (playerData.LoadedScore != null)
                     {
@@ -738,7 +733,7 @@ namespace SS.Core.Modules
                         playerData.LoadedScore = null;
                     }
                 }
-                else if (action == PlayerAction.LeaveArena && arena.IsPublic && _cfgSavePublicPlayerScores && _arenaPlayerStats is not null)
+                else if (action == PlayerAction.LeaveArena && arena!.IsPublic && _cfgSavePublicPlayerScores && _arenaPlayerStats is not null)
                 {
                     if (!_arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Reset, out long killPoints))
                         killPoints = 0;
@@ -767,7 +762,7 @@ namespace SS.Core.Modules
 
         private void CleanupPlayer(Player player)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             lock (_lockObj)
@@ -798,11 +793,11 @@ namespace SS.Core.Modules
                     if (_cfgSavePublicPlayerScores && playerData.SavedScore != null)
                     {
                         packet.Score = playerData.SavedScore.Value;
-                        _networkClient.SendPacket(_cc, packetBytes, NetSendFlags.Reliable);
+                        _networkClient.SendPacket(_cc!, packetBytes, NetSendFlags.Reliable);
                     }
                     else
                     {
-                        _networkClient.SendPacket(_cc, packetBytes[..S2B_UserLogoff.LengthWithoutScore], NetSendFlags.Reliable);
+                        _networkClient.SendPacket(_cc!, packetBytes[..S2B_UserLogoff.LengthWithoutScore], NetSendFlags.Reliable);
                     }
 
                     playerData.IsKnownToBiller = false;
@@ -810,9 +805,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_ChatMessage(Arena arena, Player player, ChatMessageType type, ChatSound sound, Player toPlayer, short freq, ReadOnlySpan<char> message)
+        private void Callback_ChatMessage(Arena? arena, Player? player, ChatMessageType type, ChatSound sound, Player? toPlayer, short freq, ReadOnlySpan<char> message)
         {
-            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             lock (_lockObj)
@@ -844,7 +839,7 @@ namespace SS.Core.Modules
 
                     int length = S2B_UserChannelChat.SetText(packetBytes, message);
 
-                    _networkClient.SendPacket(_cc, packetBytes[..length], NetSendFlags.Reliable);
+                    _networkClient.SendPacket(_cc!, packetBytes[..length], NetSendFlags.Reliable);
                 }
                 else if (type == ChatMessageType.RemotePrivate && toPlayer is null) // remote private message to a player not on the server
                 {
@@ -880,7 +875,7 @@ namespace SS.Core.Modules
                             _objectPoolManager.StringBuilderPool.Return(sb);
                         }
 
-                        _networkClient.SendPacket(_cc, packetBytes[..bytesWritten], NetSendFlags.Reliable);
+                        _networkClient.SendPacket(_cc!, packetBytes[..bytesWritten], NetSendFlags.Reliable);
                     }
                 }
             }
@@ -891,7 +886,7 @@ namespace SS.Core.Modules
             if (!isFromPlayer)
                 return;
 
-            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             lock (_lockObj)
@@ -917,7 +912,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_usage(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 targetPlayer = player;
 
             if (!((IBilling)this).TryGetUsage(targetPlayer, out TimeSpan usage, out DateTime? firstLoginTimestamp))
@@ -942,7 +937,7 @@ namespace SS.Core.Modules
             Description = "Displays the user database id of the target player, or yours if no target.")]
         private void Command_userid(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 targetPlayer = player;
 
             if (((IBilling)this).TryGetUserId(targetPlayer, out uint userId))
@@ -1073,7 +1068,7 @@ namespace SS.Core.Modules
 
         private void DefaultCommandReceived(ReadOnlySpan<char> commandName, ReadOnlySpan<char> line, Player player, ITarget target)
         {
-            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             lock (_lockObj)
@@ -1105,7 +1100,7 @@ namespace SS.Core.Modules
                     length = S2B_UserCommand.SetText(packetBytes, line, true);
                 }
 
-                _networkClient.SendPacket(_cc, packetBytes[..length], NetSendFlags.Reliable);
+                _networkClient.SendPacket(_cc!, packetBytes[..length], NetSendFlags.Reliable);
             }
             
 
@@ -1217,7 +1212,7 @@ namespace SS.Core.Modules
 
         private void FallbackDone(Player player, BillingFallbackResult fallbackResult)
         {
-            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             lock (_lockObj)
@@ -1279,10 +1274,10 @@ namespace SS.Core.Modules
 
         private void LoggedIn()
         {
-            _chat.SendArenaMessage((Arena)null, "Notice: Connection to user database server restored. Log in again for full functionality.");
+            _chat.SendArenaMessage((Arena?)null, "Notice: Connection to user database server restored. Log in again for full functionality.");
 
             S2B_ServerCapabilities packet = new(multiCastChat: true, supportDemographics: true);
-            _networkClient.SendPacket(_cc, ref packet, NetSendFlags.Reliable);
+            _networkClient.SendPacket(_cc!, ref packet, NetSendFlags.Reliable);
             _state = BillingState.LoggedIn;
             _identity = null;
 
@@ -1294,7 +1289,7 @@ namespace SS.Core.Modules
             // Only announce if changing from LoggedIn
             if (_state == BillingState.LoggedIn)
             {
-                _chat.SendArenaMessage((Arena)null, "Notice: Connection to user database server lost.");
+                _chat.SendArenaMessage((Arena?)null, "Notice: Connection to user database server lost.");
             }
 
             // Clear IsKnownToBiller values
@@ -1304,7 +1299,7 @@ namespace SS.Core.Modules
             {
                 foreach (Player player in _playerData.Players)
                 {
-                    if (player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                    if (player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                     {
                         playerData.IsKnownToBiller = false;
                     }
@@ -1362,14 +1357,14 @@ namespace SS.Core.Modules
 
             ref B2S_UserLogin packet = ref MemoryMarshal.AsRef<B2S_UserLogin>(data);
 
-            Player player = _playerData.PidToPlayer(packet.ConnectionId);
+            Player? player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is null)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Biller sent {nameof(B2S_UserLogin)} for unknown pid {packet.ConnectionId}.");
                 return;
             }
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             if (playerData.AuthRequest is null)
@@ -1418,7 +1413,7 @@ namespace SS.Core.Modules
 
                 if (packet.Banner.IsSet)
                 {
-                    IBanners banners = _broker.GetInterface<IBanners>();
+                    IBanners? banners = _broker.GetInterface<IBanners>();
                     if (banners is not null)
                     {
                         try
@@ -1494,7 +1489,7 @@ namespace SS.Core.Modules
             }
             else // broadcast message
             {
-                _chat.SendArenaMessage((Arena)null, (ChatSound)packet.Sound, text);
+                _chat.SendArenaMessage((Arena?)null, (ChatSound)packet.Sound, text);
             }
 
 
@@ -1574,7 +1569,7 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    Player player = _playerData.FindPlayer(recipient);
+                    Player? player = _playerData.FindPlayer(recipient);
                     if (player is null)
                         return;
 
@@ -1603,7 +1598,7 @@ namespace SS.Core.Modules
 
             ref B2S_UserKickout packet = ref MemoryMarshal.AsRef<B2S_UserKickout>(data);
 
-            Player player = _playerData.PidToPlayer(packet.ConnectionId);
+            Player? player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is not null)
             {
                 _playerData.KickPlayer(player);
@@ -1621,7 +1616,7 @@ namespace SS.Core.Modules
 
             ref B2S_UserCommandChat packet = ref MemoryMarshal.AsRef<B2S_UserCommandChat>(data);
 
-            Player player = _playerData.PidToPlayer(packet.ConnectionId);
+            Player? player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is null)
             {
                 _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Invalid {nameof(B2S_UserCommandChat)} - player not found ({packet.ConnectionId}).");
@@ -1666,7 +1661,7 @@ namespace SS.Core.Modules
 
             ref B2S_UserChannelChat packet = ref MemoryMarshal.AsRef<B2S_UserChannelChat>(data);
 
-            Player player = _playerData.PidToPlayer(packet.ConnectionId);
+            Player? player = _playerData.PidToPlayer(packet.ConnectionId);
             if (player is null)
             {
                 _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Invalid {nameof(B2S_UserChannelChat)} - player not found ({packet.ConnectionId}).");
@@ -1728,13 +1723,13 @@ namespace SS.Core.Modules
 
             if (_configManager.GetInt(_configManager.Global, "Billing", "HonorScoreResetRequests", 1) != 0)
             {
-                IPersistExecutor persistExecutor = _broker.GetInterface<IPersistExecutor>();
+                IPersistExecutor? persistExecutor = _broker.GetInterface<IPersistExecutor>();
 
                 if (persistExecutor is not null)
                 {
                     try
                     {
-                        string arenaGroups = _configManager.GetStr(_configManager.Global, "Billing", "ScoreResetArenaGroups");
+                        string? arenaGroups = _configManager.GetStr(_configManager.Global, "Billing", "ScoreResetArenaGroups");
                         arenaGroups ??= Constants.ArenaGroup_Public; // null only, white-space means none
 
                         ReadOnlySpan<char> remaining = arenaGroups;
@@ -1785,7 +1780,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Player player = _playerData.PidToPlayer(header.ConnectionId);
+            Player? player = _playerData.PidToPlayer(header.ConnectionId);
             if (player is null)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"B2S UserPacket unknown pid ({header.ConnectionId}).");
@@ -1875,7 +1870,7 @@ namespace SS.Core.Modules
                 {
                     ref readonly MulticastChannelChatRecipient recipient = ref recipients[i];
 
-                    Player player = _playerData.PidToPlayer(recipient.ConnectionId);
+                    Player? player = _playerData.PidToPlayer(recipient.ConnectionId);
                     if (player is null)
                         continue;
 
@@ -1911,7 +1906,7 @@ namespace SS.Core.Modules
             public TimeSpan Usage;
             public bool IsKnownToBiller;
             public bool HasDemographics;
-            public IAuthRequest AuthRequest;
+            public IAuthRequest? AuthRequest;
             public DateTime? FirstLogin;
             public PlayerScore? LoadedScore;
             public PlayerScore? SavedScore;

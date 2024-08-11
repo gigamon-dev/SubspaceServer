@@ -1,4 +1,5 @@
-﻿using SS.Packets.Game;
+﻿using SS.Core.ComponentInterfaces;
+using SS.Packets.Game;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -11,17 +12,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="ballPacket">The packet.</param>
         public delegate void BallPacketSentDelegate(Arena arena, in BallPacket ballPacket);
 
-        public static void Register(ComponentBroker broker, BallPacketSentDelegate handler)
+        public static void Register(IComponentBroker broker, BallPacketSentDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, BallPacketSentDelegate handler)
+        public static void Unregister(IComponentBroker broker, BallPacketSentDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, in BallPacket ballPacket)
+        public static void Fire(IComponentBroker broker, Arena arena, in BallPacket ballPacket)
         {
             broker?.GetCallback<BallPacketSentDelegate>()?.Invoke(arena, in ballPacket);
 

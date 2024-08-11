@@ -117,7 +117,7 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// The player that is carrying or last touched the ball.
         /// </summary>
-        public Player Carrier;
+        public Player? Carrier;
 
         /// <summary>
         /// Freq of the carrier.

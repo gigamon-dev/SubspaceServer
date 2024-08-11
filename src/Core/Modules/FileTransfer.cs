@@ -4,7 +4,6 @@ using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
-using System.Diagnostics;
 using System.IO;
 
 namespace SS.Core.Modules
@@ -13,14 +12,19 @@ namespace SS.Core.Modules
     /// Module that provides functionality to transfer files to and from game clients.
     /// </summary>
     [CoreModuleInfo]
-    public class FileTransfer : IModule, IFileTransfer
+    public class FileTransfer(
+        IComponentBroker broker,
+        INetwork network,
+        ILogManager logManager,
+        ICapabilityManager capabilityManager,
+        IPlayerData playerData) : IModule, IFileTransfer
     {
-        private ComponentBroker _broker;
-        private INetwork _network;
-        private ILogManager _logManager;
-        private ICapabilityManager _capabilityManager;
-        private IPlayerData _playerData;
-        private InterfaceRegistrationToken<IFileTransfer> _iFileTransferToken;
+        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private InterfaceRegistrationToken<IFileTransfer>? _iFileTransferToken;
 
         private static readonly DefaultObjectPool<DownloadDataContext> s_downloadDataContextPool = new(new DefaultPooledObjectPolicy<DownloadDataContext>(), Constants.TargetPlayerCount);
 
@@ -31,19 +35,8 @@ namespace SS.Core.Modules
 
         #region Module Members
 
-        public bool Load(
-            ComponentBroker broker,
-            INetwork network,
-            ILogManager logManager,
-            ICapabilityManager capabilityManager,
-            IPlayerData playerData)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-
             _udKey = _playerData.AllocatePlayerData<UploadDataContext>();
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
 
@@ -54,7 +47,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iFileTransferToken) != 0)
                 return false;
@@ -203,7 +196,7 @@ namespace SS.Core.Modules
             if (StringUtils.DefaultEncoding.GetByteCount(clientPath) > S2C_RequestFile.PathInlineArray.Length)
                 return false;
 
-            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext? ud))
                 return false;
 
             if (ud.Stream is not null || !string.IsNullOrWhiteSpace(ud.FileName) || !player.IsStandard)
@@ -227,17 +220,17 @@ namespace SS.Core.Modules
             ArgumentNullException.ThrowIfNull(player);
             ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext? ud))
                 return;
 
             ud.WorkingDirectory = path;
         }
 
-        string IFileTransfer.GetWorkingDirectory(Player player)
+        string? IFileTransfer.GetWorkingDirectory(Player player)
         {
             ArgumentNullException.ThrowIfNull(player);
 
-            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext? ud))
                 return null;
 
             return ud.WorkingDirectory;
@@ -245,12 +238,12 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (player is null)
                 return;
 
-            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext? ud))
                 return;
 
             if (action == PlayerAction.Connect)
@@ -265,7 +258,7 @@ namespace SS.Core.Modules
 
         private void Packet_UploadFile(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (player is null || !player.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (player is null || !player.TryGetExtraData(_udKey, out UploadDataContext? ud))
                 return;
 
             if (!_capabilityManager.HasCapability(player, Constants.Capabilities.UploadFile))
@@ -296,7 +289,7 @@ namespace SS.Core.Modules
             if (player is null)
                 return;
 
-            if (!player.TryGetExtraData(_udKey, out UploadDataContext ud))
+            if (!player.TryGetExtraData(_udKey, out UploadDataContext? ud))
                 return;
 
             if (offset == -1)
@@ -358,19 +351,19 @@ namespace SS.Core.Modules
                 int numChars = context.GetFileName(filename);
                 filename = filename[..numChars];
 
-                _logManager.LogP(LogLevel.Info, nameof(FileTransfer), context.Player, $"Completed send of '{filename}'.");
-                context.Stream.Dispose();
+                _logManager.LogP(LogLevel.Info, nameof(FileTransfer), context.Player!, $"Completed send of '{filename}'.");
+                context.Stream!.Dispose();
 
                 if (!string.IsNullOrWhiteSpace(context.DeletePath))
                 {
                     try
                     {
                         File.Delete(context.DeletePath);
-                        _logManager.LogP(LogLevel.Info, nameof(FileTransfer), context.Player, $"Deleted '{context.DeletePath}' ({filename}) after completed send.");
+                        _logManager.LogP(LogLevel.Info, nameof(FileTransfer), context.Player!, $"Deleted '{context.DeletePath}' ({filename}) after completed send.");
                     }
                     catch (Exception ex)
                     {
-                        _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), context.Player, $"Failed to delete '{context.DeletePath}' ({filename}) after completed send. {ex.Message}");
+                        _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), context.Player!, $"Failed to delete '{context.DeletePath}' ({filename}) after completed send. {ex.Message}");
                     }
                 }
 
@@ -409,7 +402,7 @@ namespace SS.Core.Modules
             // the stream's position should already be where we want to start reading from
             do
             {
-                int bytesRead = context.Stream.Read(dataSpan);
+                int bytesRead = context.Stream!.Read(dataSpan);
 
                 if (bytesRead == 0)
                 {
@@ -428,7 +421,7 @@ namespace SS.Core.Modules
             // 0x10 followed by the filename (16 bytes, null terminator required)
             private readonly byte[] _header = new byte[17] { (byte)S2CPacketType.IncomingFile, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-            public void Set(Player player, Stream stream, ReadOnlySpan<char> filename, string deletePath)
+            public void Set(Player player, Stream stream, ReadOnlySpan<char> filename, string? deletePath)
             {
                 Player = player;
 
@@ -440,16 +433,16 @@ namespace SS.Core.Modules
 
                 StringUtils.WriteNullPaddedString(_header.AsSpan(1), filename, true);
                 Stream = stream ?? throw new ArgumentNullException(nameof(stream));
-                DeletePath = deletePath; // can be null
+                DeletePath = deletePath;
             }
 
-            public Player Player { get; private set; }
+            public Player? Player { get; private set; }
 
-            public Stream Stream { get; private set; }
+            public Stream? Stream { get; private set; }
 
             public ReadOnlySpan<byte> Header => _header;
 
-            public string DeletePath { get; private set; }
+            public string? DeletePath { get; private set; }
 
             public int GetFileName(Span<char> filename)
             {
@@ -476,21 +469,21 @@ namespace SS.Core.Modules
 
         private class UploadDataContext : IResettable, IDisposable
         {
-            public FileStream Stream;
+            public FileStream? Stream;
 
-            public string FileName
+            public string? FileName
             {
                 get;
                 set;
             }
 
-            public IFileUploadedInvoker UploadedInvoker
+            public IFileUploadedInvoker? UploadedInvoker
             {
                 get;
                 set;
             }
 
-            public string WorkingDirectory
+            public string? WorkingDirectory
             {
                 get;
                 set;
@@ -509,7 +502,7 @@ namespace SS.Core.Modules
                     if (UploadedInvoker is not null)
                     {
                         // Invoke the callback, it will handle cleaning up the file
-                        UploadedInvoker.Invoke(FileName);
+                        UploadedInvoker.Invoke(FileName!);
                     }
                     else if (!string.IsNullOrWhiteSpace(FileName))
                     {
@@ -564,7 +557,7 @@ namespace SS.Core.Modules
 
         private interface IFileUploadedInvoker
         {
-            void Invoke(string filename);
+            void Invoke(string? filename);
         }
 
         private class FileUploadedDelegateInvoker<T> : IFileUploadedInvoker
@@ -578,7 +571,7 @@ namespace SS.Core.Modules
                 this.state = state;
             }
 
-            public void Invoke(string filename)
+            public void Invoke(string? filename)
             {
                 callback(filename, state);
             }

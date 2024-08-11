@@ -17,28 +17,27 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public sealed class Obscene : IModule, IObscene, IDisposable
     {
-        private ComponentBroker _broker;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IObjectPoolManager _objectPoolManager;
+        private readonly IComponentBroker _broker;
+        private readonly ICommandManager _commandManager;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IMainloop _mainloop;
+        private readonly IObjectPoolManager _objectPoolManager;
 
-        private InterfaceRegistrationToken<IObscene> _iObsceneRegistrationToken;
+        private InterfaceRegistrationToken<IObscene>? _iObsceneRegistrationToken;
 
         private const string ObsceneFileName = "obscene.txt";
         private const string Replace = "%@$&%*!#@&%!#&*$#?@!*%@&!%#&%!?$*#!*$&@#&%$!*%@#&%!@&#$!*@&$%*@?";
 
         private ulong _replaceCount = 0;
-        private FileSystemWatcher _fileSystemWatcher;
+        private FileSystemWatcher? _fileSystemWatcher;
 
         private readonly ReaderWriterLockSlim _rwLock = new();
         private uint? _checksum = null;
-        private List<string> _obsceneList = null;
+        private List<string>? _obsceneList = null;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public Obscene(
+            IComponentBroker broker,
             ICommandManager commandManager,
             IConfigManager configManager,
             ILogManager logManager,
@@ -49,21 +48,27 @@ namespace SS.Core.Modules
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _fileSystemWatcher = new(".", ObsceneFileName);
             _fileSystemWatcher.NotifyFilter = NotifyFilters.LastWrite;
             _fileSystemWatcher.Changed += FileSystemWatcher_Changed;
             _fileSystemWatcher.EnableRaisingEvents = true;
 
-            mainloop.QueueThreadPoolWorkItem(_ => LoadObscene(), (object)null);
+            _mainloop.QueueThreadPoolWorkItem(_ => LoadObscene(), (object?)null);
 
             _commandManager.AddCommand("obscene", Command_obscene);
             _iObsceneRegistrationToken = broker.RegisterInterface<IObscene>(this);
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iObsceneRegistrationToken) != 0)
                 return false;
@@ -91,7 +96,7 @@ namespace SS.Core.Modules
 
         bool IObscene.Filter(Span<char> line)
         {
-            List<string> obsceneList;
+            List<string>? obsceneList;
 
             _rwLock.EnterReadLock();
 
@@ -106,7 +111,7 @@ namespace SS.Core.Modules
 
             bool filtered = false;
 
-            if (obsceneList != null)
+            if (obsceneList is not null)
             {
                 foreach (string obscenity in obsceneList)
                 {
@@ -135,7 +140,7 @@ namespace SS.Core.Modules
         {
             player.Flags.ObscenityFilter = !player.Flags.ObscenityFilter;
 
-            IChat chat = _broker.GetInterface<IChat>();
+            IChat? chat = _broker.GetInterface<IChat>();
             if (chat != null)
             {
                 try
@@ -174,7 +179,7 @@ namespace SS.Core.Modules
                     // Open the file.
                     //
 
-                    FileStream fs = null;
+                    FileStream? fs = null;
                     int tries = 0;
 
                     do
@@ -240,7 +245,7 @@ namespace SS.Core.Modules
                     // Populate the list.
                     //
 
-                    string line;
+                    string? line;
                     while ((line = sr.ReadLine()) != null)
                     {
                         if (line.Length > 0 && !line.StartsWith('#'))

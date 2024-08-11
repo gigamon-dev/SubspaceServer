@@ -14,18 +14,23 @@ namespace SS.Core.Modules
     /// This can also be used along with the <see cref="BillingUdp"/> to provide authentication when the the billing server connection is down.
     /// </summary>
     [CoreModuleInfo]
-    public sealed class AuthFile : IModule, IAuth, IBillingFallback, IDisposable
+    public sealed class AuthFile(
+        IPlayerData playerData,
+        IConfigManager configManager,
+        ICommandManager commandManager,
+        IChat chat,
+        ILogManager logManager) : IModule, IAuth, IBillingFallback, IDisposable
     {
-        private IPlayerData _playerData;
-        private IConfigManager _configManager;
-        private ICommandManager _commandManager;
-        private IChat _chat;
-        private ILogManager _logManager;
-        private InterfaceRegistrationToken<IAuth> _iAuthToken;
-        private InterfaceRegistrationToken<IBillingFallback> _iBillingFallbackToken;
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private InterfaceRegistrationToken<IAuth>? _iAuthToken;
+        private InterfaceRegistrationToken<IBillingFallback>? _iBillingFallbackToken;
 
-        private ConfigHandle _pwdFile;
-        private HashAlgorithm _hashAlgorithm;
+        private ConfigHandle? _pwdFile;
+        private HashAlgorithm? _hashAlgorithm;
         private HashEncoding _hashEncoding;
         private int _encodedHashLength;
         private readonly object _hashLock = new();
@@ -42,20 +47,8 @@ namespace SS.Core.Modules
             Description = "How password hashes are encoded in the password file. hex|Base64")]
         [ConfigHelp("General", "AllowUnknown", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1",
             Description = "Determines whether to allow players not listed in the password file.")]
-        public bool Load(
-            ComponentBroker broker,
-            IPlayerData playerData,
-            IConfigManager configManager,
-            ICommandManager commandManager,
-            IChat chat,
-            ILogManager logManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-
             _pwdFile = configManager.OpenConfigFile(null, ConfigFileName);
             if (_pwdFile == null)
             {
@@ -63,14 +56,14 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            string hashAlgoritmName = configManager.GetStr(_pwdFile, "General", "HashAlgorithm");
-            if (string.IsNullOrWhiteSpace(hashAlgoritmName))
+            string? hashAlgorithmName = configManager.GetStr(_pwdFile, "General", "HashAlgorithm");
+            if (string.IsNullOrWhiteSpace(hashAlgorithmName))
             {
                 _hashAlgorithm = MD5.Create();
             }
             else
             {
-                _hashAlgorithm = hashAlgoritmName switch
+                _hashAlgorithm = hashAlgorithmName switch
                 {
                     "MD5" => MD5.Create(),
                     "SHA256" => SHA256.Create(),
@@ -94,7 +87,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            string hashEncodingStr = configManager.GetStr(_pwdFile, "General", "HashEncoding");
+            string? hashEncodingStr = configManager.GetStr(_pwdFile, "General", "HashEncoding");
             _hashEncoding = string.Equals(hashEncodingStr, "Base64", StringComparison.OrdinalIgnoreCase)
                  ? HashEncoding.Base64
                  : HashEncoding.Hexadecimal;
@@ -138,7 +131,7 @@ namespace SS.Core.Modules
             }
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iBillingFallbackToken) != 0)
                 return false;
@@ -155,11 +148,17 @@ namespace SS.Core.Modules
 
             _playerData.FreePlayerData(ref _pdKey);
 
-            _configManager.CloseConfigFile(_pwdFile);
-            _pwdFile = null;
+            if (_pwdFile is not null)
+            {
+                _configManager.CloseConfigFile(_pwdFile);
+                _pwdFile = null;
+            }
 
-            _hashAlgorithm.Dispose();
-            _hashAlgorithm = null;
+            if (_hashAlgorithm is not null)
+            {
+                _hashAlgorithm.Dispose();
+                _hashAlgorithm = null;
+            }
 
             return true;
         }
@@ -170,9 +169,12 @@ namespace SS.Core.Modules
 
         void IAuth.Authenticate(IAuthRequest authRequest)
         {
-            Player player = authRequest.Player;
+            if (_pwdFile is null)
+                throw new InvalidOperationException("Not loaded.");
+
+            Player? player = authRequest.Player;
             if (player is null
-                || !player.TryGetExtraData(_pdKey, out PlayerData playerData)
+                || !player.TryGetExtraData(_pdKey, out PlayerData? playerData)
                 || authRequest.LoginBytes.Length < LoginPacket.VIELength)
             {
                 authRequest.Result.Code = AuthCode.CustomText;
@@ -218,9 +220,9 @@ namespace SS.Core.Modules
             result.SetName(nameChars);
             result.SetSendName(nameChars);
 
-            string line = _configManager.GetStr(_pwdFile, "users", nameChars);
+            string? line = _configManager.GetStr(_pwdFile, "users", nameChars);
 
-            if (line != null)
+            if (line is not null)
             {
                 if (string.Equals(line, "lock"))
                 {
@@ -259,7 +261,10 @@ namespace SS.Core.Modules
 
         void IBillingFallback.Check<T>(Player player, ReadOnlySpan<char> name, ReadOnlySpan<char> password, BillingFallbackDoneDelegate<T> done, T state)
         {
-            if (name.Length == 0 || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (_pwdFile is null)
+                throw new InvalidOperationException("Not loaded.");
+
+            if (name.Length == 0 || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
             {
                 done(state, BillingFallbackResult.Mismatch);
                 return;
@@ -274,7 +279,7 @@ namespace SS.Core.Modules
 
             playerData.SetPasswordHash(encodedHash);
 
-            string line = _configManager.GetStr(_pwdFile, "users", name);
+            string? line = _configManager.GetStr(_pwdFile, "users", name);
             if (line != null)
             {
                 if (string.Equals(line, "lock", StringComparison.OrdinalIgnoreCase))
@@ -324,6 +329,9 @@ namespace SS.Core.Modules
             Description = "If true, you must be authenticated (have used a correct password) according to this module or some other module before using ?local_password to change your local password.")]
         private void Command_passwd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            if (_pwdFile is null)
+                throw new InvalidOperationException("Not loaded.");
+
             if (parameters.IsWhiteSpace())
             {
                 _chat.SendMessage(player, "You must specify a password.");
@@ -343,7 +351,7 @@ namespace SS.Core.Modules
                         return;
                     }
 
-                    _configManager.SetStr(_pwdFile, "users", player.Name, encodedHash.ToString(), null, true);
+                    _configManager.SetStr(_pwdFile, "users", player.Name!, encodedHash.ToString(), null, true);
                     _chat.SendMessage(player, "Password set.");
                 }
             }
@@ -358,13 +366,16 @@ namespace SS.Core.Modules
                 """)]
         private void Command_addallowed(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            if (_pwdFile is null)
+                throw new InvalidOperationException("Not loaded.");
+
             if (parameters.IsWhiteSpace())
             {
                 _chat.SendMessage(player, "You must specify a player name.");
                 return;
             }
 
-            string hash = _configManager.GetStr(_pwdFile, "users", parameters);
+            string? hash = _configManager.GetStr(_pwdFile, "users", parameters);
 
             if (!string.IsNullOrWhiteSpace(hash))
             {
@@ -393,13 +404,16 @@ namespace SS.Core.Modules
                 """)]
         private void Command_set_local_password(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (_pwdFile is null)
+                throw new InvalidOperationException("Not loaded.");
+
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 _chat.SendMessage(player, "You must use this on a player.");
                 return;
             }
 
-            string hash = _configManager.GetStr(_pwdFile, "users", targetPlayer.Name);
+            string? hash = _configManager.GetStr(_pwdFile, "users", targetPlayer.Name);
 
             if (!string.IsNullOrWhiteSpace(hash) && !string.Equals(hash, "any", StringComparison.OrdinalIgnoreCase))
             {
@@ -407,14 +421,14 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData)
+            if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData)
                 || targetPlayerData.PasswordHash.IsEmpty)
             {
                 _chat.SendMessage(player, "Hashed password missing.");
                 return;
             }
 
-            _configManager.SetStr(_pwdFile, "users", targetPlayer.Name, targetPlayerData.PasswordHash.ToString(), $"added by {player.Name} on {DateTime.UtcNow}", true);
+            _configManager.SetStr(_pwdFile, "users", targetPlayer.Name!, targetPlayerData.PasswordHash.ToString(), $"added by {player.Name} on {DateTime.UtcNow}", true);
             _chat.SendMessage(player, $"Set local password for {targetPlayer.Name}");
             _chat.SendMessage(targetPlayer, $"Your password has been set as a local password by {player.Name}.");
         }
@@ -455,7 +469,7 @@ namespace SS.Core.Modules
                 return false;
 
             // Get the hash.
-            Span<byte> hashSpan = stackalloc byte[_hashAlgorithm.HashSize / 8];
+            Span<byte> hashSpan = stackalloc byte[_hashAlgorithm!.HashSize / 8];
             lock (_hashLock) // HashAlgorithm is not thread-safe
             {
                 if (!_hashAlgorithm.TryComputeHash(data, hashSpan, out int bytesWritten))
@@ -514,7 +528,7 @@ namespace SS.Core.Modules
 
         private class PlayerData : IResettable
         {
-            private char[] _passwordHashChars = null;
+            private char[]? _passwordHashChars = null;
             private int _passwordHashLength = 0;
 
             public ReadOnlySpan<char> PasswordHash => _passwordHashChars is null

@@ -10,17 +10,17 @@ namespace SS.Core.ComponentCallbacks
     {
         public delegate void PersistIntervalEndedDelegate(PersistInterval interval, string arenaGroup);
 
-        public static void Register(ComponentBroker broker, PersistIntervalEndedDelegate handler)
+        public static void Register(IComponentBroker broker, PersistIntervalEndedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, PersistIntervalEndedDelegate handler)
+        public static void Unregister(IComponentBroker broker, PersistIntervalEndedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, PersistInterval interval, string arenaGroup)
+        public static void Fire(IComponentBroker broker, PersistInterval interval, string arenaGroup)
         {
             broker?.GetCallback<PersistIntervalEndedDelegate>()?.Invoke(interval, arenaGroup);
 

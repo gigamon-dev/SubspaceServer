@@ -54,7 +54,7 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="name">The name of the arena to find.</param>
         /// <returns>The arena if found. Otherwise, <see langword="null"/>.</returns>
-        Arena FindArena(ReadOnlySpan<char> name);
+        Arena? FindArena(ReadOnlySpan<char> name);
 
         /// <summary>
         /// Tries to find an arena, and get player counts.
@@ -66,7 +66,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="totalCount">When this method returns and an arena was found, the total number of players.</param>
         /// <param name="playing">When this method returns and an arena was found, the number of players playing (not in spec).</param>
         /// <returns>The arena if found. Otherwise, <see langword="null"/>.</returns>
-        Arena FindArena(ReadOnlySpan<char> name, out int totalCount, out int playing);
+        Arena? FindArena(ReadOnlySpan<char> name, out int totalCount, out int playing);
 
         /// <summary>
         /// Counts the number of players on the server and in each arena.

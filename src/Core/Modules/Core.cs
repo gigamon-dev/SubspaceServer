@@ -26,26 +26,27 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class Core : IModule, IModuleLoaderAware, IAuth
     {
-        private ComponentBroker _broker;
-
         // required dependencies
-        private IArenaManagerInternal _arenaManagerInternal;
-        private ICapabilityManager _capabiltyManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMainloop _mainloop;
-        private IMainloopTimer _mainloopTimer;
-        private IMapNewsDownload _mapNewsDownload;
-        private IObjectPoolManager _objectPoolManager;
-        private IPersistExecutor _persistExecutor;
-        private IPlayerData _playerData;
-        private IScoreStats _scoreStats;
+        private readonly IComponentBroker _broker;
+        private readonly IArenaManagerInternal _arenaManagerInternal;
+        private readonly ICapabilityManager _capabiltyManager;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IMainloop _mainloop;
+        private readonly IMainloopTimer _mainloopTimer;
+        private readonly IMapNewsDownload _mapNewsDownload;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
 
-        // optional dependencies
-        private IChatNetwork _chatNetwork;
-        private INetwork _network;
+        // optional dependencies (available on Load)
+        private IChatNetwork? _chatNetwork;
+        private INetwork? _network;
 
-        private InterfaceRegistrationToken<IAuth> _iAuthToken;
+        // optional dependencies (available on PostLoad)
+        private IPersistExecutor? _persistExecutor;
+        private IScoreStats? _scoreStats;
+
+        private InterfaceRegistrationToken<IAuth>? _iAuthToken;
 
         private readonly DefaultObjectPool<AuthRequest> _authRequestPool = new(new DefaultPooledObjectPolicy<AuthRequest>(), Constants.TargetPlayerCount);
 
@@ -63,16 +64,8 @@ namespace SS.Core.Modules
         private readonly Action<Player> _authDone;
         private readonly Action<Player> _playerSyncDone;
 
-        public Core()
-        {
-            _authDone = AuthDone;
-            _playerSyncDone = PlayerSyncDone;
-        }
-
-        #region Module Members
-
-        internal bool Load(
-            ComponentBroker broker,
+        internal Core(
+            IComponentBroker broker,
             IArenaManagerInternal arenaManagerInternal,
             ICapabilityManager capabilityManager,
             IConfigManager configManager,
@@ -94,6 +87,14 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
+            _authDone = AuthDone;
+            _playerSyncDone = PlayerSyncDone;
+        }
+
+        #region Module Members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _network = broker.GetInterface<INetwork>();
             _chatNetwork = broker.GetInterface<IChatNetwork>();
 
@@ -124,15 +125,13 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool PostLoad(ComponentBroker broker)
+        void IModuleLoaderAware.PostLoad(IComponentBroker broker)
         {
             _persistExecutor = broker.GetInterface<IPersistExecutor>();
             _scoreStats = broker.GetInterface<IScoreStats>();
-
-            return true;
         }
 
-        public bool PreUnload(ComponentBroker broker)
+        void IModuleLoaderAware.PreUnload(IComponentBroker broker)
         {
             if (_persistExecutor != null)
             {
@@ -143,11 +142,9 @@ namespace SS.Core.Modules
             {
                 broker.ReleaseInterface(ref _scoreStats);
             }
-
-            return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iAuthToken) != 0)
                 return false;
@@ -207,7 +204,7 @@ namespace SS.Core.Modules
 
         private void Callback_NewPlayer(Player player, bool isNew)
         {
-            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             if (playerData.AuthRequest is not null)
@@ -321,14 +318,14 @@ namespace SS.Core.Modules
                 Player player = action.Player;
                 PlayerState oldStatus = action.OldStatus;
 
-                if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+                if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                     continue;
 
                 switch (oldStatus)
                 {
                     case PlayerState.NeedAuth:
                         {
-                            IAuth auth = _broker.GetInterface<IAuth>();
+                            IAuth? auth = _broker.GetInterface<IAuth>();
                             if (auth is null)
                             {
                                 _logManager.LogP(LogLevel.Warn, nameof(Core), player, "Can't authenticate player. IAuth implementation not found.");
@@ -396,7 +393,7 @@ namespace SS.Core.Modules
                             short freq = 0;
 
                             // If the arena has a manager, use it.
-                            IFreqManager fm = player.Arena.GetInterface<IFreqManager>();
+                            IFreqManager? fm = player.Arena!.GetInterface<IFreqManager>();
                             if (fm != null)
                             {
                                 try
@@ -495,7 +492,7 @@ namespace SS.Core.Modules
 
         private void Packet_Login(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             if (!player.IsStandard)
@@ -592,9 +589,12 @@ namespace SS.Core.Modules
 
         private void ChatHandler_Login(Player player, ReadOnlySpan<char> message)
         {
-            if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (player is null)
+                return;
+
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
             {
-                _chatNetwork.SendToOne(player, "LOGINBAD:Internal Server Error");
+                _chatNetwork!.SendToOne(player, "LOGINBAD:Internal Server Error");
                 return;
             }
 
@@ -607,20 +607,20 @@ namespace SS.Core.Modules
             ReadOnlySpan<char> versionClient = message.GetToken(':', out ReadOnlySpan<char> remaining);
             if (versionClient.IsEmpty)
             {
-                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                _chatNetwork!.SendToOne(player, "LOGINBAD:Bad Request");
                 return;
             }
 
             ReadOnlySpan<char> versionSpan = versionClient.GetToken(';', out ReadOnlySpan<char> clientInfo);
             if (versionClient.IsEmpty)
             {
-                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                _chatNetwork!.SendToOne(player, "LOGINBAD:Bad Request");
                 return;
             }
 
             if (!ushort.TryParse(versionSpan, out ushort version))
             {
-                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                _chatNetwork!.SendToOne(player, "LOGINBAD:Bad Request");
                 return;
             }
 
@@ -630,7 +630,7 @@ namespace SS.Core.Modules
             ReadOnlySpan<char> name = remaining.GetToken(':', out remaining);
             if (name.IsEmpty || remaining.IsEmpty)
             {
-                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                _chatNetwork!.SendToOne(player, "LOGINBAD:Bad Request");
                 return;
             }
 
@@ -639,14 +639,14 @@ namespace SS.Core.Modules
             CleanupPlayerName(name, ref cleanName);
             if (cleanName.IsEmpty)
             {
-                _chatNetwork.SendToOne(player, $"LOGINBAD:{GetAuthCodeMessage(AuthCode.BadName)}");
+                _chatNetwork!.SendToOne(player, $"LOGINBAD:{GetAuthCodeMessage(AuthCode.BadName)}");
                 return;
             }
 
             ReadOnlySpan<char> password = remaining[1..]; // skip the :
             if (remaining.IsEmpty)
             {
-                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                _chatNetwork!.SendToOne(player, "LOGINBAD:Bad Request");
                 return;
             }
 
@@ -658,7 +658,7 @@ namespace SS.Core.Modules
 
             if (StringUtils.DefaultEncoding.GetByteCount(cleanName) > LoginPacket.NameInlineArray.Length)
             {
-                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                _chatNetwork!.SendToOne(player, "LOGINBAD:Bad Request");
                 return;
             }
 
@@ -668,7 +668,7 @@ namespace SS.Core.Modules
 
             if (StringUtils.DefaultEncoding.GetByteCount(password) > LoginPacket.PasswordInlineArray.Length)
             {
-                _chatNetwork.SendToOne(player, "LOGINBAD:Bad Request");
+                _chatNetwork!.SendToOne(player, "LOGINBAD:Bad Request");
                 return;
             }
 
@@ -735,13 +735,13 @@ namespace SS.Core.Modules
             cleanName = cleanName[..cleanIndex].TrimEnd(); // no trailing spaces
         }
 
-        private void FailLoginWith(Player player, AuthCode authCode, string text, string logmsg)
+        private void FailLoginWith(Player player, AuthCode authCode, string? text, string logmsg)
         {
             if (player == null)
                 return;
 
             // Calling this method means we're bypassing PlayerState.NeedAuth, so do some cleanup.
-            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             playerData.AuthRequest ??= _authRequestPool.Get();
@@ -786,7 +786,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
             if (player.Status != PlayerState.WaitAuth)
@@ -795,7 +795,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            AuthResult authResult = playerData.AuthRequest.Result;
+            AuthResult authResult = playerData.AuthRequest!.Result;
             if (authResult.Code is null)
             {
                 // Getting here means an authentication module is malfunctioning.
@@ -813,7 +813,7 @@ namespace SS.Core.Modules
                 // Login succeeded
 
                 // Try to locate an existing player with the same name.
-                Player oldPlayer = _playerData.FindPlayer(authResult.Name);
+                Player? oldPlayer = _playerData.FindPlayer(authResult.Name);
 
                 // Set new player's name. 
                 player.Packet.Name.Set(authResult.SendName); // this can truncate
@@ -825,7 +825,7 @@ namespace SS.Core.Modules
                 // If so, do not increment stage yet. We'll do it when the other player leaves.
                 if (oldPlayer != null && oldPlayer != player)
                 {
-                    if (!oldPlayer.TryGetExtraData(_pdkey, out PlayerData oldPlayerData))
+                    if (!oldPlayer.TryGetExtraData(_pdkey, out PlayerData? oldPlayerData))
                         return;
 
                     _logManager.LogM(LogLevel.Drivel, nameof(Core), $"[{authResult.Name}] Player already on, kicking him off (pid {player.Id} replacing {oldPlayer.Id}).");
@@ -879,22 +879,29 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdkey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
-            AuthResult authResult = playerData.AuthRequest?.Result;
-
-            if (authResult is null)
+            if (playerData.AuthRequest is null)
             {
-                _logManager.LogP(LogLevel.Error, nameof(Core), player, "Missing AuthData.");
+                _logManager.LogP(LogLevel.Error, nameof(Core), player, "Can't send login response (no AuthRequest).");
                 _playerData.KickPlayer(player);
                 return;
             }
+
+            AuthResult authResult = playerData.AuthRequest.Result;
 
             try
             {
                 if (player.IsStandard)
                 {
+                    if (authResult.Code is null)
+                    {
+                        _logManager.LogP(LogLevel.Error, nameof(Core), player, "Can't send login response (no AuthResult.AuthCode).");
+                        _playerData.KickPlayer(player);
+                        return;
+                    }
+
                     S2C_LoginResponse lr = new();
                     lr.Code = (byte)authResult.Code;
                     lr.DemoData = authResult.DemoData ? (byte)1 : (byte)0;
@@ -903,7 +910,7 @@ namespace SS.Core.Modules
                     if (player.Type == ClientType.Continuum)
                     {
                         S2C_ContinuumVersion pkt = new(ClientVersion_Cont, _continuumChecksum);
-                        _network.SendToOne(player, ref pkt, NetSendFlags.Reliable);
+                        _network!.SendToOne(player, ref pkt, NetSendFlags.Reliable);
 
                         lr.ExeChecksum = _continuumChecksum;
                         lr.CodeChecksum = _codeChecksum;
@@ -930,7 +937,7 @@ namespace SS.Core.Modules
                             Span<byte> customSpan = stackalloc byte[256];
                             customSpan[0] = (byte)S2CPacketType.LoginText;
                             int bytes = customSpan[1..].WriteNullTerminatedString(authResult.CustomText.TruncateForEncodedByteLimit(254));
-                            _network.SendToOne(player, customSpan[..(1 + bytes)], NetSendFlags.Reliable);
+                            _network!.SendToOne(player, customSpan[..(1 + bytes)], NetSendFlags.Reliable);
                         }
                         else
                         {
@@ -939,25 +946,27 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    _network.SendToOne(player, ref lr, NetSendFlags.Reliable);
+                    _network!.SendToOne(player, ref lr, NetSendFlags.Reliable);
                 }
                 else if (player.IsChat)
                 {
                     if (authResult.Code is null)
                     {
-                        _chatNetwork.SendToOne(player, "LOGINBAD:Internal Server Error");
+                        _logManager.LogP(LogLevel.Error, nameof(Core), player, "Can't send login response (no AuthResult.AuthCode).");
+                        _chatNetwork!.SendToOne(player, "LOGINBAD:Internal Server Error");
+                        _playerData.KickPlayer(player);
                     }
                     else if (authResult.Code.Value.IsOK())
                     {
-                        _chatNetwork.SendToOne(player, $"LOGINOK:{player.Name}");
+                        _chatNetwork!.SendToOne(player, $"LOGINOK:{player.Name}");
                     }
                     else if (authResult.Code.Value == AuthCode.CustomText)
                     {
-                        _chatNetwork.SendToOne(player, $"LOGINBAD:{authResult.CustomText}");
+                        _chatNetwork!.SendToOne(player, $"LOGINBAD:{authResult.CustomText}");
                     }
                     else
                     {
-                        _chatNetwork.SendToOne(player, $"LOGINBAD:{GetAuthCodeMessage(authResult.Code.Value)}");
+                        _chatNetwork!.SendToOne(player, $"LOGINBAD:{GetAuthCodeMessage(authResult.Code.Value)}");
                     }
                 }
             }
@@ -990,10 +999,10 @@ namespace SS.Core.Modules
                     player.Status = PlayerState.DoGlobalCallbacks;
                 else if (player.Status == PlayerState.WaitGlobalSync2)
                 {
-                    if (!player.TryGetExtraData(_pdkey, out PlayerData pdata))
+                    if (!player.TryGetExtraData(_pdkey, out PlayerData? pdata))
                         return;
 
-                    Player replacedBy = pdata.ReplacedBy;
+                    Player? replacedBy = pdata.ReplacedBy;
                     if (replacedBy != null)
                     {
                         if (replacedBy.Status != PlayerState.WaitAuth)
@@ -1020,7 +1029,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void FirePlayerActionEvent(Player player, PlayerAction action, Arena arena)
+        private void FirePlayerActionEvent(Player player, PlayerAction action, Arena? arena)
         {
             if (player == null)
                 return;
@@ -1102,8 +1111,8 @@ namespace SS.Core.Modules
 
         private class PlayerData : IResettable
         {
-            public AuthRequest AuthRequest;
-            public Player ReplacedBy;
+            public AuthRequest? AuthRequest;
+            public Player? ReplacedBy;
 
             public bool HasDoneGlobalSync; // global sync
             public bool HasDoneArenaSync; // arena sync
@@ -1124,7 +1133,7 @@ namespace SS.Core.Modules
         {
             private readonly byte[] _loginBytes = new byte[Constants.MaxPacket];
             private int _loginLength = 0;
-            private Action<Player> _doneCallback;
+            private Action<Player>? _doneCallback;
             private readonly AuthResult _result = new();
 
             public AuthRequest()
@@ -1132,7 +1141,7 @@ namespace SS.Core.Modules
                 Reset();
             }
 
-            public Player Player { get; private set; }
+            public Player? Player { get; private set; }
 
             public Span<byte> LoginBytes => _loginBytes.AsSpan(0, _loginLength);
 
@@ -1175,7 +1184,7 @@ namespace SS.Core.Modules
 
             public void Done()
             {
-                _doneCallback(Player);
+                _doneCallback?.Invoke(Player!);
             }
 
             public void Reset()

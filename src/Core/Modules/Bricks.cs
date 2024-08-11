@@ -37,7 +37,16 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public class Bricks : IModule, IBrickManager, IBrickHandler
+    public class Bricks(
+        IComponentBroker broker,
+        IArenaManager arenaManager,
+        IConfigManager configManager,
+        ILogManager logManager,
+        IMapData mapData,
+        INetwork network,
+        IObjectPoolManager objectPoolManager,
+        IPlayerData playerData,
+        IPrng prng) : IModule, IBrickManager, IBrickHandler
     {
         /// <summary>
         /// The maximum # of bricks to allow active at the same time.
@@ -50,17 +59,17 @@ namespace SS.Core.Modules
         /// </summary>
         private static readonly int MaxBricksPerPacket = (Constants.MaxPacket - ReliableHeader.Length - 1) / BrickData.Length;
 
-        private ComponentBroker _broker;
-        private IArenaManager _arenaManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMapData _mapData;
-        private INetwork _network;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private IPrng _prng;
-        private InterfaceRegistrationToken<IBrickManager> _iBrickManagerToken;
-        private InterfaceRegistrationToken<IBrickHandler> _iBrickHandlerToken;
+        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IMapData _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private readonly IPrng _prng = prng ?? throw new ArgumentNullException(nameof(prng));
+        private InterfaceRegistrationToken<IBrickManager>? _iBrickManagerToken;
+        private InterfaceRegistrationToken<IBrickHandler>? _iBrickHandlerToken;
 
         private ArenaDataKey<ArenaBrickData> _adKey;
 
@@ -76,42 +85,23 @@ namespace SS.Core.Modules
 
         #region Module methods
 
-        public bool Load(
-            ComponentBroker broker,
-            IArenaManager arenaManager,
-            IConfigManager configManager,
-            ILogManager logManager,
-            IMapData mapData,
-            INetwork network,
-            IObjectPoolManager objectPoolManager,
-            IPlayerData playerData,
-            IPrng prng)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _prng = prng ?? throw new ArgumentNullException(nameof(prng));
-
             _adKey = _arenaManager.AllocateArenaData<ArenaBrickData>();
 
-            ArenaActionCallback.Register(broker, Callback_ArenaAction);
-            PlayerActionCallback.Register(broker, Callback_PlayerAction);
-            DoBrickModeCallback.Register(broker, Callback_DoBrickMode);
+            ArenaActionCallback.Register(_broker, Callback_ArenaAction);
+            PlayerActionCallback.Register(_broker, Callback_PlayerAction);
+            DoBrickModeCallback.Register(_broker, Callback_DoBrickMode);
 
             _network.AddPacket(C2SPacketType.Brick, Packet_Brick);
 
-            _iBrickManagerToken = broker.RegisterInterface<IBrickManager>(this);
-            _iBrickHandlerToken = broker.RegisterInterface<IBrickHandler>(this);
+            _iBrickManagerToken = _broker.RegisterInterface<IBrickManager>(this);
+            _iBrickHandlerToken = _broker.RegisterInterface<IBrickHandler>(this);
 
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iBrickManagerToken) != 0)
                 return false;
@@ -150,7 +140,7 @@ namespace SS.Core.Modules
             Description = "# of times a brick packet is sent unreliably, in addition to the reliable send.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
+            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData? abd))
                 return;
 
             if (action == ArenaAction.Create)
@@ -161,11 +151,12 @@ namespace SS.Core.Modules
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                abd.CountBricksAsWalls = _configManager.GetInt(arena.Cfg, "Brick", "CountBricksAsWalls", 1) != 0;
-                abd.BrickSpan = _configManager.GetInt(arena.Cfg, "Brick", "BrickSpan", 10);
-                abd.BrickMode = _configManager.GetEnum(arena.Cfg, "Brick", "BrickMode", BrickMode.Lateral);
-                abd.BrickTime = (uint)_configManager.GetInt(arena.Cfg, "Brick", "BrickTime", 6000);
-                abd.WallResendCount = Math.Clamp(_configManager.GetInt(arena.Cfg, "Routing", "WallResendCount", 0), 0, 3);
+                ConfigHandle ch = arena.Cfg!;
+                abd.CountBricksAsWalls = _configManager.GetInt(ch, "Brick", "CountBricksAsWalls", 1) != 0;
+                abd.BrickSpan = _configManager.GetInt(ch, "Brick", "BrickSpan", 10);
+                abd.BrickMode = _configManager.GetEnum(ch, "Brick", "BrickMode", BrickMode.Lateral);
+                abd.BrickTime = (uint)_configManager.GetInt(ch, "Brick", "BrickTime", 6000);
+                abd.WallResendCount = Math.Clamp(_configManager.GetInt(ch, "Routing", "WallResendCount", 0), 0, 3);
 
                 // TODO: Add AntiBrickWarpDistance logic
             }
@@ -175,16 +166,16 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.EnterArena)
             {
-                if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
+                if (!arena!.TryGetExtraData(_adKey, out ArenaBrickData? abd))
                     return;
 
                 lock (abd.Lock)
                 {
-                    ExpireBricks(player.Arena);
+                    ExpireBricks(player.Arena!);
 
                     // Send active bricks to the player.
                     SendToPlayerOrArena(player, null, abd.Bricks, 0);
@@ -197,7 +188,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -314,7 +305,7 @@ namespace SS.Core.Modules
 
         private void Packet_Brick(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
 
             if (data.Length != C2S_Brick.Length)
             {
@@ -328,12 +319,12 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
+            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData? abd))
                 return;
 
             ref C2S_Brick c2sBrick = ref MemoryMarshal.AsRef<C2S_Brick>(data);
 
-            IBrickHandler brickHandler = _broker.GetInterface<IBrickHandler>();
+            IBrickHandler? brickHandler = _broker.GetInterface<IBrickHandler>();
             if (brickHandler == null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(Bricks), "No brick handler found.");
@@ -381,7 +372,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void DropBricks(Arena arena, short freq, Player player, List<BrickLocation> bricks)
+        private void DropBricks(Arena arena, short freq, Player? player, List<BrickLocation> bricks)
         {
             if (arena == null)
                 return;
@@ -389,7 +380,7 @@ namespace SS.Core.Modules
             if (bricks == null || bricks.Count <= 0)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
+            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData? abd))
                 return;
 
             lock (abd.Lock)
@@ -446,7 +437,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
+            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData? abd))
                 return;
 
             ServerTick now = ServerTick.Now;
@@ -465,7 +456,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendToPlayerOrArena<T>(Player player, Arena arena, T bricks, int wallResendCount) where T : IReadOnlyCollection<BrickData>
+        private void SendToPlayerOrArena<T>(Player? player, Arena? arena, T bricks, int wallResendCount) where T : IReadOnlyCollection<BrickData>
         {
             if (player == null && arena == null)
                 return;
@@ -500,7 +491,7 @@ namespace SS.Core.Modules
                 SendToPlayerOrArena(player, arena, packetSpan[..(1 + (index * BrickData.Length))], wallResendCount);
             }
 
-            void SendToPlayerOrArena(Player player, Arena arena, Span<byte> data, int wallResendCount)
+            void SendToPlayerOrArena(Player? player, Arena? arena, Span<byte> data, int wallResendCount)
             {
                 if (player == null && arena == null)
                     return;
@@ -517,7 +508,7 @@ namespace SS.Core.Modules
                 // send it reliably (always)
                 SendToPlayerOrArena(player, arena, data, NetSendFlags.Reliable);
 
-                void SendToPlayerOrArena(Player player, Arena arena, Span<byte> data, NetSendFlags flags)
+                void SendToPlayerOrArena(Player? player, Arena? arena, Span<byte> data, NetSendFlags flags)
                 {
                     if (player == null && arena == null)
                         return;
@@ -544,11 +535,11 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData abd))
+            if (!arena.TryGetExtraData(_adKey, out ArenaBrickData? abd))
                 return;
 
             DoBrickModeCallback.Fire(arena, player, abd.BrickMode, x, y, abd.BrickSpan, bricks);

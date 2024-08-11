@@ -64,8 +64,8 @@ namespace SS.Core.ComponentInterfaces
         /// The name of the desired config file. 
         /// <see langword="null"/> to open the default file ("arena.conf" if an <paramref name="arena"/> is specified, or "global.conf" if no arena is specified).
         /// </param>
-        /// <returns>A handle for the file, or NULL if an error occured.</returns>
-        ConfigHandle OpenConfigFile(string arena, string name);
+        /// <returns>A handle for the file, or <see langword="null"/> if an error occured.</returns>
+        ConfigHandle? OpenConfigFile(string? arena, string? name);
 
         /// <summary>
         /// Opens a config file, with a callback to receive change notifications.
@@ -98,8 +98,8 @@ namespace SS.Core.ComponentInterfaces
         /// <para>The callback function can call <see cref="GetStr"/> or <see cref="GetInt"/> on this (or other) config files, but it should not call any other functions in the config interface.
         /// </para>
         /// </param>
-        /// <returns>A handle for the file, or NULL if an error occured.</returns>
-        ConfigHandle OpenConfigFile(string arena, string name, ConfigChangedDelegate changedCallback);
+        /// <returns>A handle for the file, or <see langword="null"/> if an error occured.</returns>
+        ConfigHandle? OpenConfigFile(string? arena, string? name, ConfigChangedDelegate changedCallback);
 
         /// <summary>
         /// Opens a config file, with a callback to receive change notifications.
@@ -133,8 +133,8 @@ namespace SS.Core.ComponentInterfaces
         /// </para>
         /// </param>
         /// <param name="state">An object to be passed when <paramref name="changedCallback"/> is called.</param>
-        /// <returns>A handle for the file, or NULL if an error occured.</returns>
-        ConfigHandle OpenConfigFile<TState>(string arena, string name, ConfigChangedDelegate<TState> changedCallback, TState state);
+        /// <returns>A handle for the file, or <see langword="null"/> if an error occured.</returns>
+        ConfigHandle? OpenConfigFile<TState>(string? arena, string? name, ConfigChangedDelegate<TState> changedCallback, TState state);
 
         /// <summary>
         /// Closes a previously opened file.
@@ -149,8 +149,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="handle">the config file to use (ConfigFile.Global for global.conf)</param>
         /// <param name="section">which section of the file the key is in</param>
         /// <param name="key">the name of the key to read</param>
-        /// <returns>the value of the key as a string, or NULL if the key isn't present</returns>
-        string GetStr(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key);
+        /// <returns>the value of the key as a string, or <see langword="null"/> if the key isn't present</returns>
+        string? GetStr(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key);
 
         /// <summary>
         /// Gets an integer value from a config file.
@@ -191,7 +191,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="comment">A string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004".</param>
         /// <param name="permanent">Whether this change should be written back to the config file.</param>
         /// <param name="options">Options that affect how the setting is saved.</param>
-        void SetStr(ConfigHandle handle, string section, string key, string value, string comment, bool permanent, ModifyOptions options = ModifyOptions.None);
+        void SetStr(ConfigHandle handle, string section, string key, string value, string? comment, bool permanent, ModifyOptions options = ModifyOptions.None);
 
         /// <summary>
         /// Changes a config file value.
@@ -204,7 +204,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="comment">A string describing the circumstances, for logging and auditing purposes. for example, "changed by ... with ?quickfix on may 2 2004".</param>
         /// <param name="permanent">Whether this change should be written back to the config file.</param>
         /// <param name="options">Options that affect how the setting is saved.</param>
-        void SetInt(ConfigHandle handle, string section, string key, int value, string comment, bool permanent, ModifyOptions options = ModifyOptions.None);
+        void SetInt(ConfigHandle handle, string section, string key, int value, string? comment, bool permanent, ModifyOptions options = ModifyOptions.None);
 
         /// <summary>
         /// Changes a config file value.

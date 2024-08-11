@@ -21,7 +21,7 @@ namespace SS.Matchmaking
         /// <summary>
         /// A display friendly description about the queue.
         /// </summary>
-        string Description { get; }
+        string? Description { get; }
 
         #region Add
 

@@ -21,11 +21,12 @@ namespace SS.Core.Modules
     /// <para>This is equivalent to ap_multipub.c in ASSS.</para>
     /// </remarks>
     [CoreModuleInfo]
-    public class ArenaPlaceMultiPub : IModule, IArenaPlace
+    public class ArenaPlaceMultiPub(IComponentBroker broker, IConfigManager configManager, IArenaManager arenaManager) : IModule, IArenaPlace
     {
-        private IConfigManager _configManager;
-        private IArenaManager _arenaManager;
-        private InterfaceRegistrationToken<IArenaPlace> _iArenaPlaceToken;
+        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+        private InterfaceRegistrationToken<IArenaPlace>? _iArenaPlaceToken;
 
         private const int InitialArenaNameListCapacity = 8;
         private readonly ObjectPool<List<string>> _stringListPool = new DefaultObjectPool<List<string>>(new ListPooledObjectPolicy<string>() { InitialCapacity = InitialArenaNameListCapacity });
@@ -34,26 +35,23 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        public bool Load(ComponentBroker broker, IConfigManager configManager, IArenaManager arenaManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-
             LoadPubNames();
 
-            GlobalConfigChangedCallback.Register(broker, Callback_GlobalConfigChanged);
+            GlobalConfigChangedCallback.Register(_broker, Callback_GlobalConfigChanged);
 
-            _iArenaPlaceToken = broker.RegisterInterface<IArenaPlace>(this);
+            _iArenaPlaceToken = _broker.RegisterInterface<IArenaPlace>(this);
 
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
-            if (broker.UnregisterInterface(ref _iArenaPlaceToken) != 0)
+            if (_broker.UnregisterInterface(ref _iArenaPlaceToken) != 0)
                 return false;
 
-            GlobalConfigChangedCallback.Unregister(broker, Callback_GlobalConfigChanged);
+            GlobalConfigChangedCallback.Unregister(_broker, Callback_GlobalConfigChanged);
 
             return true;
         }
@@ -100,7 +98,7 @@ namespace SS.Core.Modules
                             continue;
 
                         ReadOnlySpan<char> tryName = buffer[..bufferWritten];
-                        Arena arena = _arenaManager.FindArena(tryName, out _, out int playing);
+                        Arena? arena = _arenaManager.FindArena(tryName, out _, out int playing);
                         if (arena is null)
                         {
                             // doesn't exist yet, use as a backup only
@@ -112,7 +110,7 @@ namespace SS.Core.Modules
                         }
                         else
                         {
-                            int desired = _configManager.GetInt(arena.Cfg, "General", "DesiredPlaying", 15);
+                            int desired = _configManager.GetInt(arena.Cfg!, "General", "DesiredPlaying", 15);
                             if (playing < desired)
                             {
                                 // we have fewer playing than we want, place here
@@ -149,7 +147,7 @@ namespace SS.Core.Modules
                 """)]
         private void LoadPubNames()
         {
-            string delimitedArenaNames = _configManager.GetStr(_configManager.Global, "General", "PublicArenas");
+            string? delimitedArenaNames = _configManager.GetStr(_configManager.Global, "General", "PublicArenas");
 
             lock (_lock)
             {
@@ -162,7 +160,7 @@ namespace SS.Core.Modules
                     while (!(token = remaining.GetToken(" ,:;", out remaining)).IsEmpty)
                     {
                         // Try to find an existing instance to avoid an allocation.
-                        string arenaName = null;
+                        string? arenaName = null;
                         foreach (string pubName in _pubNames)
                         {
                             if (token.Equals(pubName, StringComparison.OrdinalIgnoreCase))

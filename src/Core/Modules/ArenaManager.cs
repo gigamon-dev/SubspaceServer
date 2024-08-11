@@ -40,25 +40,25 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly Dictionary<Type, List<Arena>> _attachedModules = new(64);
 
-        internal ComponentBroker Broker;
+        internal readonly IComponentBroker Broker;
 
         // required dependencies
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMainloop _mainloop;
-        private IMainloopTimer _mainloopTimer;
-        private IModuleManager _moduleManager;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private IServerTimer _serverTimer;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IMainloop _mainloop;
+        private readonly IMainloopTimer _mainloopTimer;
+        private readonly IModuleManager _moduleManager;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
+        private readonly IServerTimer _serverTimer;
 
         // optional dependencies
-        private IChatNetwork _chatNetwork;
-        private INetwork _network;
-        private IPersistExecutor _persistExecutor;
+        private IChatNetwork? _chatNetwork;
+        private INetwork? _network;
+        private IPersistExecutor? _persistExecutor;
 
-        private InterfaceRegistrationToken<IArenaManager> _iArenaManagerToken;
-        private InterfaceRegistrationToken<IArenaManagerInternal> _iArenaManagerInternalToken;
+        private InterfaceRegistrationToken<IArenaManager>? _iArenaManagerToken;
+        private InterfaceRegistrationToken<IArenaManagerInternal>? _iArenaManagerInternalToken;
 
         // for managing per arena data
         private readonly SortedList<int, ExtraDataFactory> _extraDataRegistrations = new(Constants.TargetArenaExtraDataCount);
@@ -81,7 +81,7 @@ namespace SS.Core.Modules
         /// </summary>
         private ArenaDataKey<ArenaData> _adKey;
 
-        private FileSystemWatcher _knownArenaWatcher;
+        private FileSystemWatcher? _knownArenaWatcher;
         private readonly Trie _knownArenaNames = new(false);
         private readonly ReadOnlyTrie _readOnlyKnownArenaNames;
 
@@ -90,19 +90,8 @@ namespace SS.Core.Modules
         private readonly ConfigChangedDelegate<Arena> _arenaConfChanged;
         private readonly Action<Arena> _arenaSyncDone;
 
-        public ArenaManager()
-        {
-            _readOnlyKnownArenaNames = _knownArenaNames.AsReadOnly();
-
-            _loadArenaConfig = LoadArenaConfig;
-            _arenaConfChanged = ArenaConfChanged;
-            _arenaSyncDone = ArenaSyncDone;
-        }
-
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public ArenaManager(
+            IComponentBroker broker,
             IConfigManager configManager,
             ILogManager logManager,
             IMainloop mainloop,
@@ -122,6 +111,17 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
 
+            _readOnlyKnownArenaNames = _knownArenaNames.AsReadOnly();
+
+            _loadArenaConfig = LoadArenaConfig;
+            _arenaConfChanged = ArenaConfChanged;
+            _arenaSyncDone = ArenaSyncDone;
+        }
+
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _spawnKey = _playerData.AllocatePlayerData<SpawnLoc>();
             _adKey = ((IArenaManager)this).AllocateArenaData<ArenaData>();
 
@@ -150,7 +150,7 @@ namespace SS.Core.Modules
                 These arenas will be created when the server is started
                 and show up on the arena list, even if no players are in them.
                 """)]
-        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
+        void IModuleLoaderAware.PostLoad(IComponentBroker broker)
         {
             _network = broker.GetInterface<INetwork>();
             if (_network is not null)
@@ -168,7 +168,7 @@ namespace SS.Core.Modules
 
             _persistExecutor = broker.GetInterface<IPersistExecutor>();
 
-            string permanentArenas = _configManager.GetStr(_configManager.Global, "Arenas", "PermanentArenas");
+            string? permanentArenas = _configManager.GetStr(_configManager.Global, "Arenas", "PermanentArenas");
             if (!string.IsNullOrWhiteSpace(permanentArenas))
             {
                 int totalCreated = 0;
@@ -184,11 +184,9 @@ namespace SS.Core.Modules
 
                 _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Created {totalCreated} permanent arena(s).");
             }
-
-            return true;
         }
 
-        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
+        void IModuleLoaderAware.PreUnload(IComponentBroker broker)
         {
             if (_persistExecutor is not null)
             {
@@ -208,16 +206,14 @@ namespace SS.Core.Modules
                 _chatNetwork.RemoveHandler("LEAVE", ChatHandler_LeaveArena);
                 broker.ReleaseInterface(ref _chatNetwork);
             }
-
-            return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
-            if (broker.UnregisterInterface(ref _iArenaManagerToken) != 0)
+            if (Broker.UnregisterInterface(ref _iArenaManagerToken) != 0)
                 return false;
 
-            if (broker.UnregisterInterface(ref _iArenaManagerInternalToken) != 0)
+            if (Broker.UnregisterInterface(ref _iArenaManagerInternalToken) != 0)
                 return false;
 
             if (_knownArenaWatcher is not null)
@@ -292,11 +288,11 @@ namespace SS.Core.Modules
                             if (player.IsStandard)
                             {
                                 S2C_WhoAmI whoAmI = new((short)player.Id);
-                                _network.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
+                                _network?.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
                             }
                             else if (player.IsChat)
                             {
-                                _chatNetwork.SendToOne(player, $"INARENA:{arena.Name}:{player.Freq}");
+                                _chatNetwork?.SendToOne(player, $"INARENA:{arena.Name}:{player.Freq}");
                             }
 
                             // actually initiate the client leaving arena on our side
@@ -315,7 +311,7 @@ namespace SS.Core.Modules
                 // arena to close and then get resurrected
                 arena.Status = ArenaState.Closing;
 
-                if (arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                if (arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                     arenaData.Resurrect = true;
 
                 return true;
@@ -361,7 +357,7 @@ namespace SS.Core.Modules
             }
         }
 
-        Arena IArenaManager.FindArena(ReadOnlySpan<char> name)
+        Arena? IArenaManager.FindArena(ReadOnlySpan<char> name)
         {
             ReadLock();
             try
@@ -374,9 +370,9 @@ namespace SS.Core.Modules
             }
         }
 
-        Arena IArenaManager.FindArena(ReadOnlySpan<char> name, out int totalCount, out int playing)
+        Arena? IArenaManager.FindArena(ReadOnlySpan<char> name, out int totalCount, out int playing)
         {
-            Arena arena = ((IArenaManager)this).FindArena(name);
+            Arena? arena = ((IArenaManager)this).FindArena(name);
 
             if (arena is not null)
             {
@@ -448,7 +444,7 @@ namespace SS.Core.Modules
                     // Refresh population stats
                     total = playing = 0;
 
-                    ICapabilityManager capabilityManager = Broker.GetInterface<ICapabilityManager>();
+                    ICapabilityManager? capabilityManager = Broker.GetInterface<ICapabilityManager>();
 
                     try
                     {
@@ -459,7 +455,7 @@ namespace SS.Core.Modules
                             // Use the per-arena data object to store temporary counts.
                             foreach (Arena arena in _arenaDictionary.Values)
                             {
-                                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                                if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                                     continue;
 
                                 ad.TotalCount = ad.PlayingCount = 0;
@@ -477,7 +473,7 @@ namespace SS.Core.Modules
                                         && player.Arena is not null
                                         && (capabilityManager is null || !capabilityManager.HasCapability(player, Constants.Capabilities.ExcludePopulation)))
                                     {
-                                        if (!player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
+                                        if (!player.Arena.TryGetExtraData(_adKey, out ArenaData? ad))
                                             continue;
 
                                         total++;
@@ -499,7 +495,7 @@ namespace SS.Core.Modules
                             // Update each arena's player counts from the counts in the per-arena data.
                             foreach (Arena arena in _arenaDictionary.Values)
                             {
-                                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                                if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                                     continue;
 
                                 arena.SetPlayerCounts(ad.TotalCount, ad.PlayingCount);
@@ -576,7 +572,7 @@ namespace SS.Core.Modules
                 // Unregister
                 //
 
-                if (!_extraDataRegistrations.Remove(key.Id, out ExtraDataFactory factory))
+                if (!_extraDataRegistrations.Remove(key.Id, out ExtraDataFactory? factory))
                     return false;
 
                 //
@@ -585,7 +581,7 @@ namespace SS.Core.Modules
 
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    if (arena.TryRemoveExtraData(key.Id, out object data))
+                    if (arena.TryRemoveExtraData(key.Id, out object? data))
                     {
                         factory.Return(data);
                     }
@@ -612,7 +608,7 @@ namespace SS.Core.Modules
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
                     case ArenaState.WaitHolds2:
-                        if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                             return;
 
                         arenaData.Holds++;
@@ -639,7 +635,7 @@ namespace SS.Core.Modules
                     case ArenaState.WaitHolds0:
                     case ArenaState.WaitHolds1:
                     case ArenaState.WaitHolds2:
-                        if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                             return;
 
                         if (arenaData.Holds > 0)
@@ -670,8 +666,7 @@ namespace SS.Core.Modules
             if (player is null)
                 return;
 
-            Arena arena = player.Arena;
-
+            Arena? arena = player.Arena;
             if (arena is null)
             {
                 _logManager.LogP(LogLevel.Warn, nameof(ArenaManager), player, "Bad arena in SendArenaResponse.");
@@ -684,10 +679,10 @@ namespace SS.Core.Modules
             {
                 // send whoami packet
                 S2C_WhoAmI whoAmI = new((short)player.Id);
-                _network.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
+                _network?.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
 
                 // send settings
-                IClientSettings clientSettings = Broker.GetInterface<IClientSettings>();
+                IClientSettings? clientSettings = Broker.GetInterface<IClientSettings>();
                 if (clientSettings is not null)
                 {
                     try
@@ -702,7 +697,7 @@ namespace SS.Core.Modules
             }
             else if (player.IsChat)
             {
-                _chatNetwork.SendToOne(player, $"INARENA:{arena.Name}:{player.Freq}");
+                _chatNetwork?.SendToOne(player, $"INARENA:{arena.Name}:{player.Freq}");
             }
 
             HashSet<Player> enterPlayerSet = _objectPoolManager.PlayerSetPool.Get();
@@ -753,7 +748,7 @@ namespace SS.Core.Modules
                             builder.Set(index++, ref enteringPlayer.Packet);
                         }
 
-                        _network.SendToOne(player, bufferSpan, NetSendFlags.Reliable);
+                        _network?.SendToOne(player, bufferSpan, NetSendFlags.Reliable);
                     }
                     finally
                     {
@@ -775,7 +770,7 @@ namespace SS.Core.Modules
 
             if (player.IsStandard)
             {
-                IMapNewsDownload mapNewsDownload = Broker.GetInterface<IMapNewsDownload>();
+                IMapNewsDownload? mapNewsDownload = Broker.GetInterface<IMapNewsDownload>();
                 if (mapNewsDownload is not null)
                 {
                     try
@@ -799,14 +794,14 @@ namespace SS.Core.Modules
 
                 // send entering arena finisher
                 span[0] = (byte)S2CPacketType.EnteringArena;
-                _network.SendToOne(player, span, NetSendFlags.Reliable);
+                _network?.SendToOne(player, span, NetSendFlags.Reliable);
 
-                if (player.TryGetExtraData(_spawnKey, out SpawnLoc spawnLoc))
+                if (player.TryGetExtraData(_spawnKey, out SpawnLoc? spawnLoc))
                 {
                     if ((spawnLoc.X > 0) && (spawnLoc.Y > 0) && (spawnLoc.X < 1024) && (spawnLoc.Y < 1024))
                     {
                         S2C_WarpTo warpTo = new(spawnLoc.X, spawnLoc.Y);
-                        _network.SendToOne(player, ref warpTo, NetSendFlags.Reliable);
+                        _network?.SendToOne(player, ref warpTo, NetSendFlags.Reliable);
                     }
                 }
             }
@@ -815,11 +810,11 @@ namespace SS.Core.Modules
             {
                 if (playerTo.IsStandard)
                 {
-                    _network.SendToOne(playerTo, ref player.Packet, NetSendFlags.Reliable);
+                    _network?.SendToOne(playerTo, ref player.Packet, NetSendFlags.Reliable);
                 }
                 else if (playerTo.IsChat)
                 {
-                    _chatNetwork.SendToOne(playerTo, $"{(already ? "PLAYER" : "ENTERING")}:{player.Name}:{player.Ship:d}:{player.Freq}");
+                    _chatNetwork?.SendToOne(playerTo, $"{(already ? "PLAYER" : "ENTERING")}:{player.Name}:{player.Ship:d}:{player.Freq}");
                 }
             }
         }
@@ -880,7 +875,7 @@ namespace SS.Core.Modules
             }
             else if (go.ArenaType == -2 || go.ArenaType == -1) // any public arena (server chooses)
             {
-                IArenaPlace arenaPlace = Broker.GetInterface<IArenaPlace>();
+                IArenaPlace? arenaPlace = Broker.GetInterface<IArenaPlace>();
 
                 if (arenaPlace is not null)
                 {
@@ -922,7 +917,7 @@ namespace SS.Core.Modules
             if (player.Type == ClientType.Continuum)
             {
                 // Peer redirects
-                IPeer peer = Broker.GetInterface<IPeer>();
+                IPeer? peer = Broker.GetInterface<IPeer>();
                 if (peer is not null)
                 {
                     try
@@ -937,7 +932,7 @@ namespace SS.Core.Modules
                 }
 
                 // General redirects
-                IRedirect redirect = Broker.GetInterface<IRedirect>();
+                IRedirect? redirect = Broker.GetInterface<IRedirect>();
                 if (redirect is not null)
                 {
                     try
@@ -976,7 +971,7 @@ namespace SS.Core.Modules
                 if (player is null)
                     return false;
 
-                ICapabilityManager capabilityManager = Broker.GetInterface<ICapabilityManager>();
+                ICapabilityManager? capabilityManager = Broker.GetInterface<ICapabilityManager>();
 
                 try
                 {
@@ -1018,7 +1013,7 @@ namespace SS.Core.Modules
             {
                 Span<char> nameBuffer = stackalloc char[Constants.MaxArenaNameLength];
 
-                IArenaPlace arenaPlace = Broker.GetInterface<IArenaPlace>();
+                IArenaPlace? arenaPlace = Broker.GetInterface<IArenaPlace>();
                 if (arenaPlace is not null)
                 {
                     try
@@ -1066,7 +1061,7 @@ namespace SS.Core.Modules
             {
                 foreach (Arena arena in _arenaDictionary.Values)
                 {
-                    if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                         continue;
 
                     ArenaState status = arena.Status;
@@ -1179,8 +1174,11 @@ namespace SS.Core.Modules
                         case ArenaState.DoDestroy2:
                             if (_moduleManager.DetachAllFromArena(arena))
                             {
-                                _configManager.CloseConfigFile(arena.Cfg);
-                                arena.Cfg = null;
+                                if (arena.Cfg is not null)
+                                {
+                                    _configManager.CloseConfigFile(arena.Cfg);
+                                    arena.Cfg = null;
+                                }
                                 FireArenaActionCallback(arena, ArenaAction.PostDestroy);
 
                                 if (arenaData.Resurrect)
@@ -1188,7 +1186,7 @@ namespace SS.Core.Modules
                                     // clear all private data on recycle, so it looks to modules like it was just created.
                                     foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
                                     {
-                                        if (arena.TryRemoveExtraData(keyId, out object data))
+                                        if (arena.TryRemoveExtraData(keyId, out object? data))
                                         {
                                             factory.Return(data);
                                         }
@@ -1207,7 +1205,7 @@ namespace SS.Core.Modules
                                     // remove all the extra data object and return them to their factory
                                     foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
                                     {
-                                        if (arena.TryRemoveExtraData(keyId, out object data))
+                                        if (arena.TryRemoveExtraData(keyId, out object? data))
                                         {
                                             factory.Return(data);
                                         }
@@ -1260,7 +1258,7 @@ namespace SS.Core.Modules
                 """)]
             void DoAttach(Arena arena)
             {
-                string attachMods = _configManager.GetStr(arena.Cfg, "Modules", "AttachModules");
+                string? attachMods = _configManager.GetStr(arena.Cfg!, "Modules", "AttachModules");
                 if (string.IsNullOrWhiteSpace(attachMods))
                     return;
 
@@ -1275,7 +1273,7 @@ namespace SS.Core.Modules
 
         private void LoadArenaConfig(Arena arena)
         {
-            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
             {
                 return;
             }
@@ -1291,7 +1289,7 @@ namespace SS.Core.Modules
                 ReadUnlock();
             }
 
-            ConfigHandle configHandle = _configManager.OpenConfigFile(arena.BaseName, null, _arenaConfChanged, arena);
+            ConfigHandle? configHandle = _configManager.OpenConfigFile(arena.BaseName, null, _arenaConfChanged, arena);
 
             //if (configHandle is null)
             //{
@@ -1363,7 +1361,7 @@ namespace SS.Core.Modules
 
         private void FireArenaActionCallback(Arena arena, ArenaAction action)
         {
-            ArenaActionCallback.Fire(arena ?? Broker, arena, action);
+            ArenaActionCallback.Fire(arena, arena, action);
         }
 
         private bool MainloopTimer_ReapArenas()
@@ -1377,7 +1375,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Arena arena in _arenaDictionary.Values)
                     {
-                        if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                             continue;
 
                         arenaData.Reap = arena.Status == ArenaState.Running || arena.Status == ArenaState.Closing;
@@ -1386,7 +1384,7 @@ namespace SS.Core.Modules
                     foreach (Player player in _playerData.Players)
                     {
                         if (player.Arena is not null
-                            && player.Arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                            && player.Arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                         {
                             arenaData.Reap = false;
                         }
@@ -1408,7 +1406,7 @@ namespace SS.Core.Modules
 
                     foreach (Arena arena in _arenaDictionary.Values)
                     {
-                        if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                             continue;
 
                         if (arenaData.Reap && (arena.Status == ArenaState.Closing || !arena.KeepAlive))
@@ -1546,7 +1544,7 @@ namespace SS.Core.Modules
                 if (sb.Length == 0)
                 {
                     // this might occur when a player is redirected to us from another zone
-                    IArenaPlace arenaPlace = Broker.GetInterface<IArenaPlace>();
+                    IArenaPlace? arenaPlace = Broker.GetInterface<IArenaPlace>();
                     if (arenaPlace is not null)
                     {
                         try
@@ -1592,7 +1590,7 @@ namespace SS.Core.Modules
             WriteLock();
             try
             {
-                Arena arena = FindArena(name, ArenaState.DoInit0, ArenaState.DoDestroy2);
+                Arena? arena = FindArena(name, ArenaState.DoInit0, ArenaState.DoDestroy2);
                 if (arena is null)
                 {
                     // create a non-permanent arena
@@ -1616,7 +1614,7 @@ namespace SS.Core.Modules
                     {
                         // arena is on it's way out
                         // this isn't a problem, just make sure that it will come back
-                        if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                             return;
 
                         arenaData.Resurrect = true;
@@ -1640,7 +1638,7 @@ namespace SS.Core.Modules
                 player.Packet.AcceptAudio = voices ? (byte)1 : (byte)0;
                 player.Flags.ObscenityFilter = obscene;
 
-                if (player.TryGetExtraData(_spawnKey, out SpawnLoc spawnLoc))
+                if (player.TryGetExtraData(_spawnKey, out SpawnLoc? spawnLoc))
                 {
                     spawnLoc.X = (short)spawnX;
                     spawnLoc.Y = (short)spawnY;
@@ -1655,12 +1653,12 @@ namespace SS.Core.Modules
             // it will be incremented when the arena is ready.
         }
 
-        private Arena FindArena(ReadOnlySpan<char> name, ArenaState? minState, ArenaState? maxState)
+        private Arena? FindArena(ReadOnlySpan<char> name, ArenaState? minState, ArenaState? maxState)
         {
             ReadLock();
             try
             {
-                if (_arenaTrie.TryGetValue(name, out Arena arena) == false)
+                if (_arenaTrie.TryGetValue(name, out Arena? arena) == false)
                     return null;
 
                 if (minState != null && arena.Status < minState)
@@ -1708,7 +1706,7 @@ namespace SS.Core.Modules
         private void LeaveArena(Player player)
         {
             bool notify;
-            Arena arena;
+            Arena? arena;
 
             _playerData.WriteLock();
             try

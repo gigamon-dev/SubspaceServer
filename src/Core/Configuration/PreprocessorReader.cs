@@ -30,7 +30,7 @@ namespace SS.Core.Configuration
     public sealed class PreprocessorReader : IDisposable
     {
         private readonly IConfFileProvider _fileProvider;
-        private readonly IConfigLogger _logger = null;
+        private readonly IConfigLogger? _logger = null;
 
         public PreprocessorReader(
             IConfFileProvider fileProvider,
@@ -41,10 +41,9 @@ namespace SS.Core.Configuration
         public PreprocessorReader(
             IConfFileProvider fileProvider,
             ConfFile baseFile,
-            IConfigLogger logger)
+            IConfigLogger? logger)
         {
-            if (baseFile == null)
-                throw new ArgumentNullException(nameof(baseFile));
+            ArgumentNullException.ThrowIfNull(baseFile);
 
             _fileProvider = fileProvider ?? throw new ArgumentNullException(nameof(fileProvider));
             CurrentFile = new FileEntry(baseFile, null);
@@ -56,7 +55,7 @@ namespace SS.Core.Configuration
         /// <summary>
         /// Stack of files to read from.
         /// </summary>
-        private FileEntry CurrentFile { get; set; }
+        private FileEntry? CurrentFile { get; set; }
 
         /// <summary>
         /// The current #include file depth.
@@ -83,7 +82,7 @@ namespace SS.Core.Configuration
         /// <summary>
         /// Stack of representing #ifdef, #ifndef, #else, #endif
         /// </summary>
-        private IfBlock Ifs { get; set; }
+        private IfBlock? Ifs { get; set; }
 
         /// <summary>
         /// Whether the next line is in a context where it should be 'processed', 
@@ -106,8 +105,7 @@ namespace SS.Core.Configuration
         /// <param name="file">The file to add.</param>
         private void PushFile(ConfFile file)
         {
-            if (file == null)
-                throw new ArgumentNullException(nameof(file));
+            ArgumentNullException.ThrowIfNull(file);
 
             if (Depth == MaxRecursionDepth)
             {
@@ -160,7 +158,7 @@ namespace SS.Core.Configuration
             }
             else
             {
-                ReportError($"No #if blocks to end ({CurrentFile.File?.Path}:{CurrentFile.LineNumber}).");
+                ReportError($"No #if blocks to end ({CurrentFile!.File?.Path}:{CurrentFile.LineNumber}).");
             }
 
             UpdateProcessing();
@@ -179,12 +177,12 @@ namespace SS.Core.Configuration
                 }
                 else
                 {
-                    ReportError($"Multiple #else directives ({CurrentFile.File?.Path}:{CurrentFile.LineNumber}).");
+                    ReportError($"Multiple #else directives ({CurrentFile!.File?.Path}:{CurrentFile.LineNumber}).");
                 }
             }
             else
             {
-                ReportError($"Unexpected #else directive ({CurrentFile.File?.Path}:{CurrentFile.LineNumber}).");
+                ReportError($"Unexpected #else directive ({CurrentFile!.File?.Path}:{CurrentFile.LineNumber}).");
             }
 
             UpdateProcessing();
@@ -195,7 +193,7 @@ namespace SS.Core.Configuration
         /// </summary>
         private void UpdateProcessing()
         {
-            IfBlock i = Ifs;
+            IfBlock? i = Ifs;
 
             Processing = true;
 
@@ -210,7 +208,7 @@ namespace SS.Core.Configuration
             }
         }
 
-        private LineReference ReadNext()
+        private LineReference? ReadNext()
         {
             while (CurrentFile != null)
             {
@@ -236,9 +234,9 @@ namespace SS.Core.Configuration
         /// <returns>
         /// A <see cref="LineReference"/> containing info about the line that was read, or <see langword="null"/> if all lines have been read.
         /// </returns>
-        public LineReference ReadLine()
+        public LineReference? ReadLine()
         {
-            LineReference lineReference;
+            LineReference? lineReference;
             while ((lineReference = ReadNext()) != null)
             {
                 RawLine rawLine = lineReference.Line;
@@ -276,7 +274,7 @@ namespace SS.Core.Configuration
                     else if (rawLine.LineType == ConfLineType.PreprocessorInclude)
                     {
                         RawPreprocessorInclude include = (RawPreprocessorInclude)rawLine;
-                        ConfFile includeFile = _fileProvider.GetFile(include.FilePath);
+                        ConfFile? includeFile = _fileProvider.GetFile(include.FilePath);
                         if (includeFile != null)
                         {
                             PushFile(includeFile);
@@ -341,7 +339,7 @@ namespace SS.Core.Configuration
             /// <summary>
             /// The previous IfBlock (linked list style stack).
             /// </summary>
-            public IfBlock Prev
+            public IfBlock? Prev
             {
                 get;
                 set;
@@ -350,7 +348,7 @@ namespace SS.Core.Configuration
 
         private sealed class FileEntry : IDisposable
         {
-            public FileEntry(ConfFile file, FileEntry previous)
+            public FileEntry(ConfFile file, FileEntry? previous)
             {
                 File = file ?? throw new ArgumentNullException(nameof(file));
                 Enumerator = file.Lines.GetEnumerator();
@@ -364,7 +362,7 @@ namespace SS.Core.Configuration
 
             public int LineNumber { get; set; }
 
-            public FileEntry Previous { get; set; }
+            public FileEntry? Previous { get; set; }
 
             public void Dispose()
             {

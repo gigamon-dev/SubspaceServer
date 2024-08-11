@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentCallbacks
+﻿using SS.Core.ComponentInterfaces;
+
+namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="PreShipFreqChangeCallback"/> callback.
@@ -17,17 +19,17 @@
         /// <param name="oldFreq">The the player's old team.</param>
         public delegate void PreShipFreqChangeDelegate(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq);
 
-        public static void Register(ComponentBroker broker, PreShipFreqChangeDelegate handler)
+        public static void Register(IComponentBroker broker, PreShipFreqChangeDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, PreShipFreqChangeDelegate handler)
+        public static void Unregister(IComponentBroker broker, PreShipFreqChangeDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        public static void Fire(IComponentBroker broker, Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
             broker?.GetCallback<PreShipFreqChangeDelegate>()?.Invoke(player, newShip, oldShip, newFreq, oldFreq);
 
@@ -51,17 +53,17 @@
         /// <param name="oldFreq">The the player's old team.</param>
         public delegate void ShipFreqChangeDelegate(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq);
 
-        public static void Register(ComponentBroker broker, ShipFreqChangeDelegate handler)
+        public static void Register(IComponentBroker broker, ShipFreqChangeDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, ShipFreqChangeDelegate handler)
+        public static void Unregister(IComponentBroker broker, ShipFreqChangeDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        public static void Fire(IComponentBroker broker, Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
             broker?.GetCallback<ShipFreqChangeDelegate>()?.Invoke(player, newShip, oldShip, newFreq, oldFreq);
 

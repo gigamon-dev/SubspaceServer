@@ -1,4 +1,5 @@
-﻿using SS.Packets.Game;
+﻿using SS.Core.ComponentInterfaces;
+using SS.Packets.Game;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -19,17 +20,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="green">The type of green prize dropped.</param>
         public delegate void KillDelegate(Arena arena, Player killer, Player killed, short bounty, short flagCount, short points, Prize green);
 
-        public static void Register(ComponentBroker broker, KillDelegate handler)
+        public static void Register(IComponentBroker broker, KillDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, KillDelegate handler)
+        public static void Unregister(IComponentBroker broker, KillDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
+        public static void Fire(IComponentBroker broker, Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
         {
             broker?.GetCallback<KillDelegate>()?.Invoke(arena, killer, killed, bounty, flagCount, pts, green);
 

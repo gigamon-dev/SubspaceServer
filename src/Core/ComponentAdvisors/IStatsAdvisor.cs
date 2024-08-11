@@ -13,6 +13,6 @@
         /// </remarks>
         /// <param name="statId">The statistic to get a name for.</param>
         /// <returns>The name or null if unknown.</returns>
-        string GetStatName(int statId) => null;
+        string? GetStatName(int statId) => null;
     }
 }

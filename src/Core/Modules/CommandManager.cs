@@ -8,6 +8,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -18,17 +19,23 @@ namespace SS.Core.Modules
     /// Module that provides functionality for dispatching commands run by players in chat messages.
     /// </summary>
     [CoreModuleInfo]
-    public class CommandManager : IModule, ICommandManager, IModuleLoaderAware
+    public class CommandManager(
+        IComponentBroker broker,
+        IPlayerData playerData,
+        ILogManager logManager,
+        ICapabilityManager capabilityManager,
+        IConfigManager configManager,
+        IObjectPoolManager objectPoolManager) : IModule, ICommandManager, IModuleLoaderAware
     {
-        private ComponentBroker _broker;
-        private IPlayerData _playerData;
-        private ILogManager _logManager;
-        private ICapabilityManager _capabilityManager;
-        private IConfigManager _configManager;
-        private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken<ICommandManager> _iCommandManagerToken;
+        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        private InterfaceRegistrationToken<ICommandManager>? _iCommandManagerToken;
 
-        private IChat _chat;
+        private IChat? _chat;
 
         private readonly ObjectPool<List<CommandSummary>> _commandSummaryListPool = new DefaultObjectPool<List<CommandSummary>>(new ListPooledObjectPolicy<CommandSummary>() { InitialCapacity = 256 });
 
@@ -37,25 +44,12 @@ namespace SS.Core.Modules
         private readonly Trie _unloggedCommands = new(false);
 
         private readonly object _defaultCommandLock = new();
-        private event DefaultCommandDelegate DefaultCommandEvent;
+        private event DefaultCommandDelegate? DefaultCommandEvent;
 
         #region IModule Members
 
-        public bool Load(
-            ComponentBroker broker,
-            IPlayerData playerData,
-            ILogManager logManager,
-            ICapabilityManager capabilityManager,
-            IConfigManager configManager,
-            IObjectPoolManager objectPoolManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-
             _rwLock.EnterWriteLock();
 
             try
@@ -87,19 +81,17 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool PostLoad(ComponentBroker broker)
+        void IModuleLoaderAware.PostLoad(IComponentBroker broker)
         {
             _chat = broker.GetInterface<IChat>();
-            return true;
         }
 
-        public bool PreUnload(ComponentBroker broker)
+        void IModuleLoaderAware.PreUnload(IComponentBroker broker)
         {
             broker.ReleaseInterface(ref _chat);
-            return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iCommandManagerToken) != 0)
                 return false;
@@ -127,7 +119,7 @@ namespace SS.Core.Modules
 
         #region ICommandManager Members
 
-        void ICommandManager.AddCommand(string commandName, CommandDelegate handler, Arena arena, string helpText)
+        void ICommandManager.AddCommand(string commandName, CommandDelegate handler, Arena? arena, string? helpText)
         {
             if (string.IsNullOrWhiteSpace(commandName))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
@@ -138,7 +130,7 @@ namespace SS.Core.Modules
             AddCommand(commandName, handler, arena, helpText);
         }
 
-        void ICommandManager.AddCommand(string commandName, CommandWithSoundDelegate handler, Arena arena, string helpText)
+        void ICommandManager.AddCommand(string commandName, CommandWithSoundDelegate handler, Arena? arena, string? helpText)
         {
             if (string.IsNullOrWhiteSpace(commandName))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
@@ -149,7 +141,7 @@ namespace SS.Core.Modules
             AddCommand(commandName, handler, arena, helpText);
         }
 
-        private void AddCommand(string commandName, Delegate handler, Arena arena, string helpText)
+        private void AddCommand(string commandName, Delegate handler, Arena? arena, string? helpText)
         {
             if (string.IsNullOrWhiteSpace(commandName))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
@@ -174,7 +166,7 @@ namespace SS.Core.Modules
 
             try
             {
-                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll) == false)
+                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData>? ll) == false)
                 {
                     ll = new LinkedList<CommandData>();
                     _cmdLookup.TryAdd(commandName, ll);
@@ -188,7 +180,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private bool TryGetHelpText(string commandName, Delegate handler, out string helpText)
+        private bool TryGetHelpText(string commandName, Delegate handler, [MaybeNullWhen(false)]out string helpText)
         {
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
@@ -234,16 +226,16 @@ namespace SS.Core.Modules
             return false;
         }
 
-        void ICommandManager.RemoveCommand(string commandName, CommandDelegate handler, Arena arena)
+        void ICommandManager.RemoveCommand(string commandName, CommandDelegate handler, Arena? arena)
         {
             _rwLock.EnterWriteLock();
 
             try
             {
-                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll) == false)
+                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData>? ll) == false)
                     return;
 
-                for (LinkedListNode<CommandData> node = ll.First; node != null; node = node.Next)
+                for (LinkedListNode<CommandData>? node = ll.First; node != null; node = node.Next)
                 {
                     CommandData cd = node.Value;
                     if (cd.IsHandler(handler) && cd.Arena == arena)
@@ -262,16 +254,16 @@ namespace SS.Core.Modules
             }
         }
 
-        void ICommandManager.RemoveCommand(string commandName, CommandWithSoundDelegate handler, Arena arena)
+        void ICommandManager.RemoveCommand(string commandName, CommandWithSoundDelegate handler, Arena? arena)
         {
             _rwLock.EnterWriteLock();
 
             try
             {
-                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll) == false)
+                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData>? ll) == false)
                     return;
 
-                for (LinkedListNode<CommandData> node = ll.First; node != null; node = node.Next)
+                for (LinkedListNode<CommandData>? node = ll.First; node != null; node = node.Next)
                 {
                     CommandData cd = node.Value;
                     if (cd.IsHandler(handler) && cd.Arena == arena)
@@ -360,13 +352,13 @@ namespace SS.Core.Modules
             parameters = parameters.TrimStart(" =");
 
             string prefix;
-            Arena remoteArena = null;
+            Arena? remoteArena = null;
 
             if (target.Type == TargetType.Arena || target.Type == TargetType.None)
             {
                 prefix = "cmd";
             }
-            else if (target.TryGetPlayerTarget(out Player targetPlayer))
+            else if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 if (targetPlayer.Arena == player.Arena)
                 {
@@ -383,8 +375,8 @@ namespace SS.Core.Modules
                 prefix = "privcmd";
             }
 
-            CommandDelegate basicHandlers = null;
-            CommandWithSoundDelegate soundHandlers = null;
+            CommandDelegate? basicHandlers = null;
+            CommandWithSoundDelegate? soundHandlers = null;
 
             if (!skipLocal)
             {
@@ -392,7 +384,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    if (_cmdLookup.TryGetValue(cmd, out LinkedList<CommandData> list))
+                    if (_cmdLookup.TryGetValue(cmd, out LinkedList<CommandData>? list))
                     {
                         foreach (CommandData cd in list)
                         {
@@ -444,17 +436,17 @@ namespace SS.Core.Modules
             }
         }
 
-        string ICommandManager.GetHelpText(ReadOnlySpan<char> commandName, Arena arena)
+        string? ICommandManager.GetHelpText(ReadOnlySpan<char> commandName, Arena? arena)
         {
-            string ret = null;
+            string? ret = null;
 
             _rwLock.EnterReadLock();
 
             try
             {
-                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData> ll))
+                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData>? ll))
                 {
-                    for (LinkedListNode<CommandData> node = ll.First; node != null; node = node.Next)
+                    for (LinkedListNode<CommandData>? node = ll.First; node != null; node = node.Next)
                     {
                         CommandData cd = node.Value;
                         if (cd.Arena == null || cd.Arena == arena)
@@ -502,7 +494,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private bool Allowed(Player player, ReadOnlySpan<char> cmd, string prefix, Arena remoteArena)
+        private bool Allowed(Player player, ReadOnlySpan<char> cmd, string prefix, Arena? remoteArena)
         {
             if (player == null)
                 throw new ArgumentNullException(nameof(player));
@@ -569,7 +561,7 @@ namespace SS.Core.Modules
                     sb.Append("(arena)");
                 else if (target.TryGetTeamTarget(out _, out short freq))
                     sb.Append($"(freq {freq})");
-                else if (target.TryGetPlayerTarget(out Player targetPlayer))
+                else if (target.TryGetPlayerTarget(out Player? targetPlayer))
                     sb.Append($"to [{targetPlayer.Name}]");
                 else
                     sb.Append("(other)");
@@ -632,7 +624,7 @@ namespace SS.Core.Modules
             if (_chat == null)
                 return;
 
-            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 _chat.SendMessage(player, $"'{targetPlayer.Name}' can use the following commands:");
                 ListCommands(player.Arena, targetPlayer, player, false, true);
@@ -643,7 +635,7 @@ namespace SS.Core.Modules
                 ListCommands(player.Arena, player, player, false, true);
             }
 
-            string helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
+            string? helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
             if (string.IsNullOrWhiteSpace(helpCommandName))
                 helpCommandName = "man";
 
@@ -669,14 +661,14 @@ namespace SS.Core.Modules
             _chat.SendMessage(player, "All commands:");
             ListCommands(player.Arena, player, player, false, false);
 
-            string helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
+            string? helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
             if (string.IsNullOrWhiteSpace(helpCommandName))
                 helpCommandName = "man";
 
             _chat.SendMessage(player, $"Use ?{helpCommandName} <command name> to learn more about a command.");
         }
 
-        private void ListCommands(Arena arena, Player player, Player sendTo, bool excludeGlobal, bool excludeNoAccess)
+        private void ListCommands(Arena? arena, Player player, Player sendTo, bool excludeGlobal, bool excludeNoAccess)
         {
             if (_chat == null)
                 return;
@@ -698,9 +690,9 @@ namespace SS.Core.Modules
                     if (excludeNoAccess && !canArena && !canPriv && !canRemotePriv)
                         continue;
 
-                    foreach (var commandData in commandDataList)
+                    foreach (var commandData in commandDataList!)
                     {
-                        List<CommandSummary> list = null;
+                        List<CommandSummary>? list = null;
                         if (commandData.Arena is null)
                         {
                             if (!excludeGlobal)
@@ -801,12 +793,12 @@ namespace SS.Core.Modules
 
         private abstract class CommandData
         {
-            public readonly Arena Arena;
-            public readonly string HelpText; // TODO: change to be CommandHelpAttribute?
+            public readonly Arena? Arena;
+            public readonly string? HelpText; // TODO: change to be CommandHelpAttribute?
 
             public CommandData(
-                Arena arena,
-                string helpText)
+                Arena? arena,
+                string? helpText)
             {
                 Arena = arena;
                 HelpText = helpText;
@@ -822,8 +814,8 @@ namespace SS.Core.Modules
 
             public BasicCommandData(
                 CommandDelegate handler,
-                Arena arena,
-                string helpText)
+                Arena? arena,
+                string? helpText)
                 : base(arena, helpText)
             {
                 Handler = handler ?? throw new ArgumentNullException(nameof(handler));
@@ -838,8 +830,8 @@ namespace SS.Core.Modules
 
             public SoundCommandData(
                 CommandWithSoundDelegate handler,
-                Arena arena,
-                string helpText)
+                Arena? arena,
+                string? helpText)
                 : base(arena, helpText)
             {
                 Handler = handler ?? throw new ArgumentNullException(nameof(handler));
@@ -876,7 +868,7 @@ namespace SS.Core.Modules
 
         private struct MutableStringBuffer : IDisposable
         {
-            public char[] Array { get; private set; }
+            public char[]? Array { get; private set; }
             public int Length { get; private set; }
 
             public ReadOnlySpan<char> Value => Array is null ? ReadOnlySpan<char>.Empty : new ReadOnlySpan<char>(Array, 0, Length);

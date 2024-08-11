@@ -23,37 +23,27 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class LagAction : IModule
     {
-        private IArenaManager _arenaManager;
-        private IChat _chat;
-        private IConfigManager _configManager;
-        private IGame _game;
-        private ILagQuery _lagQuery;
-        private ILogManager _logManager;
-        private IMainloop _mainloop;
-        private INetwork _network;
-        private IPlayerData _playerData;
+        private readonly IArenaManager _arenaManager;
+        private readonly IChat _chat;
+        private readonly IConfigManager _configManager;
+        private readonly IGame _game;
+        private readonly ILagQuery _lagQuery;
+        private readonly ILogManager _logManager;
+        private readonly IMainloop _mainloop;
+        private readonly INetwork _network;
+        private readonly IPlayerData _playerData;
 
         private ArenaDataKey<ArenaLagLimits> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
         private TimeSpan _checkInterval;
-        private Thread _checkThread;
-        private CancellationTokenSource _cancellationTokenSource;
-        private CancellationToken _cancellationToken;
+        private Thread? _checkThread;
+        private readonly CancellationTokenSource _cancellationTokenSource;
+        private readonly CancellationToken _cancellationToken;
 
         private readonly Action<Player> _mainloopWorkItem_checkPlayer;
 
-        public LagAction()
-        {
-            _mainloopWorkItem_checkPlayer = MainloopWorkItem_CheckPlayer;
-        }
-
-        #region Module members
-
-        [ConfigHelp("Lag", "CheckInterval", ConfigScope.Global, typeof(int), DefaultValue = "300",
-            Description = "How often to check each player for out-of-bounds lag values (in ticks).")]
-        public bool Load(
-            ComponentBroker broker,
+        public LagAction(
             IArenaManager arenaManager,
             IChat chat,
             IConfigManager configManager,
@@ -74,6 +64,18 @@ namespace SS.Core.Modules
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
+            _cancellationTokenSource = new CancellationTokenSource();
+            _cancellationToken = _cancellationTokenSource.Token;
+
+            _mainloopWorkItem_checkPlayer = MainloopWorkItem_CheckPlayer;
+        }
+
+        #region Module members
+
+        [ConfigHelp("Lag", "CheckInterval", ConfigScope.Global, typeof(int), DefaultValue = "300",
+            Description = "How often to check each player for out-of-bounds lag values (in ticks).")]
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaLagLimits>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
@@ -81,8 +83,6 @@ namespace SS.Core.Modules
 
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
 
-            _cancellationTokenSource = new CancellationTokenSource();
-            _cancellationToken = _cancellationTokenSource.Token;
             _checkThread = new Thread(CheckThread);
             _checkThread.Name = nameof(LagAction);
             _checkThread.Start();
@@ -90,13 +90,15 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
-            _cancellationTokenSource.Cancel();
-            _checkThread.Join();
-            _checkThread = null;
-            _cancellationTokenSource.Dispose();
-            _cancellationTokenSource = null;
+            if (_checkThread is not null)
+            {
+                _cancellationTokenSource.Cancel();
+                _checkThread.Join();
+                _checkThread = null;
+                _cancellationTokenSource.Dispose();
+            }
 
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
 
@@ -142,10 +144,10 @@ namespace SS.Core.Modules
         {
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                if (!arena.TryGetExtraData(_adKey, out ArenaLagLimits lagLimits))
+                if (!arena.TryGetExtraData(_adKey, out ArenaLagLimits? lagLimits))
                     return;
 
-                ConfigHandle ch = arena.Cfg;
+                ConfigHandle ch = arena.Cfg!;
 
                 lock (lagLimits.Lock)
                 {
@@ -193,8 +195,8 @@ namespace SS.Core.Modules
             while (!_cancellationToken.IsCancellationRequested)
             {
                 DateTime now = DateTime.UtcNow;
-                Player toCheck = null;
-                PlayerData toCheckPlayerData = null;
+                Player? toCheck = null;
+                PlayerData? toCheckPlayerData = null;
                 int playerCount;
 
                 _playerData.Lock();
@@ -207,7 +209,7 @@ namespace SS.Core.Modules
                     {
                         if (p.Status == PlayerState.Playing
                             && p.IsStandard
-                            && p.TryGetExtraData(_pdKey, out PlayerData pd))
+                            && p.TryGetExtraData(_pdKey, out PlayerData? pd))
                         {
                             lock (pd.Lock)
                             {
@@ -229,9 +231,9 @@ namespace SS.Core.Modules
                     _playerData.Unlock();
                 }
 
-                if (toCheck != null)
+                if (toCheck is not null)
                 {
-                    lock (toCheckPlayerData.Lock)
+                    lock (toCheckPlayerData!.Lock)
                     {
                         toCheckPlayerData.IsChecking = true;
                     }
@@ -250,7 +252,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             try
@@ -258,11 +260,11 @@ namespace SS.Core.Modules
                 if (player.Status != PlayerState.Playing)
                     return;
 
-                Arena arena = player.Arena;
+                Arena? arena = player.Arena;
                 if (arena == null)
                     return;
 
-                if (!arena.TryGetExtraData(_adKey, out ArenaLagLimits lagLimits))
+                if (!arena.TryGetExtraData(_adKey, out ArenaLagLimits? lagLimits))
                     return;
 
                 lock (lagLimits.Lock)

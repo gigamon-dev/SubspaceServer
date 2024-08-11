@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SS.Core
 {
@@ -157,7 +158,7 @@ namespace SS.Core
         /// <param name="target">The target to check.</param>
         /// <param name="player">When the method returns, contains the targeted player, if the target was a player; otherwise <see langword="null"/>.</param>
         /// <returns><see langword="true"/> if the target was a player; otherwise <see langword="false"/>.</returns>
-        public static bool TryGetPlayerTarget(this ITarget target, out Player player)
+        public static bool TryGetPlayerTarget(this ITarget target, [MaybeNullWhen(false)] out Player player)
         {
             if (target != null
                 && target.Type == TargetType.Player
@@ -180,7 +181,7 @@ namespace SS.Core
         /// <param name="target">The target to check.</param>
         /// <param name="arena">When the method returns, contains the targeted arena, if the target was an arena; otherwise <see langword="null"/>.</param>
         /// <returns><see langword="true"/> if the target was an arena; otherwise <see langword="false"/>.</returns>
-        public static bool TryGetArenaTarget(this ITarget target, out Arena arena)
+        public static bool TryGetArenaTarget(this ITarget target, [MaybeNullWhen(false)] out Arena arena)
         {
             if (target != null
                 && target.Type == TargetType.Arena
@@ -204,7 +205,7 @@ namespace SS.Core
         /// <param name="arena">When the method returns, contains the targeted team's arena, if the target was a team; otherwise <see langword="null"/>.</param>
         /// <param name="freq">When the method returns, contains the targeted team's freq, if the target was a team; otherwise 0.</param>
         /// <returns><see langword="true"/> if the target was an arena; otherwise <see langword="false"/>.</returns>
-        public static bool TryGetTeamTarget(this ITarget target, out Arena arena, out short freq)
+        public static bool TryGetTeamTarget(this ITarget target, [MaybeNullWhen(false)] out Arena arena, out short freq)
         {
             if (target != null
                 && target.Type == TargetType.Freq

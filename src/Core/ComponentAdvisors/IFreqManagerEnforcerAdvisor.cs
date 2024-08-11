@@ -66,7 +66,7 @@ namespace SS.Core.ComponentAdvisors
         /// <param name="freq">The team that the player will be on.</param>
         /// <param name="errorMessage">An optional message.</param>
         /// <returns>A mask containing flags describing the allowed ships.</returns>
-        ShipMask GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder errorMessage) => ShipMask.All;
+        ShipMask GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder? errorMessage) => ShipMask.All;
 
         /// <summary>
         /// Checks whether a player can switch to a new freq.
@@ -75,7 +75,7 @@ namespace SS.Core.ComponentAdvisors
         /// <param name="newFreq">The team under consideration.</param>
         /// <param name="errorMessage">An optional message.</param>
         /// <returns><see langword="true"/> to signal that the player is allowed to change to the freq. Otherwise, <see langword="false"/>.</returns>
-        bool CanChangeToFreq(Player player, short newFreq, StringBuilder errorMessage) => true;
+        bool CanChangeToFreq(Player player, short newFreq, StringBuilder? errorMessage) => true;
 
         /// <summary>
         /// Checks whether a player can enter the game at all. 
@@ -88,7 +88,7 @@ namespace SS.Core.ComponentAdvisors
         /// <param name="player">The player to check.</param>
         /// <param name="errorMessage">An optional message.</param>
         /// <returns><see langword="true"/> to signal that the player is allowed to enter the game. Otherwise, <see langword="false"/>.</returns>
-        bool CanEnterGame(Player player, StringBuilder errorMessage) => true;
+        bool CanEnterGame(Player player, StringBuilder? errorMessage) => true;
 
         /// <summary>
         /// Checks whether a player can change from their current ship/freq.
@@ -96,6 +96,6 @@ namespace SS.Core.ComponentAdvisors
         /// <param name="player">The player to check.</param>
         /// <param name="errorMessage">An optional message.</param>
         /// <returns><see langword="true"/> to signal that the player is allowed change from their current ship/freq. Otherwise, <see langword="false"/>.</returns>
-        bool IsUnlocked(Player player, StringBuilder errorMessage) => true;
+        bool IsUnlocked(Player player, StringBuilder? errorMessage) => true;
     }
 }

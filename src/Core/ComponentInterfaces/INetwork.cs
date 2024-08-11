@@ -1,6 +1,7 @@
 ﻿using SS.Packets.Game;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Text;
 
@@ -187,7 +188,7 @@ namespace SS.Core.ComponentInterfaces
         /// <inheritdoc cref="Modules.Network.ConnData.PacketsDropped" path="/summary"/>>
         public ulong PacketsDropped;
 
-        public string EncryptorName;
+        public string? EncryptorName;
 
         public IPEndPoint IPEndPoint;
 
@@ -221,7 +222,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="except">The player to exclude from the send.  <see langword="null"/> for no exclusion.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags specifying options for the send.</param>
-        void SendToArena(Arena arena, Player except, ReadOnlySpan<byte> data, NetSendFlags flags);
+        void SendToArena(Arena? arena, Player? except, ReadOnlySpan<byte> data, NetSendFlags flags);
 
         /// <summary>
         /// Sends data to players in a specific arena or all arenas,
@@ -232,7 +233,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="except">The player to exclude from the send.  <see langword="null"/> for no exclusion.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags specifying options for the send.</param>
-        void SendToArena<TData>(Arena arena, Player except, ref TData data, NetSendFlags flags) where TData : struct;
+        void SendToArena<TData>(Arena? arena, Player? except, ref TData data, NetSendFlags flags) where TData : struct;
 
         /// <summary>
         /// To send data to a set of players.
@@ -396,7 +397,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="endPoint">The endpoint being listened to.</param>
         /// <param name="connectAs">The base arena name the listening endpoint is configured with.</param>
         /// <returns><see langword="true"/> if data was found for the given index.  Otheriwse, <see langword="false"/>.</returns>
-        bool TryGetListenData(int index, out IPEndPoint endPoint, out string connectAs);
+        bool TryGetListenData(int index, [MaybeNullWhen(false)] out IPEndPoint endPoint, out string? connectAs);
 
         /// <summary>
         /// Gets population statistics for the arenas associated with a specified connectAs.

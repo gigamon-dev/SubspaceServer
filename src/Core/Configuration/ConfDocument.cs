@@ -3,6 +3,7 @@ using SS.Utilities.Collections;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
 namespace SS.Core.Configuration
@@ -17,14 +18,14 @@ namespace SS.Core.Configuration
     /// </summary>
     public class ConfDocument
     {
-        private readonly string _name;
+        private readonly string? _name;
         private readonly IConfFileProvider _fileProvider;
-        private readonly IConfigLogger _logger = null;
+        private readonly IConfigLogger? _logger = null;
 
         /// <summary>
         /// The base (root) file.
         /// </summary>
-        private ConfFile _baseFile = null;
+        private ConfFile? _baseFile = null;
 
         /// <summary>
         /// All of the files that the document consists of.
@@ -46,7 +47,7 @@ namespace SS.Core.Configuration
         /// The purpose of this is to detect changes made by a document itself to one of its files, 
         /// such that the change isn't considered to be one that requires the document to be fully reloaded.
         /// </summary>
-        private ConfFile _updatingFile = null;
+        private ConfFile? _updatingFile = null;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ConfDocument"/> class.
@@ -66,9 +67,9 @@ namespace SS.Core.Configuration
         /// <param name="fileProvider">Service that provides files by name/path..</param>
         /// <param name="logger">Service for logging errors.</param>
         public ConfDocument(
-            string name,
+            string? name,
             IConfFileProvider fileProvider,
-            IConfigLogger logger)
+            IConfigLogger? logger)
         {
             _name = name;
             _fileProvider = fileProvider ?? throw new ArgumentNullException(nameof(fileProvider));
@@ -117,7 +118,7 @@ namespace SS.Core.Configuration
 
             using (PreprocessorReader reader = new(_fileProvider, _baseFile, _logger))
             {
-                LineReference lineReference;
+                LineReference? lineReference;
                 while ((lineReference = reader.ReadLine()) is not null)
                 {
                     RawLine rawLine = lineReference.Line;
@@ -139,7 +140,7 @@ namespace SS.Core.Configuration
             // interpret - takes the lines and determine section, key/value pairs
             //
 
-            string currentSection = null;
+            string? currentSection = null;
 
             foreach (LineReference lineRef in _lines)
             {
@@ -151,7 +152,7 @@ namespace SS.Core.Configuration
                 else if (lineRef.Line.LineType == ConfLineType.Property)
                 {
                     RawProperty rawProperty = (RawProperty)lineRef.Line;
-                    string section = rawProperty.SectionOverride ?? currentSection;
+                    string? section = rawProperty.SectionOverride ?? currentSection;
 
                     Settings_AddOrReplace(
                         section,
@@ -167,8 +168,7 @@ namespace SS.Core.Configuration
 
         private void AddFile(ConfFile file)
         {
-            if (file is null)
-                throw new ArgumentNullException(nameof(file));
+            ArgumentNullException.ThrowIfNull(file);
 
             if (_files.Add(file))
             {
@@ -176,7 +176,7 @@ namespace SS.Core.Configuration
             }
         }
 
-        private void File_Changed(object sender, EventArgs e)
+        private void File_Changed(object? sender, EventArgs e)
         {
             if (_updatingFile != sender)
             {
@@ -189,8 +189,7 @@ namespace SS.Core.Configuration
             if (section.IsEmpty && key.IsEmpty)
                 throw new Exception("No section or key specified");
 
-            if (settingInfo is null)
-                throw new ArgumentNullException(nameof(settingInfo));
+            ArgumentNullException.ThrowIfNull(settingInfo);
 
             Span<char> trieKey = stackalloc char[!section.IsEmpty && !key.IsEmpty ? section.Length + 1 + key.Length : (!section.IsEmpty ? section.Length : key.Length)];
             if (!section.IsEmpty && !key.IsEmpty)
@@ -211,7 +210,7 @@ namespace SS.Core.Configuration
             _settings.TryAdd(trieKey, settingInfo);
         }
 
-        private bool Settings_TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out SettingInfo settingInfo)
+        private bool Settings_TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, [MaybeNullWhen(false)] out SettingInfo settingInfo)
         {
             if (section.IsEmpty && key.IsEmpty)
                 throw new Exception("No section or key specified");
@@ -241,9 +240,9 @@ namespace SS.Core.Configuration
         /// <param name="key">The key of the property.</param>
         /// <param name="value">When this method returns, contains the value of the property if found; otherwise, null.</param>
         /// <returns><see langword="true"/> if the property was found; otherwise, <see langword="false"/>.</returns>
-        public bool TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out string value)
+        public bool TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, [MaybeNullWhen(false)] out string value)
         {
-            if (!Settings_TryGetValue(section, key, out SettingInfo settingInfo))
+            if (!Settings_TryGetValue(section, key, out SettingInfo? settingInfo))
             {
                 value = default;
                 return false;
@@ -262,13 +261,16 @@ namespace SS.Core.Configuration
         {
             ArgumentException.ThrowIfNullOrEmpty(filePath);
 
+            if (_baseFile is null)
+                throw new InvalidOperationException("No loaded.");
+
             if (File.Exists(filePath))
                 throw new Exception("A file already exists at the specified path.");
 
             using StreamWriter writer = new(filePath, false, StringUtils.DefaultEncoding);
             using PreprocessorReader reader = new(_fileProvider, _baseFile, _logger);
 
-            LineReference lineReference;
+            LineReference? lineReference;
             while ((lineReference = reader.ReadLine()) is not null)
             {
                 RawLine rawLine = lineReference.Line;
@@ -291,9 +293,9 @@ namespace SS.Core.Configuration
         /// <param name="permanent"><see langword="true"/> if the change should be persisted to disk. <see langword="false"/> to only change it in memory.</param>
         /// <param name="comment">An optional comment for a change that is <paramref name="permanent"/>.</param>
         /// <param name="options">Options that affect how <paramref name="permanent"/> settings are saved to conf files.</param>
-        public void UpdateOrAddProperty(string section, string key, string value, bool permanent, string comment = null, ModifyOptions options = ModifyOptions.None)
+        public void UpdateOrAddProperty(string section, string key, string value, bool permanent, string? comment = null, ModifyOptions options = ModifyOptions.None)
         {
-            if (Settings_TryGetValue(section, key, out SettingInfo settingInfo))
+            if (Settings_TryGetValue(section, key, out SettingInfo? settingInfo))
             {
                 // The setting exists, update it.
                 settingInfo.Value = value;
@@ -335,11 +337,11 @@ namespace SS.Core.Configuration
 
 
             // Local function that adds a RawProperty to the underlying ConfFile.
-            LineReference AddPermanent(string section, string key, string value, string comment, ModifyOptions options)
+            LineReference AddPermanent(string section, string key, string value, string? comment, ModifyOptions options)
             {
                 // First, try to add the setting to the proper section (if the section already exists).
                 if ((options & ModifyOptions.AppendOverrideOnly) != ModifyOptions.AppendOverrideOnly
-                    && TryAddToExistingSection(section, key, value, comment, out LineReference propertyReference))
+                    && TryAddToExistingSection(section, key, value, comment, out LineReference? propertyReference))
                 {
                     return propertyReference;
                 }
@@ -349,7 +351,7 @@ namespace SS.Core.Configuration
 
 
                 // Local function that tries to add a RawProperty to an existing section.
-                bool TryAddToExistingSection(string section, string key, string value, string comment, out LineReference propertyReference)
+                bool TryAddToExistingSection(string section, string key, string value, string? comment, [MaybeNullWhen(false)] out LineReference propertyReference)
                 {
                     // Find the section.
                     int docIndex = IndexOfSection(section);
@@ -434,7 +436,7 @@ namespace SS.Core.Configuration
                 }
 
                 // Local function that adds a RawProperty to the end of the base ConfFile with a section override.
-                LineReference AddToBaseAsOverride(string section, string key, string value, string comment)
+                LineReference AddToBaseAsOverride(string section, string key, string value, string? comment)
                 {
                     RawProperty propertyToAdd = new(
                         sectionOverride: section,
@@ -448,10 +450,10 @@ namespace SS.Core.Configuration
                     {
                         if (!string.IsNullOrWhiteSpace(comment))
                         {
-                            _baseFile.Lines.Add(new RawComment(RawComment.DefaultCommentChar, comment));
+                            _baseFile!.Lines.Add(new RawComment(RawComment.DefaultCommentChar, comment));
                         }
 
-                        _baseFile.Lines.Add(propertyToAdd);
+                        _baseFile!.Lines.Add(propertyToAdd);
                         _baseFile.SetDirty();
                     }
                     finally
@@ -466,9 +468,9 @@ namespace SS.Core.Configuration
             }
 
             // Local function that updates the value of an existing ConfFile's RawProperty.
-            void UpdatePermanent(SettingInfo settingInfo, string value, string comment, ModifyOptions options)
+            void UpdatePermanent(SettingInfo settingInfo, string value, string? comment, ModifyOptions options)
             {
-                _updatingFile = settingInfo.PropertyReference.File;
+                _updatingFile = settingInfo.PropertyReference!.File;
 
                 try
                 {
@@ -529,13 +531,13 @@ namespace SS.Core.Configuration
             /// <summary>
             /// The current value of the setting.
             /// </summary>
-            public string Value { get; set; }
+            public required string Value { get; set; }
 
             /// <summary>
             /// The underlying line and file that the setting is related to.
             /// <see langword="null"/> for a newly added, non-permanent setting.
             /// </summary>
-            public LineReference PropertyReference { get; set; }
+            public LineReference? PropertyReference { get; set; }
         }
 
         #endregion

@@ -22,20 +22,19 @@ namespace SS.Matchmaking.Modules
         """)]
     public class PlayerGroups : IModule, IPlayerGroups
     {
-        private ComponentBroker _broker;
-
         // required dependencies
-        private IChat _chat;
-        private ICapabilityManager _capabilityManager;
-        private ICommandManager _commandManager;
-        private ILogManager _logManager;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
+        private readonly IComponentBroker _broker;
+        private readonly IChat _chat;
+        private readonly ICapabilityManager _capabilityManager;
+        private readonly ICommandManager _commandManager;
+        private readonly ILogManager _logManager;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
 
         // optional dependencies
-        private IHelp _help;
+        private IHelp? _help;
 
-        private InterfaceRegistrationToken<IPlayerGroups> _iPlayerGroupsToken;
+        private InterfaceRegistrationToken<IPlayerGroups>? _iPlayerGroupsToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
 
@@ -44,10 +43,8 @@ namespace SS.Matchmaking.Modules
 
         private const string GroupCommandName = "group";
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public PlayerGroups(
+            IComponentBroker broker,
             ICapabilityManager capabilityManager,
             IChat chat,
             ICommandManager commandManager,
@@ -62,7 +59,12 @@ namespace SS.Matchmaking.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _help = broker.GetInterface<IHelp>();
 
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
@@ -75,7 +77,7 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iPlayerGroupsToken) != 0)
                 return false;
@@ -95,9 +97,9 @@ namespace SS.Matchmaking.Modules
 
         #region IPlayerGroups
 
-        IPlayerGroup IPlayerGroups.GetGroup(Player player)
+        IPlayerGroup? IPlayerGroups.GetGroup(Player player)
         {
-            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return null;
 
             return playerData.Group;
@@ -105,11 +107,11 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.Disconnect)
             {
-                if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                     return;
 
                 if (pd.Group is not null)
@@ -148,18 +150,18 @@ namespace SS.Matchmaking.Modules
                 """)]
         private void Command_group(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             if (parameters.IsWhiteSpace())
             {
-                if (!target.TryGetPlayerTarget(out Player targetPlayer))
+                if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                     targetPlayer = player;
 
-                if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
+                if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData))
                     return;
 
-                PlayerGroup group = targetPlayerData.Group;
+                PlayerGroup? group = targetPlayerData.Group;
 
                 if (group is null)
                 {
@@ -181,7 +183,7 @@ namespace SS.Matchmaking.Modules
                                     if (sb.Length > 0)
                                         sb.Append(", ");
 
-                                    sb.Append(pendingGroup.Leader.Name);
+                                    sb.Append(pendingGroup.Leader!.Name);
                                 }
 
                                 _chat.SendMessage(player, $"{GroupCommandName}: Pending {(targetPlayerData.PendingGroups.Count > 1 ? "invites" : "invite")} from: {sb}.");
@@ -219,12 +221,12 @@ namespace SS.Matchmaking.Modules
             ReadOnlySpan<char> token = remaining.GetToken(' ', out remaining);
             if (MemoryExtensions.Equals(token, "invite", StringComparison.OrdinalIgnoreCase))
             {
-                PlayerGroup group = playerData.Group;
+                PlayerGroup? group = playerData.Group;
                 if (group is not null)
                 {
                     if (group.Leader != player)
                     {
-                        _chat.SendMessage(player, $"{GroupCommandName}: Only the group leader, {playerData.Group.Leader.Name}, can invite a player.");
+                        _chat.SendMessage(player, $"{GroupCommandName}: Only the group leader, {group.Leader!.Name}, can invite a player.");
                         return;
                     }
 
@@ -252,7 +254,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
+                if (!target.TryGetPlayerTarget(out Player? targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                 {
                     targetPlayer = _playerData.FindPlayer(remaining);
                     if (targetPlayer is null)
@@ -274,7 +276,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
+                if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData))
                     return;
 
                 if (targetPlayerData.Group is not null)
@@ -316,7 +318,7 @@ namespace SS.Matchmaking.Modules
             }
             else if (MemoryExtensions.Equals(token, "uninvite", StringComparison.OrdinalIgnoreCase))
             {
-                PlayerGroup group = playerData.Group;
+                PlayerGroup? group = playerData.Group;
                 if (group is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
@@ -329,7 +331,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
+                if (!target.TryGetPlayerTarget(out Player? targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                 {
                     targetPlayer = _playerData.FindPlayer(remaining);
                     if (targetPlayer is null)
@@ -382,7 +384,7 @@ namespace SS.Matchmaking.Modules
                     _objectPoolManager.StringBuilderPool.Return(sb);
                 }
 
-                PlayerGroup group;
+                PlayerGroup? group;
                 if (playerData.PendingGroups.Count <= 0)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You do not have any pending group invites.");
@@ -394,7 +396,7 @@ namespace SS.Matchmaking.Modules
                 }
                 else
                 {
-                    if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
+                    if (!target.TryGetPlayerTarget(out Player? targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                     {
                         targetPlayer = _playerData.FindPlayer(remaining);
                         if (targetPlayer is null)
@@ -410,7 +412,7 @@ namespace SS.Matchmaking.Modules
                         return;
                     }
 
-                    if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
+                    if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData))
                         return;
 
                     group = targetPlayerData.Group;
@@ -446,7 +448,7 @@ namespace SS.Matchmaking.Modules
             }
             else if (MemoryExtensions.Equals(token, "decline", StringComparison.OrdinalIgnoreCase))
             {
-                PlayerGroup group;
+                PlayerGroup? group;
 
                 if (playerData.PendingGroups.Count <= 0)
                 {
@@ -459,7 +461,7 @@ namespace SS.Matchmaking.Modules
                 }
                 else
                 {
-                    if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
+                    if (!target.TryGetPlayerTarget(out Player? targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                     {
                         targetPlayer = _playerData.FindPlayer(remaining);
                         if (targetPlayer is null)
@@ -475,7 +477,7 @@ namespace SS.Matchmaking.Modules
                         return;
                     }
 
-                    if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData targetPlayerData))
+                    if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData))
                         return;
 
                     group = targetPlayerData.Group;
@@ -488,13 +490,13 @@ namespace SS.Matchmaking.Modules
 
                 if (!RemovePending(group, player, PlayerGroupPendingRemovedReason.Decline))
                 {
-                    _chat.SendMessage(player, $"{GroupCommandName}: There is no pending invite from {group.Leader.Name}.");
+                    _chat.SendMessage(player, $"{GroupCommandName}: There is no pending invite from {group.Leader!.Name}.");
                     return;
                 }
             }
             else if (MemoryExtensions.Equals(token, "leave", StringComparison.OrdinalIgnoreCase))
             {
-                PlayerGroup group = playerData.Group;
+                PlayerGroup? group = playerData.Group;
                 if (group is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
@@ -505,7 +507,7 @@ namespace SS.Matchmaking.Modules
             }
             else if (MemoryExtensions.Equals(token, "kick", StringComparison.OrdinalIgnoreCase))
             {
-                PlayerGroup group = playerData.Group;
+                PlayerGroup? group = playerData.Group;
                 if (group is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
@@ -518,7 +520,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
+                if (!target.TryGetPlayerTarget(out Player? targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                 {
                     targetPlayer = _playerData.FindPlayer(remaining);
                     if (targetPlayer is null)
@@ -548,7 +550,7 @@ namespace SS.Matchmaking.Modules
             }
             else if (MemoryExtensions.Equals(token, "leader", StringComparison.OrdinalIgnoreCase))
             {
-                PlayerGroup group = playerData.Group;
+                PlayerGroup? group = playerData.Group;
                 if (group is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
@@ -561,7 +563,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                if (!target.TryGetPlayerTarget(out Player targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
+                if (!target.TryGetPlayerTarget(out Player? targetPlayer) && !MemoryExtensions.IsWhiteSpace(remaining))
                 {
                     targetPlayer = _playerData.FindPlayer(remaining);
                     if (targetPlayer is null)
@@ -607,7 +609,7 @@ namespace SS.Matchmaking.Modules
             }
             else if (MemoryExtensions.Equals(token, "disband", StringComparison.OrdinalIgnoreCase))
             {
-                PlayerGroup group = playerData.Group;
+                PlayerGroup? group = playerData.Group;
                 if (group is null)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You are not in a group.");
@@ -667,7 +669,7 @@ namespace SS.Matchmaking.Modules
 
         private bool RemovePending(PlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason)
         {
-            if (group is null || player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (group is null || player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return false;
 
             if (!group.RemovePending(player))
@@ -678,21 +680,21 @@ namespace SS.Matchmaking.Modules
             // Message the invitee.
             if (reason == PlayerGroupPendingRemovedReason.Decline)
             {
-                _chat.SendMessage(player, $"{GroupCommandName}: You have declined the group invite from {group.Leader.Name}.");
+                _chat.SendMessage(player, $"{GroupCommandName}: You have declined the group invite from {group.Leader!.Name}.");
             }
             else if (reason != PlayerGroupPendingRemovedReason.Disconnect)
             {
-                _chat.SendMessage(player, $"{GroupCommandName}: The group invite from {group.Leader.Name} was canceled.");
+                _chat.SendMessage(player, $"{GroupCommandName}: The group invite from {group.Leader!.Name} was canceled.");
             }
 
             // Message the inviter.
             if (reason == PlayerGroupPendingRemovedReason.Decline)
             {
-                _chat.SendMessage(group.Leader, $"{GroupCommandName}: {player.Name} declined your group invite.");
+                _chat.SendMessage(group.Leader!, $"{GroupCommandName}: {player.Name} declined your group invite.");
             }
             else if (reason != PlayerGroupPendingRemovedReason.InviterDisconnect && reason != PlayerGroupPendingRemovedReason.Disband)
             {
-                _chat.SendMessage(group.Leader, $"{GroupCommandName}: The group invite to {player.Name} was canceled.");
+                _chat.SendMessage(group.Leader!, $"{GroupCommandName}: The group invite to {player.Name} was canceled.");
             }
 
             PlayerGroupPendingRemovedCallback.Fire(_broker, group, player, reason);
@@ -708,7 +710,7 @@ namespace SS.Matchmaking.Modules
 
         private bool RemoveMember(PlayerGroup group, Player player, PlayerGroupMemberRemovedReason reason)
         {
-            if (group is null || player is null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (group is null || player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return false;
 
             bool wasLeader = player == group.Leader;
@@ -875,7 +877,7 @@ namespace SS.Matchmaking.Modules
 
         private class PlayerGroup : IPlayerGroup, IResettable
         {
-            public Player Leader;
+            public Player? Leader;
             public readonly List<Player> Members = new(10); // ordered such that if the leader leaves, the first player will become leader
             private readonly ReadOnlyCollection<Player> _readOnlyMembers;
             public readonly HashSet<Player> PendingMembers = new(10);
@@ -887,7 +889,16 @@ namespace SS.Matchmaking.Modules
 
             #region IPlayerGroup
 
-            Player IPlayerGroup.Leader => Leader;
+            Player IPlayerGroup.Leader
+            {
+                get
+                {
+                    if (Leader is null)
+                        throw new InvalidOperationException();
+
+                    return Leader;
+                }
+            }
 
             ReadOnlyCollection<Player> IPlayerGroup.Members => _readOnlyMembers;
 
@@ -937,7 +948,7 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// The player's current group. <see langword="null"/> when not in a group.
             /// </summary>
-            public PlayerGroup Group;
+            public PlayerGroup? Group;
 
             /// <summary>
             /// Groups that the player has a pending invite to.

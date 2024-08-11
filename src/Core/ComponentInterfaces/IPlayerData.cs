@@ -65,7 +65,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="pid">the pid to find</param>
         /// <returns>the player with the given pid, or null if not found</returns>
-        Player PidToPlayer(int pid);
+        Player? PidToPlayer(int pid);
 
         /// <summary>
         /// Finds the player with the given name.
@@ -73,7 +73,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="name">The name to match.</param>
         /// <returns>The player with the given name, or <see langword="null"/> if not found.</returns>
-        Player FindPlayer(ReadOnlySpan<char> name);
+        Player? FindPlayer(ReadOnlySpan<char> name);
 
         /// <summary>
         /// Converts an <see cref="ITarget"/> to a specific <paramref name="set"/> of players.
@@ -90,7 +90,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="target">A target that represents which players to add.</param>
         /// <param name="set">The set to add players to.</param>
         /// <param name="predicate">Additional criteria that a player must match to be added.</param>
-        void TargetToSet(ITarget target, HashSet<Player> set, Predicate<Player> predicate);
+        void TargetToSet(ITarget target, HashSet<Player> set, Predicate<Player>? predicate);
 
         /// <summary>
         /// Allocates a slot for per-player data.

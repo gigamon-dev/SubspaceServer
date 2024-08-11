@@ -11,7 +11,7 @@ namespace SS.Matchmaking.Advisors
         /// </summary>
         /// <param name="arena">The arena to get the default queue for.</param>
         /// <returns>The name of the default queue. Otherwise, null.</returns>
-        string GetDefaultQueue(Arena arena) => null;
+        string? GetDefaultQueue(Arena arena) => null;
 
         /// <summary>
         /// Gets a queue name by an arena's alias.
@@ -20,7 +20,7 @@ namespace SS.Matchmaking.Advisors
         /// <param name="arena">The arena to get the alias for.</param>
         /// <param name="alias">The alias to check.</param>
         /// <returns>The queue name if one was found. Otherwise, null.</returns>
-        string GetQueueNameByAlias(Arena arena, string alias) => null;
+        string? GetQueueNameByAlias(Arena arena, string alias) => null;
 
         /// <summary>
         /// Gets information about the player's current match.

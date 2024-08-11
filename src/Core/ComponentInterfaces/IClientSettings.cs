@@ -158,12 +158,12 @@ namespace SS.Core.ComponentInterfaces
 
         #region ISpanFormattable
 
-        public bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider provider)
+        public bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
         {
             return _bitfield.TryFormat(destination, out charsWritten, format, provider);
         }
 
-        public string ToString(string format, IFormatProvider formatProvider)
+        public string ToString(string? format, IFormatProvider? formatProvider)
         {
             return _bitfield.ToString(format, formatProvider);
         }

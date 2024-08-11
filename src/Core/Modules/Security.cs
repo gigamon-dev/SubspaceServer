@@ -37,20 +37,20 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class Security : IModule, ISecuritySeedSync
     {
-        private ComponentBroker _broker;
-        private IArenaManager _arenaManager;
-        private ICapabilityManager _capabilityManager;
-        private IClientSettings _clientSettings;
-        private IConfigManager _configManager;
-        private ILagCollect _lagCollect;
-        private ILogManager _logManager;
-        private IMainloopTimer _mainloopTimer;
-        private IMapData _mapData;
-        private INetwork _network;
-        private IPlayerData _playerData;
-        private IPrng _prng;
+        private readonly IComponentBroker _broker;
+        private readonly IArenaManager _arenaManager;
+        private readonly ICapabilityManager _capabilityManager;
+        private readonly IClientSettings _clientSettings;
+        private readonly IConfigManager _configManager;
+        private readonly ILagCollect _lagCollect;
+        private readonly ILogManager _logManager;
+        private readonly IMainloopTimer _mainloopTimer;
+        private readonly IMapData _mapData;
+        private readonly INetwork _network;
+        private readonly IPlayerData _playerData;
+        private readonly IPrng _prng;
 
-        private InterfaceRegistrationToken<ISecuritySeedSync> _iSecuritySeedSyncRegisrationToken;
+        private InterfaceRegistrationToken<ISecuritySeedSync>? _iSecuritySeedSyncRegisrationToken;
 
         /// <summary>
         /// Arena data key for accessing <see cref="ArenaData"/>.
@@ -80,7 +80,7 @@ namespace SS.Core.Modules
         /// scrty[4] and scrty[5] are the 2nd pair, and so on...
         /// </para>
         /// </summary>
-        private uint[] _scrty;
+        private uint[]? _scrty;
 
         /// <summary>
         /// The packet to send to players.
@@ -106,8 +106,8 @@ namespace SS.Core.Modules
             Description = "Whether to kick players off of the server for violating security checks.")]
         private bool _securityKickoff;
 
-        public bool Load(
-            ComponentBroker broker,
+        public Security(
+            IComponentBroker broker,
             IArenaManager arenaManager,
             ICapabilityManager capabilityManager,
             IClientSettings clientSettings,
@@ -132,28 +132,31 @@ namespace SS.Core.Modules
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
+        }
 
-            _adKey = arenaManager.AllocateArenaData<ArenaData>();
-            _pdKey = playerData.AllocatePlayerData<PlayerData>();
+        bool IModule.Load(IComponentBroker broker)
+        {
+            _adKey = _arenaManager.AllocateArenaData<ArenaData>();
+            _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             LoadScrty();
 
-            _securityKickoff = configManager.GetInt(configManager.Global, "Security", "SecurityKickoff", 0) != 0;
+            _securityKickoff = _configManager.GetInt(_configManager.Global, "Security", "SecurityKickoff", 0) != 0;
 
             SwitchChecksums();
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
 
-            mainloopTimer.SetTimer(MainloopTimer_Send, 25000, 60000, new SendTimerData(), null);
+            _mainloopTimer.SetTimer(MainloopTimer_Send, 25000, 60000, new SendTimerData(), null);
 
-            network.AddPacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
+            _network.AddPacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
 
             _iSecuritySeedSyncRegisrationToken = broker.RegisterInterface<ISecuritySeedSync>(this);
 
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iSecuritySeedSyncRegisrationToken) != 0)
                 return false;
@@ -179,7 +182,7 @@ namespace SS.Core.Modules
 
         void ISecuritySeedSync.OverrideArenaSeedInfo(Arena arena, uint greenSeed, uint doorSeed, uint timestamp)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             S2C_Security overridePacket = new(greenSeed, doorSeed, timestamp, 0);
@@ -194,7 +197,7 @@ namespace SS.Core.Modules
 
         bool ISecuritySeedSync.RemoveArenaOverride(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.OverridePacket == null)
@@ -261,7 +264,7 @@ namespace SS.Core.Modules
             {
                 foreach (Arena arena in _arenaManager.Arenas)
                 {
-                    if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                         continue;
 
                     if (arena.Status == ArenaState.Running)
@@ -390,17 +393,17 @@ namespace SS.Core.Modules
             return sum;
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             lock (_lockObj)
             {
                 if (action == PlayerAction.EnterArena)
                 {
-                    if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                    if (!arena!.TryGetExtraData(_adKey, out ArenaData? ad))
                         return;
 
-                    bool isOverride = ad.OverridePacket != null;
-                    S2C_Security toSend = isOverride ? ad.OverridePacket.Value : _packet;
+                    bool isOverride = ad.OverridePacket is not null;
+                    S2C_Security toSend = isOverride ? ad.OverridePacket!.Value : _packet;
                     toSend.Key = 0; // no key
 
                     _logManager.LogP(LogLevel.Drivel, nameof(Security), player,
@@ -411,7 +414,7 @@ namespace SS.Core.Modules
                 }
                 else if (action == PlayerAction.LeaveArena)
                 {
-                    if (player.TryGetExtraData(_pdKey, out PlayerData pd))
+                    if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
                     {
                         if (pd.Sent)
                         {
@@ -444,10 +447,10 @@ namespace SS.Core.Modules
                     foreach (Player p in _playerData.Players)
                     {
                         // TODO: could check, but would need to send the overriden seeds along with the key
-                        if (p.Arena == null || !p.Arena.TryGetExtraData(_adKey, out ArenaData ad) || ad.OverridePacket != null) // don't do a check for arenas that have an override
+                        if (p.Arena == null || !p.Arena.TryGetExtraData(_adKey, out ArenaData? ad) || ad.OverridePacket != null) // don't do a check for arenas that have an override
                             continue;
 
-                        if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+                        if (!p.TryGetExtraData(_pdKey, out PlayerData? pd))
                             continue;
 
                         if (p.Status == PlayerState.Playing
@@ -498,7 +501,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player p in _playerData.Players)
                     {
-                        if (!p.TryGetExtraData(_pdKey, out PlayerData pd))
+                        if (!p.TryGetExtraData(_pdKey, out PlayerData? pd))
                             continue;
 
                         if (pd.Sent)
@@ -551,7 +554,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
 
             if (arena == null)
             {
@@ -565,10 +568,10 @@ namespace SS.Core.Modules
 
             _logManager.LogP(LogLevel.Drivel, nameof(Security), player, "Got a security response.");
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             ref C2S_Security pkt = ref MemoryMarshal.AsRef<C2S_Security>(data);

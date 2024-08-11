@@ -22,7 +22,7 @@ namespace SS.Matchmaking.TeamVersus
         /// <summary>
         /// The name of the player that currently fills the slot.
         /// </summary>
-        string PlayerName { get; }
+        string? PlayerName { get; }
 
         /// <summary>
         /// The player that currently fills the slot.
@@ -30,7 +30,7 @@ namespace SS.Matchmaking.TeamVersus
         /// <remarks>
         /// <see langword="null"/> if the player disconnected.
         /// </remarks>
-        Player Player { get; }
+        Player? Player { get; }
 
         /// <summary>
         /// The number of times the player has left play (switched to spec or left the arena).

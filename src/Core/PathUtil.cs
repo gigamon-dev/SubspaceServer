@@ -12,8 +12,8 @@ namespace SS.Core
         /// </summary>
         /// <param name="searchPaths">Search paths that are composite format strings.</param>
         /// <param name="replacements">Replacements to use with the compsite format strings.</param>
-        /// <returns>The path of the first readable file if one is found.  Otherwise, null.</returns>
-        public static string FindFileOnPath(IEnumerable<string> searchPaths, params string[] replacements)
+        /// <returns>The path of the first readable file if one is found.  Otherwise, <see langword="null"/>.</returns>
+        public static string? FindFileOnPath(IEnumerable<string> searchPaths, params string?[] replacements)
         {
             if (searchPaths == null)
                 throw new ArgumentNullException(nameof(searchPaths));

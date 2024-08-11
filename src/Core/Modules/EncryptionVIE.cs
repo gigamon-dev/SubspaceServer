@@ -13,14 +13,16 @@ namespace SS.Core.Modules
     /// Module that provides VIE encryption.
     /// </summary>
     [CoreModuleInfo]
-    public class EncryptionVIE : IModule, IEncrypt, IClientEncrypt
+    public class EncryptionVIE(
+        IRawNetwork rawNetwork,
+        IPlayerData playerData) : IModule, IEncrypt, IClientEncrypt
     {
         public const string InterfaceIdentifier = "enc-vie";
 
-        private IRawNetwork _rawNetwork;
-        private IPlayerData _playerData;
-        private InterfaceRegistrationToken<IEncrypt> _iEncryptToken;
-        private InterfaceRegistrationToken<IClientEncrypt> _iClientEncryptToken;
+        private readonly IRawNetwork _rawNetwork = rawNetwork ?? throw new ArgumentNullException(nameof(rawNetwork));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private InterfaceRegistrationToken<IEncrypt>? _iEncryptToken;
+        private InterfaceRegistrationToken<IClientEncrypt>? _iClientEncryptToken;
 
         private PlayerDataKey<EncData> _pdKey;
 
@@ -28,14 +30,8 @@ namespace SS.Core.Modules
 
         #region Module methods
 
-        public bool Load(
-            ComponentBroker broker,
-            IRawNetwork rawNetwork,
-            IPlayerData playerData)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _rawNetwork = rawNetwork ?? throw new ArgumentNullException(nameof(rawNetwork));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-
             _pdKey = playerData.AllocatePlayerData(_encDataPool);
             _rawNetwork.AppendConnectionInitHandler(ProcessConnectionInit);
             _iEncryptToken = broker.RegisterInterface<IEncrypt>(this, InterfaceIdentifier);
@@ -44,7 +40,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iEncryptToken) != 0)
                 return false;
@@ -66,7 +62,7 @@ namespace SS.Core.Modules
 
         int IEncrypt.Encrypt(Player player, Span<byte> data, int len)
         {
-            if (!player.TryGetExtraData(_pdKey, out EncData pd))
+            if (!player.TryGetExtraData(_pdKey, out EncData? pd))
                 return len;
 
             return pd.Encrypt(data, len);
@@ -74,7 +70,7 @@ namespace SS.Core.Modules
 
         int IEncrypt.Decrypt(Player player, Span<byte> data, int len)
         {
-            if (!player.TryGetExtraData(_pdKey, out EncData pd))
+            if (!player.TryGetExtraData(_pdKey, out EncData? pd))
                 return len;
 
             return pd.Decrypt(data, len);
@@ -82,7 +78,7 @@ namespace SS.Core.Modules
 
         void IEncrypt.Void(Player player)
         {
-            if (!player.TryGetExtraData(_pdKey, out EncData pd))
+            if (!player.TryGetExtraData(_pdKey, out EncData? pd))
                 return;
 
             pd.Reset();
@@ -97,19 +93,19 @@ namespace SS.Core.Modules
             if (connection is null)
                 return;
 
-            EncData encData = _encDataPool.Get();
+            EncData? encData = _encDataPool.Get();
             if (!connection.TryAddExtraData(encData))
             {
                 _encDataPool.Return(encData);
 
-                if (connection.TryGetExtraData(out encData))
+                if (connection.TryGetExtraData<EncData>(out encData))
                     encData.Reset();
             }
         }
 
         int IClientEncrypt.Encrypt(IClientConnection connection, Span<byte> data, int len)
         {
-            if (connection is null || !connection.TryGetExtraData(out EncData ed) || ed is null)
+            if (connection is null || !connection.TryGetExtraData<EncData>(out EncData? ed) || ed is null)
                 return len;
 
             if (data[0] == 0x00 && data[1] == 0x01)
@@ -127,7 +123,7 @@ namespace SS.Core.Modules
 
         int IClientEncrypt.Decrypt(IClientConnection connection, Span<byte> data, int len)
         {
-            if (connection is null || !connection.TryGetExtraData(out EncData ed) || ed is null)
+            if (connection is null || !connection.TryGetExtraData<EncData>(out EncData? ed) || ed is null)
                 return len;
 
             if (data[0] == 0x00 && data[1] == 0x02)
@@ -148,7 +144,7 @@ namespace SS.Core.Modules
             if (connection is null)
                 return;
 
-            if (connection.TryRemoveExtraData(out EncData encData))
+            if (connection.TryRemoveExtraData<EncData>(out EncData? encData))
             {
                 _encDataPool.Return(encData);
             }
@@ -181,8 +177,8 @@ namespace SS.Core.Modules
                     return false; // unknown type
             }
 
-            IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint.Create(remoteAddress);
-            Player player = _rawNetwork.NewConnection(clientType, remoteEndpoint, InterfaceIdentifier, ld);
+            IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint!.Create(remoteAddress);
+            Player? player = _rawNetwork.NewConnection(clientType, remoteEndpoint, InterfaceIdentifier, ld);
 
             if (player is null)
             {
@@ -192,7 +188,7 @@ namespace SS.Core.Modules
                 return true;
             }
 
-            if (!player.TryGetExtraData(_pdKey, out EncData pd))
+            if (!player.TryGetExtraData(_pdKey, out EncData? pd))
                 return false; // should not happen, sanity
 
             int key = -packet.Key;
@@ -284,7 +280,7 @@ namespace SS.Core.Modules
                     if (_status != EncDataStatus.Ready)
                         return len;
 
-                    int work = _key.Value;
+                    int work = _key!.Value;
                     if (work == 0)
                         return len; // no encryption
 
@@ -327,7 +323,7 @@ namespace SS.Core.Modules
                     if (_status != EncDataStatus.Ready)
                         return len;
 
-                    int work = _key.Value;
+                    int work = _key!.Value;
                     if (work == 0)
                         return len; // no encryption
 

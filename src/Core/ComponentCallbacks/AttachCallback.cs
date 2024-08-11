@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentCallbacks
+﻿using SS.Core.ComponentInterfaces;
+
+namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="AttachDelegate"/> callback.
@@ -10,19 +12,19 @@
         /// </summary>
         /// <param name="player">The player that is attaching or detaching.</param>
         /// <param name="to">The player being attached to, or <see langword="null"/> when detaching.</param>
-        public delegate void AttachDelegate(Player player, Player to);
+        public delegate void AttachDelegate(Player player, Player? to);
 
-        public static void Register(ComponentBroker broker, AttachDelegate handler)
+        public static void Register(IComponentBroker broker, AttachDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, AttachDelegate handler)
+        public static void Unregister(IComponentBroker broker, AttachDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, Player to)
+        public static void Fire(IComponentBroker broker, Player player, Player? to)
         {
             broker?.GetCallback<AttachDelegate>()?.Invoke(player, to);
 

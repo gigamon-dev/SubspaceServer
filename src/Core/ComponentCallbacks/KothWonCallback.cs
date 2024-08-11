@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using SS.Core.ComponentInterfaces;
+using System.Collections.Generic;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -12,17 +13,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="points">The # of points awarded to each of the <paramref name="winners"/>.</param>
         public delegate void KothWonDelegate(Arena arena, IReadOnlySet<Player> winners, int points);
 
-        public static void Register(ComponentBroker broker, KothWonDelegate handler)
+        public static void Register(IComponentBroker broker, KothWonDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, KothWonDelegate handler)
+        public static void Unregister(IComponentBroker broker, KothWonDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, IReadOnlySet<Player> winners, int points)
+        public static void Fire(IComponentBroker broker, Arena arena, IReadOnlySet<Player> winners, int points)
         {
             broker?.GetCallback<KothWonDelegate>()?.Invoke(arena, winners, points);
 

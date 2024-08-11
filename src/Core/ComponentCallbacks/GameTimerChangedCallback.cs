@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentCallbacks
+﻿using SS.Core.ComponentInterfaces;
+
+namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Represents the type of change on a timer.
@@ -48,17 +50,17 @@
     {
         public delegate void GameTimerChangedDelegate(Arena arena, TimerChange change, TimerChangeReason reason, bool isTimedGame);
 
-        public static void Register(ComponentBroker broker, GameTimerChangedDelegate handler)
+        public static void Register(IComponentBroker broker, GameTimerChangedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, GameTimerChangedDelegate handler)
+        public static void Unregister(IComponentBroker broker, GameTimerChangedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, TimerChange change, TimerChangeReason reason, bool isTimedGame)
+        public static void Fire(IComponentBroker broker, Arena arena, TimerChange change, TimerChangeReason reason, bool isTimedGame)
         {
             broker?.GetCallback<GameTimerChangedDelegate>()?.Invoke(arena, change, reason, isTimedGame);
 

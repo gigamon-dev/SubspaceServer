@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentCallbacks
+﻿using SS.Core.ComponentInterfaces;
+
+namespace SS.Core.ComponentCallbacks
 {
     public static class CrownToggledCallback
     {
@@ -9,17 +11,17 @@
         /// <param name="on">True if the crown was turned on. False if the crown was turned off.</param>
         public delegate void CrownToggledDelegate(Player player, bool on);
 
-        public static void Register(ComponentBroker broker, CrownToggledDelegate handler)
+        public static void Register(IComponentBroker broker, CrownToggledDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, CrownToggledDelegate handler)
+        public static void Unregister(IComponentBroker broker, CrownToggledDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, bool on)
+        public static void Fire(IComponentBroker broker, Player player, bool on)
         {
             broker?.GetCallback<CrownToggledDelegate>()?.Invoke(player, on);
 

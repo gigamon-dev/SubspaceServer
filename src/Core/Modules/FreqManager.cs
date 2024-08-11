@@ -19,24 +19,21 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class FreqManager : IModule, IFreqManager, IFreqBalancer, IFreqManagerEnforcerAdvisor
     {
-        private IArenaManager _arenaManager;
-        private IConfigManager _configManager;
-        private IGame _game;
-        private IPlayerData _playerData;
+        private readonly IArenaManager _arenaManager;
+        private readonly IConfigManager _configManager;
+        private readonly IGame _game;
+        private readonly IPlayerData _playerData;
 
-        private AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor> _iFreqEnforcerAdvisorRegistrationToken;
-        private InterfaceRegistrationToken<IFreqManager> _iFreqManagerRegistrationToken;
-        private InterfaceRegistrationToken<IFreqBalancer> _iFreqBalancerRegistrationToken;
+        private AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor>? _iFreqEnforcerAdvisorRegistrationToken;
+        private InterfaceRegistrationToken<IFreqManager>? _iFreqManagerRegistrationToken;
+        private InterfaceRegistrationToken<IFreqBalancer>? _iFreqBalancerRegistrationToken;
 
         private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
         private readonly DefaultObjectPool<Freq> _freqPool = new(new DefaultPooledObjectPolicy<Freq>(), Constants.TargetPlayerCount);
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public FreqManager(
             IArenaManager arenaManager,
             IConfigManager configManager,
             IGame game,
@@ -46,7 +43,12 @@ namespace SS.Core.Modules
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _game = game ?? throw new ArgumentNullException(nameof(game));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
@@ -61,7 +63,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (!broker.UnregisterAdvisor(ref _iFreqEnforcerAdvisorRegistrationToken))
                 return false;
@@ -88,11 +90,11 @@ namespace SS.Core.Modules
 
         void IFreqManager.Initial(Player player, ref ShipType ship, ref short freq)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -141,13 +143,13 @@ namespace SS.Core.Modules
             }
         }
 
-        void IFreqManager.ShipChange(Player player, ShipType workingShip, StringBuilder errorMessage)
+        void IFreqManager.ShipChange(Player player, ShipType workingShip, StringBuilder? errorMessage)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             errorMessage?.Clear(); // Clear so that we can tell if an enforcer wrote a message.
@@ -230,13 +232,13 @@ namespace SS.Core.Modules
             _game.SetShipAndFreq(player, workingShip, workingFreqNum); // UpdateFreqs will be called in the the ShipFreqChange callback.
         }
 
-        void IFreqManager.FreqChange(Player player, short requestedFreqNum, StringBuilder errorMessage)
+        void IFreqManager.FreqChange(Player player, short requestedFreqNum, StringBuilder? errorMessage)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             errorMessage?.Clear(); // Clear so that we can tell if an enforcer wrote a message.
@@ -341,7 +343,7 @@ namespace SS.Core.Modules
 
         int IFreqBalancer.GetMaximumDifference(Arena arena, short freq1, short freq2)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return int.MaxValue;
 
             if (ad.Config.DefaultBalancer_forceEvenTeams)
@@ -354,28 +356,28 @@ namespace SS.Core.Modules
 
         #region IFreqEnforcerAdvisor
 
-        bool IFreqManagerEnforcerAdvisor.CanChangeToFreq(Player player, short newFreqNum, StringBuilder errorMessage)
+        bool IFreqManagerEnforcerAdvisor.CanChangeToFreq(Player player, short newFreqNum, StringBuilder? errorMessage)
         {
             if (player == null)
                 return false;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return false;
 
             return FreqNotFull(arena, newFreqNum, errorMessage) && BalancerAllowChange(arena, player, newFreqNum, errorMessage);
 
-            bool BalancerAllowChange(Arena arena, Player player, short newFreqNum, StringBuilder errorMessage)
+            bool BalancerAllowChange(Arena arena, Player player, short newFreqNum, StringBuilder? errorMessage)
             {
-                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                     return false;
 
                 lock (ad.Lock)
                 {
                     short oldFreqNum = player.Freq;
 
-                    Freq oldFreq = GetFreq(arena, oldFreqNum);
-                    Freq newFreq = GetFreq(arena, newFreqNum);
+                    Freq? oldFreq = GetFreq(arena, oldFreqNum);
+                    Freq? newFreq = GetFreq(arena, newFreqNum);
 
                     if (newFreq != null && newFreq.IsRequired && newFreq.Players.Count == 0)
                     {
@@ -404,7 +406,7 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    IFreqBalancer balancer = arena.GetInterface<IFreqBalancer>();
+                    IFreqBalancer? balancer = arena.GetInterface<IFreqBalancer>();
                     bool isBrokerBalancer = true;
 
                     if (balancer == null)
@@ -465,22 +467,22 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IFreqManagerEnforcerAdvisor.CanEnterGame(Player player, StringBuilder errorMessage)
+        bool IFreqManagerEnforcerAdvisor.CanEnterGame(Player player, StringBuilder? errorMessage)
         {
             return PlayerMeetsResolutionRequirements(player, errorMessage)
                 && ArenaNotFull(player.Arena, errorMessage)
                 && PlayerUnderLagLimits(player, errorMessage);
 
-            bool PlayerMeetsResolutionRequirements(Player player, StringBuilder errorMessage)
+            bool PlayerMeetsResolutionRequirements(Player player, StringBuilder? errorMessage)
             {
                 if (player == null)
                     return false;
 
-                Arena arena = player.Arena;
+                Arena? arena = player.Arena;
                 if (arena == null)
                     return false;
 
-                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                     return false;
 
                 if ((ad.Config.MaxXResolution > 0 && player.Xres > ad.Config.MaxXResolution)
@@ -501,12 +503,12 @@ namespace SS.Core.Modules
                 return true;
             }
 
-            bool ArenaNotFull(Arena arena, StringBuilder errorMessage)
+            bool ArenaNotFull(Arena? arena, StringBuilder? errorMessage)
             {
                 if (arena == null)
                     return false;
 
-                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                     return false;
 
                 int count = 0;
@@ -541,7 +543,7 @@ namespace SS.Core.Modules
                 return true;
             }
 
-            bool PlayerUnderLagLimits(Player player, StringBuilder errorMessage)
+            bool PlayerUnderLagLimits(Player player, StringBuilder? errorMessage)
             {
                 // TODO: investigate if we can access the LagLimits module via an interface or maybe add an advisor?
                 if (player.Flags.NoShip)
@@ -560,14 +562,14 @@ namespace SS.Core.Modules
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
             {
                 if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
                 {
-                    ad.Config = new Config(_configManager, arena.Cfg);
+                    ad.Config = new Config(_configManager, arena.Cfg!);
                     PruneFreqs(arena);
                 }
                 else if (action == ArenaAction.Destroy)
@@ -582,7 +584,7 @@ namespace SS.Core.Modules
 
             void PruneFreqs(Arena arena)
             {
-                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                     return;
 
                 lock (ad.Lock)
@@ -600,7 +602,7 @@ namespace SS.Core.Modules
                     // Now make sure that the required teams exist.
                     for (short i = 0; i < ad.Config.RememberedTeams; i++)
                     {
-                        Freq freq = GetFreq(arena, i);
+                        Freq? freq = GetFreq(arena, i);
                         if (freq == null)
                         {
                             CreateFreq(arena, i);
@@ -610,9 +612,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             if (action == PlayerAction.PreEnterArena)
@@ -621,11 +623,11 @@ namespace SS.Core.Modules
             }
             else if (action == PlayerAction.EnterArena)
             {
-                UpdateFreqs(arena, player, player.Freq, arena.SpecFreq);
+                UpdateFreqs(arena!, player, player.Freq, arena!.SpecFreq);
             }
             else if (action == PlayerAction.LeaveArena)
             {
-                short freqNum = arena.SpecFreq;
+                short freqNum = arena!.SpecFreq;
 
                 if (pd.Freq != null)
                     freqNum = pd.Freq.FreqNum;
@@ -637,14 +639,18 @@ namespace SS.Core.Modules
 
         private void Callback_PreShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            UpdateFreqs(player.Arena, player, newFreq, oldFreq);
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            UpdateFreqs(arena, player, newFreq, oldFreq);
         }
 
         #endregion
 
         private void UpdateFreqs(Arena arena, Player player, short newFreqNum, short oldFreqNum)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             if (newFreqNum == oldFreqNum)
@@ -664,7 +670,7 @@ namespace SS.Core.Modules
                 // since we will never be balancing against it or check if it's full.
                 if (oldFreqNum != arena.SpecFreq)
                 {
-                    Freq freq = GetFreq(arena, oldFreqNum);
+                    Freq? freq = GetFreq(arena, oldFreqNum);
                     if (freq != null)
                     {
                         Debug.Assert(freq == pd.Freq);
@@ -676,7 +682,7 @@ namespace SS.Core.Modules
                         // Possibly disband the freq altogether, if it's not required.
                         if (!freq.IsRemembered && freq.Players.Count == 0)
                         {
-                            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                                 return;
 
                             ad.Freqs.Remove(freq);
@@ -687,7 +693,7 @@ namespace SS.Core.Modules
 
                 if (newFreqNum != arena.SpecFreq)
                 {
-                    Freq freq = GetFreq(arena, newFreqNum);
+                    Freq? freq = GetFreq(arena, newFreqNum);
                     if (freq == null)
                     {
                         freq = CreateFreq(arena, newFreqNum);
@@ -706,9 +712,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private Freq CreateFreq(Arena arena, short freqNum)
+        private Freq? CreateFreq(Arena arena, short freqNum)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return null;
 
             Freq freq = _freqPool.Get();
@@ -719,7 +725,7 @@ namespace SS.Core.Modules
 
         private int GetMaxFreqSize(Arena arena, short freqNum)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return 0;
 
             return freqNum >= ad.Config.FirstPrivateFreq
@@ -727,9 +733,9 @@ namespace SS.Core.Modules
                 : ad.Config.MaxPublicFreqSize;
         }
 
-        private bool FreqNotFull(Arena arena, short freqNum, StringBuilder errorMessage)
+        private bool FreqNotFull(Arena arena, short freqNum, StringBuilder? errorMessage)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             int max = GetMaxFreqSize(arena, freqNum);
@@ -788,12 +794,12 @@ namespace SS.Core.Modules
             return ShipType.Spec;
         }
 
-        private short FindEntryFreq(Arena arena, Player player, StringBuilder errorMessage)
+        private short FindEntryFreq(Arena arena, Player player, StringBuilder? errorMessage)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return arena.SpecFreq;
 
-            IFreqBalancer balancer = arena.GetInterface<IFreqBalancer>();
+            IFreqBalancer? balancer = arena.GetInterface<IFreqBalancer>();
             bool isBrokerBalancer = true;
 
             if (balancer == null)
@@ -816,7 +822,7 @@ namespace SS.Core.Modules
                     if (!CanChangeToFreq(arena, player, i, errorMessage))
                         continue;
 
-                    Freq freq = GetFreq(arena, i);
+                    Freq? freq = GetFreq(arena, i);
                     if (freq == null)
                     {
                         result = i;
@@ -839,7 +845,7 @@ namespace SS.Core.Modules
                     // Note: Right now, i is desiredTeams + 1. This time we'll do things  slightly differently.
                     while (i < ad.Config.NumberOfFrequencies)
                     {
-                        Freq freq = GetFreq(arena, i);
+                        Freq? freq = GetFreq(arena, i);
 
                         if (CanChangeToFreq(arena, player, i, errorMessage))
                         {
@@ -877,12 +883,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private Freq GetFreq(Arena arena, short freqNum)
+        private Freq? GetFreq(Arena arena, short freqNum)
         {
             if (arena == null)
                 return null;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return null;
 
             //return ad.Freqs.Find(f => f.FreqNum == freqNum); // TODO: check if this allocates a new delegate object each call
@@ -905,7 +911,7 @@ namespace SS.Core.Modules
             return player.IsHuman ? balancer.GetPlayerMetric(player) : 0;
         }
 
-        private int GetFreqMetric(Freq freq, IFreqBalancer balancer)
+        private int GetFreqMetric(Freq? freq, IFreqBalancer balancer)
         {
             if (freq == null)
                 return 0;
@@ -934,7 +940,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static ShipMask GetAllowableShips(Arena arena, Player player, ShipType ship, short freq, StringBuilder errorMessage)
+        private static ShipMask GetAllowableShips(Arena arena, Player player, ShipType ship, short freq, StringBuilder? errorMessage)
         {
             if (freq == arena.SpecFreq)
                 return ShipMask.None;
@@ -952,7 +958,7 @@ namespace SS.Core.Modules
             return mask;
         }
 
-        private static bool CanChangeToFreq(Arena arena, Player player, short newFreq, StringBuilder errorMessage)
+        private static bool CanChangeToFreq(Arena arena, Player player, short newFreq, StringBuilder? errorMessage)
         {
             foreach (var advisor in arena.GetAdvisors<IFreqManagerEnforcerAdvisor>())
             {
@@ -965,7 +971,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private static bool CanEnterGame(Arena arena, Player player, StringBuilder errorMessage)
+        private static bool CanEnterGame(Arena arena, Player player, StringBuilder? errorMessage)
         {
             foreach (var advisor in arena.GetAdvisors<IFreqManagerEnforcerAdvisor>())
             {
@@ -978,7 +984,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private static bool IsUnlocked(Arena arena, Player player, StringBuilder errorMessage)
+        private static bool IsUnlocked(Arena arena, Player player, StringBuilder? errorMessage)
         {
             foreach (var advisor in arena.GetAdvisors<IFreqManagerEnforcerAdvisor>())
             {
@@ -1116,7 +1122,7 @@ namespace SS.Core.Modules
 
         private class PlayerData : IResettable
         {
-            public Freq Freq;
+            public Freq? Freq;
 
             public bool TryReset()
             {

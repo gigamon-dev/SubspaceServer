@@ -1,4 +1,5 @@
 ﻿using SS.Core;
+using SS.Core.ComponentInterfaces;
 
 namespace SS.Matchmaking.Callbacks
 {
@@ -9,17 +10,17 @@ namespace SS.Matchmaking.Callbacks
     {
         public delegate void OneVersusOneMatchStartedDelegate(Arena arena, int boxId, Player player1, Player player2);
 
-        public static void Register(ComponentBroker broker, OneVersusOneMatchStartedDelegate handler)
+        public static void Register(IComponentBroker broker, OneVersusOneMatchStartedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, OneVersusOneMatchStartedDelegate handler)
+        public static void Unregister(IComponentBroker broker, OneVersusOneMatchStartedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, int boxId, Player player1, Player player2)
+        public static void Fire(IComponentBroker broker, Arena arena, int boxId, Player player1, Player player2)
         {
             broker?.GetCallback<OneVersusOneMatchStartedDelegate>()?.Invoke(arena, boxId, player1, player2);
 

@@ -1,4 +1,5 @@
-﻿using SS.Packets;
+﻿using SS.Core.ComponentInterfaces;
+using SS.Packets;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -15,17 +16,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="isFromPlayer">Whether the change was initiated by the player themself.</param>
         public delegate void BannerSetDelegate(Player player, ref readonly Banner banner, bool isFromPlayer);
 
-        public static void Register(ComponentBroker broker, BannerSetDelegate handler)
+        public static void Register(IComponentBroker broker, BannerSetDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, BannerSetDelegate handler)
+        public static void Unregister(IComponentBroker broker, BannerSetDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, ref readonly Banner banner, bool isFromPlayer)
+        public static void Fire(IComponentBroker broker, Player player, ref readonly Banner banner, bool isFromPlayer)
         {
             broker?.GetCallback<BannerSetDelegate>()?.Invoke(player, in banner, isFromPlayer);
 

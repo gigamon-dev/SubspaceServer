@@ -19,23 +19,26 @@ namespace SS.Core.Modules
         private const int BucketWidth = 20;
         private const int TimeSyncSamples = 10;
 
-        private ComponentBroker _broker;
-        private IPlayerData _playerData;
-        private InterfaceRegistrationToken<ILagCollect> _iLagCollectToken;
-        private InterfaceRegistrationToken<ILagQuery> _iLagQueryToken;
+        private readonly IComponentBroker _broker;
+        private readonly IPlayerData _playerData;
+        private InterfaceRegistrationToken<ILagCollect>? _iLagCollectToken;
+        private InterfaceRegistrationToken<ILagQuery>? _iLagQueryToken;
 
         /// <summary>
         /// per player data key
         /// </summary>
         private PlayerDataKey<PlayerLagStats> _lagkey;
 
-        #region IModule Members
-
-        public bool Load(ComponentBroker broker, IPlayerData playerData)
+        public LagData(IComponentBroker broker, IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        }
 
+        #region IModule Members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _lagkey = _playerData.AllocatePlayerData<PlayerLagStats>();
 
             _iLagCollectToken = _broker.RegisterInterface<ILagCollect>(this);
@@ -44,7 +47,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iLagCollectToken) != 0)
                 return false;
@@ -63,37 +66,37 @@ namespace SS.Core.Modules
 
         void ILagCollect.Position(Player player, int ms, int? clientS2CPing, uint serverWeaponCount)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.UpdatePositionStats(ms, clientS2CPing, serverWeaponCount);
         }
 
         void ILagCollect.RelDelay(Player player, int ms)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.UpdateReliableAckStats(ms);
         }
 
         void ILagCollect.ClientLatency(Player player, in ClientLatencyData data)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.UpdateClientLatencyStats(in data);
         }
 
         void ILagCollect.TimeSync(Player player, in TimeSyncData data)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.UpdateTimeSyncStats(in data);
         }
 
         void ILagCollect.RelStats(Player player, in ReliableLagData data)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.UpdateReliableStats(in data);
         }
 
         void ILagCollect.Clear(Player player)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.Reset();
         }
 
@@ -103,7 +106,7 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryPositionPing(Player player, out PingSummary ping)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.QueryPositionPing(out ping);
             else
                 ping = default;
@@ -111,7 +114,7 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryClientPing(Player player, out ClientPingSummary ping)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.QueryClientPing(out ping);
             else
                 ping = default;
@@ -119,7 +122,7 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryReliablePing(Player player, out PingSummary ping)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.QueryReliablePing(out ping);
             else
                 ping = default;
@@ -127,7 +130,7 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryPacketloss(Player player, out PacketlossSummary packetloss)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.QueryPacketloss(out packetloss);
             else
                 packetloss = default;
@@ -135,7 +138,7 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryReliableLag(Player player, out ReliableLagData data)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.QueryReliableLag(out data);
             else
                 data = default;
@@ -143,15 +146,15 @@ namespace SS.Core.Modules
 
         void ILagQuery.QueryTimeSyncHistory(Player player, ICollection<TimeSyncRecord> records)
         {
-            if (player is not null && records is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && records is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.QueryTimeSyncHistory(records);
             else
-                records.Clear();
+                records?.Clear();
         }
 
         int? ILagQuery.QueryTimeSyncDrift(Player player)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return lagStats.QueryTimeSyncDrift();
             else
                 return null;
@@ -159,7 +162,7 @@ namespace SS.Core.Modules
 
         bool ILagQuery.GetPositionPingHistogram(Player player, ICollection<PingHistogramBucket> data)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return lagStats.GetPositionPingHistogram(data);
             else
                 return false;
@@ -167,7 +170,7 @@ namespace SS.Core.Modules
 
         bool ILagQuery.GetReliablePingHistogram(Player player, ICollection<PingHistogramBucket> data)
         {
-            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats lagStats))
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return lagStats.GetReliablePingHistogram(data);
             else
                 return false;

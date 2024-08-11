@@ -1,4 +1,4 @@
-﻿using SS.Core;
+﻿using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.TeamVersus;
 
 namespace SS.Matchmaking.Callbacks
@@ -14,17 +14,17 @@ namespace SS.Matchmaking.Callbacks
         /// <param name="matchData">The match that started.</param>
         public delegate void TeamVersusMatchStartedDelegate(IMatchData matchData);
 
-        public static void Register(ComponentBroker broker, TeamVersusMatchStartedDelegate handler)
+        public static void Register(IComponentBroker broker, TeamVersusMatchStartedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, TeamVersusMatchStartedDelegate handler)
+        public static void Unregister(IComponentBroker broker, TeamVersusMatchStartedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, IMatchData matchData)
+        public static void Fire(IComponentBroker broker, IMatchData matchData)
         {
             broker?.GetCallback<TeamVersusMatchStartedDelegate>()?.Invoke(matchData);
 

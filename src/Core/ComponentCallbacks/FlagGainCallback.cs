@@ -16,17 +16,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="reason">The reason the flag was gained.</param>
         public delegate void FlagGainDelegate(Arena arena, Player player, short flagId, FlagPickupReason reason);
 
-        public static void Register(ComponentBroker broker, FlagGainDelegate handler)
+        public static void Register(IComponentBroker broker, FlagGainDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, FlagGainDelegate handler)
+        public static void Unregister(IComponentBroker broker, FlagGainDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, Player player, short flagId, FlagPickupReason reason)
+        public static void Fire(IComponentBroker broker, Arena arena, Player player, short flagId, FlagPickupReason reason)
         {
             broker?.GetCallback<FlagGainDelegate>()?.Invoke(arena, player, flagId, reason);
 

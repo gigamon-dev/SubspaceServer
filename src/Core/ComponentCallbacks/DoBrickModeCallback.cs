@@ -17,17 +17,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="bricks">The collection to add brick locations to.</param>
         public delegate void DoBrickModeDelegate(Player player, BrickMode brickMode, short x, short y, int length, IList<BrickLocation> bricks);
 
-        public static void Register(ComponentBroker broker, DoBrickModeDelegate handler)
+        public static void Register(IComponentBroker broker, DoBrickModeDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, DoBrickModeDelegate handler)
+        public static void Unregister(IComponentBroker broker, DoBrickModeDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, BrickMode brickMode, short x, short y, int length, IList<BrickLocation> bricks)
+        public static void Fire(IComponentBroker broker, Player player, BrickMode brickMode, short x, short y, int length, IList<BrickLocation> bricks)
         {
             broker?.GetCallback<DoBrickModeDelegate>()?.Invoke(player, brickMode, x, y, length, bricks);
 

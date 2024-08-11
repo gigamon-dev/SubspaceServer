@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentCallbacks
+﻿using SS.Core.ComponentInterfaces;
+
+namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="NewPlayerDelegate"/> callback.
@@ -14,17 +16,17 @@
         /// <param name="isNew">True if being allocated, false if being deallocated.</param>
         public delegate void NewPlayerDelegate(Player player, bool isNew);
 
-        public static void Register(ComponentBroker broker, NewPlayerDelegate handler)
+        public static void Register(IComponentBroker broker, NewPlayerDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, NewPlayerDelegate handler)
+        public static void Unregister(IComponentBroker broker, NewPlayerDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, bool isNew)
+        public static void Fire(IComponentBroker broker, Player player, bool isNew)
         {
             broker?.GetCallback<NewPlayerDelegate>()?.Invoke(player, isNew);
 

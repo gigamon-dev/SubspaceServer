@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SS.Core.ComponentInterfaces;
+using System;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -17,17 +18,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="sound">The sound specified when running the command.</param>
         public delegate void CommandExecutedDelegate(Player player, ITarget target, ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, ChatSound sound);
 
-        public static void Register(ComponentBroker broker, CommandExecutedDelegate handler)
+        public static void Register(IComponentBroker broker, CommandExecutedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, CommandExecutedDelegate handler)
+        public static void Unregister(IComponentBroker broker, CommandExecutedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Player player, ITarget target, ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, ChatSound sound)
+        public static void Fire(IComponentBroker broker, Player player, ITarget target, ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, ChatSound sound)
         {
             broker?.GetCallback<CommandExecutedDelegate>()?.Invoke(player, target, command, parameters, sound);
 

@@ -290,7 +290,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="handler">The message to send.</param>
-        void SendArenaMessage(Arena arena, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
+        void SendArenaMessage(Arena? arena, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message to all players in an arena.
@@ -298,28 +298,28 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
-        void SendArenaMessage(Arena arena, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
+        void SendArenaMessage(Arena? arena, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message to all players in an arena.
         /// </summary>
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="message">The message to send.</param>
-        void SendArenaMessage(Arena arena, ReadOnlySpan<char> message);
+        void SendArenaMessage(Arena? arena, ReadOnlySpan<char> message);
 
         /// <summary>
         /// Sends a green arena message to all players in an arena.
         /// </summary>
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="message">The message to send.</param>
-        void SendArenaMessage(Arena arena, string message);
+        void SendArenaMessage(Arena? arena, string message);
 
         /// <summary>
         /// Sends a green arena message to all players in an arena.
         /// </summary>
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="message">The message to send.</param>
-        void SendArenaMessage(Arena arena, StringBuilder message);
+        void SendArenaMessage(Arena? arena, StringBuilder message);
 
         #endregion
 
@@ -331,7 +331,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="handler">The message to send.</param>
-        void SendArenaMessage(Arena arena, ChatSound sound, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
+        void SendArenaMessage(Arena? arena, ChatSound sound, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message plus sound code to all players in an arena.
@@ -340,7 +340,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
-        void SendArenaMessage(Arena arena, ChatSound sound, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
+        void SendArenaMessage(Arena? arena, ChatSound sound, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends a green arena message plus sound code to all players in an arena.
@@ -348,7 +348,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="message">The message to send.</param>
-        void SendArenaMessage(Arena arena, ChatSound sound, ReadOnlySpan<char> message);
+        void SendArenaMessage(Arena? arena, ChatSound sound, ReadOnlySpan<char> message);
 
         /// <summary>
         /// Sends a green arena message plus sound code to all players in an arena.
@@ -356,7 +356,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="message">The message to send.</param>
-        void SendArenaMessage(Arena arena, ChatSound sound, string message);
+        void SendArenaMessage(Arena? arena, ChatSound sound, string message);
 
         /// <summary>
         /// Sends a green arena message plus sound code to all players in an arena.
@@ -364,7 +364,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to send to, or <see langword="null"/> for all arenas.</param>
         /// <param name="sound">The sound to send.</param>
         /// <param name="message">The message to send.</param>
-        void SendArenaMessage(Arena arena, ChatSound sound, StringBuilder message);
+        void SendArenaMessage(Arena? arena, ChatSound sound, StringBuilder message);
 
         #endregion
 
@@ -378,7 +378,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="from">The player the message if from.</param>
         /// <param name="handler">The message to send.</param>
-        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
+        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player? from, [InterpolatedStringHandlerArgument("")] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends an arbitrary chat message to a set of players.
@@ -389,7 +389,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="from">The player the message if from.</param>
         /// <param name="provider">An object that supplies culture-specific formatting information.</param>
         /// <param name="handler">The message to send.</param>
-        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
+        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player? from, IFormatProvider provider, [InterpolatedStringHandlerArgument("", nameof(provider))] ref StringBuilderBackedInterpolatedStringHandler handler);
 
         /// <summary>
         /// Sends an arbitrary chat message to a set of players.
@@ -399,7 +399,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="from">The player the message if from.</param>
         /// <param name="message">The message to send.</param>
-        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, ReadOnlySpan<char> message);
+        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player? from, ReadOnlySpan<char> message);
 
         /// <summary>
         /// Sends an arbitrary chat message to a set of players.
@@ -409,7 +409,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="from">The player the message if from.</param>
         /// <param name="message">The message to send.</param>
-        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, string message);
+        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player? from, string message);
 
         /// <summary>
         /// Sends an arbitrary chat message to a set of players.
@@ -419,7 +419,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sound">The sound to send.</param>
         /// <param name="from">The player the message if from.</param>
         /// <param name="message">The message to send.</param>
-        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player from, StringBuilder message);
+        void SendAnyMessage(HashSet<Player> set, ChatMessageType type, ChatSound sound, Player? from, StringBuilder message);
 
         #endregion
 

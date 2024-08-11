@@ -79,6 +79,6 @@ namespace SS.Matchmaking.Interfaces
         /// <param name="reason">The reason the match ended.</param>
         /// <param name="winnerTeam">The team that won. <see langword="null"/> for no winner.</param>
         /// <returns><see langword="true"/> if chat notifications were sent. Otherwise, <see langword="false"/>.</returns>
-        ValueTask<bool> MatchEndedAsync(IMatchData matchData, MatchEndReason reason, ITeam winnerTeam);
+        ValueTask<bool> MatchEndedAsync(IMatchData matchData, MatchEndReason reason, ITeam? winnerTeam);
     }
 }

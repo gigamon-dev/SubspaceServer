@@ -20,27 +20,29 @@ namespace SS.Core.Modules.Scoring
     public class Jackpot : IModule, IJackpot
     {
         // required dependencies
-        private IArenaManager _arenaManager;
-        private IConfigManager _configManager;
+        private readonly IArenaManager _arenaManager;
+        private readonly IConfigManager _configManager;
 
         // optional dependencies
-        private IPersist _persist;
+        private IPersist? _persist;
 
-        private InterfaceRegistrationToken<IJackpot> _jackpotRegistrationToken;
+        private InterfaceRegistrationToken<IJackpot>? _jackpotRegistrationToken;
 
         private ArenaDataKey<ArenaData> _adKey;
-        private DelegatePersistentData<Arena> _persistRegistration;
+        private DelegatePersistentData<Arena>? _persistRegistration;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public Jackpot(
             IArenaManager arenaManager,
             IConfigManager configManager)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
@@ -59,7 +61,7 @@ namespace SS.Core.Modules.Scoring
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _jackpotRegistrationToken) != 0)
                 return false;
@@ -86,7 +88,7 @@ namespace SS.Core.Modules.Scoring
 
         void IJackpot.ResetJackpot(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -97,7 +99,7 @@ namespace SS.Core.Modules.Scoring
 
         void IJackpot.AddJackpot(Arena arena, int points)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -108,7 +110,7 @@ namespace SS.Core.Modules.Scoring
 
         int IJackpot.GetJackpot(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return 0;
 
             lock (ad.Lock)
@@ -119,7 +121,7 @@ namespace SS.Core.Modules.Scoring
 
         void IJackpot.SetJackpot(Arena arena, int points)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -136,21 +138,21 @@ namespace SS.Core.Modules.Scoring
             Description = "The percent of a player's bounty added to the jackpot on each kill. Units: 0.1%.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
                 lock (ad.Lock)
                 {
-                    ad.BountyRatio = _configManager.GetInt(arena.Cfg, "Kill", "JackpotBountyPercent", 0) / 1000d;
+                    ad.BountyRatio = _configManager.GetInt(arena.Cfg!, "Kill", "JackpotBountyPercent", 0) / 1000d;
                 }
             }
         }
 
         private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short points, Prize green)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -163,8 +165,11 @@ namespace SS.Core.Modules.Scoring
 
         #region Persist
 
-        private void Persist_GetData(Arena arena, Stream outStream)
+        private void Persist_GetData(Arena? arena, Stream outStream)
         {
+            if (arena is null)
+                return;
+
             int points = ((IJackpot)this).GetJackpot(arena);
 
             if (points > 0)
@@ -175,8 +180,11 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Persist_SetData(Arena arena, Stream inStream)
+        private void Persist_SetData(Arena? arena, Stream inStream)
         {
+            if (arena is null)
+                return;
+
             Span<byte> data = stackalloc byte[4];
             Span<byte> remaining = data;
             int bytesRead;
@@ -198,9 +206,12 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Persist_ClearData(Arena arena)
+        private void Persist_ClearData(Arena? arena)
         {
-            ((IJackpot)this).ResetJackpot(arena);
+            if (arena is not null)
+            {
+                ((IJackpot)this).ResetJackpot(arena);
+            }
         }
 
         #endregion

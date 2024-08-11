@@ -11,44 +11,33 @@ namespace SS.Core.Modules
     /// Module that handles commands for administrators.
     /// </summary>
     [CoreModuleInfo]
-    public class AdminCommand : IModule
+    public class AdminCommand(
+        ICapabilityManager capabilityManager,
+        IChat chat,
+        IConfigManager configManager,
+        ICommandManager commandManager,
+        IFileTransfer fileTransfer,
+        ILogFile logFile,
+        ILogManager logManager,
+        IMainloop mainloop,
+        IPlayerData playerData) : IModule
     {
         private const string MapUploadDirectory = "maps/upload";
 
-        private ICapabilityManager _capabilityManager;
-        private IChat _chat;
-        private IConfigManager _configManager;
-        private ICommandManager _commandManager;
-        private IFileTransfer _fileTransfer;
-        private ILogFile _logFile;
-        private ILogManager _logManager;
-        private IMainloop _mainloop;
-        private IPlayerData _playerData;
+        private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly IFileTransfer _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
+        private readonly ILogFile _logFile = logFile ?? throw new ArgumentNullException(nameof(logFile));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
         #region Module members
 
-        public bool Load(
-            ComponentBroker broker,
-            ICapabilityManager capabilityManager,
-            IChat chat,
-            IConfigManager configManager,
-            ICommandManager commandManager,
-            IFileTransfer fileTransfer,
-            ILogFile logFile,
-            ILogManager logManager,
-            IMainloop mainloop,
-            IPlayerData playerData)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
-            _logFile = logFile ?? throw new ArgumentNullException(nameof(logFile));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-
             _commandManager.AddCommand("admlogfile", Command_admlogfile);
             _commandManager.AddCommand("getfile", Command_getfile);
             _commandManager.AddCommand("putfile", Command_putFileOrZip);
@@ -60,11 +49,11 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("pwd", Command_pwd);
             _commandManager.AddCommand("delfile", Command_delfile);
             _commandManager.AddCommand("renfile", Command_renfile);
-
+            
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _commandManager.RemoveCommand("admlogfile", Command_admlogfile);
             _commandManager.RemoveCommand("getfile", Command_getfile);
@@ -99,22 +88,22 @@ namespace SS.Core.Modules
             if (parameters.Equals("flush", StringComparison.OrdinalIgnoreCase))
             {
                 // Do it on a worker thread, don't want to block the mainloop thread.
-                _mainloop.QueueThreadPoolWorkItem<object>(ThreadPoolWorkItem_Flush, null);
+                _mainloop.QueueThreadPoolWorkItem<object?>(ThreadPoolWorkItem_Flush, null);
                 _chat.SendMessage(player, "Flushing log file.");
             }
             else if (parameters.Equals("reopen", StringComparison.OrdinalIgnoreCase))
             {
                 // Do it on a worker thread, don't want to block the mainloop thread.
-                _mainloop.QueueThreadPoolWorkItem<object>(ThreadPoolWorkItem_Reopen, null);
+                _mainloop.QueueThreadPoolWorkItem<object?>(ThreadPoolWorkItem_Reopen, null);
                 _chat.SendMessage(player, "Reopening log file.");
             }
 
-            void ThreadPoolWorkItem_Flush(object dummy)
+            void ThreadPoolWorkItem_Flush(object? dummy)
             {
                 _logFile.Flush();
             }
 
-            void ThreadPoolWorkItem_Reopen(object dummy)
+            void ThreadPoolWorkItem_Reopen(object? dummy)
             {
                 _logFile.Reopen();
             }
@@ -135,7 +124,10 @@ namespace SS.Core.Modules
                 return;
             }
 
-            string workingDir = _fileTransfer.GetWorkingDirectory(player);
+            string? workingDir = _fileTransfer.GetWorkingDirectory(player);
+            if (workingDir is null)
+                return;
+
             string path = Path.Join(workingDir, parameters);
             string fullPath = Path.GetFullPath(path);
             string currentDir = Directory.GetCurrentDirectory();
@@ -147,7 +139,7 @@ namespace SS.Core.Modules
             else
             {
                 string relativePath = Path.GetRelativePath(currentDir, fullPath);
-                Send(player.Name, relativePath);
+                Send(player.Name!, relativePath);
             }
 
             void Send(string playerName, string path)
@@ -160,7 +152,7 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        Player player = _playerData.FindPlayer(playerName);
+                        Player? player = _playerData.FindPlayer(playerName);
                         if (player is null)
                             return;
 
@@ -229,7 +221,10 @@ namespace SS.Core.Modules
 
             serverPathSpan = serverPathSpan.TrimStart(':');
 
-            string workingDir = _fileTransfer.GetWorkingDirectory(player);
+            string? workingDir = _fileTransfer.GetWorkingDirectory(player);
+            if (workingDir is null)
+                return;
+
             string serverPath = Path.Join(workingDir, serverPathSpan, (!isZip && Path.GetFileName(serverPathSpan).IsEmpty) ? clientFileName : ReadOnlySpan<char>.Empty);
             string serverFullPath = Path.GetFullPath(serverPath);
             string currentDir = Directory.GetCurrentDirectory();
@@ -284,7 +279,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
             {
                 _chat.SendMessage(player, "You must be in an arena to use this command.");
@@ -341,7 +336,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_makearena(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
@@ -391,7 +386,7 @@ namespace SS.Core.Modules
 
             try
             {
-                _configManager.SaveStandaloneCopy(arena.Cfg, arenaConfPath);
+                _configManager.SaveStandaloneCopy(arena.Cfg!, arenaConfPath);
             }
             catch (Exception ex)
             {
@@ -486,7 +481,10 @@ namespace SS.Core.Modules
             Description = "Delete a file from the server. Paths are relative to the current working directory.")]
         private void Command_delfile(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            string workingDir = _fileTransfer.GetWorkingDirectory(player);
+            string? workingDir = _fileTransfer.GetWorkingDirectory(player);
+            if (workingDir is null)
+                return;
+
             string path = Path.Join(workingDir, parameters);
             string fullPath = Path.GetFullPath(path);
             string currentDir = Directory.GetCurrentDirectory();
@@ -531,7 +529,10 @@ namespace SS.Core.Modules
                 return;
             }
 
-            string workingDir = _fileTransfer.GetWorkingDirectory(player);
+            string? workingDir = _fileTransfer.GetWorkingDirectory(player);
+            if (workingDir is null)
+                return;
+
             string oldPath = Path.Join(workingDir, oldFileName);
             string newPath = Path.Join(workingDir, newFileName);
             string oldFullPath = Path.GetFullPath(oldPath);
@@ -565,7 +566,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void FileUploaded(string filename, UploadContext context)
+        private void FileUploaded(string? filename, UploadContext context)
         {
             if (string.IsNullOrWhiteSpace(filename))
                 return;
@@ -576,7 +577,7 @@ namespace SS.Core.Modules
                 // This complicates matters in that we have to pass info to the thread.
                 // We don't want to pass the Player object since the Player could could leave before it's used,
                 // and object/id possibly even have been reused by the time we access it, though extremely unlikely.
-                _mainloop.QueueThreadPoolWorkItem(ExtractZip, new ExtractZipContext(filename, context.ServerPath, context.Player.Name));
+                _mainloop.QueueThreadPoolWorkItem(ExtractZip, new ExtractZipContext(filename, context.ServerPath, context.Player.Name!));
             }
             else
             {
@@ -622,7 +623,7 @@ namespace SS.Core.Modules
                         return;
                     }
 
-                    _configManager.SetStr(context.Arena.Cfg, section.ToString(), key.ToString(), context.ServerPath, $"Set by {context.Player.Name} on {DateTime.UtcNow}", true);
+                    _configManager.SetStr(context.Arena.Cfg!, section.ToString(), key.ToString(), context.ServerPath, $"Set by {context.Player.Name} on {DateTime.UtcNow}", true);
                 }
             }
 
@@ -637,7 +638,7 @@ namespace SS.Core.Modules
                     _playerData.Lock();
                     try
                     {
-                        Player player = _playerData.FindPlayer(extractZipContext.PlayerName);
+                        Player? player = _playerData.FindPlayer(extractZipContext.PlayerName);
                         if (player is not null)
                         {
                             _logManager.LogP(LogLevel.Warn, nameof(AdminCommand), player,
@@ -673,7 +674,7 @@ namespace SS.Core.Modules
                 _playerData.Lock();
                 try
                 {
-                    Player player = _playerData.FindPlayer(extractZipContext.PlayerName);
+                    Player? player = _playerData.FindPlayer(extractZipContext.PlayerName);
                     if (player is not null)
                     {
                         _chat.SendMessage(player, $"Unzipped to \"{extractZipContext.ServerPath}\".");
@@ -734,7 +735,7 @@ namespace SS.Core.Modules
                 Unzip = unzip;
             }
 
-            public UploadContext(Player player, string serverPath, bool unzip, string setting, Arena arena)
+            public UploadContext(Player player, string serverPath, bool unzip, string? setting, Arena? arena)
             {
                 if (string.IsNullOrWhiteSpace(serverPath))
                     throw new ArgumentException("Cannot be null or white-space.", nameof(serverPath));
@@ -752,8 +753,8 @@ namespace SS.Core.Modules
             public Player Player { get; }
             public string ServerPath { get; }
             public bool Unzip { get; }
-            public string Setting { get; }
-            public Arena Arena { get; }
+            public string? Setting { get; }
+            public Arena? Arena { get; }
         }
 
         private readonly record struct ExtractZipContext(string FileName, string ServerPath, string PlayerName);

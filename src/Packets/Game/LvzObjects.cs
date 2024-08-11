@@ -346,7 +346,7 @@ namespace SS.Packets.Game
             return !(a == b);
         }
 
-        public override bool Equals([NotNullWhen(true)] object obj)
+        public override readonly bool Equals([NotNullWhen(true)] object? obj)
         {
             if (obj is not ObjectData other)
                 return false;

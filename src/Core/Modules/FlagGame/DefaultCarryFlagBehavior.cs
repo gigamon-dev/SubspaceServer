@@ -68,7 +68,7 @@ namespace SS.Core.Modules.FlagGame
             short flagCount = _carryFlagGame.GetFlagCount(arena);
             for (short flagId = 0; flagId < flagCount; flagId++)
             {
-                if (!_carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                if (!_carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo? flagInfo))
                     continue;
 
                 if (flagInfo.State == FlagState.None)
@@ -258,7 +258,7 @@ namespace SS.Core.Modules.FlagGame
                 for (int i = 0; i < flagIds.Length; i++)
                 {
                     short flagId = flagIds[i];
-                    if (!_carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                    if (!_carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo? flagInfo))
                         continue;
 
                     if (i < dropCount)
@@ -410,7 +410,7 @@ namespace SS.Core.Modules.FlagGame
             // not occupied by another flag
             for (short flagId = 0; flagId < _carryFlagGame.GetFlagCount(arena); flagId++)
             {
-                if (!_carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo flagInfo))
+                if (!_carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo? flagInfo))
                     continue;
 
                 if (flagInfo.Location == coordinate)

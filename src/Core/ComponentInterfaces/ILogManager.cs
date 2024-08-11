@@ -87,17 +87,17 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// The name of the module that the log originate from.
         /// </summary>
-        public readonly string Module { get; init; }
+        public readonly string? Module { get; init; }
 
         /// <summary>
         /// The arena the log is related to.
         /// </summary>
-        public readonly Arena Arena { get; init; }
+        public readonly Arena? Arena { get; init; }
 
         /// <summary>
         /// The name of the player the log is related to.
         /// </summary>
-        public readonly string PlayerName { get; init; }
+        public readonly string? PlayerName { get; init; }
 
         /// <summary>
         /// The ID of the player the log is related to.

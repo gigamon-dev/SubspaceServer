@@ -15,28 +15,22 @@ namespace SS.Core.Modules
     /// general mechanism to mark players.
     /// </remarks>
     [CoreModuleInfo]
-    public class Crowns : IModule, ICrowns, ICrownsBehavior
+    public class Crowns(
+        ILogManager logManager,
+        INetwork network,
+        IObjectPoolManager objectPoolManager,
+        IPlayerData playerData) : IModule, ICrowns, ICrownsBehavior
     {
-        private ILogManager _logManager;
-        private INetwork _network;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private InterfaceRegistrationToken<ICrowns> _iCrownsInterfaceRegistrationToken;
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private InterfaceRegistrationToken<ICrowns>? _iCrownsInterfaceRegistrationToken;
 
         #region Module members
 
-        public bool Load(
-            ComponentBroker broker,
-            ILogManager logManager,
-            INetwork network,
-            IObjectPoolManager objectPoolManager,
-            IPlayerData playerData)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-
             _network.AddPacket(C2SPacketType.CrownExpired, Packet_CrownExpired);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
 
@@ -44,7 +38,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iCrownsInterfaceRegistrationToken) != 0)
                 return false;
@@ -99,7 +93,7 @@ namespace SS.Core.Modules
             if (player == null || player.Status != PlayerState.Playing)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -173,7 +167,7 @@ namespace SS.Core.Modules
             if (player == null || player.Status != PlayerState.Playing)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
@@ -213,11 +207,11 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
-            ICrownsBehavior behavior = arena.GetInterface<ICrownsBehavior>() ?? this;
+            ICrownsBehavior? behavior = arena.GetInterface<ICrownsBehavior>() ?? this;
 
             try
             {
@@ -230,7 +224,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.EnterArena)
             {

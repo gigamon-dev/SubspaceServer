@@ -15,10 +15,10 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class Messages : IModule
     {
-        private IArenaManager _arenaManager;
-        private IChat _chat;
-        private IConfigManager _configManager;
-        private IMainloopTimer _mainloopTimer;
+        private readonly IArenaManager _arenaManager;
+        private readonly IChat _chat;
+        private readonly IConfigManager _configManager;
+        private readonly IMainloopTimer _mainloopTimer;
 
         private const int MaxPeriodicMessages = 10;
         private static readonly string[] PeriodicMessageKeys = new string[10];
@@ -31,10 +31,7 @@ namespace SS.Core.Modules
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public Messages(
             IArenaManager arenaManager,
             IChat chat,
             IConfigManager configManager,
@@ -44,7 +41,12 @@ namespace SS.Core.Modules
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
@@ -53,7 +55,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _mainloopTimer.ClearTimer<Arena>(MainLoopTimer_ProcessPeriodicMessage, null);
 
@@ -93,7 +95,7 @@ namespace SS.Core.Modules
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Destroy || action == ArenaAction.ConfChanged)
@@ -103,12 +105,12 @@ namespace SS.Core.Modules
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                ad.GreetMessage = _configManager.GetStr(arena.Cfg, "Misc", "GreetMessage");
+                ad.GreetMessage = _configManager.GetStr(arena.Cfg!, "Misc", "GreetMessage");
 
                 ad.PeriodicMessageList.Clear();
                 for (int i = 0; i < PeriodicMessageKeys.Length; i++)
                 {
-                    string setting = _configManager.GetStr(arena.Cfg, "Misc", PeriodicMessageKeys[i]);
+                    string? setting = _configManager.GetStr(arena.Cfg!, "Misc", PeriodicMessageKeys[i]);
                     if (setting == null)
                         continue;
 
@@ -137,11 +139,11 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.EnterArena)
             {
-                if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                if (!arena!.TryGetExtraData(_adKey, out ArenaData? ad))
                     return;
 
                 if (!string.IsNullOrWhiteSpace(ad.GreetMessage))
@@ -155,7 +157,7 @@ namespace SS.Core.Modules
 
         private bool MainLoopTimer_ProcessPeriodicMessage(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             ad.MinuteCount++;
@@ -190,7 +192,7 @@ namespace SS.Core.Modules
 
         private class ArenaData : IResettable
         {
-            public string GreetMessage;
+            public string? GreetMessage;
             public readonly List<PeriodicMessage> PeriodicMessageList = new(10);
             public int MinuteCount;
 

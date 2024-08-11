@@ -13,39 +13,30 @@ namespace SS.Core.Modules
     /// The timer can be linked to a "Timed Game" such as a game of speed zone.
     /// </summary>
     [CoreModuleInfo]
-    public class GameTimer : IModule, IGameTimer
+    public class GameTimer(
+        IArenaManager arenaManager,
+        IChat chat,
+        ICommandManager commandManager,
+        IConfigManager configManager,
+        ILogManager logManager,
+        IMainloopTimer mainloopTimer,
+        IObjectPoolManager objectPoolManager) : IModule, IGameTimer
     {
-        private IArenaManager _arenaManager;
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMainloopTimer _mainloopTimer;
-        private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken<IGameTimer> _gameTimerRegistrationToken;
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IMainloopTimer _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        private InterfaceRegistrationToken<IGameTimer>? _gameTimerRegistrationToken;
 
         private ArenaDataKey<ArenaData> _adKey;
 
         #region Module members
 
-        public bool Load(
-            ComponentBroker broker,
-            IArenaManager arenaManager,
-            IChat chat,
-            ICommandManager commandManager,
-            IConfigManager configManager,
-            ILogManager logManager,
-            IMainloopTimer mainloopTimer,
-            IObjectPoolManager objectPoolManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
@@ -62,7 +53,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             broker.UnregisterInterface(ref _gameTimerRegistrationToken);
 
@@ -86,7 +77,7 @@ namespace SS.Core.Modules
 
         bool IGameTimer.SetTimer(Arena arena, TimeSpan duration)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.GameLength == TimeSpan.Zero)
@@ -124,8 +115,8 @@ namespace SS.Core.Modules
             Description = "Sets the arena timer. Not for arenas using a Misc:TimedGame.")]
         private void Command_timer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            Arena? arena = player.Arena;
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.GameLength != TimeSpan.Zero)
@@ -162,13 +153,13 @@ namespace SS.Core.Modules
             Description = "Returns the amount of time left in the current game.")]
         private void Command_time(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            Arena? arena = player.Arena;
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.IsEnabled)
             {
-                TimeSpan remaining = ad.EndingTimestamp.Value - DateTime.UtcNow;
+                TimeSpan remaining = ad.EndingTimestamp!.Value - DateTime.UtcNow;
                 if (remaining < TimeSpan.Zero)
                     remaining = TimeSpan.Zero;
 
@@ -216,8 +207,8 @@ namespace SS.Core.Modules
             Description = "Resets a timed game for arenas using the Misc:TimedGame setting.")]
         private void Command_timereset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            Arena? arena = player.Arena;
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.GameLength == TimeSpan.Zero)
@@ -239,8 +230,8 @@ namespace SS.Core.Modules
                 """)]
         private void Command_pausetimer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            Arena? arena = player.Arena;
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.GameLength != TimeSpan.Zero)
@@ -290,13 +281,13 @@ namespace SS.Core.Modules
             Description = "How long the game timer lasts (in ticks). Zero to disable.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
                 ad.WarningAt.Clear();
-                ReadOnlySpan<char> warnStr = _configManager.GetStr(arena.Cfg, "Misc", "TimerWarnings");
+                ReadOnlySpan<char> warnStr = _configManager.GetStr(arena.Cfg!, "Misc", "TimerWarnings");
                 ReadOnlySpan<char> token;
                 while ((token = warnStr.GetToken(" ,", out warnStr)).Length > 0)
                 {
@@ -308,7 +299,7 @@ namespace SS.Core.Modules
                 ad.WarningAt.Sort();
 
                 TimeSpan oldGameLength = ad.GameLength;
-                ad.GameLength = TimeSpan.FromMilliseconds(_configManager.GetInt(arena.Cfg, "Misc", "TimedGame", 0) * 10);
+                ad.GameLength = TimeSpan.FromMilliseconds(_configManager.GetInt(arena.Cfg!, "Misc", "TimedGame", 0) * 10);
 
                 if (action == ArenaAction.Create && ad.GameLength > TimeSpan.Zero)
                 {
@@ -349,14 +340,14 @@ namespace SS.Core.Modules
             {
                 foreach (Arena arena in _arenaManager.Arenas)
                 {
-                    if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                         continue;
 
                     if (!ad.IsEnabled)
                         continue;
 
                     // Send warning notifications.
-                    TimeSpan remaining = ad.EndingTimestamp.Value - now;
+                    TimeSpan remaining = ad.EndingTimestamp!.Value - now;
                     while (ad.NextWarningIndex >= 0)
                     {
                         TimeSpan warningTimeSpan = ad.WarningAt[ad.NextWarningIndex];
@@ -517,7 +508,7 @@ namespace SS.Core.Modules
             {
                 if (IsEnabled)
                 {
-                    TimeSpan remaining = EndingTimestamp.Value - DateTime.UtcNow;
+                    TimeSpan remaining = EndingTimestamp!.Value - DateTime.UtcNow;
                     if (remaining > TimeSpan.Zero)
                     {
                         PausedRemaining = remaining;

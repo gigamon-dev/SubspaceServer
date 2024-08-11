@@ -28,25 +28,22 @@ namespace SS.Core.Modules.FlagGame
         private const int MaxFlags = 256;
 
         // required dependencies
-        private IArenaManager _arenaManager;
-        private IChat _chat;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMainloopTimer _mainloopTimer;
-        private IMapData _mapData;
-        private INetwork _network;
+        private readonly IArenaManager _arenaManager;
+        private readonly IChat _chat;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IMainloopTimer _mainloopTimer;
+        private readonly IMapData _mapData;
+        private readonly INetwork _network;
 
         // optional dependencies
-        private IPersist _persist;
+        private IPersist? _persist;
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        private DelegatePersistentData<Arena> _persistRegistration;
+        private DelegatePersistentData<Arena>? _persistRegistration;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public StaticFlags(
             IArenaManager arenaManager,
             IChat chat,
             IConfigManager configManager,
@@ -62,7 +59,12 @@ namespace SS.Core.Modules.FlagGame
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _network = network ?? throw new ArgumentNullException(nameof(network));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
             _persist = broker.GetInterface<IPersist>();
@@ -82,7 +84,7 @@ namespace SS.Core.Modules.FlagGame
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
@@ -108,7 +110,7 @@ namespace SS.Core.Modules.FlagGame
 
         void IFlagGame.ResetGame(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.Flags == null)
@@ -134,7 +136,7 @@ namespace SS.Core.Modules.FlagGame
 
         short IFlagGame.GetFlagCount(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return 0;
 
             if (ad.Flags == null)
@@ -145,7 +147,7 @@ namespace SS.Core.Modules.FlagGame
 
         short IFlagGame.GetFlagCount(Arena arena, short freq)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return 0;
 
             if (ad.Flags == null)
@@ -162,7 +164,7 @@ namespace SS.Core.Modules.FlagGame
         bool IStaticFlagGame.TryGetFlagOwners(Arena arena, Span<short> owners)
         {
             if (arena == null
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
                 || ad.Flags == null
                 || ad.Flags.Length != owners.Length)
             {
@@ -177,7 +179,7 @@ namespace SS.Core.Modules.FlagGame
 
         bool IStaticFlagGame.SetFlagOwners(Arena arena, ReadOnlySpan<short> flagOwners)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.Flags == null)
@@ -204,7 +206,7 @@ namespace SS.Core.Modules.FlagGame
         bool IStaticFlagGame.TryGetFlagOwner(Arena arena, short flagId, out short owner)
         {
             if (arena == null
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
                 || ad.Flags == null
                 || flagId < 0
                 || flagId >= ad.Flags.Length)
@@ -226,9 +228,9 @@ namespace SS.Core.Modules.FlagGame
                 return false;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
                 || ad.Flags == null
                 || flagId < 0
                 || flagId >= ad.Flags.Length)
@@ -255,14 +257,14 @@ namespace SS.Core.Modules.FlagGame
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
             {
                 _logManager.LogP(LogLevel.Malicious, nameof(StaticFlags), player, "C2S_TouchFlag packet but not in an arena.");
                 return;
             }
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.Flags == null)
@@ -328,17 +330,17 @@ namespace SS.Core.Modules.FlagGame
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
                 int numFlags = Math.Clamp(_mapData.GetFlagCount(arena), 0, MaxFlags);
 
-                if (_configManager.GetEnum(arena.Cfg, "Flag", "CarryFlags", (ConfigCarryFlags)(-1)) == ConfigCarryFlags.None
+                if (_configManager.GetEnum(arena.Cfg!, "Flag", "CarryFlags", (ConfigCarryFlags)(-1)) == ConfigCarryFlags.None
                     && numFlags > 0)
                 {
-                    ad.IsPersistEnabled = _configManager.GetInt(arena.Cfg, "Flag", "PersistentTurfOwners", 1) != 0;
+                    ad.IsPersistEnabled = _configManager.GetInt(arena.Cfg!, "Flag", "PersistentTurfOwners", 1) != 0;
 
                     DateTime now = DateTime.UtcNow;
 
@@ -391,7 +393,7 @@ namespace SS.Core.Modules.FlagGame
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.EnterArena)
             {
@@ -399,7 +401,7 @@ namespace SS.Core.Modules.FlagGame
             }
             else if (action == PlayerAction.LeaveArena)
             {
-                if (!arena.TryGetExtraData(_adKey, out ArenaData ad)
+                if (!arena!.TryGetExtraData(_adKey, out ArenaData? ad)
                     || ad.Flags == null)
                 {
                     return;
@@ -424,9 +426,9 @@ namespace SS.Core.Modules.FlagGame
 
         #region Persist methods
 
-        private void Persist_GetOwners(Arena arena, Stream outStream)
+        private void Persist_GetOwners(Arena? arena, Stream outStream)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (!ad.IsPersistEnabled || ad.Flags == null)
@@ -441,9 +443,9 @@ namespace SS.Core.Modules.FlagGame
             staticFlagsData.WriteTo(outStream);
         }
 
-        private void Persist_SetOwners(Arena arena, Stream inStream)
+        private void Persist_SetOwners(Arena? arena, Stream inStream)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (!ad.IsPersistEnabled || ad.Flags == null)
@@ -479,7 +481,7 @@ namespace SS.Core.Modules.FlagGame
         private bool MainloopTimer_SendFlagUpdates(Arena arena)
         {
             if (arena == null
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad)
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
                 || ad.Flags == null)
             {
                 return false;
@@ -517,11 +519,14 @@ namespace SS.Core.Modules.FlagGame
             if (arena == null)
                 return;
 
-            S2C_FlagPickup s2c = new(flagId, (short)flagData.DirtyPlayer.Id);
-            _network.SendToArena(arena, null, ref s2c, NetSendFlags.Reliable);
+            if (flagData.DirtyPlayer is not null)
+            {
+                S2C_FlagPickup s2c = new(flagId, (short)flagData.DirtyPlayer.Id);
+                _network.SendToArena(arena, null, ref s2c, NetSendFlags.Reliable);
 
-            flagData.DirtyPlayer = null;
-            flagData.LastSendTimestamp = now;
+                flagData.DirtyPlayer = null;
+                flagData.LastSendTimestamp = now;
+            }
         }
 
         private void SendFullFlagUpdate(Player player)
@@ -529,11 +534,11 @@ namespace SS.Core.Modules.FlagGame
             if (player == null)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.Flags == null)
@@ -554,7 +559,7 @@ namespace SS.Core.Modules.FlagGame
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.Flags == null)
@@ -585,7 +590,7 @@ namespace SS.Core.Modules.FlagGame
             /// <remarks>
             /// We keep track of the player rather than just a dirty flag since the packet requires the player's id.
             /// </remarks>
-            public Player DirtyPlayer;
+            public Player? DirtyPlayer;
 
             /// <summary>
             /// Timestamp a flag update was last sent for the flag.
@@ -598,12 +603,12 @@ namespace SS.Core.Modules.FlagGame
 
         private class ArenaData : IResettable
         {
-            public InterfaceRegistrationToken<IFlagGame> FlagGameRegistrationToken;
-            public InterfaceRegistrationToken<IStaticFlagGame> StaticFlagGameRegistrationToken;
+            public InterfaceRegistrationToken<IFlagGame>? FlagGameRegistrationToken;
+            public InterfaceRegistrationToken<IStaticFlagGame>? StaticFlagGameRegistrationToken;
 
             public bool IsPersistEnabled = false;
             public readonly TimeSpan SendFlagUpdateCooldown = TimeSpan.FromMilliseconds(500); // TODO: make this configurable?
-            public FlagData[] Flags = null;
+            public FlagData[]? Flags = null;
 
             public bool TryReset()
             {

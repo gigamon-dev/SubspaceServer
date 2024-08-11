@@ -29,12 +29,12 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class LogSysop : IModule
     {
-        private ICapabilityManager _capabilityManager;
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private ILogManager _logManager;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
+        private readonly ICapabilityManager _capabilityManager;
+        private readonly IChat _chat;
+        private readonly ICommandManager _commandManager;
+        private readonly ILogManager _logManager;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
 
         private PlayerDataKey<PlayerData> _pdKey;
 
@@ -42,16 +42,13 @@ namespace SS.Core.Modules
         private static readonly int MaxLine = ChatPacket.MaxMessageChars;
         private int MaxAtOnce = 50; // TODO: make this a config setting?
 
-        private Memory<char>[] _logData;
+        private Memory<char>[]? _logData;
         private int _logPosition = 0;
         private readonly object _lockObj = new();
 
         private DateTime? _lastDroppedLogNotification = null;
 
-        #region Module methods
-
-        public bool Load(
-            ComponentBroker broker,
+        public LogSysop(
             ICapabilityManager capabilityManager,
             IChat chat,
             ICommandManager commandManager,
@@ -65,7 +62,12 @@ namespace SS.Core.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        }
 
+        #region Module methods
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             Memory<char> fullLogBuffer = new(new char[MaxLast * MaxLine]);
             _logData = new Memory<char>[MaxLast];
             for (int i = 0; i < _logData.Length; i++)
@@ -82,7 +84,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _commandManager.RemoveCommand("lastlog", Command_lastlog);
 
@@ -112,7 +114,7 @@ namespace SS.Core.Modules
                     {
                         foreach (Player player in _playerData.Players)
                         {
-                            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                                 return;
 
                             if (pd.SeeWhat == SeeWhat.All
@@ -139,7 +141,7 @@ namespace SS.Core.Modules
             {
                 lock (_lockObj)
                 {
-                    Memory<char> buffer = _logData[_logPosition];
+                    Memory<char> buffer = _logData![_logPosition];
                     Span<char> span = buffer.Span;
                     span.Clear();
                     logEntry.LogText.CopyTo(0, span, Math.Min(logEntry.LogText.Length, span.Length));
@@ -149,11 +151,11 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.Connect || action == PlayerAction.EnterArena)
             {
-                if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                     return;
 
                 if (_capabilityManager.HasCapability(player, Constants.Capabilities.SeeSysopLogAll))
@@ -185,7 +187,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Player player in _playerData.Players)
                     {
-                        if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                        if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                             return;
 
                         if (pd.SeeWhat == SeeWhat.All)
@@ -223,15 +225,15 @@ namespace SS.Core.Modules
                 """)]
         private void Command_lastlog(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            target.TryGetPlayerTarget(out Player targetPlayer);
+            target.TryGetPlayerTarget(out Player? targetPlayer);
 
             Span<char> nameFilter = targetPlayer == null
                 ? Span<char>.Empty
-                : stackalloc char[targetPlayer.Name.Length + 2];
+                : stackalloc char[targetPlayer.Name!.Length + 2];
 
             if (!nameFilter.IsEmpty)
             {
-                if (!nameFilter.TryWrite($"[{targetPlayer.Name}]", out _))
+                if (!nameFilter.TryWrite($"[{targetPlayer!.Name}]", out _))
                     nameFilter = Span<char>.Empty;
             }
 
@@ -261,7 +263,7 @@ namespace SS.Core.Modules
                     int c = (_logPosition - 1 + MaxLast) % MaxLast;
                     while (c != _logPosition && left > 0)
                     {
-                        Memory<char> log = _logData[c].TrimEnd('\0');
+                        Memory<char> log = _logData![c].TrimEnd('\0');
                         if (log.Length == 0)
                             break;
 

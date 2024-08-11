@@ -13,17 +13,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="message">The log message to write.</param>
         public delegate void LogDelegate(ref readonly LogEntry logEntry);
 
-        public static void Register(ComponentBroker broker, LogDelegate handler)
+        public static void Register(IComponentBroker broker, LogDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, LogDelegate handler)
+        public static void Unregister(IComponentBroker broker, LogDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, ref readonly LogEntry logEntry)
+        public static void Fire(IComponentBroker broker, ref readonly LogEntry logEntry)
         {
             broker?.GetCallback<LogDelegate>()?.Invoke(in logEntry);
 

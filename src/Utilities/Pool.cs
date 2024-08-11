@@ -75,7 +75,7 @@ namespace SS.Utilities
 
         public T Get()
         {
-            if (!_availableBag.TryTake(out T obj) || !obj.TrySetAvailability(false))
+            if (!_availableBag.TryTake(out T? obj) || !obj.TrySetAvailability(false))
             {
                 // none available, create one
                 obj = new T()

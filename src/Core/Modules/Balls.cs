@@ -19,7 +19,16 @@ namespace SS.Core.Modules
     /// </list>
     /// </summary>
     [CoreModuleInfo]
-    public class Balls : IModule, IBalls
+    public class Balls(
+        IComponentBroker broker,
+        IArenaManager arenaManager,
+        IConfigManager configManager,
+        ILogManager logManager,
+        IMainloopTimer mainloopTimer,
+        IMapData mapData,
+        INetwork network,
+        IPlayerData playerData,
+        IPrng prng) : IModule, IBalls
     {
         /// <summary>
         /// Continuum supports up to a maximum of 8 balls.
@@ -27,42 +36,23 @@ namespace SS.Core.Modules
         private const int MaxBalls = 8;
         private const NetSendFlags BallSendFlags = NetSendFlags.PriorityP4;
 
-        private ComponentBroker _broker;
-        private IArenaManager _arenaManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMainloopTimer _mainloopTimer;
-        private IMapData _mapData;
-        private INetwork _network;
-        private IPlayerData _playerData;
-        private IPrng _prng;
-        private InterfaceRegistrationToken<IBalls> _iBallsToken;
+        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IMainloopTimer _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+        private readonly IMapData _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private readonly IPrng _prng = prng ?? throw new ArgumentNullException(nameof(prng));
+        private InterfaceRegistrationToken<IBalls>? _iBallsToken;
 
         private ArenaDataKey<ArenaData> _adKey;
 
         #region Module members
 
-        public bool Load(
-            ComponentBroker broker,
-            IArenaManager arenaManager,
-            IConfigManager configManager,
-            ILogManager logManager,
-            IMainloopTimer mainloopTimer,
-            IMapData mapData,
-            INetwork network,
-            IPlayerData playerData,
-            IPrng prng)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
-            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _prng = prng ?? throw new ArgumentNullException(nameof(prng));
-
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
@@ -80,7 +70,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iBallsToken) != 0)
                 return false;
@@ -107,7 +97,7 @@ namespace SS.Core.Modules
 
         bool IBalls.TryGetBallSettings(Arena arena, out BallSettings ballSettings)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
             {
                 ballSettings = default;
                 return false;
@@ -129,7 +119,7 @@ namespace SS.Core.Modules
             if (ballCount < 0 || ballCount > MaxBalls)
                 return false;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             lock (ad.Lock)
@@ -155,7 +145,7 @@ namespace SS.Core.Modules
         {
             if (arena == null
                 || ballId < 0
-                || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+                || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
             {
                 ballData = default;
                 return false;
@@ -186,7 +176,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -198,7 +188,7 @@ namespace SS.Core.Modules
                     ad.Balls[i].Carrier = null;
                 }
 
-                int newGameDelay = _configManager.GetInt(arena.Cfg, "Soccer", "NewGameDelay", -3000);
+                int newGameDelay = _configManager.GetInt(arena.Cfg!, "Soccer", "NewGameDelay", -3000);
                 if (newGameDelay < 0)
                     newGameDelay = _prng.Number(0, -newGameDelay);
 
@@ -206,7 +196,7 @@ namespace SS.Core.Modules
                     ad.Balls[i].Time = ServerTick.Now + (uint)newGameDelay;
             }
 
-            IPersistExecutor persistExecutor = _broker.GetInterface<IPersistExecutor>();
+            IPersistExecutor? persistExecutor = _broker.GetInterface<IPersistExecutor>();
             if (persistExecutor != null)
             {
                 try
@@ -232,7 +222,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
             {
                 isScorable = false;
                 ownerFreq = null;
@@ -410,7 +400,7 @@ namespace SS.Core.Modules
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -459,7 +449,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             // Players entering will automaticaly get ball information by packets sent by the timer. Nothing special needed here for that.
 
@@ -477,7 +467,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -498,7 +488,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null || player.Status != PlayerState.Playing)
             {
                 _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"Ball pick up packet from bad arena or status (status={player.Status}).");
@@ -519,7 +509,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -608,7 +598,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null || player.Status != PlayerState.Playing)
             {
                 _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "Ball fire packet from bad arena or status.");
@@ -621,7 +611,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             ref BallPacket c2s = ref MemoryMarshal.AsRef<BallPacket>(data);
@@ -703,7 +693,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null || player.Status != PlayerState.Playing)
             {
                 _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "Ball goal packet from bad arena or status.");
@@ -716,7 +706,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             ref C2S_Goal c2s = ref MemoryMarshal.AsRef<C2S_Goal>(data);
@@ -767,7 +757,7 @@ namespace SS.Core.Modules
                     if (arena.Status != ArenaState.Running)
                         continue;
 
-                    if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                         continue;
 
                     lock (ad.Lock)
@@ -793,7 +783,7 @@ namespace SS.Core.Modules
                             else if (b.State == BallState.Carried)
                             {
                                 // It's being carried, update its x,y coords.
-                                var position = b.Carrier.Position;
+                                var position = b.Carrier!.Position;
                                 b.X = position.X;
                                 b.Y = position.Y;
 
@@ -860,21 +850,22 @@ namespace SS.Core.Modules
             if (arena == null)
                 return 0;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return 0;
 
             int newSpawnCount = 1;
 
             lock (ad.Lock)
             {
-                ad.Settings.BallCount = Math.Clamp(_configManager.GetInt(arena.Cfg, "Soccer", "BallCount", 0), 0, MaxBalls);
-                ad.Settings.Mode = _configManager.GetEnum(arena.Cfg, "Soccer", "Mode", SoccerMode.All);
+                ConfigHandle ch = arena.Cfg!;
+                ad.Settings.BallCount = Math.Clamp(_configManager.GetInt(ch, "Soccer", "BallCount", 0), 0, MaxBalls);
+                ad.Settings.Mode = _configManager.GetEnum(ch, "Soccer", "Mode", SoccerMode.All);
 
                 Span<BallSpawn> spawns = stackalloc BallSpawn[MaxBalls];
 
-                spawns[0].X = _configManager.GetInt(arena.Cfg, "Soccer", "SpawnX", 512);
-                spawns[0].Y = _configManager.GetInt(arena.Cfg, "Soccer", "SpawnY", 512);
-                spawns[0].Radius = _configManager.GetInt(arena.Cfg, "Soccer", "SpawnRadius", 20);
+                spawns[0].X = _configManager.GetInt(ch, "Soccer", "SpawnX", 512);
+                spawns[0].Y = _configManager.GetInt(ch, "Soccer", "SpawnY", 512);
+                spawns[0].Radius = _configManager.GetInt(ch, "Soccer", "SpawnRadius", 20);
 
                 Span<char> xName = stackalloc char["SpawnX#".Length];
                 Span<char> yName = stackalloc char["SpawnY#".Length];
@@ -888,8 +879,8 @@ namespace SS.Core.Modules
                 {
                     xName[^1] = yName[^1] = rName[^1] = (char)('0' + i);
                     
-                    spawns[i].X = _configManager.GetInt(arena.Cfg, "Soccer", xName, -1);
-                    spawns[i].Y = _configManager.GetInt(arena.Cfg, "Soccer", yName, -1);
+                    spawns[i].X = _configManager.GetInt(ch, "Soccer", xName, -1);
+                    spawns[i].Y = _configManager.GetInt(ch, "Soccer", yName, -1);
 
                     if (spawns[i].X == -1 && spawns[i].Y == -1)
                     {
@@ -907,7 +898,7 @@ namespace SS.Core.Modules
                         spawns[i].Y = spawns[0].Y;
                     }
 
-                    spawns[i].Radius = _configManager.GetInt(arena.Cfg, "Soccer", rName, -1);
+                    spawns[i].Radius = _configManager.GetInt(ch, "Soccer", rName, -1);
 
                     if (spawns[i].Radius == -1)
                     {
@@ -917,15 +908,15 @@ namespace SS.Core.Modules
 
                 ad.SetSpawns(spawns[..newSpawnCount]);
 
-                ad.Settings.SendTime = _configManager.GetInt(arena.Cfg, "Soccer", "SendTime", 100);
+                ad.Settings.SendTime = _configManager.GetInt(ch, "Soccer", "SendTime", 100);
                 if (ad.Settings.SendTime < 25)
                     ad.Settings.SendTime = 25;
                 else if (ad.Settings.SendTime > 500)
                     ad.Settings.SendTime = 500;
 
-                ad.Settings.RespawnTimeAfterGoal = _configManager.GetInt(arena.Cfg, "Soccer", "GoalDelay", 0);
-                ad.Settings.DeathScoresGoal = _configManager.GetInt(arena.Cfg, "Soccer", "AllowGoalByDeath", 0) != 0;
-                ad.Settings.KillerIgnorePassDelay = _configManager.GetInt(arena.Cfg, "Soccer", "KillerIgnorePassDelay", 0);
+                ad.Settings.RespawnTimeAfterGoal = _configManager.GetInt(ch, "Soccer", "GoalDelay", 0);
+                ad.Settings.DeathScoresGoal = _configManager.GetInt(ch, "Soccer", "AllowGoalByDeath", 0) != 0;
+                ad.Settings.KillerIgnorePassDelay = _configManager.GetInt(ch, "Soccer", "KillerIgnorePassDelay", 0);
 
                 return ad.Settings.BallCount;
             }
@@ -939,7 +930,7 @@ namespace SS.Core.Modules
             if (newBallCount < 0 || newBallCount > MaxBalls)
                 return false;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             lock (ad.Lock)
@@ -979,7 +970,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -999,7 +990,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -1017,7 +1008,7 @@ namespace SS.Core.Modules
             if (ballId < 0)
                 return false;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             lock (ad.Lock)
@@ -1091,7 +1082,7 @@ namespace SS.Core.Modules
             if (ballId < 0)
                 return false;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             // Keep information consistent, player's freq for owned balls, freq of -1 for unowned balls.
@@ -1117,7 +1108,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -1168,7 +1159,7 @@ namespace SS.Core.Modules
             if (ballId < 0)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             lock (ad.Lock)
@@ -1237,12 +1228,12 @@ namespace SS.Core.Modules
             }
         }
 
-        private void CleanupAfter(Arena arena, Player player, Player killer, bool newt, bool isLeaving)
+        private void CleanupAfter(Arena? arena, Player player, Player? killer, bool newt, bool isLeaving)
         {
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             // Nake sure that if someone leaves, any balls the player was carrying drop.
@@ -1350,7 +1341,7 @@ namespace SS.Core.Modules
 
         private struct ExtraBallStateInfo
         {
-            public Player LastKiller;
+            public Player? LastKiller;
             public ServerTick KillerValidPickupTime;
         }
 

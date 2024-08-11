@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using SS.Core.ComponentInterfaces;
+using System.Reflection;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -13,17 +14,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="assembly">The plug-in assembly that is being unloaded.</param>
         public delegate void PluginAssemblyUnloadingDelegate(Assembly assembly);
 
-        public static void Register(ComponentBroker broker, PluginAssemblyUnloadingDelegate handler)
+        public static void Register(IComponentBroker broker, PluginAssemblyUnloadingDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, PluginAssemblyUnloadingDelegate handler)
+        public static void Unregister(IComponentBroker broker, PluginAssemblyUnloadingDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Assembly assembly)
+        public static void Fire(IComponentBroker broker, Assembly assembly)
         {
             broker?.GetCallback<PluginAssemblyUnloadingDelegate>()?.Invoke(assembly);
 

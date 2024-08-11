@@ -57,17 +57,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="reason">The reason the flag was lost.</param>
         public delegate void FlagLostDelegate(Arena arena, Player player, short flagId, FlagLostReason reason);
 
-        public static void Register(ComponentBroker broker, FlagLostDelegate handler)
+        public static void Register(IComponentBroker broker, FlagLostDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, FlagLostDelegate handler)
+        public static void Unregister(IComponentBroker broker, FlagLostDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, Player player, short flagId, FlagLostReason reason)
+        public static void Fire(IComponentBroker broker, Arena arena, Player player, short flagId, FlagLostReason reason)
         {
             broker?.GetCallback<FlagLostDelegate>()?.Invoke(arena, player, flagId, reason);
 

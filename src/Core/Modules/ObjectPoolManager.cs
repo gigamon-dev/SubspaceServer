@@ -16,32 +16,34 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public class ObjectPoolManager : IModule, IObjectPoolManager
     {
-        private InterfaceRegistrationToken<IObjectPoolManager> _iObjectPoolManagerToken;
+        private InterfaceRegistrationToken<IObjectPoolManager>? _iObjectPoolManagerToken;
 
         private readonly ConcurrentDictionary<IPool, IPool> _poolDictionary = new();
 
-        private DefaultObjectPoolProvider _provider;
-        private ObjectPool<HashSet<Player>> _playerHashSetPool;
-        private ObjectPool<HashSet<Arena>> _arenaHashSetPool;
-        private ObjectPool<HashSet<string>> _nameHashSetPool;
-        private ObjectPool<StringBuilder> _stringBuilderPool;
-        private ObjectPool<Crc32> _crc32Pool;
+        private readonly DefaultObjectPoolProvider _provider;
+        private readonly ObjectPool<HashSet<Player>> _playerHashSetPool;
+        private readonly ObjectPool<HashSet<Arena>> _arenaHashSetPool;
+        private readonly ObjectPool<HashSet<string>> _nameHashSetPool;
+        private readonly ObjectPool<StringBuilder> _stringBuilderPool;
+        private readonly ObjectPool<Crc32> _crc32Pool;
 
-        public bool Load(ComponentBroker broker)
+        public ObjectPoolManager()
         {
-            _iObjectPoolManagerToken = broker.RegisterInterface<IObjectPoolManager>(this);
-
             _provider = new DefaultObjectPoolProvider();
             _playerHashSetPool = _provider.Create(new HashSetPooledObjectPolicy<Player>() { InitialCapacity = Constants.TargetPlayerCount });
             _arenaHashSetPool = _provider.Create(new HashSetPooledObjectPolicy<Arena>() { InitialCapacity = Constants.TargetArenaCount });
             _nameHashSetPool = _provider.Create(new HashSetPooledObjectPolicy<string>() { InitialCapacity = Constants.TargetPlayerCount, EqualityComparer = StringComparer.OrdinalIgnoreCase });
             _stringBuilderPool = _provider.CreateStringBuilderPool(512, 4 * 1024);
             _crc32Pool = _provider.Create(new Crc32PooledObjectPolicy());
+        }
 
+        bool IModule.Load(IComponentBroker broker)
+        {
+            _iObjectPoolManagerToken = broker.RegisterInterface<IObjectPoolManager>(this);
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iObjectPoolManagerToken) != 0)
                 return false;

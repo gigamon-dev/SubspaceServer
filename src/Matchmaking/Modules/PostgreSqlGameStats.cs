@@ -13,40 +13,51 @@ namespace SS.Matchmaking.Modules
         Functionality to save game data into a PostgreSQL database.
         In global.conf, the SS.Matchmaking:DatabaseConnectionString setting is required.
         """)]
-    public class PostgreSqlGameStats : IModule, IGameStatsRepository
+    public sealed class PostgreSqlGameStats : IModule, IGameStatsRepository, IDisposable
     {
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private InterfaceRegistrationToken<IGameStatsRepository> _iGameStatsRepositoryToken;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private InterfaceRegistrationToken<IGameStatsRepository>? _iGameStatsRepositoryToken;
 
-        private NpgsqlDataSource _dataSource;
+        private NpgsqlDataSource? _dataSource;
+        private bool _isDisposed;
+
         private readonly ObjectPool<List<string>> s_stringListPool = new DefaultObjectPool<List<string>>(new ListPooledObjectPolicy<string>() { InitialCapacity = Constants.TargetPlayerCount });
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public PostgreSqlGameStats(
             IConfigManager configManager,
             ILogManager logManager)
         {
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        }
 
-            string connectionString = configManager.GetStr(configManager.Global, "SS.Matchmaking", "DatabaseConnectionString");
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
+            string? connectionString = _configManager.GetStr(_configManager.Global, "SS.Matchmaking", "DatabaseConnectionString");
             if (string.IsNullOrWhiteSpace(connectionString))
             {
-                logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), "Missing connection string (global.conf: SS.Matchmaking:DatabaseConnectionString).");
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), "Missing connection string (global.conf: SS.Matchmaking:DatabaseConnectionString).");
                 return false;
             }
 
             _dataSource = NpgsqlDataSource.Create(connectionString);
+
             _iGameStatsRepositoryToken = broker.RegisterInterface<IGameStatsRepository>(this);
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             broker.UnregisterInterface(ref _iGameStatsRepositoryToken);
+
+            if (_dataSource is not null)
+            {
+                _dataSource.Dispose();
+                _dataSource = null;
+            }
 
             return true;
         }
@@ -57,6 +68,9 @@ namespace SS.Matchmaking.Modules
 
         public async Task<long?> SaveGameAsync(Stream jsonStream)
         {
+            if (_dataSource is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
             try
             {
                 NpgsqlCommand command = _dataSource.CreateCommand("select ss.save_game_bytea($1)");
@@ -86,11 +100,13 @@ namespace SS.Matchmaking.Modules
 
         public async Task GetPlayerRatingsAsync(long gameTypeId, Dictionary<string, int> playerRatingDictionary)
         {
-            if (playerRatingDictionary is null)
-                throw new ArgumentNullException(nameof(playerRatingDictionary));
+            ArgumentNullException.ThrowIfNull(playerRatingDictionary);
 
             if (playerRatingDictionary.Comparer != StringComparer.OrdinalIgnoreCase)
                 throw new ArgumentException("Comparer must be StringComparer.OrdinalIgnoreCase.", nameof(playerRatingDictionary));
+
+            if (_dataSource is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
 
             if (playerRatingDictionary.Count == 0)
                 return;
@@ -127,7 +143,7 @@ namespace SS.Matchmaking.Modules
 
                                 while (await reader.ReadAsync().ConfigureAwait(false))
                                 {
-                                    string playerName = GetPlayerName(reader, playerNameColumn, playerNameArray, playerNameList);
+                                    string? playerName = GetPlayerName(reader, playerNameColumn, playerNameArray, playerNameList);
                                     if (playerName is null)
                                         continue;
 
@@ -153,7 +169,7 @@ namespace SS.Matchmaking.Modules
 
 
             // Local function that reads the player name from the DataReader without allocating a string, instead reusing the existing string instance.
-            static string GetPlayerName(NpgsqlDataReader reader, int ordinal, char[] buffer, List<string> playerNameList)
+            static string? GetPlayerName(NpgsqlDataReader reader, int ordinal, char[] buffer, List<string> playerNameList)
             {
                 long charsRead = reader.GetChars(ordinal, 0, buffer, 0, Constants.MaxPlayerNameLength); // unfortunately, no overload for Span<char> so have to use a pooled char[] as the buffer
                 ReadOnlySpan<char> playerNameSpan = buffer.AsSpan(0, (int)charsRead);
@@ -166,6 +182,29 @@ namespace SS.Matchmaking.Modules
 
                 return null;
             }
+        }
+
+        #endregion
+
+        #region IDisposable
+
+        private void Dispose(bool disposing)
+        {
+            if (!_isDisposed)
+            {
+                if (disposing)
+                {
+                    _dataSource?.Dispose();
+                }
+
+                _isDisposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
 
         #endregion

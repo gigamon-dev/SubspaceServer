@@ -15,28 +15,28 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public sealed class Mainloop : IModule, IMainloop, IMainloopTimer, IServerTimer, IDisposable
     {
-        private ComponentBroker _broker;
-        private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken<IMainloop> _iMainloopToken;
-        private InterfaceRegistrationToken<IMainloopTimer> _iMainloopTimerToken;
-        private InterfaceRegistrationToken<IServerTimer> _iServerTimerToken;
+        private readonly IComponentBroker _broker;
+        private IObjectPoolManager? _objectPoolManager;
+        private InterfaceRegistrationToken<IMainloop>? _iMainloopToken;
+        private InterfaceRegistrationToken<IMainloopTimer>? _iMainloopTimerToken;
+        private InterfaceRegistrationToken<IServerTimer>? _iServerTimerToken;
 
         // for main loop
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly CancellationToken _cancellationToken;
-        private Thread _mainThread;
+        private Thread? _mainThread;
         private ExitCode _quitCode = ExitCode.None;
 
         // for main loop workitems
         private readonly BlockingCollection<IRunInMainWorkItem> _runInMainQueue = new(); // TODO: maybe we should use bounding?
         private readonly AutoResetEvent _runInMainAutoResetEvent = new(false);
-        private SynchronizationContext _originalSynchronizationContext;
+        private SynchronizationContext? _originalSynchronizationContext;
 
         // for IMainloopTimer
         private readonly LinkedList<MainloopTimer> _mainloopTimerList = new();
         private readonly AutoResetEvent _mainloopTimerAutoResetEvent = new(false);
         private readonly object _mainloopTimerLock = new();
-        private MainloopTimer _timerProcessing = null;
+        private MainloopTimer? _timerProcessing = null;
 
         // for IServerTimer
         private readonly LinkedList<ThreadPoolTimer> _serverTimerList = new();
@@ -54,17 +54,17 @@ namespace SS.Core.Modules
             s_jobPool = provider.Create<Job>();
         }
 
-        public Mainloop()
+        public Mainloop(IComponentBroker broker)
         {
+            _broker = broker;
+
             _cancellationToken = _cancellationTokenSource.Token;
         }
 
         #region IModule Members
 
-        public bool Load(ComponentBroker broker)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker;
-
             _objectPoolManager = _broker.GetInterface<IObjectPoolManager>();
 
             _iMainloopTimerToken = broker.RegisterInterface<IMainloopTimer>(this);
@@ -74,7 +74,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             SynchronizationContext.SetSynchronizationContext(_originalSynchronizationContext);
 
@@ -165,11 +165,11 @@ namespace SS.Core.Modules
                 // perhaps keep track of the one, so we can immediately process it?
                 // perhaps keep the list ordered such that the next one due is in front?
 
-                LinkedListNode<MainloopTimer> dueNext = null;
+                LinkedListNode<MainloopTimer>? dueNext = null;
 
                 lock (_mainloopTimerLock)
                 {
-                    for (LinkedListNode<MainloopTimer> node = _mainloopTimerList.First; node != null; node = node.Next)
+                    for (LinkedListNode<MainloopTimer>? node = _mainloopTimerList.First; node != null; node = node.Next)
                     {
                         if (dueNext == null || node.Value.WhenDue < dueNext.Value.WhenDue)
                             dueNext = node;
@@ -235,7 +235,7 @@ namespace SS.Core.Modules
 
             Monitor.Enter(_mainloopTimerLock);
 
-            LinkedListNode<MainloopTimer> node = _mainloopTimerList.First;
+            LinkedListNode<MainloopTimer>? node = _mainloopTimerList.First;
             while (node != null)
             {
                 if (node.Value.WhenDue <= now)
@@ -262,7 +262,7 @@ namespace SS.Core.Modules
                     if (timer.Stop || !wantsToKeepRunning || timer.Interval == Timeout.Infinite)
                     {
                         // Stop/remove the timer.
-                        LinkedListNode<MainloopTimer> next = node.Next;
+                        LinkedListNode<MainloopTimer>? next = node.Next;
                         _mainloopTimerList.Remove(node);
                         node = next;
 
@@ -298,7 +298,7 @@ namespace SS.Core.Modules
             int count = 0;
 
             while (++count <= maxToProcess
-                && _runInMainQueue.TryTake(out IRunInMainWorkItem workItem))
+                && _runInMainQueue.TryTake(out IRunInMainWorkItem? workItem))
             {
                 if (workItem != null)
                 {
@@ -394,12 +394,12 @@ namespace SS.Core.Modules
 
         #region IMainloopTimer Members
 
-        void IMainloopTimer.SetTimer(TimerDelegate callback, int initialDelay, int interval, object key)
+        void IMainloopTimer.SetTimer(TimerDelegate callback, int initialDelay, int interval, object? key)
         {
             MainloopTimer_SetTimer(new TimerCallbackInvoker(callback), initialDelay, interval, key);
         }
 
-        void IMainloopTimer.SetTimer<TState>(TimerDelegate<TState> callback, int initialDelay, int interval, TState state, object key)
+        void IMainloopTimer.SetTimer<TState>(TimerDelegate<TState> callback, int initialDelay, int interval, TState state, object? key)
         {
             MainloopTimer_SetTimer(new TimerCallbackInvoker<TState>(callback, state), initialDelay, interval, key);
         }
@@ -408,7 +408,7 @@ namespace SS.Core.Modules
             ITimerCallbackInvoker callbackInvoker,
             int initialDelay,
             int interval,
-            object key)
+            object? key)
         {
             if (callbackInvoker == null)
                 throw new ArgumentNullException(nameof(callbackInvoker));
@@ -421,22 +421,22 @@ namespace SS.Core.Modules
             _mainloopTimerAutoResetEvent.Set();
         }
 
-        void IMainloopTimer.ClearTimer(TimerDelegate callback, object key)
+        void IMainloopTimer.ClearTimer(TimerDelegate callback, object? key)
         {
             MainloopTimer_ClearTimer(callback, key, null);
         }
 
-        void IMainloopTimer.ClearTimer(TimerDelegate callback, object key, TimerCleanupDelegate cleanupCallback)
+        void IMainloopTimer.ClearTimer(TimerDelegate callback, object? key, TimerCleanupDelegate cleanupCallback)
         {
             MainloopTimer_ClearTimer(callback, key, _ => cleanupCallback());
         }
 
-        void IMainloopTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object key)
+        void IMainloopTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object? key)
         {
             MainloopTimer_ClearTimer(callback, key, null);
         }
 
-        void IMainloopTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object key, TimerCleanupDelegate<TState> cleanupCallback)
+        void IMainloopTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object? key, TimerCleanupDelegate<TState> cleanupCallback)
         {
             MainloopTimer_ClearTimer(callback, key,
                 (timer) =>
@@ -448,16 +448,16 @@ namespace SS.Core.Modules
                 });
         }
 
-        private void MainloopTimer_ClearTimer(Delegate callback, object key, Action<MainloopTimer> timerDisposedAction)
+        private void MainloopTimer_ClearTimer(Delegate callback, object? key, Action<MainloopTimer>? timerDisposedAction)
         {
             if (callback == null)
                 throw new ArgumentNullException(nameof(callback));
 
-            LinkedList<MainloopTimer> timersRemoved = null;
+            LinkedList<MainloopTimer>? timersRemoved = null;
 
             lock (_mainloopTimerLock)
             {
-                LinkedListNode<MainloopTimer> node, next, inProgress = null;
+                LinkedListNode<MainloopTimer>? node, next, inProgress = null;
                 for (node = _mainloopTimerList.First; node != null; node = next)
                 {
                     next = node.Next;
@@ -514,7 +514,7 @@ namespace SS.Core.Modules
 
             if (timerDisposedAction != null && timersRemoved != null)
             {
-                for (LinkedListNode<MainloopTimer> node = _mainloopTimerList.First; node != null; node = node.Next)
+                for (LinkedListNode<MainloopTimer>? node = _mainloopTimerList.First; node != null; node = node.Next)
                 {
                     timerDisposedAction.Invoke(node.Value);
                 }
@@ -529,7 +529,7 @@ namespace SS.Core.Modules
             TimerDelegate callback,
             int initialDelay,
             int interval,
-            object key)
+            object? key)
         {
             if (callback == null)
                 throw new ArgumentNullException(nameof(callback));
@@ -546,7 +546,7 @@ namespace SS.Core.Modules
             int initialDelay,
             int interval,
             TState state,
-            object key)
+            object? key)
         {
             if (callback == null)
                 throw new ArgumentNullException(nameof(callback));
@@ -562,7 +562,7 @@ namespace SS.Core.Modules
             ITimerCallbackInvoker callbackInvoker,
             int initialDelay,
             int interval,
-            object key)
+            object? key)
         {
             if (callbackInvoker == null)
                 throw new ArgumentNullException(nameof(callbackInvoker));
@@ -584,27 +584,27 @@ namespace SS.Core.Modules
 
         void IServerTimer.ClearTimer(
             TimerDelegate callback,
-            object key)
+            object? key)
         {
             ServerTimer_ClearTimer(callback, key, null);
         }
 
         void IServerTimer.ClearTimer(
             TimerDelegate callback,
-            object key,
+            object? key,
             TimerCleanupDelegate cleanupCallback)
         {
             ServerTimer_ClearTimer(callback, key, _ => cleanupCallback());
         }
 
-        void IServerTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object key)
+        void IServerTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object? key)
         {
             ServerTimer_ClearTimer(callback, key, null);
         }
 
         void IServerTimer.ClearTimer<TState>(
             TimerDelegate<TState> callback,
-            object key,
+            object? key,
             TimerCleanupDelegate<TState> cleanupCallback)
         {
             ServerTimer_ClearTimer(callback, key,
@@ -617,19 +617,19 @@ namespace SS.Core.Modules
                 });
         }
 
-        private void ServerTimer_ClearTimer(Delegate callback, object key, Action<ThreadPoolTimer> timerDisposedAction)
+        private void ServerTimer_ClearTimer(Delegate callback, object? key, Action<ThreadPoolTimer>? timerDisposedAction)
         {
             if (callback == null)
                 throw new ArgumentNullException(nameof(callback));
 
-            LinkedList<ThreadPoolTimer> timersToDispose = null;
+            LinkedList<ThreadPoolTimer>? timersToDispose = null;
 
             lock (_serverTimerLock)
             {
-                LinkedListNode<ThreadPoolTimer> node = _serverTimerList.First;
+                LinkedListNode<ThreadPoolTimer>? node = _serverTimerList.First;
                 while (node != null)
                 {
-                    LinkedListNode<ThreadPoolTimer> next = node.Next;
+                    LinkedListNode<ThreadPoolTimer>? next = node.Next;
                     ThreadPoolTimer timer = node.Value;
 
                     if (timer.CallbackInvoker.Callback.Equals(callback)
@@ -694,7 +694,7 @@ namespace SS.Core.Modules
 
         private void WriteLog(LogLevel level, string message)
         {
-            ILogManager _logManager = _broker.GetInterface<ILogManager>();
+            ILogManager? _logManager = _broker.GetInterface<ILogManager>();
 
             if (_logManager != null)
             {
@@ -799,8 +799,8 @@ namespace SS.Core.Modules
 
         private class RunInMainWorkItem<TState> : PooledObject, IRunInMainWorkItem
         {
-            private Action<TState> _callback;
-            private TState _state;
+            private Action<TState>? _callback;
+            private TState? _state;
 
             public void Set(Action<TState> callback, TState state)
             {
@@ -810,7 +810,7 @@ namespace SS.Core.Modules
 
             public void Process()
             {
-                _callback?.Invoke(_state);
+                _callback?.Invoke(_state!);
             }
 
             protected override void Dispose(bool isDisposing)
@@ -877,7 +877,7 @@ namespace SS.Core.Modules
         {
             public DateTime WhenDue { get; set; }
             public int Interval { get; }
-            public object Key { get; }
+            public object? Key { get; }
             public ITimerCallbackInvoker CallbackInvoker { get; }
             public bool Stop { get; set; } = false;
             public bool Stopped { get; set; } = false;
@@ -885,7 +885,7 @@ namespace SS.Core.Modules
             public MainloopTimer(
                 int initialDelay,
                 int interval,
-                object key,
+                object? key,
                 ITimerCallbackInvoker callbackInvoker)
             {
                 if (initialDelay < 0)
@@ -910,7 +910,7 @@ namespace SS.Core.Modules
             private readonly Mainloop _owner;
             private readonly int _initialDelay;
             private readonly int _interval;
-            public object Key { get; }
+            public object? Key { get; }
             public ITimerCallbackInvoker CallbackInvoker;
 
             // for synchronization
@@ -923,7 +923,7 @@ namespace SS.Core.Modules
                 Mainloop owner,
                 int initialDelay,
                 int interval,
-                object key,
+                object? key,
                 ITimerCallbackInvoker callbackInvoker)
             {
                 if (initialDelay < 0)
@@ -942,7 +942,7 @@ namespace SS.Core.Modules
                 _timer = new Timer(TimerElapsed, null, Timeout.Infinite, Timeout.Infinite);
             }
 
-            private void TimerElapsed(object state)
+            private void TimerElapsed(object? state)
             {
                 bool isContinuing = false;
 
@@ -1062,13 +1062,13 @@ namespace SS.Core.Modules
             }
 
             // For async/await, only post is needed
-            public override void Post(SendOrPostCallback d, object state)
+            public override void Post(SendOrPostCallback d, object? state)
             {
                 _mainloop.QueueMainWorkItem((state) => d(state), state);
             }
 
             // but, here's an implementation for send too just in case
-            public override void Send(SendOrPostCallback d, object state)
+            public override void Send(SendOrPostCallback d, object? state)
             {
                 if (_mainloop.IsMainloop)
                 {
@@ -1105,11 +1105,11 @@ namespace SS.Core.Modules
 
         private sealed class Job : IResettable, IDisposable
         {
-            private SendOrPostCallback _callback;
-            private object _state;
+            private SendOrPostCallback? _callback;
+            private object? _state;
             private readonly AutoResetEvent _autoResetEvent = new(false);
 
-            public void Set(SendOrPostCallback callback, object state)
+            public void Set(SendOrPostCallback? callback, object? state)
             {
                 _callback = callback ?? throw new ArgumentNullException(nameof(callback));
                 _state = state;
@@ -1118,7 +1118,7 @@ namespace SS.Core.Modules
 
             public void Execute()
             {
-                _callback(_state);
+                _callback?.Invoke(_state);
                 _autoResetEvent.Set();
             }
 

@@ -86,19 +86,21 @@ namespace SS.Core.Modules.Scoring
     [CoreModuleInfo]
     public class BasicStats : IModule
     {
-        private IPlayerData _playerData;
-        private IAllPlayerStats _allPlayerStats;
+        private readonly IPlayerData _playerData;
+        private readonly IAllPlayerStats _allPlayerStats;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public BasicStats(
             IPlayerData playerData,
             IAllPlayerStats allPlayerStats)
         {
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _allPlayerStats = allPlayerStats ?? throw new ArgumentNullException(nameof(allPlayerStats));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             KillCallback.Register(broker, Callback_Kill);
 
@@ -114,7 +116,7 @@ namespace SS.Core.Modules.Scoring
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             KillCallback.Unregister(broker, Callback_Kill);
@@ -133,7 +135,7 @@ namespace SS.Core.Modules.Scoring
 
         #endregion
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.EnterGame)
                 _allPlayerStats.StartTimer(player, StatCodes.ArenaTotalTime, null);

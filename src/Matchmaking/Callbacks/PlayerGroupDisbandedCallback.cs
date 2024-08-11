@@ -1,4 +1,4 @@
-﻿using SS.Core;
+﻿using SS.Core.ComponentInterfaces;
 
 namespace SS.Matchmaking.Callbacks
 {
@@ -9,17 +9,17 @@ namespace SS.Matchmaking.Callbacks
     {
         public delegate void PlayerGroupDisbandedDelegate(IPlayerGroup group);
 
-        public static void Register(ComponentBroker broker, PlayerGroupDisbandedDelegate handler)
+        public static void Register(IComponentBroker broker, PlayerGroupDisbandedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, PlayerGroupDisbandedDelegate handler)
+        public static void Unregister(IComponentBroker broker, PlayerGroupDisbandedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, IPlayerGroup group)
+        public static void Fire(IComponentBroker broker, IPlayerGroup group)
         {
             broker?.GetCallback<PlayerGroupDisbandedDelegate>()?.Invoke(group);
 

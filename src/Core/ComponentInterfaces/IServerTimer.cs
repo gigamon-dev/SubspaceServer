@@ -43,7 +43,7 @@
             TimerDelegate callback,
             int initialDelay,
             int interval,
-            object key);
+            object? key);
 
         /// <summary>
         /// Starts a timer.
@@ -59,7 +59,7 @@
             int initialDelay,
             int interval,
             TState state,
-            object key);
+            object? key);
 
         /// <summary>
         /// Stops and removes a timer.
@@ -72,7 +72,7 @@
         /// </param>
         void ClearTimer(
             TimerDelegate callback,
-            object key);
+            object? key);
 
         /// <summary>
         /// Stops and removes a timer.
@@ -88,7 +88,7 @@
         /// </param>
         void ClearTimer(
             TimerDelegate callback,
-            object key,
+            object? key,
             TimerCleanupDelegate cleanupCallback);
 
         /// <summary>
@@ -102,7 +102,7 @@
         /// </param>
         void ClearTimer<TState>(
             TimerDelegate<TState> callback,
-            object key);
+            object? key);
 
         /// <summary>
         /// Stops and removes a timer, with a <paramref name="cleanupCallback"/> to be invoked for each timer that is stopped.
@@ -119,7 +119,7 @@
         /// </param>
         void ClearTimer<TState>(
             TimerDelegate<TState> callback,
-            object key,
+            object? key,
             TimerCleanupDelegate<TState> cleanupCallback);
     }
 
@@ -140,7 +140,7 @@
             TimerDelegate callback,
             int initialDelay,
             int interval,
-            object key);
+            object? key);
 
         /// <summary>
         /// Starts a timer.
@@ -156,7 +156,7 @@
             int initialDelay,
             int interval,
             TState state,
-            object key);
+            object? key);
 
         /// <summary>
         /// Stops and removes a timer.
@@ -169,7 +169,7 @@
         /// </param>
         void ClearTimer(
             TimerDelegate callback,
-            object key);
+            object? key);
 
         /// <summary>
         /// Stops and removes a timer.
@@ -185,7 +185,7 @@
         /// </param>
         void ClearTimer(
             TimerDelegate callback,
-            object key,
+            object? key,
             TimerCleanupDelegate cleanupCallback);
 
         /// <summary>
@@ -199,7 +199,7 @@
         /// </param>
         void ClearTimer<TState>(
             TimerDelegate<TState> callback,
-            object key);
+            object? key);
 
         /// <summary>
         /// Stops and removes a timer, with a <paramref name="cleanupCallback"/> to be invoked for each timer that is stopped.
@@ -216,7 +216,7 @@
         /// </param>
         void ClearTimer<TState>(
             TimerDelegate<TState> callback,
-            object key,
+            object? key,
             TimerCleanupDelegate<TState> cleanupCallback);
     }
 }

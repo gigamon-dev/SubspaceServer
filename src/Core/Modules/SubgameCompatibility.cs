@@ -16,22 +16,22 @@ namespace SS.Core.Modules
     public class SubgameCompatibility : IModule, IChatAdvisor
     {
         // Required dependencies
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private IGame _game;
-        private IGroupManager _groupManager;
-        private ILagQuery _lagQuery;
-        private ILogManager _logManager;
-        private INetwork _network;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private IScoreStats _scoreStats;
+        private readonly IChat _chat;
+        private readonly ICommandManager _commandManager;
+        private readonly IConfigManager _configManager;
+        private readonly IGame _game;
+        private readonly IGroupManager _groupManager;
+        private readonly ILagQuery _lagQuery;
+        private readonly ILogManager _logManager;
+        private readonly INetwork _network;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
+        private readonly IScoreStats _scoreStats;
 
         // Optional dependencies
-        private IBilling _billing;
+        private IBilling? _billing;
 
-        private AdvisorRegistrationToken<IChatAdvisor> _chatAdvisorToken;
+        private AdvisorRegistrationToken<IChatAdvisor>? _chatAdvisorToken;
 
         private readonly Trie<string> _aliases = new(false)
         {
@@ -64,10 +64,7 @@ namespace SS.Core.Modules
             {"*scorereset", "sg_scorereset"},
         };
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public SubgameCompatibility(
             IChat chat,
             ICommandManager commandManager,
             IConfigManager configManager,
@@ -91,7 +88,12 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _scoreStats = scoreStats ?? throw new ArgumentNullException(nameof(scoreStats));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _billing = broker.GetInterface<IBilling>();
 
             ReadConfig();
@@ -112,7 +114,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             broker.UnregisterAdvisor(ref _chatAdvisorToken);
 
@@ -162,7 +164,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            if (!_aliases.TryGetValue(key, out string replacementCommand))
+            if (!_aliases.TryGetValue(key, out string? replacementCommand))
             {
                 charsWritten = 0;
                 return false;
@@ -187,7 +189,7 @@ namespace SS.Core.Modules
 
         private void Command_sg_einfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 targetPlayer = player;
             }
@@ -234,7 +236,7 @@ namespace SS.Core.Modules
 
         private void Command_sg_tinfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 targetPlayer = player;
             }
@@ -282,7 +284,7 @@ namespace SS.Core.Modules
 
         private void Command_sg_where(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 targetPlayer = player;
 
             // right shift by 4 is divide by 16 (each tile is 16 pixels)
@@ -301,7 +303,7 @@ namespace SS.Core.Modules
 
         private void Command_sg_info(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 targetPlayer = player;
             }
@@ -351,7 +353,7 @@ namespace SS.Core.Modules
 
         private void Command_sg_lag(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 targetPlayer = player;
             }
@@ -371,7 +373,7 @@ namespace SS.Core.Modules
 
         private void Command_sg_spec(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 _chat.SendMessage(player, "This command can only be sent to a player");
                 return;
@@ -391,7 +393,7 @@ namespace SS.Core.Modules
 
         private void Command_sg_lock(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetArenaTarget(out Arena arena))
+            if (!target.TryGetArenaTarget(out Arena? arena))
             {
                 _chat.SendMessage(player, "This command can only be sent to an arena");
                 return;
@@ -411,10 +413,10 @@ namespace SS.Core.Modules
 
         private void Command_sg_scorereset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetArenaTarget(out Arena arena)
+            if (!target.TryGetArenaTarget(out Arena? arena)
                 && !target.TryGetTeamTarget(out arena, out _))
             {
-                if (target.TryGetPlayerTarget(out Player otherPlayer))
+                if (target.TryGetPlayerTarget(out Player? otherPlayer))
                 {
                     arena = otherPlayer.Arena;
                 }

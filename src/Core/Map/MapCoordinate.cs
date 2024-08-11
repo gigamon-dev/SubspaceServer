@@ -1,5 +1,6 @@
 ﻿using SS.Utilities;
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SS.Core.Map
 {
@@ -88,7 +89,7 @@ namespace SS.Core.Map
             return (((ushort)X) << 10) | ((ushort)Y);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals([NotNullWhen(true)] object? obj)
         {
             return obj is MapCoordinate coordinate && Equals(coordinate);
         }

@@ -12,27 +12,32 @@ namespace SS.Core.Modules
     {
         private ILogManager _logManager;
 
-        private void LogToConsole(ref readonly LogEntry logEntry)
+        public LogConsole(ILogManager logManager)
         {
-            if (_logManager.FilterLog(in logEntry, "log_console"))
-                Console.Out.WriteLine(logEntry.LogText);
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         #region IModule Members
 
-        public bool Load(ComponentBroker broker, ILogManager logManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            
             LogCallback.Register(broker, LogToConsole);
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             LogCallback.Unregister(broker, LogToConsole);
             return true;
         }
 
         #endregion
+
+        private void LogToConsole(ref readonly LogEntry logEntry)
+        {
+            if (_logManager.FilterLog(in logEntry, "log_console"))
+                Console.Out.WriteLine(logEntry.LogText);
+        }
     }
 }

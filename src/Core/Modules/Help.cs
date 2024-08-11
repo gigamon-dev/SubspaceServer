@@ -3,6 +3,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Utilities.Collections;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -22,17 +23,22 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public sealed class Help : IModule, IModuleLoaderAware, IHelp, IConfigHelp, IDisposable
+    public sealed class Help(
+        IChat chat,
+        ICommandManager commandManager,
+        IConfigManager configManager,
+        ILogManager logManager,
+        IObjectPoolManager objectPoolManager) : IModule, IModuleLoaderAware, IHelp, IConfigHelp, IDisposable
     {
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken<IHelp> _iHelpToken;
-        private InterfaceRegistrationToken<IConfigHelp> _iConfigHelpToken;
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        private InterfaceRegistrationToken<IHelp>? _iHelpToken;
+        private InterfaceRegistrationToken<IConfigHelp>? _iConfigHelpToken;
 
-        private string _helpCommandName;
+        private string _helpCommandName = "man";
 
         /// <summary>
         /// ConfigHelpRecords for each assembly.
@@ -76,12 +82,12 @@ namespace SS.Core.Modules
         /// <remarks>
         /// Items are the assembly to load config help for. <see langword="null"/> means load config help for all loaded assemblies.
         /// </remarks>
-        private readonly Queue<Assembly> _loadQueue = new(16);
+        private readonly Queue<Assembly?> _loadQueue = new(16);
 
         /// <summary>
         /// The task that loads the config help. <see langword="null"/> means there is no loading in progress.
         /// </summary>
-        private Task _loadTask = null;
+        private Task? _loadTask = null;
 
         /// <summary>
         /// Lock for synchronizing access to <see cref="_loadQueue"/> and <see cref="_loadTask"/>.
@@ -90,26 +96,14 @@ namespace SS.Core.Modules
 
         #region Module members
 
-        public bool Load(
-            ComponentBroker broker,
-            IChat chat,
-            ICommandManager commandManager,
-            IConfigManager configManager,
-            ILogManager logManager,
-            IObjectPoolManager objectPoolManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-
             PluginAssemblyLoadedCallback.Register(broker, Callback_PluginAssemblyLoaded);
             PluginAssemblyUnloadingCallback.Register(broker, Callback_PluginAssemblyUnloading);
 
-            _helpCommandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
-            if (string.IsNullOrWhiteSpace(_helpCommandName))
-                _helpCommandName = "man";
+            string? commandName = _configManager.GetStr(_configManager.Global, "Help", "CommandName");
+            if (!string.IsNullOrWhiteSpace(commandName))
+                _helpCommandName = commandName;
 
             _commandManager.AddCommand(_helpCommandName, Command_help);
 
@@ -119,7 +113,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModuleLoaderAware.PostLoad(ComponentBroker broker)
+        void IModuleLoaderAware.PostLoad(IComponentBroker broker)
         {
             lock (_loadLock)
             {
@@ -129,16 +123,13 @@ namespace SS.Core.Modules
                 // Start a task to do the loading if there isn't already one.
                 _loadTask ??= Task.Run(ProcessConfigHelpLoadJobs);
             }
-
-            return true;
         }
 
-        bool IModuleLoaderAware.PreUnload(ComponentBroker broker)
+        void IModuleLoaderAware.PreUnload(IComponentBroker broker)
         {
-            return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iHelpToken) != 0)
                 return false;
@@ -152,7 +143,7 @@ namespace SS.Core.Modules
             PluginAssemblyUnloadingCallback.Unregister(broker, Callback_PluginAssemblyUnloading);
 
 
-            Task loadTask;
+            Task? loadTask;
 
             do
             {
@@ -217,12 +208,12 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IConfigHelp.TryGetSectionKeys(ReadOnlySpan<char> section, out IReadOnlyList<string> keyList)
+        bool IConfigHelp.TryGetSectionKeys(ReadOnlySpan<char> section, [MaybeNullWhen(false)] out IReadOnlyList<string> keyList)
         {
             if (!_rwLock.IsReadLockHeld)
                 throw new InvalidOperationException($"{nameof(IConfigHelp)}.{nameof(IConfigHelp.Lock)} was not called.");
 
-            if (!_sectionKeysTrie.TryGetValue(section, out List<string> keys))
+            if (!_sectionKeysTrie.TryGetValue(section, out List<string>? keys))
             {
                 keyList = null;
                 return false;
@@ -232,7 +223,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IConfigHelp.TryGetSettingHelp(ReadOnlySpan<char> section, ReadOnlySpan<char> key, out IReadOnlyList<ConfigHelpRecord> helpList)
+        bool IConfigHelp.TryGetSettingHelp(ReadOnlySpan<char> section, ReadOnlySpan<char> key, [MaybeNullWhen(false)] out IReadOnlyList<ConfigHelpRecord> helpList)
         {
             if (!_rwLock.IsReadLockHeld)
                 throw new InvalidOperationException($"{nameof(IConfigHelp)}.{nameof(IConfigHelp.Lock)} was not called.");
@@ -245,7 +236,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> records))
+            if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord>? records))
             {
                 helpList = null;
                 return false;
@@ -288,7 +279,7 @@ namespace SS.Core.Modules
             if (assembly is null)
                 return;
 
-            Task loadTask;
+            Task? loadTask;
 
             do
             {
@@ -403,7 +394,7 @@ namespace SS.Core.Modules
 
             void PrintConfigSectionKeys(Player player, ReadOnlySpan<char> section)
             {
-                StringBuilder sb = null;
+                StringBuilder? sb = null;
 
                 try
                 {
@@ -411,7 +402,7 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        if (!_sectionKeysTrie.TryGetValue(section, out List<string> keyList))
+                        if (!_sectionKeysTrie.TryGetValue(section, out List<string>? keyList))
                         {
                             _chat.SendMessage(player, $"Config file section '{section}' not found.");
                             return;
@@ -460,13 +451,13 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> records))
+                    if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord>? records))
                     {
                         _chat.SendMessage(player, $"Config file setting '{section}:{key}' not found.");
                         return;
                     }
 
-                    foreach ((ConfigHelpAttribute attribute, Type moduleType) in records)
+                    foreach ((ConfigHelpAttribute attribute, Type? moduleType) in records)
                     {
                         _chat.SendMessage(player, $"Help on setting '{attribute.Section}:{attribute.Key}':");
 
@@ -486,34 +477,37 @@ namespace SS.Core.Modules
                         if (!string.IsNullOrWhiteSpace(attribute.DefaultValue))
                             _chat.SendMessage(player, $"  Default: {attribute.DefaultValue}");
 
-                        if (attribute.Description.Contains('\n'))
+                        if (!string.IsNullOrWhiteSpace(attribute.Description))
                         {
-                            ReadOnlySpan<char> remaining = attribute.Description;
-
-                            while (!remaining.IsEmpty)
+                            if (attribute.Description.Contains('\n'))
                             {
-                                ReadOnlySpan<char> line;
+                                ReadOnlySpan<char> remaining = attribute.Description;
 
-                                int index = remaining.IndexOf('\n');
-                                if (index == -1)
+                                while (!remaining.IsEmpty)
                                 {
-                                    line = remaining;
-                                    remaining = ReadOnlySpan<char>.Empty;
-                                }
-                                else
-                                {
-                                    line = remaining[..index];
-                                    remaining = remaining[(index + 1)..];
-                                }
+                                    ReadOnlySpan<char> line;
 
-                                line = line.TrimEnd("\r");
+                                    int index = remaining.IndexOf('\n');
+                                    if (index == -1)
+                                    {
+                                        line = remaining;
+                                        remaining = ReadOnlySpan<char>.Empty;
+                                    }
+                                    else
+                                    {
+                                        line = remaining[..index];
+                                        remaining = remaining[(index + 1)..];
+                                    }
 
-                                _chat.SendMessage(player, $"  {line}");
+                                    line = line.TrimEnd("\r");
+
+                                    _chat.SendMessage(player, $"  {line}");
+                                }
                             }
-                        }
-                        else
-                        {
-                            _chat.SendWrappedText(player, attribute.Description);
+                            else
+                            {
+                                _chat.SendWrappedText(player, attribute.Description);
+                            }
                         }
                     }
                 }
@@ -528,7 +522,7 @@ namespace SS.Core.Modules
                 if (player == null)
                     return;
 
-                string helpText = _commandManager.GetHelpText(command, player.Arena);
+                string? helpText = _commandManager.GetHelpText(command, player.Arena);
 
                 if (string.IsNullOrWhiteSpace(helpText))
                 {
@@ -569,7 +563,7 @@ namespace SS.Core.Modules
         {
             while (true)
             {
-                Assembly assembly = null;
+                Assembly? assembly = null;
 
                 lock (_loadLock)
                 {
@@ -704,14 +698,14 @@ namespace SS.Core.Modules
                         return;
                     }
 
-                    Type moduleType = GetModuleType(type);
+                    Type? moduleType = GetModuleType(type);
                     ConfigHelpRecord record = new(attribute, moduleType);
 
                     AddAssemblyRecord(assembly, record);
                     AddSettingRecord(sectionKey, record);
 
 
-                    static Type GetModuleType(Type type)
+                    static Type? GetModuleType(Type type)
                     {
                         if (type is null)
                             return null;
@@ -726,7 +720,7 @@ namespace SS.Core.Modules
 
                     void AddAssemblyRecord(Assembly assembly, ConfigHelpRecord record)
                     {
-                        if (!_assemblyConfigHelpDictionary.TryGetValue(assembly, out List<ConfigHelpRecord> configHelpList))
+                        if (!_assemblyConfigHelpDictionary.TryGetValue(assembly, out List<ConfigHelpRecord>? configHelpList))
                         {
                             configHelpList = new List<ConfigHelpRecord>();
                             _assemblyConfigHelpDictionary.Add(assembly, configHelpList);
@@ -737,7 +731,7 @@ namespace SS.Core.Modules
 
                     void AddSettingRecord(Span<char> sectionKey, ConfigHelpRecord record)
                     {
-                        if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> configHelpList))
+                        if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord>? configHelpList))
                         {
                             configHelpList = new List<ConfigHelpRecord>(1); // each setting is usually represented by a single attribute
                             _configHelpTrie.Add(sectionKey, configHelpList);
@@ -752,7 +746,7 @@ namespace SS.Core.Modules
         private void RemoveConfigHelp(Assembly assembly)
         {
             if (assembly is null
-                || !_assemblyConfigHelpDictionary.Remove(assembly, out List<ConfigHelpRecord> configHelpList))
+                || !_assemblyConfigHelpDictionary.Remove(assembly, out List<ConfigHelpRecord>? configHelpList))
             {
                 return;
             }
@@ -774,7 +768,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord> configHelpList))
+                if (!_configHelpTrie.TryGetValue(sectionKey, out List<ConfigHelpRecord>? configHelpList))
                     return;
 
                 configHelpList.Remove(record);
@@ -860,7 +854,7 @@ namespace SS.Core.Modules
                     }
                 }
 
-                if (_sectionKeysTrie.TryGetValue(section, out List<string> keyList))
+                if (_sectionKeysTrie.TryGetValue(section, out List<string>? keyList))
                 {
                     keyList.Clear();
                     keyList.AddRange(_sortedSet);

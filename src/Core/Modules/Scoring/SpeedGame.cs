@@ -29,10 +29,7 @@ namespace SS.Core.Modules.Scoring
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public SpeedGame(
             IAllPlayerStats allPlayerStats,
             IArenaManager arenaManager,
             IArenaPlayerStats arenaPlayerStats,
@@ -60,13 +57,18 @@ namespace SS.Core.Modules.Scoring
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _persistExecutor = persistExecutor ?? throw new ArgumentNullException(nameof(persistExecutor));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _arenaManager.FreeArenaData(ref _adKey);
 
@@ -108,12 +110,12 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                ad.Settings = new Settings(_configManager, arena.Cfg);
+                ad.Settings = new Settings(_configManager, arena.Cfg!);
 
                 if (ad.GameState == GameState.Stopped
                     && ad.Settings.AutoStart)
@@ -126,20 +128,20 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.EnterArena)
             {
-                UpdateRank(arena, player, false);
+                UpdateRank(arena!, player, false);
             }
             else if (action == PlayerAction.LeaveArena)
             {
-                UpdateRank(arena, player, true);
+                UpdateRank(arena!, player, true);
             }
 
             if (action == PlayerAction.EnterArena || action == PlayerAction.LeaveArena)
             {
-                CheckStart(arena);
+                CheckStart(arena!);
             }
         }
 
@@ -159,7 +161,7 @@ namespace SS.Core.Modules.Scoring
 
         private void Command_best(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player targetPlayer))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 targetPlayer = player;
 
             if (_arenaPlayerStats.TryGetStat(targetPlayer, StatCodes.SpeedPersonalBest, PersistInterval.Forever, out int points))
@@ -180,11 +182,11 @@ namespace SS.Core.Modules.Scoring
 
         private void Command_speedstats(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena == null)
                 return;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.GameState != GameState.Running)
@@ -193,7 +195,7 @@ namespace SS.Core.Modules.Scoring
                 return;
             }
 
-            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 // Show nearby ranks
                 int index = ad.Rank.IndexOf(targetPlayer);
@@ -237,7 +239,7 @@ namespace SS.Core.Modules.Scoring
 
         private bool MainloopTimer_StartGameTimer(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.GameState != GameState.Starting)
@@ -257,7 +259,7 @@ namespace SS.Core.Modules.Scoring
 
         private bool MainloopTimer_EndGameTimer(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.GameState != GameState.Running)
@@ -269,9 +271,9 @@ namespace SS.Core.Modules.Scoring
 
         #endregion
 
-        private void CheckStart(Arena arena)
+        private void CheckStart(Arena? arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.GameState != GameState.Starting)
@@ -324,7 +326,7 @@ namespace SS.Core.Modules.Scoring
 
         private bool StartGame(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             if (ad.GameState != GameState.Starting)
@@ -361,7 +363,7 @@ namespace SS.Core.Modules.Scoring
 
         private void EndGame(Arena arena, bool clearTimer, bool processStats, bool allowAutoStart)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.GameState == GameState.Running)
@@ -462,7 +464,7 @@ namespace SS.Core.Modules.Scoring
             if (player == null)
                 return -1;
 
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return -1;
 
             if (ad.GameState != GameState.Running)

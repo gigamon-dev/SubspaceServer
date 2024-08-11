@@ -20,16 +20,16 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public sealed class MapNewsDownload : IModule, IMapNewsDownload, IDisposable
     {
-        private ComponentBroker _broker;
-        private IPlayerData _playerData;
-        private INetwork _network;
-        private ILogManager _logManager;
-        private IConfigManager _configManager;
-        private IMainloop _mainloop;
-        private IArenaManager _arenaManager;
-        private IMapData _mapData;
-        private IObjectPoolManager _objectPoolManager;
-        private InterfaceRegistrationToken<IMapNewsDownload> _iMapNewsDownloadToken;
+        private readonly IComponentBroker _broker;
+        private readonly IPlayerData _playerData;
+        private readonly INetwork _network;
+        private readonly ILogManager _logManager;
+        private readonly IConfigManager _configManager;
+        private readonly IMainloop _mainloop;
+        private readonly IArenaManager _arenaManager;
+        private readonly IMapData _mapData;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private InterfaceRegistrationToken<IMapNewsDownload>? _iMapNewsDownloadToken;
 
         private ArenaDataKey<List<MapDownloadData>> _dlKey;
 
@@ -49,26 +49,15 @@ namespace SS.Core.Modules
         /// <summary>
         /// manages news.txt
         /// </summary>
-        private NewsManager _newsManager;
+        private NewsManager? _newsManager;
 
         // Cached delegates
         private readonly Action<Arena> _threadPoolWork_InitializeArena;
         private readonly GetSizedSendDataDelegate<NewsDownloadContext> _getNewsData;
         private readonly GetSizedSendDataDelegate<MapDownloadContext> _getMapData;
 
-        public MapNewsDownload()
-        {
-            _threadPoolWork_InitializeArena = ThreadPoolWork_InitializeArena;
-            _getNewsData = GetNewsData;
-            _getMapData = GetMapData;
-        }
-
-        #region Module Members
-
-        [ConfigHelp("General", "NewsFile", ConfigScope.Global, typeof(string), DefaultValue = "news.txt",
-            Description = "The filename of the news file.")]
-        public bool Load(
-            ComponentBroker broker,
+        public MapNewsDownload(
+            IComponentBroker broker,
             IPlayerData playerData,
             INetwork network,
             ILogManager logManager,
@@ -88,6 +77,17 @@ namespace SS.Core.Modules
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
+            _threadPoolWork_InitializeArena = ThreadPoolWork_InitializeArena;
+            _getNewsData = GetNewsData;
+            _getMapData = GetMapData;
+        }
+
+        #region Module Members
+
+        [ConfigHelp("General", "NewsFile", ConfigScope.Global, typeof(string), DefaultValue = "news.txt",
+            Description = "The filename of the news file.")]
+        bool IModule.Load(IComponentBroker broker)
+        {
             _dlKey = _arenaManager.AllocateArenaData(new ListPooledObjectPolicy<MapDownloadData>() { InitialCapacity = S2C_MapFilename.MaxFiles });
 
             _network.AddPacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
@@ -96,7 +96,7 @@ namespace SS.Core.Modules
 
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
 
-            string newsFilename = _configManager.GetStr(_configManager.Global, "General", "NewsFile");
+            string? newsFilename = _configManager.GetStr(_configManager.Global, "General", "NewsFile");
             if (string.IsNullOrWhiteSpace(newsFilename))
                 newsFilename = "news.txt";
 
@@ -106,12 +106,12 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iMapNewsDownloadToken) != 0)
                 return false;
 
-            _newsManager.Dispose();
+            _newsManager?.Dispose();
 
             _network.RemovePacket(C2SPacketType.UpdateRequest, Packet_UpdateRequest);
             _network.RemovePacket(C2SPacketType.MapRequest, Packet_MapNewsRequest);
@@ -133,11 +133,11 @@ namespace SS.Core.Modules
             if (player is null)
                 return;
 
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
-            if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
+            if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData>? downloadList))
                 return;
 
             if (downloadList.Count == 0)
@@ -180,7 +180,13 @@ namespace SS.Core.Modules
             }
         }
 
-        uint IMapNewsDownload.GetNewsChecksum() => _newsManager.TryGetNews(out _, out uint checksum) ? checksum : 0;
+        uint IMapNewsDownload.GetNewsChecksum()
+        {
+            if (_newsManager is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            return _newsManager.TryGetNews(out _, out uint checksum) ? checksum : 0;
+        }
 
         #endregion
 
@@ -197,7 +203,7 @@ namespace SS.Core.Modules
             }
             else if (action == ArenaAction.Destroy)
             {
-                if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
+                if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData>? downloadList))
                     return;
 
                 downloadList.Clear();
@@ -211,15 +217,15 @@ namespace SS.Core.Modules
 
             try
             {
-                if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
+                if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData>? downloadList))
                     return;
 
                 downloadList.Clear();
 
-                MapDownloadData data = null;
+                MapDownloadData? data = null;
 
                 // First, add the map itself
-                string filePath = _mapData.GetMapFilename(arena, null);
+                string? filePath = _mapData.GetMapFilename(arena, null);
                 if (!string.IsNullOrEmpty(filePath))
                 {
                     data = CompressMap(filePath, true, false);
@@ -250,7 +256,7 @@ namespace SS.Core.Modules
             }
 
 
-            MapDownloadData CompressMap(string filePath, bool compress, bool isOptional)
+            MapDownloadData? CompressMap(string filePath, bool compress, bool isOptional)
             {
                 if (string.IsNullOrWhiteSpace(filePath))
                     throw new ArgumentException("Cannot be null or white-space.", nameof(filePath));
@@ -356,7 +362,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            IFileTransfer fileTransfer = _broker.GetInterface<IFileTransfer>();
+            IFileTransfer? fileTransfer = _broker.GetInterface<IFileTransfer>();
             if (fileTransfer is not null)
             {
                 try
@@ -386,7 +392,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                Arena arena = player.Arena;
+                Arena? arena = player.Arena;
                 if (arena is null)
                 {
                     _logManager.LogP(LogLevel.Malicious, nameof(MapNewsDownload), player, "Map request before entering arena.");
@@ -396,7 +402,7 @@ namespace SS.Core.Modules
                 ushort lvznum = (data.Length == 3) ? BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(1, 2)) : (ushort)0;
                 bool wantOpt = player.Flags.WantAllLvz;
 
-                MapDownloadData mdd = GetMap(arena, lvznum, wantOpt);
+                MapDownloadData? mdd = GetMap(arena, lvznum, wantOpt);
 
                 if (mdd is null)
                 {
@@ -412,7 +418,7 @@ namespace SS.Core.Modules
                 // and team directly, we need to go through the in-game procedures
                 if (player.IsStandard && (player.Ship != ShipType.Spec || player.Freq != arena.SpecFreq))
                 {
-                    IGame game = _broker.GetInterface<IGame>();
+                    IGame? game = _broker.GetInterface<IGame>();
                     if (game is not null)
                     {
                         try
@@ -434,7 +440,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                if (_newsManager.TryGetNews(out ReadOnlyMemory<byte> compressedNewsData, out _))
+                if (_newsManager!.TryGetNews(out ReadOnlyMemory<byte> compressedNewsData, out _))
                 {
                     _network.SendSized(player, compressedNewsData.Length, _getNewsData, new NewsDownloadContext(player, compressedNewsData));
                     _logManager.LogP(LogLevel.Drivel, nameof(MapNewsDownload), player, $"Sending news.txt ({compressedNewsData.Length} bytes).");
@@ -446,9 +452,9 @@ namespace SS.Core.Modules
             }
 
 
-            MapDownloadData GetMap(Arena arena, int lvznum, bool wantOpt)
+            MapDownloadData? GetMap(Arena arena, int lvznum, bool wantOpt)
             {
-                if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData> downloadList))
+                if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData>? downloadList))
                     return null;
 
                 int idx = lvznum;
@@ -550,9 +556,9 @@ namespace SS.Core.Modules
         {
             private readonly MapNewsDownload _parent;
             private readonly string _newsFilename;
-            private byte[] _compressedNewsData; // includes packet header
+            private byte[]? _compressedNewsData; // includes packet header
             private uint? _newsChecksum;
-            private FileSystemWatcher _fileWatcher;
+            private FileSystemWatcher? _fileWatcher;
             private readonly ReaderWriterLockSlim _rwLock = new();
 
             public NewsManager(MapNewsDownload parent, string filename)
@@ -588,7 +594,7 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        FileStream newsStream = null;
+                        FileStream? newsStream = null;
                         int tries = 0;
 
                         do

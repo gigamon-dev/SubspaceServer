@@ -86,6 +86,6 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="encryptorName">The encryption interface key.</param>
         /// <param name="listenData">The <see cref="ListenData"/> of the socket that the connection came from.</param>
         /// <returns>The player object for the connection. <see langword="null"/> if there was an error.</returns>
-        Player NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string encryptorName, ListenData listenData);
+        Player? NewConnection(ClientType clientType, IPEndPoint remoteEndpoint, string? encryptorName, ListenData listenData);
     }
 }

@@ -12,6 +12,6 @@ namespace SS.Matchmaking.Interfaces
         /// </summary>
         /// <param name="player">The player to get the group for.</param>
         /// <returns>The group if the player is in one. Otherwise, null.</returns>
-        IPlayerGroup GetGroup(Player player);
+        IPlayerGroup? GetGroup(Player player);
     }
 }

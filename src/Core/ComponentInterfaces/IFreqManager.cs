@@ -21,7 +21,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player"></param>
         /// <param name="requestedShip">will initially contain the requested ship</param>
         /// <param name="errorMessage"></param>
-        void ShipChange(Player player, ShipType requestedShip, StringBuilder errorMessage);
+        void ShipChange(Player player, ShipType requestedShip, StringBuilder? errorMessage);
 
         /// <summary>
         /// Called when a player requests a freq change.
@@ -29,7 +29,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player"></param>
         /// <param name="requestedShip">will initially contain the requested ship</param>
         /// <param name="errorMessage"></param>
-        void FreqChange(Player player, short requestedFreqNum, StringBuilder errorMessage);
+        void FreqChange(Player player, short requestedFreqNum, StringBuilder? errorMessage);
     }
 
     /// <summary>

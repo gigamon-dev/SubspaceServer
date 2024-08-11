@@ -20,19 +20,19 @@ namespace SS.Core.Modules
     {
         private const string CommonHelpText = "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist";
 
-        private IArenaManager _arenaManager;
-        private ICapabilityManager _capabilityManager;
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMapData _mapData;
-        private IMainloop _mainloop;
-        private INetwork _network;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
+        private readonly IArenaManager _arenaManager;
+        private readonly ICapabilityManager _capabilityManager;
+        private readonly IChat _chat;
+        private readonly ICommandManager _commandManager;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IMapData _mapData;
+        private readonly IMainloop _mainloop;
+        private readonly INetwork _network;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
 
-        private InterfaceRegistrationToken<ILvzObjects> _interfaceRegistrationToken;
+        private InterfaceRegistrationToken<ILvzObjects>? _interfaceRegistrationToken;
 
         private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
@@ -42,16 +42,7 @@ namespace SS.Core.Modules
         private readonly Action<Arena> _threadPoolWork_InitializeArena;
         private readonly LvzReader.ObjectDataReadDelegate<ArenaData> _objectDataRead;
 
-        public LvzObjects()
-        {
-            _threadPoolWork_InitializeArena = ThreadPoolWork_InitializeArena;
-            _objectDataRead = ObjectDataRead;
-        }
-
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public LvzObjects(
             IArenaManager arenaManager,
             ICapabilityManager capabilityManager,
             IChat chat,
@@ -76,6 +67,14 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
+            _threadPoolWork_InitializeArena = ThreadPoolWork_InitializeArena;
+            _objectDataRead = ObjectDataRead;
+        }
+
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
@@ -100,7 +99,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             broker.UnregisterInterface(ref _interfaceRegistrationToken);
 
@@ -138,7 +137,7 @@ namespace SS.Core.Modules
             if (player.Arena is null)
                 return;
 
-            if (!player.Arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+            if (!player.Arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                 return;
 
             lock (arenaData.Lock)
@@ -220,8 +219,8 @@ namespace SS.Core.Modules
             if (set.IsEmpty)
                 return;
 
-            ArenaData arenaData = null;
-            if (target.TryGetArenaTarget(out Arena arena))
+            ArenaData? arenaData = null;
+            if (target.TryGetArenaTarget(out Arena? arena))
             {
                 arena.TryGetExtraData(_adKey, out arenaData);
             }
@@ -330,12 +329,12 @@ namespace SS.Core.Modules
 
         void ILvzObjects.Reset(Arena arena, short id)
         {
-            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                 return;
 
             lock (arenaData.Lock)
             {
-                LvzData lvzData = arenaData.GetObjectData(id);
+                LvzData? lvzData = arenaData.GetObjectData(id);
                 if (lvzData is null)
                     return;
 
@@ -347,7 +346,7 @@ namespace SS.Core.Modules
 
         bool ILvzObjects.TryGetDefaultInfo(Arena arena, short id, out bool isEnabled, out ObjectData objectData)
         {
-            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
             {
                 isEnabled = default;
                 objectData = default;
@@ -356,7 +355,7 @@ namespace SS.Core.Modules
 
             lock (arenaData.Lock)
             {
-                LvzData lvzData = arenaData.GetObjectData(id);
+                LvzData? lvzData = arenaData.GetObjectData(id);
                 if (lvzData is not null)
                 {
                     isEnabled = !lvzData.Off;
@@ -373,7 +372,7 @@ namespace SS.Core.Modules
 
         bool ILvzObjects.TryGetCurrentInfo(Arena arena, short id, out bool isEnabled, out ObjectData objectData)
         {
-            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
             {
                 isEnabled = default;
                 objectData = default;
@@ -382,7 +381,7 @@ namespace SS.Core.Modules
 
             lock (arenaData.Lock)
             {
-                LvzData lvzData = arenaData.GetObjectData(id);
+                LvzData? lvzData = arenaData.GetObjectData(id);
                 if (lvzData is not null)
                 {
                     isEnabled = !lvzData.Off;
@@ -628,7 +627,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_objinfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (!short.TryParse(parameters, out short objectId))
@@ -672,7 +671,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_objlist(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             int count = 0;
@@ -715,11 +714,11 @@ namespace SS.Core.Modules
 
         private void Packet_Rebroadcast(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            Arena arena = player.Arena;
+            Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 return;
 
             if (pd.Permission == BroadcastAuthorization.None)
@@ -751,7 +750,7 @@ namespace SS.Core.Modules
 
                 if (toPlayerId == -1) // To whole arena.
                 {
-                    if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                         return;
 
                     Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(data[4..]);
@@ -775,7 +774,7 @@ namespace SS.Core.Modules
 
                 if (toPlayerId == -1) // To whole arena.
                 {
-                    if (!arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                         return;
 
                     Span<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(data[4..]);
@@ -784,7 +783,7 @@ namespace SS.Core.Modules
                     {
                         foreach (ref LvzObjectChange change in changeSpan)
                         {
-                            LvzData lvzData = arenaData.GetObjectData(change.Data.Id);
+                            LvzData? lvzData = arenaData.GetObjectData(change.Data.Id);
                             if (lvzData is null)
                                 continue;
 
@@ -853,7 +852,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                Player toPlayer = _playerData.PidToPlayer(toPlayerId);
+                Player? toPlayer = _playerData.PidToPlayer(toPlayerId);
                 if (toPlayer is not null && toPlayer.Status == PlayerState.Playing && player.Arena == toPlayer.Arena)
                 {
                     _network.SendToOne(toPlayer, data[4..], NetSendFlags.Reliable);
@@ -865,7 +864,7 @@ namespace SS.Core.Modules
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.PreCreate)
@@ -892,7 +891,7 @@ namespace SS.Core.Modules
 
         private void ThreadPoolWork_InitializeArena(Arena arena)
         {
-            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             foreach (LvzFileInfo fileInfo in _mapData.LvzFilenames(arena))
@@ -925,11 +924,11 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.EnterArena)
             {
-                if (!player.TryGetExtraData(_pdKey, out PlayerData pd))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                     return;
 
                 if (_capabilityManager.HasCapability(player, Constants.Capabilities.BroadcastAny))
@@ -955,7 +954,7 @@ namespace SS.Core.Modules
 
             lock (ad.Lock)
             {
-                LvzData lvzData = ad.GetObjectData(id);
+                LvzData? lvzData = ad.GetObjectData(id);
                 if (lvzData is not null && lvzData.Current.Time == 0)
                 {
                     if (isEnabled && lvzData.Off)
@@ -971,13 +970,13 @@ namespace SS.Core.Modules
 
         private void ChangeObject(ITarget target, short id, ChangeObjectDelegate changeCallback)
         {
-            if (!target.TryGetArenaTarget(out Arena arena))
+            if (!target.TryGetArenaTarget(out Arena? arena))
             {
-                if (target.TryGetPlayerTarget(out Player player))
+                if (target.TryGetPlayerTarget(out Player? player))
                     arena = player.Arena;
             }
 
-            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData arenaData))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                 return;
 
             Span<byte> packetBytes = stackalloc byte[1 + LvzObjectChange.Length];
@@ -986,7 +985,7 @@ namespace SS.Core.Modules
 
             lock (arenaData.Lock)
             {
-                LvzData lvzData = arenaData.GetObjectData(id);
+                LvzData? lvzData = arenaData.GetObjectData(id);
                 if (lvzData is null)
                     return;
 
@@ -1071,7 +1070,7 @@ namespace SS.Core.Modules
 
             public readonly object Lock = new();
 
-            public LvzData GetObjectData(short objectId)
+            public LvzData? GetObjectData(short objectId)
             {
                 lock (Lock)
                 {

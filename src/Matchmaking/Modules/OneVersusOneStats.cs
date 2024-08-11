@@ -18,19 +18,16 @@ namespace SS.Matchmaking.Modules
         """)]
     public class OneVersusOneStats : IModule, IArenaAttachableModule
     {
-        private IChat _chat;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private IWatchDamage _watchDamage;
+        private readonly IChat _chat;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
+        private readonly IWatchDamage _watchDamage;
 
         private PlayerDataKey<PlayerData> _pdKey;
         private readonly Dictionary<MatchIdentifier, MatchStats> _matchStats = new();
         private readonly DefaultObjectPool<MatchStats> _matchStatsObjectPool = new(new DefaultPooledObjectPolicy<MatchStats>(), Constants.TargetPlayerCount);
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public OneVersusOneStats(
             IChat chat,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
@@ -40,20 +37,25 @@ namespace SS.Matchmaking.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _watchDamage = watchDamage ?? throw new ArgumentNullException(nameof(watchDamage));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             _playerData.FreePlayerData(ref _pdKey);
             return true;
         }
 
-        public bool AttachModule(Arena arena)
+        bool IArenaAttachableModule.AttachModule(Arena arena)
         {
             OneVersusOneMatchStartedCallback.Register(arena, Callback_OneVersusOneMatchStarted);
             OneVersusOneMatchEndedCallback.Register(arena, Callback_OneVersusOneMatchEnded);
@@ -63,7 +65,7 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        public bool DetachModule(Arena arena)
+        bool IArenaAttachableModule.DetachModule(Arena arena)
         {
             OneVersusOneMatchStartedCallback.Unregister(arena, Callback_OneVersusOneMatchStarted);
             OneVersusOneMatchEndedCallback.Unregister(arena, Callback_OneVersusOneMatchEnded);
@@ -77,18 +79,18 @@ namespace SS.Matchmaking.Modules
 
         #region Callbacks
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena arena)
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.LeaveArena)
             {
-                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                     return;
 
                 RemoveDamageWatching(player, playerData);
             }
             else if (action == PlayerAction.Disconnect)
             {
-                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                     return;
 
                 if (playerData.CurrentMatchStats != null)
@@ -110,14 +112,14 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_OneVersusOneMatchStarted(Arena arena, int boxId, Player player1, Player player2)
         {
-            if (!player1.TryGetExtraData(_pdKey, out PlayerData player1Data)
-                || !player2.TryGetExtraData(_pdKey, out PlayerData player2Data))
+            if (!player1.TryGetExtraData(_pdKey, out PlayerData? player1Data)
+                || !player2.TryGetExtraData(_pdKey, out PlayerData? player2Data))
             {
                 return;
             }
 
             MatchIdentifier matchIdentifier = new(arena, boxId);
-            if (!_matchStats.TryGetValue(matchIdentifier, out MatchStats matchStats))
+            if (!_matchStats.TryGetValue(matchIdentifier, out MatchStats? matchStats))
             {
                 matchStats = _matchStatsObjectPool.Get();
                 _matchStats.Add(matchIdentifier, matchStats);
@@ -135,9 +137,9 @@ namespace SS.Matchmaking.Modules
             player2Data.IsWatchingDamage = true;
         }
 
-        private void Callback_OneVersusOneMatchEnded(Arena arena, int boxId, OneVersusOneMatchEndReason reason, string winnerPlayerName)
+        private void Callback_OneVersusOneMatchEnded(Arena arena, int boxId, OneVersusOneMatchEndReason reason, string? winnerPlayerName)
         {
-            if (!_matchStats.Remove(new MatchIdentifier(arena, boxId), out MatchStats matchStats))
+            if (!_matchStats.Remove(new MatchIdentifier(arena, boxId), out MatchStats? matchStats))
                 return;
 
             try
@@ -149,13 +151,13 @@ namespace SS.Matchmaking.Modules
                 //
 
                 if (matchStats.PlayerStats1.Player != null
-                    && matchStats.PlayerStats1.Player.TryGetExtraData(_pdKey, out PlayerData player1Data))
+                    && matchStats.PlayerStats1.Player.TryGetExtraData(_pdKey, out PlayerData? player1Data))
                 {
                     RemoveDamageWatching(matchStats.PlayerStats1.Player, player1Data);
                 }
 
                 if (matchStats.PlayerStats2.Player != null
-                    && matchStats.PlayerStats2.Player.TryGetExtraData(_pdKey, out PlayerData player2Data))
+                    && matchStats.PlayerStats2.Player.TryGetExtraData(_pdKey, out PlayerData? player2Data))
                 {
                     RemoveDamageWatching(matchStats.PlayerStats2.Player, player2Data);
                 }
@@ -168,8 +170,8 @@ namespace SS.Matchmaking.Modules
                 {
                     if (reason == OneVersusOneMatchEndReason.Decided)
                     {
-                        PlayerStats winnerStats = null;
-                        PlayerStats loserStats = null;
+                        PlayerStats? winnerStats = null;
+                        PlayerStats? loserStats = null;
 
                         if (string.Equals(winnerPlayerName, matchStats.PlayerStats1.PlayerName, StringComparison.OrdinalIgnoreCase))
                         {
@@ -187,13 +189,13 @@ namespace SS.Matchmaking.Modules
                             // Update win streak counters.
                             int? winStreak = null;
                             if (winnerStats.Player != null
-                                && winnerStats.Player.TryGetExtraData(_pdKey, out PlayerData winnerPlayerData))
+                                && winnerStats.Player.TryGetExtraData(_pdKey, out PlayerData? winnerPlayerData))
                             {
                                 winStreak = ++winnerPlayerData.WinStreak;
                             }
 
                             if (loserStats.Player != null
-                                && loserStats.Player.TryGetExtraData(_pdKey, out PlayerData loserPlayerData))
+                                && loserStats.Player.TryGetExtraData(_pdKey, out PlayerData? loserPlayerData))
                             {
                                 loserPlayerData.WinStreak = 0;
                             }
@@ -298,7 +300,7 @@ namespace SS.Matchmaking.Modules
 
             void ClearCurrentMatchFromPlayerData(Player player)
             {
-                if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+                if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                     return;
 
                 playerData.CurrentMatchStats = null;
@@ -308,13 +310,13 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_PlayerDamage(Player player, ServerTick timestamp, ReadOnlySpan<DamageData> damageDataSpan)
         {
-            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             if (playerData.CurrentMatchStats == null)
                 return;
 
-            PlayerStats playerStats = playerData.CurrentPlayerStats;
+            PlayerStats? playerStats = playerData.CurrentPlayerStats;
             if (playerStats == null)
                 return;
 
@@ -381,10 +383,10 @@ namespace SS.Matchmaking.Modules
             if (positionPacket.Weapon.Type == WeaponCodes.Null)
                 return;
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData playerData))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            PlayerStats playerStats = playerData.CurrentPlayerStats;
+            PlayerStats? playerStats = playerData.CurrentPlayerStats;
             if (playerStats == null)
                 return;
 
@@ -411,7 +413,7 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_Kill(Arena arena, Player killer, Player killed, short bounty, short flagCount, short pts, Prize green)
         {
-            if (killer == null || !killer.TryGetExtraData(_pdKey, out PlayerData killerPlayerData))
+            if (killer == null || !killer.TryGetExtraData(_pdKey, out PlayerData? killerPlayerData))
                 return;
 
             if (killerPlayerData.CurrentPlayerStats != null)
@@ -484,7 +486,7 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// The name of the player.
             /// </summary>
-            public string PlayerName;
+            public string? PlayerName;
 
             /// <summary>
             /// The player. 
@@ -493,7 +495,7 @@ namespace SS.Matchmaking.Modules
             /// Note: This will be null if the player disconnected before the end of a match.
             /// So, <see cref="PlayerName"/> is the main player identifier.
             /// </remarks>
-            public Player Player;
+            public Player? Player;
 
             /// <summary>
             /// Amount of damage dealt to enemies with bullets.
@@ -567,12 +569,12 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// The stats for the player's current match.
             /// </summary>
-            public MatchStats CurrentMatchStats;
+            public MatchStats? CurrentMatchStats;
 
             /// <summary>
             /// The player's stats for the current match.
             /// </summary>
-            public PlayerStats CurrentPlayerStats;
+            public PlayerStats? CurrentPlayerStats;
 
             /// <summary>
             /// The # of games won in a row.

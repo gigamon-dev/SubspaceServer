@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 
 namespace SS.Core.ComponentInterfaces
@@ -36,8 +37,8 @@ namespace SS.Core.ComponentInterfaces
         #region Extra Data methods
 
         bool TryAddExtraData<T>(T value) where T : class;
-        bool TryGetExtraData<T>(out T value) where T : class;
-        bool TryRemoveExtraData<T>(out T value) where T : class;
+        bool TryGetExtraData<T>([MaybeNullWhen(false)] out T value) where T : class;
+        bool TryRemoveExtraData<T>([MaybeNullWhen(false)] out T value) where T : class;
 
         #endregion
     }
@@ -116,7 +117,7 @@ namespace SS.Core.ComponentInterfaces
         /// <exception cref="ArgumentNullException"><paramref name="handler"/> is null.</exception>
         /// <exception cref="ArgumentException"><paramref name="encryptorName"/> is null or white-space.</exception>
         /// <exception cref="ArgumentException"><paramref name="bandwidthLimiterProviderName"/> is null or white-space.</exception>
-        IClientConnection MakeClientConnection(IPEndPoint endPoint, IClientConnectionHandler handler, string encryptorName, string bandwidthLimiterProviderName);
+        IClientConnection? MakeClientConnection(IPEndPoint endPoint, IClientConnectionHandler handler, string encryptorName, string bandwidthLimiterProviderName);
 
         /// <summary>
         /// Sends data to the server.

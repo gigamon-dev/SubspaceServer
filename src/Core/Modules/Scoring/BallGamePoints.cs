@@ -23,25 +23,22 @@ namespace SS.Core.Modules.Scoring
     {
         private const int MaxTeams = 8;
 
-        private IArenaManager _arenaManager;
-        private IAllPlayerStats _allPlayerStats;
-        private IArenaPlayerStats _arenaPlayerStats;
-        private IBalls _balls;
-        private IChat _chat;
-        private IConfigManager _configManager;
-        private ICommandManager _commandManager;
-        private IMapData _mapData;
-        private INetwork _network;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private IScoreStats _scoreStats;
+        private readonly IArenaManager _arenaManager;
+        private readonly IAllPlayerStats _allPlayerStats;
+        private readonly IArenaPlayerStats _arenaPlayerStats;
+        private readonly IBalls _balls;
+        private readonly IChat _chat;
+        private readonly IConfigManager _configManager;
+        private readonly ICommandManager _commandManager;
+        private readonly IMapData _mapData;
+        private readonly INetwork _network;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
+        private readonly IScoreStats _scoreStats;
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public BallGamePoints(
             IArenaManager arenaManager,
             IAllPlayerStats allPlayerStats,
             IArenaPlayerStats arenaPlayerStats,
@@ -67,13 +64,18 @@ namespace SS.Core.Modules.Scoring
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _scoreStats = scoreStats ?? throw new ArgumentNullException(nameof(scoreStats));
+        }
 
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             _arenaManager.FreeArenaData(ref _adKey);
 
@@ -82,7 +84,7 @@ namespace SS.Core.Modules.Scoring
 
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             ArenaActionCallback.Register(arena, Callback_ArenaAction);
@@ -99,7 +101,7 @@ namespace SS.Core.Modules.Scoring
 
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
             arena.UnregisterAdvisor(ref ad.BallsAdvisorToken);
@@ -125,7 +127,7 @@ namespace SS.Core.Modules.Scoring
 
         ReadOnlySpan<int> IBallGamePoints.GetScores(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return ReadOnlySpan<int>.Empty;
 
             return ad.TeamScores;
@@ -138,7 +140,7 @@ namespace SS.Core.Modules.Scoring
 
         void IBallGamePoints.ResetScores(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             ResetTeamScores(ad);
@@ -180,21 +182,22 @@ namespace SS.Core.Modules.Scoring
             Description = "The minimum number of teams that must exist for soccer points to be awarded.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create
                 // TODO: || action == ArenaAction.ConfChanged
                 )
             {
-                ad.Mode = _configManager.GetEnum(arena.Cfg, "Soccer", "Mode", SoccerMode.All);
-                ad.CapturePoints = _configManager.GetInt(arena.Cfg, "Soccer", "CapturePoints", 1);
-                ad.Reward = _configManager.GetInt(arena.Cfg, "Soccer", "Reward", 0);
-                ad.WinBy = _configManager.GetInt(arena.Cfg, "Soccer", "WinBy", 0);
-                ad.MinPlayers = _configManager.GetInt(arena.Cfg, "Soccer", "MinPlayers", 0);
-                ad.MinTeams = _configManager.GetInt(arena.Cfg, "Soccer", "MinTeams", 0);
-                ad.IsFrequencyShipTypes = _configManager.GetInt(arena.Cfg, "Misc", "FrequencyShipTypes", 0) != 0;
-                ad.IsCustomGame = _configManager.GetInt(arena.Cfg, "Soccer", "CustomGame", 0) != 0;
+                ConfigHandle ch = arena.Cfg!;
+                ad.Mode = _configManager.GetEnum(ch, "Soccer", "Mode", SoccerMode.All);
+                ad.CapturePoints = _configManager.GetInt(ch, "Soccer", "CapturePoints", 1);
+                ad.Reward = _configManager.GetInt(ch, "Soccer", "Reward", 0);
+                ad.WinBy = _configManager.GetInt(ch, "Soccer", "WinBy", 0);
+                ad.MinPlayers = _configManager.GetInt(ch, "Soccer", "MinPlayers", 0);
+                ad.MinTeams = _configManager.GetInt(ch, "Soccer", "MinTeams", 0);
+                ad.IsFrequencyShipTypes = _configManager.GetInt(ch, "Misc", "FrequencyShipTypes", 0) != 0;
+                ad.IsCustomGame = _configManager.GetInt(ch, "Soccer", "CustomGame", 0) != 0;
 
                 ad.IsStealPoints = ad.CapturePoints >= 0;
                 ResetTeamScores(ad);
@@ -203,7 +206,7 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_BallGoal(Arena arena, Player player, byte ballId, MapCoordinate coordinate)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.IsCustomGame)
@@ -286,9 +289,7 @@ namespace SS.Core.Modules.Scoring
             finally
             {
                 _objectPoolManager.PlayerSetPool.Return(teamSet);
-                teamSet = null;
                 _objectPoolManager.PlayerSetPool.Return(enemySet);
-                enemySet = null;
             }
 
             S2C_Goal packet = new(scoringFreq, points);
@@ -322,8 +323,8 @@ namespace SS.Core.Modules.Scoring
                 """)]
         private void Command_setscore(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            Arena? arena = player.Arena;
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.Mode == SoccerMode.All)
@@ -367,8 +368,8 @@ namespace SS.Core.Modules.Scoring
             Description = "Returns the current score of the soccer game in progress.")]
         private void Command_score(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            Arena arena = player.Arena;
-            if (arena == null)
+            Arena? arena = player.Arena;
+            if (arena is null)
                 return;
 
             PrintScoreMessage(arena, player);
@@ -387,7 +388,7 @@ namespace SS.Core.Modules.Scoring
 
         private void CheckGameOver(Arena arena)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             // Find the team with the highest score.
@@ -462,9 +463,9 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void PrintScoreMessage(Arena arena, Player player)
+        private void PrintScoreMessage(Arena arena, Player? player)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
@@ -522,7 +523,7 @@ namespace SS.Core.Modules.Scoring
 
         private int RewardPoints(Arena arena, short scoringFreq)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return 0;
 
             int playerCount = 0;
@@ -599,7 +600,7 @@ namespace SS.Core.Modules.Scoring
 
         private void SetScores(Arena arena, ReadOnlySpan<int> scores)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.Mode == SoccerMode.All || ad.IsStealPoints)
@@ -614,9 +615,9 @@ namespace SS.Core.Modules.Scoring
             CheckGameOver(arena);
         }
 
-        private void ResetGame(Arena arena, Player player)
+        private void ResetGame(Arena? arena, Player player)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData ad))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.Mode != SoccerMode.All)
@@ -654,7 +655,7 @@ namespace SS.Core.Modules.Scoring
 
         private class ArenaData : IResettable
         {
-            public AdvisorRegistrationToken<IBallsAdvisor> BallsAdvisorToken;
+            public AdvisorRegistrationToken<IBallsAdvisor>? BallsAdvisorToken;
 
             // settings
             public SoccerMode Mode;

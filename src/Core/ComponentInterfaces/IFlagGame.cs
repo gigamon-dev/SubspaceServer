@@ -1,5 +1,6 @@
 ﻿using SS.Core.Map;
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -101,7 +102,7 @@ namespace SS.Core.ComponentInterfaces
     public interface IFlagInfo
     {
         FlagState State { get; }
-        Player Carrier { get; }
+        Player? Carrier { get; }
         MapCoordinate? Location { get; }
         short Freq { get; }
     }
@@ -130,7 +131,7 @@ namespace SS.Core.ComponentInterfaces
 
     public interface ICarryFlagGame : IFlagGame
     {
-        ICarryFlagSettings GetSettings(Arena arena);
+        ICarryFlagSettings? GetSettings(Arena arena);
 
         /// <summary>
         /// Starts the flag game in an arena.
@@ -178,7 +179,7 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>True if a flag was added. Otherwise, false.</returns>
         bool TryAddFlag(Arena arena, out short flagId);
 
-        bool TryGetFlagInfo(Arena arena, short flagId, out IFlagInfo flagInfo);
+        bool TryGetFlagInfo(Arena arena, short flagId, [MaybeNullWhen(false)] out IFlagInfo flagInfo);
 
         bool TrySetFlagNeuted(Arena arena, short flagId, MapCoordinate? location = null, short freq = -1);
 

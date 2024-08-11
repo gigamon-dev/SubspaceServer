@@ -41,42 +41,22 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public class BandwidthDefault : IModule, IBandwidthLimiterProvider
+    public class BandwidthDefault(IConfigManager configManager) : IModule, IBandwidthLimiterProvider
     {
         public const string InterfaceIdentifier = nameof(BandwidthDefault);
 
-        private IConfigManager _configManager;
-        private InterfaceRegistrationToken<IBandwidthLimiterProvider> _iBandwidthLimiterProviderNamedToken;
-        private InterfaceRegistrationToken<IBandwidthLimiterProvider> _iBandwidthLimiterProviderToken;
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private InterfaceRegistrationToken<IBandwidthLimiterProvider>? _iBandwidthLimiterProviderNamedToken;
+        private InterfaceRegistrationToken<IBandwidthLimiterProvider>? _iBandwidthLimiterProviderToken;
 
-        private Settings _settings;
-        private ObjectPool<DefaultBandwidthLimiter> _bandwidthLimiterPool;
+        private Settings? _settings;
+        private ObjectPool<DefaultBandwidthLimiter>? _bandwidthLimiterPool;
 
         #region IModule Members
 
-        public bool Load(ComponentBroker broker, IConfigManager configManager)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-
-            _settings = new()
-            {
-                LimitLow = _configManager.GetInt(_configManager.Global, "Net", "LimitMinimum", 2500),
-                LimitHigh = _configManager.GetInt(_configManager.Global, "Net", "LimitMaximum", 102400),
-                LimitInitial = _configManager.GetInt(_configManager.Global, "Net", "LimitInitial", 5000),
-                ClientCanBuffer = _configManager.GetInt(_configManager.Global, "Net", "SendAtOnce", 64),
-                LimitScale = _configManager.GetInt(_configManager.Global, "Net", "LimitScale", Constants.MaxPacket * 1),
-                MaxAvail = _configManager.GetInt(_configManager.Global, "Net", "Burst", Constants.MaxPacket * 4),
-                UseHitLimit = _configManager.GetInt(_configManager.Global, "Net", "UseHitLimit", 0) != 0,
-                PriorityLimits = new[]
-                {
-                    _configManager.GetInt(_configManager.Global, "Net", "PriLimit0", 20), // low pri unrel
-                    _configManager.GetInt(_configManager.Global, "Net", "PriLimit1", 40), // reg pri unrel
-                    _configManager.GetInt(_configManager.Global, "Net", "PriLimit2", 20), // high pri unrel
-                    _configManager.GetInt(_configManager.Global, "Net", "PriLimit3", 15), // rel
-                    _configManager.GetInt(_configManager.Global, "Net", "PriLimit4", 5),  // ack
-                }
-            };
-
+            _settings = new(_configManager);
             _bandwidthLimiterPool = new DefaultObjectPool<DefaultBandwidthLimiter>(new BandwidthLimiterPooledObjectPolicy(_settings), Constants.TargetPlayerCount);
 
             _iBandwidthLimiterProviderNamedToken = broker.RegisterInterface<IBandwidthLimiterProvider>(this, InterfaceIdentifier);
@@ -84,7 +64,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iBandwidthLimiterProviderNamedToken) != 0)
                 return false;
@@ -101,6 +81,9 @@ namespace SS.Core.Modules
 
         IBandwidthLimiter IBandwidthLimiterProvider.New()
         {
+            if (_bandwidthLimiterPool is null)
+                throw new InvalidOperationException("Not loaded.");
+
             DefaultBandwidthLimiter bwLimiter = _bandwidthLimiterPool.Get();
             bwLimiter.Initialize(); // necessary, we dont want info from its previous use
             return bwLimiter;
@@ -108,6 +91,9 @@ namespace SS.Core.Modules
 
         void IBandwidthLimiterProvider.Free(IBandwidthLimiter limiter)
         {
+            if (_bandwidthLimiterPool is null)
+                throw new InvalidOperationException("Not loaded.");
+
             if (limiter is DefaultBandwidthLimiter bandwidthLimiter)
             {
                 _bandwidthLimiterPool.Return(bandwidthLimiter);
@@ -118,22 +104,22 @@ namespace SS.Core.Modules
 
         #region Helper classes
 
-        private class Settings
+        private class Settings(IConfigManager configManager)
         {
             /// <summary>
             /// The lowest the limit can go (bytes per second).
             /// </summary>
-            public int LimitLow { get; init; }
+            public int LimitLow { get; init; } = configManager.GetInt(configManager.Global, "Net", "LimitMinimum", 2500);
 
             /// <summary>
             /// The highest the limit can go (bytes per second).
             /// </summary>
-            public int LimitHigh { get; init; }
+            public int LimitHigh { get; init; } = configManager.GetInt(configManager.Global, "Net", "LimitMaximum", 102400);
 
             /// <summary>
             /// The initial limit (bytes per second).
             /// </summary>
-            public int LimitInitial { get; init; }
+            public int LimitInitial { get; init; } = configManager.GetInt(configManager.Global, "Net", "LimitInitial", 5000);
 
             /// <summary>
             /// An array representing the percentage of the limit allotted to each priority level 
@@ -142,23 +128,30 @@ namespace SS.Core.Modules
             /// <remarks>
             /// This should be configured such that all the values in this array add up to 100.
             /// </remarks>
-            public int[] PriorityLimits { get; init; }
+            public int[] PriorityLimits { get; init; } = new[]
+                {
+                    configManager.GetInt(configManager.Global, "Net", "PriLimit0", 20), // low pri unrel
+                    configManager.GetInt(configManager.Global, "Net", "PriLimit1", 40), // reg pri unrel
+                    configManager.GetInt(configManager.Global, "Net", "PriLimit2", 20), // high pri unrel
+                    configManager.GetInt(configManager.Global, "Net", "PriLimit3", 15), // rel
+                    configManager.GetInt(configManager.Global, "Net", "PriLimit4", 5),  // ack
+                };
 
             /// <summary>
             /// The maximum # of buffers a client is able to buffer.
             /// That is, the maximum window of reliable packets that a client can accept.
             /// </summary>
-            public int ClientCanBuffer { get; init; }
+            public int ClientCanBuffer { get; init; } = configManager.GetInt(configManager.Global, "Net", "SendAtOnce", 64);
 
             /// <summary>
             /// Scaling factor used to adjust the current overall limit when receiving an ACK or when resending data.
             /// </summary>
-            public int LimitScale { get; init; }
+            public int LimitScale { get; init; } = configManager.GetInt(configManager.Global, "Net", "LimitScale", Constants.MaxPacket * 1);
 
             /// <summary>
             /// The maximum 'burst' a priority can gain from unused bandwidth (bytes).
             /// </summary>
-            public int MaxAvail { get; init; }
+            public int MaxAvail { get; init; } = configManager.GetInt(configManager.Global, "Net", "Burst", Constants.MaxPacket * 4);
 
             /// <summary>
             /// Whether to enable functionality for a greater limit increase due to receiving an ACK if it came after the limit was hit (a send was denied).
@@ -167,7 +160,7 @@ namespace SS.Core.Modules
             /// When an ACK is received, the current limit is increased. 
             /// With this setting on, the current limit will increased a greater amount if it detected that the limit was hit.
             /// </remarks>
-            public bool UseHitLimit { get; init; }
+            public bool UseHitLimit { get; init; } = configManager.GetInt(configManager.Global, "Net", "UseHitLimit", 0) != 0;
         }
 
         private class BandwidthLimiterPooledObjectPolicy(Settings config) : IPooledObjectPolicy<DefaultBandwidthLimiter>

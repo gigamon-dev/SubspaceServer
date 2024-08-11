@@ -11,38 +11,29 @@ namespace SS.Core.Modules
     /// Module for the login sequence (connection init) that responds such that no encryption is used.
     /// </summary>
     [CoreModuleInfo]
-    public class EncryptionNull : IModule
+    public class EncryptionNull(IRawNetwork rawNetwork) : IModule
     {
-        private IRawNetwork _rawNetwork;
+        private readonly IRawNetwork _rawNetwork = rawNetwork ?? throw new ArgumentNullException(nameof(rawNetwork));
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct ConnectionInitResponsePacket
+        public readonly struct ConnectionInitResponsePacket(int key)
         {
-            public readonly byte T1;
-            public readonly byte T2;
-            public readonly int Key;
-
-            public ConnectionInitResponsePacket(int key)
-            {
-                T1 = 0x00;
-                T2 = 0x02;
-                Key = LittleEndianConverter.Convert(key);
-            }
+            public readonly byte T1 = 0x00;
+            public readonly byte T2 = 0x02;
+            public readonly int Key = LittleEndianConverter.Convert(key);
         }
 
         #region IModule Members
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "ComponentBroker is a required parameter for the module to load even though it is not used.")]
-        public bool Load(ComponentBroker broker, IRawNetwork rawNetwork)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _rawNetwork = rawNetwork ?? throw new ArgumentNullException(nameof(rawNetwork));
-
             _rawNetwork.AppendConnectionInitHandler(Callback_ConnectionInit);
 
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (!_rawNetwork.RemoveConnectionInitHandler(Callback_ConnectionInit))
                 return false;
@@ -81,8 +72,8 @@ namespace SS.Core.Modules
             }
 
             // get connection (null means no encryption)
-            IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint.Create(remoteAddress);
-            Player player = _rawNetwork.NewConnection(type, remoteEndpoint, null, ld);
+            IPEndPoint remoteEndpoint = (IPEndPoint)ld.GameSocket.LocalEndPoint!.Create(remoteAddress);
+            Player? player = _rawNetwork.NewConnection(type, remoteEndpoint, null, ld);
 
             if (player is null)
             {

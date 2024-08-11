@@ -433,7 +433,7 @@ namespace SS.Utilities
         /// <param name="byteLimit">The number of bytes to limit encoded bytes to.</param>
         /// <param name="encoding">The encoding to use. <see langword="null"/> means use the <see cref="DefaultEncoding"/>.</param>
         /// <returns>The truncated string.</returns>
-        public static ReadOnlySpan<char> TruncateForEncodedByteLimit(this string str, int byteLimit, Encoding encoding = null)
+        public static ReadOnlySpan<char> TruncateForEncodedByteLimit(this string str, int byteLimit, Encoding? encoding = null)
         {
             return TruncateForEncodedByteLimit(str.AsSpan(), byteLimit, encoding);
         }
@@ -445,7 +445,7 @@ namespace SS.Utilities
         /// <param name="byteLimit">The number of bytes to limit encoded bytes to.</param>
         /// <param name="encoding">The encoding to use. <see langword="null"/> means use the <see cref="DefaultEncoding"/>.</param>
         /// <returns>The truncated string.</returns>
-        public static ReadOnlySpan<char> TruncateForEncodedByteLimit(this ReadOnlySpan<char> str, int byteLimit, Encoding encoding = null)
+        public static ReadOnlySpan<char> TruncateForEncodedByteLimit(this ReadOnlySpan<char> str, int byteLimit, Encoding? encoding = null)
         {
             if (byteLimit < 0)
                 throw new ArgumentOutOfRangeException(nameof(byteLimit), "Value cannot be negative.");
@@ -783,7 +783,7 @@ namespace SS.Utilities
         private readonly int _width;
         private readonly char _delimiter;
         private int _startIndex = 0; // the index to begin reading the next substring from
-        private char[] _buffer = null; // buffer for holding the current substring (rented from a pool)
+        private char[]? _buffer = null; // buffer for holding the current substring (rented from a pool)
 
         public WrapTextStringBuilderEnumerator(StringBuilder text, int width, char delimiter)
         {

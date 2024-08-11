@@ -1,4 +1,5 @@
-﻿using SS.Core.Map;
+﻿using SS.Core.ComponentInterfaces;
+using SS.Core.Map;
 
 namespace SS.Core.ComponentCallbacks
 {
@@ -16,17 +17,17 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="freq">The team the flag is owned by. -1 means unowned.</param>
         public delegate void FlagOnMapDelegate(Arena arena, short flagId, MapCoordinate mapCoordinate, short freq);
 
-        public static void Register(ComponentBroker broker, FlagOnMapDelegate handler)
+        public static void Register(IComponentBroker broker, FlagOnMapDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, FlagOnMapDelegate handler)
+        public static void Unregister(IComponentBroker broker, FlagOnMapDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, Arena arena, short flagId, MapCoordinate mapCoordinate, short freq)
+        public static void Fire(IComponentBroker broker, Arena arena, short flagId, MapCoordinate mapCoordinate, short freq)
         {
             broker?.GetCallback<FlagOnMapDelegate>()?.Invoke(arena, flagId, mapCoordinate, freq);
 

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Specialized;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 
 namespace SS.Core
@@ -291,12 +292,12 @@ namespace SS.Core
         /// </summary>
         internal PlayerState WhenLoggedIn = PlayerState.Uninitialized;
 
-        private Arena _arena;
+        private Arena? _arena;
 
         /// <summary>
         /// The player's current arena, or <see langword="null"/> if not in an arena yet.
         /// </summary>
-        public Arena Arena
+        public Arena? Arena
         {
             get => _arena;
             internal set
@@ -308,12 +309,12 @@ namespace SS.Core
             }
         }
 
-        private Arena _newArena;
+        private Arena? _newArena;
 
         /// <summary>
         /// The arena the player is trying to enter.
         /// </summary>
-        public Arena NewArena
+        public Arena? NewArena
         {
             get => _newArena;
             internal set
@@ -325,12 +326,12 @@ namespace SS.Core
             }
         }
 
-        private string _name;
+        private string? _name;
 
         /// <summary>
         /// The player's name.
         /// </summary>
-        public string Name
+        public string? Name
         {
             get => _name;
             internal set
@@ -344,12 +345,12 @@ namespace SS.Core
             }
         }
 
-        private string _squad;
+        private string? _squad;
 
         /// <summary>
         /// The player's squad.
         /// </summary>
-        public string Squad
+        public string? Squad
         {
             get => _squad;
             internal set
@@ -485,17 +486,17 @@ namespace SS.Core
         /// <summary>
         /// IP address the player is connecting from.
         /// </summary>
-        public IPAddress IPAddress { get; internal set; }
+        public IPAddress? IPAddress { get; internal set; }
 
         /// <summary>
         /// If the player has connected through a port that sets a default arena, that will be stored here.
         /// </summary>
-        public string ConnectAs { get; internal set; }
+        public string? ConnectAs { get; internal set; }
 
         /// <summary>
         /// A text representation of the client being used.
         /// </summary>
-        public string ClientName { get; internal set; }
+        public string? ClientName { get; internal set; }
 
         /// <summary>
         /// The server recorded time of the player's last death.
@@ -714,9 +715,9 @@ namespace SS.Core
         /// <param name="key">The key of the data to get, from <see cref="IPlayerData.AllocatePlayerData{T}"/>.</param>
         /// <param name="data">The data if found and was of type <typeparamref name="T"/>. Otherwise, <see langword="null"/>.</param>
         /// <returns>True if the data was found and was of type <typeparamref name="T"/>. Otherwise, false.</returns>
-        public bool TryGetExtraData<T>(PlayerDataKey<T> key, out T data) where T : class
+        public bool TryGetExtraData<T>(PlayerDataKey<T> key, [MaybeNullWhen(false)] out T data) where T : class
         {
-            if (_extraData.TryGetValue(key.Id, out object obj)
+            if (_extraData.TryGetValue(key.Id, out object? obj)
                 && obj is T tData)
             {
                 data = tData;
@@ -746,7 +747,7 @@ namespace SS.Core
         /// <param name="keyId">Id of the data to remove.</param>
         /// <param name="data">The data removed, or the default value if nothing was removed.</param>
         /// <returns><see langword="true"/> if the data was removed; otherwise <see langword="false"/>.</returns>
-        internal bool TryRemoveExtraData(int keyId, out object data)
+        internal bool TryRemoveExtraData(int keyId, [MaybeNullWhen(false)] out object data)
         {
             return _extraData.TryRemove(keyId, out data);
         }

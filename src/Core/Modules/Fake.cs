@@ -9,32 +9,26 @@ namespace SS.Core.Modules
     /// Module for managing fake players.
     /// </summary>
     [CoreModuleInfo]
-    public class Fake : IModule, IFake
+    public class Fake(
+        ICommandManager commandManager,
+        ILogManager logManager,
+        IMainloop mainloop,
+        IPlayerData playerData) : IModule, IFake
     {
-        private ICommandManager _commandManager;
-        private ILogManager _logManager;
-        private IMainloop _mainloop;
-        private IPlayerData _playerData;
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
-        private IChatNetwork _chatNetwork;
-        private INetwork _network;
+        private IChatNetwork? _chatNetwork;
+        private INetwork? _network;
 
-        private InterfaceRegistrationToken<IFake> _iFakeToken;
+        private InterfaceRegistrationToken<IFake>? _iFakeToken;
 
         #region Module methods
 
-        public bool Load(
-            ComponentBroker broker,
-            ICommandManager commandManager,
-            ILogManager logManager,
-            IMainloop mainloop,
-            IPlayerData playerData)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-
             _chatNetwork = broker.GetInterface<IChatNetwork>();
             _network = broker.GetInterface<INetwork>();
 
@@ -45,7 +39,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             if (broker.UnregisterInterface(ref _iFakeToken) != 0)
                 return false;
@@ -68,12 +62,16 @@ namespace SS.Core.Modules
 
         private void Command_makefake(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            CreateFakePlayer(parameters, player.Arena, ShipType.Spec, 9999);
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            ((IFake)this).CreateFakePlayer(parameters, arena, ShipType.Spec, 9999);
         }
 
         private void Command_killfake(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (target.TryGetPlayerTarget(out Player targetPlayer))
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
                 EndFaked(targetPlayer);
             }
@@ -81,15 +79,13 @@ namespace SS.Core.Modules
 
         #endregion
 
-        public Player CreateFakePlayer(ReadOnlySpan<char> name, Arena arena, ShipType ship, short freq)
+        Player? IFake.CreateFakePlayer(ReadOnlySpan<char> name, Arena arena, ShipType ship, short freq)
         {
             name = name.Trim();
             if (name.IsEmpty)
                 return null;
 
             Player player = _playerData.NewPlayer(ClientType.Fake);
-            if (player is null)
-                return null;
 
             if (name.Length > Constants.MaxPlayerNameLength)
             {
@@ -131,7 +127,7 @@ namespace SS.Core.Modules
 
             void MainloopWork_EndFake(Player player)
             {
-                Arena arena = player.Arena;
+                Arena? arena = player.Arena;
 
                 if (arena is not null)
                 {

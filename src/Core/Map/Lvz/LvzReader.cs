@@ -37,8 +37,7 @@ namespace SS.Core.Map.Lvz
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(path));
 
-            if (objectDataReadCallback == null)
-                throw new ArgumentNullException(nameof(objectDataReadCallback));
+            ArgumentNullException.ThrowIfNull(objectDataReadCallback);
 
             long length = new FileInfo(path).Length;
             if (length <= FileHeader.Length)

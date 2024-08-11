@@ -1,4 +1,5 @@
 ﻿using SS.Core;
+using SS.Core.ComponentInterfaces;
 
 namespace SS.Matchmaking.Callbacks
 {
@@ -37,17 +38,17 @@ namespace SS.Matchmaking.Callbacks
     {
         public delegate void PlayerGroupPendingRemovedDelegate(IPlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason);
 
-        public static void Register(ComponentBroker broker, PlayerGroupPendingRemovedDelegate handler)
+        public static void Register(IComponentBroker broker, PlayerGroupPendingRemovedDelegate handler)
         {
             broker?.RegisterCallback(handler);
         }
 
-        public static void Unregister(ComponentBroker broker, PlayerGroupPendingRemovedDelegate handler)
+        public static void Unregister(IComponentBroker broker, PlayerGroupPendingRemovedDelegate handler)
         {
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(ComponentBroker broker, IPlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason)
+        public static void Fire(IComponentBroker broker, IPlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason)
         {
             broker?.GetCallback<PlayerGroupPendingRemovedDelegate>()?.Invoke(group, player, reason);
 

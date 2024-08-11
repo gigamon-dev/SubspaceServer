@@ -188,7 +188,7 @@ namespace SS.Matchmaking.Interfaces
             Group = group ?? throw new ArgumentNullException(nameof(group));
         }
 
-        public Player Player { get; }
-        public IPlayerGroup Group { get; }
+        public Player? Player { get; }
+        public IPlayerGroup? Group { get; }
     }
 }

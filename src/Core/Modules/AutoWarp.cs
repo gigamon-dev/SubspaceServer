@@ -10,29 +10,24 @@ namespace SS.Core.Modules
     /// Players can be warped to a new (x,y) coordinate on the map, and even be sent to another arena.
     /// </summary>
     [CoreModuleInfo]
-    public class AutoWarp : IModule
+    public class AutoWarp(
+        IArenaManager arenaManager,
+        IGame game,
+        IPrng prng) : IModule
     {
-        private IArenaManager _arenaManager;
-        private IGame _game;
-        private IPrng _prng;
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+        private readonly IGame _game = game ?? throw new ArgumentNullException(nameof(game));
+        private readonly IPrng _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
         #region IModule Members
 
-        public bool Load(
-            ComponentBroker broker,
-            IArenaManager arenaManager,
-            IGame game,
-            IPrng prng)
+        bool IModule.Load(IComponentBroker broker)
         {
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _game = game ?? throw new ArgumentNullException(nameof(game));
-            _prng = prng ?? throw new ArgumentNullException(nameof(prng));
-
             MapRegionCallback.Register(broker, Callback_MapRegion);
             return true;
         }
 
-        bool IModule.Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             MapRegionCallback.Unregister(broker, Callback_MapRegion);
             return true;

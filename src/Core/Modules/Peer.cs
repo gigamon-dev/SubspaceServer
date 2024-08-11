@@ -38,19 +38,19 @@ namespace SS.Core.Modules
     {
         private static readonly TimeSpan StaleArenaTimeout = TimeSpan.FromSeconds(30);
 
-        private IArenaManager _arenaManager;
-        private IChat _chat;
-        private IConfigManager _configManager;
-        private ILogManager _logManager;
-        private IMainloopTimer _mainloopTimer;
-        private INetwork _network;
-        private IRawNetwork _rawNetwork;
-        private IObjectPoolManager _objectPoolManager;
-        private IPlayerData _playerData;
-        private IRedirect _redirect;
+        private readonly IArenaManager _arenaManager;
+        private readonly IChat _chat;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IMainloopTimer _mainloopTimer;
+        private readonly INetwork _network;
+        private readonly IRawNetwork _rawNetwork;
+        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IPlayerData _playerData;
+        private readonly IRedirect _redirect;
 
         private ArenaDataKey<ArenaData> _arenaDataKey;
-        private InterfaceRegistrationToken<IPeer> _iPeerToken;
+        private InterfaceRegistrationToken<IPeer>? _iPeerToken;
         private uint _nextArenaId = 1;
         private readonly ReaderWriterLockSlim _rwLock = new();
 
@@ -68,15 +68,7 @@ namespace SS.Core.Modules
         private readonly DefaultObjectPool<PeerArena> _peerArenaPool = new(new DefaultPooledObjectPolicy<PeerArena>(), Constants.TargetArenaCount);
         private readonly DefaultObjectPool<PeerArenaName> _peerArenaNamePool = new(new DefaultPooledObjectPolicy<PeerArenaName>(), Constants.TargetArenaCount);
 
-        public Peer()
-        {
-            _readOnlyPeers = _peers.AsReadOnly();
-        }
-
-        #region Module members
-
-        public bool Load(
-            ComponentBroker broker,
+        public Peer(
             IArenaManager arenaManager,
             IChat chat,
             IConfigManager configManager,
@@ -99,6 +91,13 @@ namespace SS.Core.Modules
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _redirect = redirect ?? throw new ArgumentNullException(nameof(redirect));
 
+            _readOnlyPeers = _peers.AsReadOnly();
+        }
+
+        #region Module members
+
+        bool IModule.Load(IComponentBroker broker)
+        {
             _arenaDataKey = _arenaManager.AllocateArenaData<ArenaData>();
             _rawNetwork.RegisterPeerPacketHandler(ProcessPeerPacket);
             _iPeerToken = broker.RegisterInterface<IPeer>(this);
@@ -108,7 +107,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             broker.UnregisterInterface(ref _iPeerToken);
             _rawNetwork.UnregisterPeerPacketHandler(ProcessPeerPacket);
@@ -172,7 +171,7 @@ namespace SS.Core.Modules
             _rwLock.EnterReadLock();
             try
             {
-                PeerArena bestPeerArena = null;
+                PeerArena? bestPeerArena = null;
 
                 foreach (PeerZone peerZone in _peers)
                 {
@@ -193,7 +192,7 @@ namespace SS.Core.Modules
                                 name.Append(playerNameSpan);
 
                                 arena.Clear();
-                                arena.Append(peerArena.Name.LocalName);
+                                arena.Append(peerArena.Name!.LocalName);
 
                                 score = -1;
                                 return true;
@@ -221,7 +220,7 @@ namespace SS.Core.Modules
                 if (bestPeerArena is not null)
                 {
                     arena.Clear();
-                    arena.Append(bestPeerArena.Name.LocalName);
+                    arena.Append(bestPeerArena.Name!.LocalName);
                 }
             }
             finally
@@ -242,7 +241,7 @@ namespace SS.Core.Modules
                 {
                     if (HasArenaConfigured(peerZone, arenaName))
                     {
-                        PeerArenaName name = FindPeerArenaRename(peerZone, arenaName, false);
+                        PeerArenaName? name = FindPeerArenaRename(peerZone, arenaName, false);
                         ReadOnlySpan<char> targetArena = name is not null ? name.RemoteName : arenaName;
                         if (targetArena.Equals("0", StringComparison.OrdinalIgnoreCase))
                         {
@@ -332,7 +331,7 @@ namespace SS.Core.Modules
             _rwLock.ExitReadLock();
         }
 
-        IPeerZone IPeer.FindZone(IPEndPoint endpoint)
+        IPeerZone? IPeer.FindZone(IPEndPoint endpoint)
         {
             if (!_rwLock.IsReadLockHeld)
                 throw new InvalidOperationException($"{nameof(IPeer)}.{nameof(IPeer.Lock)} was not called.");
@@ -341,7 +340,7 @@ namespace SS.Core.Modules
             return FindZone(address);
         }
 
-        IPeerZone IPeer.FindZone(SocketAddress address)
+        IPeerZone? IPeer.FindZone(SocketAddress address)
         {
             if (!_rwLock.IsReadLockHeld)
                 throw new InvalidOperationException($"{nameof(IPeer)}.{nameof(IPeer.Lock)} was not called.");
@@ -349,7 +348,7 @@ namespace SS.Core.Modules
             return FindZone(address);
         }
 
-        IPeerArena IPeer.FindArena(ReadOnlySpan<char> arenaName, bool remote)
+        IPeerArena? IPeer.FindArena(ReadOnlySpan<char> arenaName, bool remote)
         {
             if (!_rwLock.IsReadLockHeld)
                 throw new InvalidOperationException($"{nameof(IPeer)}.{nameof(IPeer.Lock)} was not called.");
@@ -358,7 +357,7 @@ namespace SS.Core.Modules
             {
                 foreach (PeerArena peerArena in peerZone.Arenas)
                 {
-                    if (arenaName.Equals(remote ? peerArena.Name.RemoteName : peerArena.Name.LocalName, StringComparison.OrdinalIgnoreCase))
+                    if (arenaName.Equals(remote ? peerArena.Name!.RemoteName : peerArena.Name!.LocalName, StringComparison.OrdinalIgnoreCase))
                     {
                         return peerArena;
                     }
@@ -392,7 +391,7 @@ namespace SS.Core.Modules
 
         private bool MainloopTimer_PeriodicUpdate()
         {
-            ListenData listenData = null;
+            ListenData? listenData = null;
             if (_network.Listening.Count > 0)
             {
                 listenData = _network.Listening[0];
@@ -441,7 +440,7 @@ namespace SS.Core.Modules
                 {
                     foreach (Arena arena in _arenaManager.Arenas)
                     {
-                        if (!arena.TryGetExtraData(_arenaDataKey, out ArenaData arenaData))
+                        if (!arena.TryGetExtraData(_arenaDataKey, out ArenaData? arenaData))
                             continue;
 
                         if (arenaData.Id == 0)
@@ -511,7 +510,7 @@ namespace SS.Core.Modules
                         AppendArenaIdToBuffer(ref peerZone.PlayerListBuffer, ref pos, otherPeerArena.LocalId);
 
                         // Arena name
-                        AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, otherPeerArena.Name.LocalName);
+                        AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, otherPeerArena.Name!.LocalName);
                         AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, "\0");
 
                         // Players
@@ -519,7 +518,7 @@ namespace SS.Core.Modules
                         {
                             // Dummy player
                             AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, ":");
-                            AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, otherPeerArena.Name.LocalName);
+                            AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, otherPeerArena.Name!.LocalName);
                             AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, "\0");
                         }
                         else
@@ -606,7 +605,7 @@ namespace SS.Core.Modules
                             try
                             {
                                 peerZone.Arenas.RemoveAt(i);
-                                peerZone.ArenaLookup.Remove(peerArena.Name.RemoteName, out _);
+                                peerZone.ArenaLookup.Remove(peerArena.Name!.RemoteName, out _);
                             }
                             finally
                             {
@@ -642,7 +641,7 @@ namespace SS.Core.Modules
 
             try
             {
-                PeerZone peerZone = FindZone(remoteAddress);
+                PeerZone? peerZone = FindZone(remoteAddress);
                 if (peerZone is null)
                 {
                     _logManager.LogM(LogLevel.Drivel, nameof(Peer), $"Received something that looks like peer data from {remoteAddress}, but this address has not been configured.");
@@ -765,7 +764,7 @@ namespace SS.Core.Modules
 
                     // If this arena as a rename target (the bar in foo=bar), ignore it.
                     // Except if the rename is just a difference in the character case (foo=FOO).
-                    PeerArenaName rename = FindPeerArenaRename(peerZone, remoteName, false);
+                    PeerArenaName? rename = FindPeerArenaRename(peerZone, remoteName, false);
                     if (rename is not null && !rename.IsCaseChange)
                     {
                         while (payload.Length > 0)
@@ -791,13 +790,13 @@ namespace SS.Core.Modules
                         continue;
                     }
 
-                    if (!peerZone.ArenaLookup.TryGetValue(remoteName, out PeerArena peerArena))
+                    if (!peerZone.ArenaLookup.TryGetValue(remoteName, out PeerArena? peerArena))
                     {
                         peerArena = _peerArenaPool.Get();
                         peerArena.LocalId = _nextArenaId++;
                         peerArena.Name = _peerArenaNamePool.Get();
 
-                        PeerArenaName name = FindPeerArenaRename(peerZone, remoteName, true);
+                        PeerArenaName? name = FindPeerArenaRename(peerZone, remoteName, true);
                         if (name is not null)
                         {
                             peerArena.Name.SetNames(name.RemoteName, name.LocalName);
@@ -812,8 +811,8 @@ namespace SS.Core.Modules
                     }
 
                     peerArena.Id = id;
-                    peerArena.IsConfigured = HasArenaConfigured(peerZone, peerArena.Name.LocalName);
-                    peerArena.IsRelay = HasArenaConfiguredAsRelay(peerZone, peerArena.Name.LocalName);
+                    peerArena.IsConfigured = HasArenaConfigured(peerZone, peerArena.Name!.LocalName);
+                    peerArena.IsRelay = HasArenaConfiguredAsRelay(peerZone, peerArena.Name!.LocalName);
                     peerArena.LastUpdate = now;
                     peerArena.Players.Clear();
 
@@ -975,11 +974,11 @@ namespace SS.Core.Modules
 
                     ReadOnlySpan<char> peerSection = sectionSpan[..charsWritten];
 
-                    string addressStr = _configManager.GetStr(_configManager.Global, peerSection, "Address");
+                    string? addressStr = _configManager.GetStr(_configManager.Global, peerSection, "Address");
                     if (string.IsNullOrWhiteSpace(addressStr))
                         break;
 
-                    if (!IPAddress.TryParse(addressStr, out IPAddress address))
+                    if (!IPAddress.TryParse(addressStr, out IPAddress? address))
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(Peer), $"Invalid valid for {peerSection}:Address.");
                         continue;
@@ -990,17 +989,16 @@ namespace SS.Core.Modules
                         break;
 
                     uint hash = 0xDEADBEEF;
-                    string password = _configManager.GetStr(_configManager.Global, peerSection, "Password");
+                    string? password = _configManager.GetStr(_configManager.Global, peerSection, "Password");
                     if (!string.IsNullOrWhiteSpace(password))
                     {
                         hash = GetHash(password);
                     }
 
                     PeerZone peerZone = new(
-                        new PeerZoneConfig()
+                        new PeerZoneConfig(new IPEndPoint(address, port))
                         {
                             Id = i,
-                            IPEndPoint = new IPEndPoint(address, port),
                             PasswordHash = hash,
                             SendOnly = _configManager.GetInt(_configManager.Global, peerSection, "SendOnly", 0) != 0,
                             SendPlayerList = _configManager.GetInt(_configManager.Global, peerSection, "SendPlayerList", 1) != 0,
@@ -1011,7 +1009,7 @@ namespace SS.Core.Modules
                             ProvideDefaultArenas = _configManager.GetInt(_configManager.Global, peerSection, "ProvidesDefaultArenas", 0) != 0,
                         });
 
-                    string arenas = _configManager.GetStr(_configManager.Global, peerSection, "Arenas");
+                    string? arenas = _configManager.GetStr(_configManager.Global, peerSection, "Arenas");
                     if (!string.IsNullOrWhiteSpace(arenas))
                     {
                         ReadOnlySpan<char> remaining = arenas;
@@ -1022,7 +1020,7 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    string sendDummyArenas = _configManager.GetStr(_configManager.Global, peerSection, "SendDummyArenas");
+                    string? sendDummyArenas = _configManager.GetStr(_configManager.Global, peerSection, "SendDummyArenas");
                     if (!string.IsNullOrWhiteSpace(sendDummyArenas))
                     {
                         ReadOnlySpan<char> remaining = sendDummyArenas;
@@ -1033,7 +1031,7 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    string relayArenas = _configManager.GetStr(_configManager.Global, peerSection, "RelayArenas");
+                    string? relayArenas = _configManager.GetStr(_configManager.Global, peerSection, "RelayArenas");
                     if (!string.IsNullOrWhiteSpace(relayArenas))
                     {
                         ReadOnlySpan<char> remaining = relayArenas;
@@ -1044,7 +1042,7 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    string renameArenas = _configManager.GetStr(_configManager.Global, peerSection, "RenameArenas");
+                    string? renameArenas = _configManager.GetStr(_configManager.Global, peerSection, "RenameArenas");
                     if (!string.IsNullOrWhiteSpace(renameArenas))
                     {
                         ReadOnlySpan<char> remaining = renameArenas;
@@ -1085,7 +1083,7 @@ namespace SS.Core.Modules
             static uint GetHash(string password)
             {
                 int numBytes = StringUtils.DefaultEncoding.GetByteCount(password);
-                byte[] byteArray = null;
+                byte[]? byteArray = null;
                 Span<byte> byteSpan = numBytes <= 1024
                     ? stackalloc byte[numBytes]
                     : (byteArray = ArrayPool<byte>.Shared.Rent(StringUtils.DefaultEncoding.GetByteCount(password)));
@@ -1148,7 +1146,7 @@ namespace SS.Core.Modules
             _peerArenaPool.Return(peerArena);
         }
 
-        private PeerArenaName FindPeerArenaRename(PeerZone peerZone, ReadOnlySpan<char> remoteName, bool remote)
+        private PeerArenaName? FindPeerArenaRename(PeerZone peerZone, ReadOnlySpan<char> remoteName, bool remote)
         {
             foreach (PeerArenaName name in peerZone.Config.RenamedArenas)
             {
@@ -1216,12 +1214,12 @@ namespace SS.Core.Modules
             return peerZone.Config.RelayArenas.Contains(localName);
         }
 
-        private PeerZone FindZone(SocketAddress address)
+        private PeerZone? FindZone(SocketAddress address)
         {
             if (address is null)
                 return null;
 
-            if (_peerDictionary.TryGetValue(address, out PeerZone peerZone))
+            if (_peerDictionary.TryGetValue(address, out PeerZone? peerZone))
                 return peerZone;
             else
                 return null;
@@ -1251,7 +1249,7 @@ namespace SS.Core.Modules
             Debug.Assert(PeerPacketHeader.Length + 1 + length == packet.Length);
 
             // Primary listen data.
-            ListenData listenData = _network.Listening.Count > 0 ? _network.Listening[0] : null;
+            ListenData? listenData = _network.Listening.Count > 0 ? _network.Listening[0] : null;
             if (listenData is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(Peer), "Unable to send message. There are no listening sockets.");
@@ -1305,7 +1303,7 @@ namespace SS.Core.Modules
             public readonly Trie<PeerArena> ArenaLookup = new(false);
 
             public readonly uint[] Timestamps = new uint[256];
-            public byte[] PlayerListBuffer;
+            public byte[]? PlayerListBuffer;
 
             public PeerZone(PeerZoneConfig config)
             {
@@ -1322,22 +1320,10 @@ namespace SS.Core.Modules
             /// </summary>
             public int Id { get; init; }
 
-            private readonly IPEndPoint _ipEndPoint;
-
             /// <summary>
             /// Each peer zone is uniquely identified by its IP + port combination.
             /// </summary>
-            public IPEndPoint IPEndPoint
-            {
-                get => _ipEndPoint;
-                init
-                {
-                    _ipEndPoint = value ?? throw new ArgumentNullException(nameof(value));
-                    SocketAddress = _ipEndPoint.Serialize();
-                    _ipAddressBytes = _ipEndPoint.Address.GetAddressBytes();
-                    Port = (ushort)_ipEndPoint.Port;
-                }
-            }
+            public readonly IPEndPoint IPEndPoint;
 
             public readonly SocketAddress SocketAddress;
 
@@ -1368,6 +1354,14 @@ namespace SS.Core.Modules
             public readonly List<PeerArenaName> RenamedArenas = new();
             public readonly Trie SendDummyArenas = new(false);
             public readonly Trie RelayArenas = new(false);
+
+            public PeerZoneConfig(IPEndPoint endPoint)
+            {
+                IPEndPoint = endPoint;
+                SocketAddress = IPEndPoint.Serialize();
+                _ipAddressBytes = IPEndPoint.Address.GetAddressBytes();
+                Port = (ushort)IPEndPoint.Port;
+            }
         }
 
         private class PeerArenaName : IPeerArenaName, IResettable
@@ -1420,8 +1414,8 @@ namespace SS.Core.Modules
 
             public uint LocalId { get; set; }
 
-            public PeerArenaName Name { get; set; }
-            IPeerArenaName IPeerArena.Name => Name;
+            public PeerArenaName? Name { get; set; }
+            IPeerArenaName? IPeerArena.Name => Name;
 
             public bool IsConfigured { get; set; }
 

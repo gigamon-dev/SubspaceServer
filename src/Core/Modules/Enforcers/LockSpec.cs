@@ -1,4 +1,5 @@
 ﻿using SS.Core.ComponentAdvisors;
+using SS.Core.ComponentInterfaces;
 using System.Collections.Generic;
 using System.Text;
 
@@ -14,12 +15,12 @@ namespace SS.Core.Modules.Enforcers
 
         #region Module members
 
-        public bool Load(ComponentBroker broker)
+        bool IModule.Load(IComponentBroker broker)
         {
             return true;
         }
 
-        public bool Unload(ComponentBroker broker)
+        bool IModule.Unload(IComponentBroker broker)
         {
             return true;
         }
@@ -43,7 +44,7 @@ namespace SS.Core.Modules.Enforcers
 
         #region IFreqManagerEnforcerAdvisor
 
-        ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder errorMessage)
+        ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder? errorMessage)
         {
             errorMessage?.Append("This arena does not allow players to leave spectator mode.");
             return ShipMask.None; // only allow spec

@@ -28,7 +28,7 @@ namespace SS.Core
                 virtual server identifier for the rest of the server. The standard arena placement module will use this as the name of
                 a default arena to put clients who connect through this port in.
                 """)]
-        public string ConnectAs { get; init; }
+        public string? ConnectAs { get; init; }
 
         /// <summary>
         /// Whether VIE clients are allowed to connect

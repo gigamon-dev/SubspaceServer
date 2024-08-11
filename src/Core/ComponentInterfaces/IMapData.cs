@@ -32,7 +32,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="mapname">null if you're looking for an lvl, or the name of an lvz file.</param>
         /// <returns>The path if the lvl or lvz file could be found; otherwise, null.</returns>
-        string GetMapFilename(Arena arena, string mapname);
+        string? GetMapFilename(Arena arena, string? mapname);
 
         /// <summary>
         /// Gets unprocessed chunk data of a specified type for a the map in an arena.
@@ -55,7 +55,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="key">The key of the attribute to retrieve.</param>
         /// <returns>The value, or NULL if not present.</returns>
-        string GetAttribute(Arena arena, string key);
+        string? GetAttribute(Arena arena, string key);
 
         /// <summary>
         /// Gets the number of tiles on the map in an arena.
@@ -131,7 +131,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="name">Name of the region to search for.</param>
         /// <returns>The region if found; otherwise, null.</returns>
-        MapRegion FindRegionByName(Arena arena, string name);
+        MapRegion? FindRegionByName(Arena arena, string name);
 
         /// <summary>
         /// To get the regions that are at a specific coordinate.

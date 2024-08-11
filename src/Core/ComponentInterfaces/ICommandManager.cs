@@ -21,7 +21,7 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Use this to specify the command the help information is for (for commands that share a common handler method with multiple <see cref="CommandHelpAttribute"/>s).
         /// </summary>
-        public string Command { get; set; }
+        public string? Command { get; set; }
 
         /// <summary>
         /// Use this to specify the target or targets E.g., <code>CommandTarget.Player | CommandTarget.Team</code>
@@ -31,12 +31,12 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Use this to describe the arguments the command accepts.
         /// </summary>
-        public string Args { get; set; }
+        public string? Args { get; set; }
 
         /// <summary>
         /// Use this to describe what the command does and how the <see cref="Args"/> affect it.
         /// </summary>
-        public string Description { get; set; }
+        public string? Description { get; set; }
     }
 
     /// <summary>
@@ -110,7 +110,7 @@ namespace SS.Core.ComponentInterfaces
         /// Help text for this command, or <see langword="null"/> for none.
         /// If <see langword="null"/>, it will look for a <see cref="CommandHelpAttribute"/> on the <paramref name="handler"/>.
         /// </param>
-        void AddCommand(string commandName, CommandDelegate handler, Arena arena = null, string helpText = null);
+        void AddCommand(string commandName, CommandDelegate handler, Arena? arena = null, string? helpText = null);
 
         /// <summary>
         /// Registers a command handler.
@@ -123,7 +123,7 @@ namespace SS.Core.ComponentInterfaces
         /// Help text for this command, or <see langword="null"/> for none.
         /// If <see langword="null"/>, it will look for a <see cref="CommandHelpAttribute"/> on the <paramref name="handler"/>.
         /// </param>
-        void AddCommand(string commandName, CommandWithSoundDelegate handler, Arena arena = null, string helpText = null);
+        void AddCommand(string commandName, CommandWithSoundDelegate handler, Arena? arena = null, string? helpText = null);
 
         /// <summary>
         /// Unregisters a command handler.
@@ -132,7 +132,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="commandName">The name of the command to unregister.</param>
         /// <param name="handler">The command handler.</param>
         /// <param name="arena">Arena to unregister the command for. <see langword="null"/> for all arenas.</param>
-        void RemoveCommand(string commandName, CommandDelegate handler, Arena arena = null);
+        void RemoveCommand(string commandName, CommandDelegate handler, Arena? arena = null);
 
         /// <summary>
         /// Unregisters a command handler.
@@ -141,7 +141,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="commandName">The name of the command to unregister.</param>
         /// <param name="handler">The command handler.</param>
         /// <param name="arena">Arena to unregister the command for. <see langword="null"/> for all arenas.</param>
-        void RemoveCommand(string commandName, CommandWithSoundDelegate handler, Arena arena = null);
+        void RemoveCommand(string commandName, CommandWithSoundDelegate handler, Arena? arena = null);
 
         /// <summary>
         /// Event for billing modules to subscribe to for them to handle 'default' commands.
@@ -168,7 +168,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="commandName"></param>
         /// <param name="arena"></param>
         /// <returns></returns>
-        string GetHelpText(ReadOnlySpan<char> commandName, Arena arena);
+        string? GetHelpText(ReadOnlySpan<char> commandName, Arena?arena);
 
         /// <summary>
         /// Adds a command from the collection of commands that should not have its parameters be included in logs.

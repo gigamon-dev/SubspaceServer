@@ -6,8 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
-#nullable enable
-
 namespace SS.Utilities.Collections
 {
     /// <summary>
@@ -524,7 +522,7 @@ namespace SS.Utilities.Collections
             }
         }
 
-        public struct ValueEnumerator : IEnumerator<TValue?>
+        public struct ValueEnumerator : IEnumerator<TValue>
         {
             private Enumerator _enumerator;
 
@@ -535,7 +533,7 @@ namespace SS.Utilities.Collections
 
             public ValueEnumerator GetEnumerator() => this;
 
-            public TValue? Current => _enumerator.Current.Value;
+            public TValue Current => _enumerator.Current.Value;
 
             object? IEnumerator.Current => _enumerator.Current.Value;
 
@@ -555,7 +553,7 @@ namespace SS.Utilities.Collections
             }
         }
 
-        public struct Enumerator : IEnumerator<(ReadOnlyMemory<char> Key, TValue? Value)>
+        public struct Enumerator : IEnumerator<(ReadOnlyMemory<char> Key, TValue Value)>
         {
             // next
             private TrieNode? _nextNode = null;
@@ -601,14 +599,14 @@ namespace SS.Utilities.Collections
 
             public Enumerator GetEnumerator() => this;
 
-            public (ReadOnlyMemory<char> Key, TValue? Value) Current
+            public (ReadOnlyMemory<char> Key, TValue Value) Current
             {
                 get
                 {
                     if (_current is null || _currentKeyArray is null)
                         throw new InvalidOperationException();
 
-                    return (new ReadOnlyMemory<char>(_currentKeyArray, 0, _currentKeyLength), _current.Value);
+                    return (new ReadOnlyMemory<char>(_currentKeyArray, 0, _currentKeyLength), _current.Value!);
                 }
             }
 

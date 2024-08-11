@@ -56,7 +56,7 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// The player that attempting to authenticate.
         /// </summary>
-        Player Player { get; }
+        Player? Player { get; }
 
         /// <summary>
         /// The login request containing the <see cref="LoginPacket"/> and possibly <see cref="ExtraBytes"/> after the packet.
