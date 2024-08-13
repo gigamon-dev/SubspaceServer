@@ -3,6 +3,8 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities.Collections;
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -29,7 +31,7 @@ namespace SS.Core.Modules
         IPlayerData playerData,
         IArenaManager arenaManager,
         ILogManager logManager,
-        IConfigManager configManager) : IModule, ICapabilityManager, IGroupManager
+        IConfigManager configManager) : IAsyncModule, ICapabilityManager, IGroupManager
     {
         private readonly IComponentBroker _broker = broker;
         private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
@@ -56,21 +58,21 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _pdkey = _playerData.AllocatePlayerData(_playerDataPool);
 
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
             NewPlayerCallback.Register(_broker, Callback_NewPlayer);
 
-            _groupDefConfHandle = _configManager.OpenConfigFile(null, "groupdef.conf");
+            _groupDefConfHandle = await _configManager.OpenConfigFile(null, "groupdef.conf").ConfigureAwait(false);
             if (_groupDefConfHandle is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(CapabilityManager), "Error opening groupdef.conf");
                 return false;
             }
 
-            _staffConfHandle = _configManager.OpenConfigFile(null, "staff.conf");
+            _staffConfHandle = await _configManager.OpenConfigFile(null, "staff.conf").ConfigureAwait(false);
             if (_staffConfHandle is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(CapabilityManager), "Error opening staff.conf");
@@ -83,13 +85,13 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iCapabilityManagerToken) != 0)
-                return false;
+                return Task.FromResult(false);
 
             if (broker.UnregisterInterface(ref _iGroupManagerToken) != 0)
-                return false;
+                return Task.FromResult(false);
 
             if (_groupDefConfHandle is not null)
             {
@@ -108,7 +110,7 @@ namespace SS.Core.Modules
 
             _playerData.FreePlayerData(ref _pdkey);
 
-            return true;
+            return Task.FromResult(true);
         }
 
         #endregion

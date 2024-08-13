@@ -114,14 +114,14 @@ namespace SS.Core
             ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
             ArgumentNullException.ThrowIfNull(arena);
 
-            await _moduleSemaphore.WaitAsync();
+            await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
                 Type? type = Type.GetType(moduleTypeName);
                 if (type is not null)
                 {
-                    return await ProcessAttachModule(type, arena);
+                    return await ProcessAttachModule(type, arena).ConfigureAwait(false);
                 }
 
                 Type[] types;
@@ -136,7 +136,7 @@ namespace SS.Core
 
                 foreach (Type t in types)
                 {
-                    if (await ProcessAttachModule(t, arena))
+                    if (await ProcessAttachModule(t, arena).ConfigureAwait(false))
                         success = true;
                     else
                         failure = true;
@@ -159,11 +159,11 @@ namespace SS.Core
             ArgumentNullException.ThrowIfNull(type);
             ArgumentNullException.ThrowIfNull(arena);
 
-            await _moduleSemaphore.WaitAsync();
+            await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
-                return await ProcessAttachModule(type, arena);
+                return await ProcessAttachModule(type, arena).ConfigureAwait(false);
             }
             finally
             {
@@ -224,7 +224,7 @@ namespace SS.Core
             }
             else if (moduleData.Module is IAsyncArenaAttachableModule asyncArenaAttachableModule)
             {
-                if (!await asyncArenaAttachableModule.AttachModuleAsync(arena, CancellationToken.None))
+                if (!await asyncArenaAttachableModule.AttachModuleAsync(arena, CancellationToken.None).ConfigureAwait(false))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to attach.");
                     return false;
@@ -249,14 +249,14 @@ namespace SS.Core
             ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
             ArgumentNullException.ThrowIfNull(arena);
 
-            await _moduleSemaphore.WaitAsync();
+            await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
                 Type? type = Type.GetType(moduleTypeName);
                 if (type is not null)
                 {
-                    return await ProcessDetachModule(type, arena);
+                    return await ProcessDetachModule(type, arena).ConfigureAwait(false);
                 }
 
                 Type[] types;
@@ -271,7 +271,7 @@ namespace SS.Core
 
                 foreach (Type t in types)
                 {
-                    if (await ProcessDetachModule(t, arena))
+                    if (await ProcessDetachModule(t, arena).ConfigureAwait(false))
                         success = true;
                     else
                         failure = true;
@@ -294,11 +294,11 @@ namespace SS.Core
             ArgumentNullException.ThrowIfNull(type);
             ArgumentNullException.ThrowIfNull(arena);
 
-            await _moduleSemaphore.WaitAsync();
+            await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
-                return await ProcessDetachModule(type, arena);
+                return await ProcessDetachModule(type, arena).ConfigureAwait(false);
             }
             finally
             {
@@ -352,7 +352,7 @@ namespace SS.Core
             }
             else if (moduleData.Module is IAsyncArenaAttachableModule asyncArenaAttachableModule)
             {
-                if (!await asyncArenaAttachableModule.DetachModuleAsync(arena, CancellationToken.None))
+                if (!await asyncArenaAttachableModule.DetachModuleAsync(arena, CancellationToken.None).ConfigureAwait(false))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to detach.");
                     return false;
@@ -378,7 +378,7 @@ namespace SS.Core
 
             bool ret = true;
 
-            await _moduleSemaphore.WaitAsync();
+            await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
@@ -401,7 +401,7 @@ namespace SS.Core
                     if (type is null)
                         break;
 
-                    if (!await ProcessDetachModule(type, arena))
+                    if (!await ProcessDetachModule(type, arena).ConfigureAwait(false))
                         ret = false;
                 }
             }
@@ -417,7 +417,7 @@ namespace SS.Core
 
         #region Load Module
 
-        public async Task<bool> LoadModuleAsync(string moduleTypeName) => await LoadModuleAsync(moduleTypeName, null);
+        public async Task<bool> LoadModuleAsync(string moduleTypeName) => await LoadModuleAsync(moduleTypeName, null).ConfigureAwait(false);
 
         public async Task<bool> LoadModuleAsync(string moduleTypeName, string? path)
         {
@@ -447,41 +447,41 @@ namespace SS.Core
                 }
             }
 
-            return await LoadModule(type, null);
+            return await LoadModule(type, null).ConfigureAwait(false);
         }
 
         public async Task<bool> LoadModuleAsync<TModule>() where TModule : class
         {
             Type type = typeof(TModule);
-            return await LoadModule(type, null);
+            return await LoadModule(type, null).ConfigureAwait(false);
         }
 
         public async Task<bool> LoadModuleAsync(Type moduleType)
         {
             ArgumentNullException.ThrowIfNull(moduleType);
 
-            return await LoadModule(moduleType, null);
+            return await LoadModule(moduleType, null).ConfigureAwait(false);
         }
 
         public async Task<bool> LoadModuleAsync(IModule module)
         {
             ArgumentNullException.ThrowIfNull(module);
 
-            return await LoadModule(module.GetType(), module);
+            return await LoadModule(module.GetType(), module).ConfigureAwait(false);
         }
 
         public async Task<bool> LoadModuleAsync(IAsyncModule module)
         {
             ArgumentNullException.ThrowIfNull(module);
 
-            return await LoadModule(module.GetType(), module);
+            return await LoadModule(module.GetType(), module).ConfigureAwait(false);
         }
 
         public async Task<bool> LoadModuleAsync<TModule>(TModule module) where TModule : class
         {
             ArgumentNullException.ThrowIfNull(module);
 
-            return await LoadModule(typeof(TModule), module);
+            return await LoadModule(typeof(TModule), module).ConfigureAwait(false);
         }
 
         private async Task<bool> LoadModule(Type moduleType, object? instance)
@@ -493,7 +493,7 @@ namespace SS.Core
             if (!IsModule(moduleType))
                 return false;
 
-            await _moduleSemaphore.WaitAsync();
+            await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
@@ -527,7 +527,7 @@ namespace SS.Core
                 {
                     if (moduleData.Module is IAsyncModule asyncModule)
                     {
-                        success = await asyncModule.LoadAsync(this, CancellationToken.None);
+                        success = await asyncModule.LoadAsync(this, CancellationToken.None).ConfigureAwait(false);
                     }
                     else if (moduleData.Module is IModule module)
                     {
@@ -601,7 +601,7 @@ namespace SS.Core
                 {
                     // The startup sequence post load stage has already run.
                     // After that, any module that gets loaded should also immediately get post loaded too.
-                    await PostLoad(moduleData);
+                    await PostLoad(moduleData).ConfigureAwait(false);
                 }
 
                 return true;
@@ -746,11 +746,11 @@ namespace SS.Core
             Type? type = Type.GetType(moduleTypeName);
             if (type is not null)
             {
-                bool success = await UnloadModuleAsync(type);
+                bool success = await UnloadModuleAsync(type).ConfigureAwait(false);
                 return success ? 1 : 0;
             }
 
-            return await UnloadPluginModule(moduleTypeName);
+            return await UnloadPluginModule(moduleTypeName).ConfigureAwait(false);
         }
 
         private async Task<int> UnloadPluginModule(string moduleTypeName)
@@ -766,7 +766,7 @@ namespace SS.Core
 
             foreach (Type type in types)
             {
-                if (await UnloadModuleAsync(type))
+                if (await UnloadModuleAsync(type).ConfigureAwait(false))
                     count++;
             }
 
@@ -777,11 +777,11 @@ namespace SS.Core
         {
             ArgumentNullException.ThrowIfNull(type);
 
-            await _moduleSemaphore.WaitAsync();
+            await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
-                return await ProcessUnloadModule(type);
+                return await ProcessUnloadModule(type).ConfigureAwait(false);
             }
             finally
             {
@@ -834,7 +834,7 @@ namespace SS.Core
 
                         foreach (Arena arena in arenas)
                         {
-                            await ProcessDetachModule(moduleData.ModuleType, arena);
+                            await ProcessDetachModule(moduleData.ModuleType, arena).ConfigureAwait(false);
                         }
                     }
                     finally
@@ -856,7 +856,7 @@ namespace SS.Core
             }
 
             // PreUnload
-            if (moduleData.IsPostLoaded && !await PreUnload(moduleData))
+            if (moduleData.IsPostLoaded && !await PreUnload(moduleData).ConfigureAwait(false))
             {
                 WriteLogM(LogLevel.Error, $"Can't unload module [{moduleData.ModuleType.FullName}] because it failed to pre-unload.");
                 return false;
@@ -869,7 +869,7 @@ namespace SS.Core
             {
                 if (moduleData.Module is IAsyncModule asyncModule)
                 {
-                    success = await asyncModule.UnloadAsync(this, CancellationToken.None);
+                    success = await asyncModule.UnloadAsync(this, CancellationToken.None).ConfigureAwait(false);
                 }
                 else if (moduleData.Module is IModule module)
                 {
@@ -899,7 +899,7 @@ namespace SS.Core
             }
             else if (moduleData.Module is IAsyncDisposable asyncDisposable)
             {
-                await asyncDisposable.DisposeAsync();
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
             }
 
             ReleaseDependencies(moduleData);
@@ -957,7 +957,7 @@ namespace SS.Core
 
         public async Task UnloadAllModulesAsync()
         {
-            await _moduleSemaphore.WaitAsync();
+            await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
@@ -982,7 +982,7 @@ namespace SS.Core
                     if (type is null)
                         return;
 
-                    await ProcessUnloadModule(type);
+                    await ProcessUnloadModule(type).ConfigureAwait(false);
                 }
             }
             finally
@@ -1065,7 +1065,7 @@ namespace SS.Core
         /// </summary>
         public async Task DoPostLoadStage()
         {
-            await _moduleSemaphore.WaitAsync();
+            await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
@@ -1098,7 +1098,7 @@ namespace SS.Core
                     if (moduleData is null)
                         break;
 
-                    await PostLoad(moduleData);
+                    await PostLoad(moduleData).ConfigureAwait(false);
                 }
             }
             finally
@@ -1124,7 +1124,7 @@ namespace SS.Core
                     }
                     else if (moduleData.Module is IAsyncModuleLoaderAware asyncloaderAwareModule)
                     {
-                        await asyncloaderAwareModule.PostLoadAsync(this, CancellationToken.None);
+                        await asyncloaderAwareModule.PostLoadAsync(this, CancellationToken.None).ConfigureAwait(false);
                         moduleData.IsPostLoaded = true;
                         return true;
                     }
@@ -1143,7 +1143,7 @@ namespace SS.Core
         /// </summary>
         public async Task DoPreUnloadStage()
         {
-            await _moduleSemaphore.WaitAsync();
+            await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
@@ -1177,7 +1177,7 @@ namespace SS.Core
                     if (moduleData is null)
                         break;
 
-                    await PreUnload(moduleData);
+                    await PreUnload(moduleData).ConfigureAwait(false);
                 }
             }
             finally
@@ -1203,7 +1203,7 @@ namespace SS.Core
                     }
                     else if (moduleData.Module is IAsyncModuleLoaderAware asyncLoaderAwareModule)
                     {
-                        await asyncLoaderAwareModule.PreUnloadAsync(this, CancellationToken.None);
+                        await asyncLoaderAwareModule.PreUnloadAsync(this, CancellationToken.None).ConfigureAwait(false);
                         moduleData.IsPostLoaded = false;
                         return true;
                     }

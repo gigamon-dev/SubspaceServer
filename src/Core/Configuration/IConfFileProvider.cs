@@ -1,4 +1,6 @@
-﻿namespace SS.Core.Configuration
+﻿using System.Threading.Tasks;
+
+namespace SS.Core.Configuration
 {
     /// <summary>
     /// Interface for a service that provides <see cref="ConfFile"/> objects by name.
@@ -11,6 +13,6 @@
     /// </remarks>
     public interface IConfFileProvider
     {
-        public ConfFile? GetFile(string? name);
+        Task<ConfFile?> GetFile(string? name);
     }
 }

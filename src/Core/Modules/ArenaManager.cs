@@ -87,7 +87,6 @@ namespace SS.Core.Modules
         private readonly ReadOnlyTrie _readOnlyKnownArenaNames;
 
         // cached delegates
-        private readonly Action<Arena> _loadArenaConfig;
         private readonly ConfigChangedDelegate<Arena> _arenaConfChanged;
         private readonly Action<Arena> _arenaSyncDone;
 
@@ -114,7 +113,6 @@ namespace SS.Core.Modules
 
             _readOnlyKnownArenaNames = _knownArenaNames.AsReadOnly();
 
-            _loadArenaConfig = LoadArenaConfig;
             _arenaConfChanged = ArenaConfChanged;
             _arenaSyncDone = ArenaSyncDone;
         }
@@ -1090,16 +1088,21 @@ namespace SS.Core.Modules
                         case ArenaState.DoInit0:
                             if (arena.Cfg is null)
                             {
-                                if (!arenaData.IsLoadingConfig)
-                                {
-                                    // Open the arena's config file.
-                                    // Note: ASSS does it right here on the mainloop thread.
-                                    // This operation will most likely do blocking I/O (unless the file was previously opened, e.g. default arena's config).
-                                    // However, any type of blocking I/O on the mainloop thread should be avoided. Therefore, doing it on a worker thread.
-                                    arenaData.IsLoadingConfig = _mainloop.QueueThreadPoolWorkItem(_loadArenaConfig, arena);
-                                }
+                                // Open the arena's config file.
+                                // This operation will most likely do blocking I/O (unless the file was previously opened, e.g. default arena's config).
+                                arenaData.LoadConfigTask ??= _configManager.OpenConfigFile(arena.BaseName, null, _arenaConfChanged, arena);
 
-                                break;
+                                if (!arenaData.LoadConfigTask.IsCompleted)
+                                    break;
+
+                                arena.Cfg = arenaData.LoadConfigTask.Result;
+                                arenaData.LoadConfigTask = null;
+
+                                if (arena.Cfg is null)
+                                {
+                                    // TODO: handle the case where a config file couldn't be opened. This is extremely serious. It means that even the default arena config couldn't be opened.
+                                    break;
+                                }
                             }
 
                             arena.SpecFreq = (short)_configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DefaultSpecFreq);
@@ -1282,43 +1285,6 @@ namespace SS.Core.Modules
                 {
                     await _moduleManager.AttachModuleAsync(moduleToAttach, arena);
                 }
-            }
-        }
-
-        private void LoadArenaConfig(Arena arena)
-        {
-            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
-            {
-                return;
-            }
-
-            ReadLock();
-            try
-            {
-                if (!arenaData.IsLoadingConfig)
-                    return;
-            }
-            finally
-            {
-                ReadUnlock();
-            }
-
-            ConfigHandle? configHandle = _configManager.OpenConfigFile(arena.BaseName, null, _arenaConfChanged, arena);
-
-            //if (configHandle is null)
-            //{
-            //    // TODO: handle the case where a config file couldn't be opened. This is extremely serious. It means that even the default arena config couldn't be opened.
-            //}
-
-            WriteLock();
-            try
-            {
-                arena.Cfg = configHandle;
-                arenaData.IsLoadingConfig = false;
-            }
-            finally
-            {
-                WriteUnlock();
             }
         }
 
@@ -1900,10 +1866,6 @@ namespace SS.Core.Modules
 
         private class ArenaData : IResettable
         {
-            /// <summary>
-            /// Whether the arena's config file is being loaded on a worker thread.
-            /// </summary>
-            public bool IsLoadingConfig = false;
 
             /// <summary>
             /// counter for the # of holds on the arena
@@ -1920,16 +1882,17 @@ namespace SS.Core.Modules
             public int TotalCount = 0;
             public int PlayingCount = 0;
 
+            public Task<ConfigHandle?>? LoadConfigTask = null;
             public Task? AttachTask = null;
             public Task<bool>? DetachTask = null;
             bool IResettable.TryReset()
             {
-                IsLoadingConfig = false;
                 Holds = 0;
                 Resurrect = false;
                 Reap = false;
                 TotalCount = 0;
                 PlayingCount = 0;
+                LoadConfigTask = null;
                 AttachTask = null;
                 DetachTask = null;
                 return true;

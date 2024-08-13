@@ -1,6 +1,7 @@
 ﻿using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace SS.Core.Configuration
 {
@@ -234,7 +235,7 @@ namespace SS.Core.Configuration
         /// <returns>
         /// A <see cref="LineReference"/> containing info about the line that was read, or <see langword="null"/> if all lines have been read.
         /// </returns>
-        public LineReference? ReadLine()
+        public async Task<LineReference?> ReadLineAsync()
         {
             LineReference? lineReference;
             while ((lineReference = ReadNext()) != null)
@@ -274,7 +275,7 @@ namespace SS.Core.Configuration
                     else if (rawLine.LineType == ConfLineType.PreprocessorInclude)
                     {
                         RawPreprocessorInclude include = (RawPreprocessorInclude)rawLine;
-                        ConfFile? includeFile = _fileProvider.GetFile(include.FilePath);
+                        ConfFile? includeFile = await _fileProvider.GetFile(include.FilePath).ConfigureAwait(false);
                         if (includeFile != null)
                         {
                             PushFile(includeFile);

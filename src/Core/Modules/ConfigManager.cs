@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -32,7 +33,7 @@ namespace SS.Core.Modules
     public class ConfigManager(
         IComponentBroker broker,
         IMainloop mainloop,
-        IServerTimer serverTimer) : IModule, IModuleLoaderAware, IConfigManager, IConfigLogger
+        IServerTimer serverTimer) : IAsyncModule, IModuleLoaderAware, IConfigManager, IConfigLogger, IDisposable
     {
         private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
@@ -54,16 +55,16 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly Dictionary<string, DocumentInfo> _documents = new();
 
-        // Lock that synchronizes access.  Many can read at the same time.  Only one can write or modify the collections and objects within them at a given time.
-        private readonly ReaderWriterLockSlim _rwLock = new();
+        private readonly SemaphoreSlim _semaphore = new(1, 1);
+        private bool _isDisposed;
 
         private readonly DefaultObjectPool<List<DocumentInfo>> _documentInfoListPool = new(new ListPooledObjectPolicy<DocumentInfo>() { InitialCapacity = 32 });
 
         #region Module members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            _globalConfigHandle = ((IConfigManager)this).OpenConfigFile(null, null, GlobalChanged);
+            _globalConfigHandle = await ((IConfigManager)this).OpenConfigFile(null, null, GlobalChanged).ConfigureAwait(false);
             if (_globalConfigHandle is null)
             {
                 Log(LogLevel.Error, "Failed to open global.conf.");
@@ -96,12 +97,12 @@ namespace SS.Core.Modules
                 broker.ReleaseInterface(ref _logManager);
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iConfigManagerToken) != 0)
-                return false;
+                return Task.FromResult(false);
 
-            return true;
+            return Task.FromResult(true);
         }
 
         #endregion
@@ -129,7 +130,7 @@ namespace SS.Core.Modules
 
             try
             {
-                _rwLock.EnterUpgradeableReadLock();
+                _semaphore.Wait();
 
                 try
                 {
@@ -138,63 +139,54 @@ namespace SS.Core.Modules
                     // note: checking files second since it requires I/O
                     if (HasWork())
                     {
-                        _rwLock.EnterWriteLock();
-
-                        try
+                        // reload files that have been modified on disk
+                        // note: this is done first, because it affects documents
+                        // (a document that consists of a file that was reloaded will need to be reloaded afterwards)
+                        foreach (ConfFile file in _files.Values)
                         {
-                            // reload files that have been modified on disk
-                            // note: this is done first, because it affects documents
-                            // (a document that consists of a file that was reloaded will need to be reloaded afterwards)
-                            foreach (ConfFile file in _files.Values)
+                            if (file.IsReloadNeeded)
                             {
-                                if (file.IsReloadNeeded)
-                                {
-                                    Log(LogLevel.Info, $"Reloading conf file '{file.Path}' from disk.");
+                                Log(LogLevel.Info, $"Reloading conf file '{file.Path}' from disk.");
 
-                                    try
-                                    {
-                                        file.Load();
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        Log(LogLevel.Warn, $"Failed to reload conf file '{file.Path}'. {ex.Message}");
-                                    }
+                                try
+                                {
+                                    file.LoadAsync(CancellationToken.None).Wait();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Log(LogLevel.Warn, $"Failed to reload conf file '{file.Path}'. {ex.Message}");
                                 }
                             }
+                        }
 
-                            // reload each document that needs to be reloaded
-                            // note: a document may need to be reloaded if any of the files it consists of was reloaded
-                            // or a file shared by multiple documents was updated by 1 of the documents (the other documents will need reloading)
-                            foreach (DocumentInfo docInfo in _documents.Values)
+                        // reload each document that needs to be reloaded
+                        // note: a document may need to be reloaded if any of the files it consists of was reloaded
+                        // or a file shared by multiple documents was updated by 1 of the documents (the other documents will need reloading)
+                        foreach (DocumentInfo docInfo in _documents.Values)
+                        {
+                            if (docInfo.Document.IsReloadNeeded)
                             {
-                                if (docInfo.Document.IsReloadNeeded)
-                                {
-                                    Log(LogLevel.Info, $"Reloading settings for base conf '{docInfo.Path}'.");
-                                    docInfo.Document.Load();
-                                    docInfo.IsChangeNotificationPending = true;
-                                }
-
-                                if (docInfo.IsChangeNotificationPending)
-                                {
-                                    docInfo.IsChangeNotificationPending = false;
-                                    notifyList ??= _documentInfoListPool.Get();
-                                    notifyList.Add(docInfo);
-                                }
+                                Log(LogLevel.Info, $"Reloading settings for base conf '{docInfo.Path}'.");
+                                docInfo.Document.LoadAsync().Wait();
+                                docInfo.IsChangeNotificationPending = true;
                             }
 
-                            // TODO: remove documents that are no longer referenced by a handle
+                            if (docInfo.IsChangeNotificationPending)
+                            {
+                                docInfo.IsChangeNotificationPending = false;
+                                notifyList ??= _documentInfoListPool.Get();
+                                notifyList.Add(docInfo);
+                            }
+                        }
 
-                            // TODO: remove files that are no longer referenced by a document
-                        }
-                        finally
-                        {
-                            _rwLock.ExitWriteLock();
-                        }
+                        // TODO: remove documents that are no longer referenced by a handle
+
+                        // TODO: remove files that are no longer referenced by a document
                     }
                 }
                 finally
                 {
-                    _rwLock.ExitUpgradeableReadLock();
+                    _semaphore.Release();
                 }
             }
             finally
@@ -235,44 +227,35 @@ namespace SS.Core.Modules
 
         private bool ServerTimer_SaveChanges()
         {
-            _rwLock.EnterUpgradeableReadLock();
+            _semaphore.Wait();
 
             try
             {
                 if (IsAnyFileDirty())
                 {
-                    _rwLock.EnterWriteLock();
-
-                    try
+                    foreach (ConfFile file in _files.Values)
                     {
-                        foreach (ConfFile file in _files.Values)
+                        if (file.IsDirty)
                         {
-                            if (file.IsDirty)
-                            {
-                                Log(LogLevel.Info, $"Saving changes to conf file '{file.Path}'.");
+                            Log(LogLevel.Info, $"Saving changes to conf file '{file.Path}'.");
 
-                                try
-                                {
-                                    // save the file
-                                    // Note: Also updates file.LastModified so that it doesn't appear as being modified to us and get reloaded
-                                    file.Save();
-                                }
-                                catch (Exception ex)
-                                {
-                                    Log(LogLevel.Warn, $"Failed to save changes to conf file '{file.Path}'. {ex.Message}");
-                                }
+                            try
+                            {
+                                // save the file
+                                // Note: Also updates file.LastModified so that it doesn't appear as being modified to us and get reloaded
+                                file.Save();
+                            }
+                            catch (Exception ex)
+                            {
+                                Log(LogLevel.Warn, $"Failed to save changes to conf file '{file.Path}'. {ex.Message}");
                             }
                         }
-                    }
-                    finally
-                    {
-                        _rwLock.ExitWriteLock();
                     }
                 }
             }
             finally
             {
-                _rwLock.ExitUpgradeableReadLock();
+                _semaphore.Release();
             }
 
             return true;
@@ -303,37 +286,37 @@ namespace SS.Core.Modules
             }
         }
 
-        ConfigHandle? IConfigManager.OpenConfigFile(string? arena, string? name)
+        async Task<ConfigHandle?> IConfigManager.OpenConfigFile(string? arena, string? name)
         {
-            return OpenConfigFile(
+            return await OpenConfigFileAsync(
                 arena,
                 name,
                 (documentInfo) => documentInfo.CreateHandle(
                     arena is not null ? ConfigScope.Arena : ConfigScope.Global,
-                    name));
+                    name)).ConfigureAwait(false);
         }
 
-        ConfigHandle? IConfigManager.OpenConfigFile(string? arena, string? name, ConfigChangedDelegate changedCallback)
+        async Task<ConfigHandle?> IConfigManager.OpenConfigFile(string? arena, string? name, ConfigChangedDelegate changedCallback)
         {
-            return OpenConfigFile(
+            return await OpenConfigFileAsync(
                 arena,
                 name,
                 (documentInfo) => documentInfo.CreateHandle(
                     arena is not null ? ConfigScope.Arena : ConfigScope.Global,
                     name,
-                    changedCallback));
+                    changedCallback)).ConfigureAwait(false);
         }
 
-        ConfigHandle? IConfigManager.OpenConfigFile<TState>(string? arena, string? name, ConfigChangedDelegate<TState> changedCallback, TState state)
+        async Task<ConfigHandle?> IConfigManager.OpenConfigFile<TState>(string? arena, string? name, ConfigChangedDelegate<TState> changedCallback, TState state)
         {
-            return OpenConfigFile(
+            return await OpenConfigFileAsync(
                 arena,
                 name,
                 (documentInfo) => documentInfo.CreateHandle(
                     arena is not null ? ConfigScope.Arena : ConfigScope.Global,
                     name,
                     changedCallback,
-                    state));
+                    state)).ConfigureAwait(false);
         }
 
         void IConfigManager.CloseConfigFile(ConfigHandle handle)
@@ -343,7 +326,7 @@ namespace SS.Core.Modules
             if (handle is not DocumentHandle documentHandle)
                 throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));
 
-            _rwLock.EnterWriteLock();
+            _semaphore.Wait();
 
             try
             {
@@ -351,7 +334,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _rwLock.ExitWriteLock();
+                _semaphore.Release();
             }
         }
 
@@ -364,7 +347,7 @@ namespace SS.Core.Modules
 
             if (documentHandle.DocumentInfo is not null)
             {
-                _rwLock.EnterReadLock();
+                _semaphore.Wait();
 
                 try
                 {
@@ -382,7 +365,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _rwLock.ExitReadLock();
+                    _semaphore.Release();
                 }
             }
 
@@ -442,7 +425,7 @@ namespace SS.Core.Modules
 
             if (documentHandle.DocumentInfo is not null)
             {
-                _rwLock.EnterWriteLock();
+                _semaphore.Wait();
 
                 try
                 {
@@ -458,7 +441,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _rwLock.ExitWriteLock();
+                    _semaphore.Release();
                 }
             }
 
@@ -475,25 +458,25 @@ namespace SS.Core.Modules
             ((IConfigManager)this).SetStr(handle, section, key, value.ToString("G"), comment, permanent, options);
         }
 
-        void IConfigManager.SaveStandaloneCopy(ConfigHandle handle, string filePath)
+        async Task<bool> IConfigManager.SaveStandaloneCopy(ConfigHandle handle, string filePath)
         {
             ArgumentNullException.ThrowIfNull(handle);
 
             if (handle is not DocumentHandle documentHandle)
                 throw new ArgumentException("Only handles created by this module are valid.", nameof(handle));
 
-            _rwLock.EnterWriteLock();
+            await _semaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
                 if (documentHandle.DocumentInfo is null)
                     throw new InvalidOperationException("Handle is closed.");
 
-                documentHandle.DocumentInfo.Document.SaveAsStandaloneConf(filePath);
+                return await documentHandle.DocumentInfo.Document.SaveAsStandaloneConf(filePath).ConfigureAwait(false);
             }
             finally
             {
-                _rwLock.ExitWriteLock();
+                _semaphore.Release();
             }
         }
 
@@ -504,6 +487,29 @@ namespace SS.Core.Modules
         void IConfigLogger.Log(LogLevel level, string message)
         {
             Log(level, message);
+        }
+
+        #endregion
+
+        #region IDisposable
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_isDisposed)
+            {
+                if (disposing)
+                {
+                    _semaphore.Dispose();
+                }
+
+                _isDisposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
 
         #endregion
@@ -521,11 +527,8 @@ namespace SS.Core.Modules
         }
 
         // This is called by the ConfigFileProvider which will only be used when a write lock is already held.
-        private ConfFile? GetConfFile(string? arena, string? name)
+        private async Task<ConfFile?> GetConfFileAsync(string? arena, string? name)
         {
-            if (!_rwLock.IsWriteLockHeld)
-                return null;
-
             // determine the path of the file
             string? path = LocateConfigFile(arena, name);
             if (path is null)
@@ -544,7 +547,7 @@ namespace SS.Core.Modules
             try
             {
                 file = new ConfFile(path, this);
-                file.Load();
+                await file.LoadAsync(CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -556,7 +559,7 @@ namespace SS.Core.Modules
             return file;
         }
 
-        private ConfigHandle? OpenConfigFile(string? arena, string? name, Func<DocumentInfo, ConfigHandle> createHandle)
+        private async Task<ConfigHandle?> OpenConfigFileAsync(string? arena, string? name, Func<DocumentInfo, ConfigHandle> createHandle)
         {
             ArgumentNullException.ThrowIfNull(createHandle);
 
@@ -567,7 +570,7 @@ namespace SS.Core.Modules
                 return null;
             }
 
-            _rwLock.EnterWriteLock();
+            await _semaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
@@ -575,7 +578,7 @@ namespace SS.Core.Modules
                 {
                     ConfFileProvider fileProvider = new(this, arena);
                     ConfDocument document = new(name, fileProvider, this);
-                    document.Load();
+                    await document.LoadAsync().ConfigureAwait(false);
 
                     documentInfo = new DocumentInfo(path, document);
                     _documents.Add(path, documentInfo);
@@ -585,7 +588,7 @@ namespace SS.Core.Modules
             }
             finally
             {
-                _rwLock.ExitWriteLock();
+                _semaphore.Release();
             }
         }
 
@@ -616,7 +619,7 @@ namespace SS.Core.Modules
                 _arena = arena;
             }
 
-            public ConfFile? GetFile(string? name) => _manager.GetConfFile(_arena, name);
+            public Task<ConfFile?> GetFile(string? name) => _manager.GetConfFileAsync(_arena, name);
         }
 
         private interface IConfigChangedInvoker

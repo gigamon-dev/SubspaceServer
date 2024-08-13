@@ -6,6 +6,8 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -19,7 +21,7 @@ namespace SS.Core.Modules
         IConfigManager configManager,
         ICommandManager commandManager,
         IChat chat,
-        ILogManager logManager) : IModule, IAuth, IBillingFallback, IDisposable
+        ILogManager logManager) : IAsyncModule, IAuth, IBillingFallback, IDisposable
     {
         private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
         private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
@@ -47,9 +49,9 @@ namespace SS.Core.Modules
             Description = "How password hashes are encoded in the password file. hex|Base64")]
         [ConfigHelp("General", "AllowUnknown", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1",
             Description = "Determines whether to allow players not listed in the password file.")]
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            _pwdFile = configManager.OpenConfigFile(null, ConfigFileName);
+            _pwdFile = await configManager.OpenConfigFile(null, ConfigFileName).ConfigureAwait(false);
             if (_pwdFile == null)
             {
                 logManager.LogM(LogLevel.Error, nameof(AuthFile), "Module could not load due to being unable to open passwd.conf.");
@@ -131,13 +133,13 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iBillingFallbackToken) != 0)
-                return false;
+                return Task.FromResult(false);
 
             if (broker.UnregisterInterface(ref _iAuthToken) != 0)
-                return false;
+                return Task.FromResult(false);
 
             _commandManager.RemoveCommand("passwd", Command_passwd);
             _commandManager.RemoveCommand("local_password", Command_passwd);
@@ -160,7 +162,7 @@ namespace SS.Core.Modules
                 _hashAlgorithm = null;
             }
 
-            return true;
+            return Task.FromResult(true);
         }
 
         #endregion

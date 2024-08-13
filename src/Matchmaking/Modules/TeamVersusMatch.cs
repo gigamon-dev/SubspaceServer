@@ -48,7 +48,7 @@ namespace SS.Matchmaking.Modules
         Manages team versus matches.
         Configuration: {nameof(TeamVersusMatch)}.conf
         """)]
-    public class TeamVersusMatch : IModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor
+    public class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor
     {
         private const string ConfigurationFileName = $"{nameof(TeamVersusMatch)}.conf";
 
@@ -171,7 +171,7 @@ namespace SS.Matchmaking.Modules
 
         #region Module members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _teamVersusStatsBehavior = broker.GetInterface<ITeamVersusStatsBehavior>();
 
@@ -180,7 +180,7 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
-            if (!LoadConfiguration())
+            if (!await LoadConfigurationAsync().ConfigureAwait(false))
             {
                 return false;
             }
@@ -198,9 +198,10 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            broker.UnregisterAdvisor(ref _iMatchmakingQueueAdvisorToken);
+            if (!broker.UnregisterAdvisor(ref _iMatchmakingQueueAdvisorToken))
+                return Task.FromResult(false);
 
             _commandManager.RemoveCommand("loadmatchtype", Command_loadmatchtype);
             _commandManager.RemoveCommand("unloadmatchtype", Command_unloadmatchtype);
@@ -214,7 +215,7 @@ namespace SS.Matchmaking.Modules
             if (_teamVersusStatsBehavior is not null)
                 broker.ReleaseInterface(ref _teamVersusStatsBehavior);
 
-            return true;
+            return Task.FromResult(true);
         }
 
         #endregion
@@ -1494,9 +1495,9 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
-        private bool LoadConfiguration()
+        private async Task<bool> LoadConfigurationAsync()
         {
-            ConfigHandle? ch = _configManager.OpenConfigFile(null, ConfigurationFileName);
+            ConfigHandle? ch = await _configManager.OpenConfigFile(null, ConfigurationFileName).ConfigureAwait(false);
             if (ch is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error opening {ConfigurationFileName}.");

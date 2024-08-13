@@ -63,7 +63,7 @@ namespace SS.Core.Modules
 
         async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            await InitializeAsync();
+            await InitializeAsync().ConfigureAwait(false);
             return true;
         }
 
@@ -143,7 +143,7 @@ namespace SS.Core.Modules
                 """)]
         private async Task InitializeAsync()
         {
-            await _semaphore.WaitAsync();
+            await _semaphore.WaitAsync().ConfigureAwait(false);
 
             try
             {
@@ -237,7 +237,7 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        entry = await Dns.GetHostEntryAsync(server);
+                        entry = await Dns.GetHostEntryAsync(server).ConfigureAwait(false);
                         IPAddress? address = entry.AddressList.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
 
                         if (address == null)

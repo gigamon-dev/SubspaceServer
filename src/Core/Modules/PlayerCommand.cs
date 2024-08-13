@@ -2716,7 +2716,7 @@ namespace SS.Core.Modules
             if (_mm is null)
                 return;
 
-            bool success = await _mm.LoadModuleAsync(moduleTypeName, path);
+            bool success = await _mm.LoadModuleAsync(moduleTypeName, path).ConfigureAwait(false);
 
             Player? player = _playerData.FindPlayer(playerName);
             if (player is null)
@@ -2747,7 +2747,7 @@ namespace SS.Core.Modules
             if (_mm is null)
                 return;
 
-            int unloadCount = await _mm.UnloadModuleAsync(moduleTypeName);
+            int unloadCount = await _mm.UnloadModuleAsync(moduleTypeName).ConfigureAwait(false);
 
             Player? player = _playerData.FindPlayer(playerName);
             if (player is null)
@@ -2818,8 +2818,8 @@ namespace SS.Core.Modules
             player = null;
 
             bool success = detach
-                ? await _mm!.DetachModuleAsync(module, arena)
-                : await _mm!.AttachModuleAsync(module, arena);
+                ? await _mm!.DetachModuleAsync(module, arena).ConfigureAwait(false)
+                : await _mm!.AttachModuleAsync(module, arena).ConfigureAwait(false);
 
             // Check if the player is still on.
             player = _playerData?.FindPlayer(playerName);

@@ -384,18 +384,26 @@ namespace SS.Core.Modules
                 return;
             }
 
-            try
-            {
-                _configManager.SaveStandaloneCopy(arena.Cfg!, arenaConfPath);
-            }
-            catch (Exception ex)
-            {
-                _chat.SendMessage(player, $"Error creating arena.conf '{arenaConfPath}'. {ex.Message}");
-                _logManager.LogP(LogLevel.Warn, nameof(AdminCommand), player, $"Error creating arena.conf '{arenaConfPath}'. {ex.Message}");
-                return;
-            }
+            CopyArenaConf(player.Name!, arena.Cfg!, arenaConfPath);
 
-            _chat.SendMessage(player, $"Successfuly created arena '{arenaName}'.");
+            // async local function since the command handler can't be made async
+            async void CopyArenaConf(string playerName, ConfigHandle arenaConfigHandle, string path)
+            {
+                bool success = await _configManager.SaveStandaloneCopy(arenaConfigHandle, path);
+
+                Player? player = _playerData.FindPlayer(playerName);
+                if (player is null)
+                    return;
+
+                if (success)
+                {
+                    _chat.SendMessage(player, $"Successfuly created arena.conf '{path}'.");
+                }
+                else
+                {
+                    _chat.SendMessage(player, $"Error creating arena.conf '{path}'.");
+                }
+            }
         }
 
         [CommandHelp(

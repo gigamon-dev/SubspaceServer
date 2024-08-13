@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Configuration
 {
@@ -99,7 +101,7 @@ namespace SS.Core.Configuration
         /// <summary>
         /// Loads or reloads from the <see cref="Path"/>.
         /// </summary>
-        public void Load()
+        public async Task LoadAsync(CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(Path))
                 throw new InvalidOperationException("A path is required.");
@@ -109,7 +111,7 @@ namespace SS.Core.Configuration
             IsDirty = false;
             _lineNumber = 0;
 
-            using FileStream fileStream = File.OpenRead(Path);
+            using FileStream fileStream = new(Path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
             using StreamReader reader = new(fileStream, StringUtils.DefaultEncoding, true);
 
             RefreshLastModified();
@@ -120,7 +122,7 @@ namespace SS.Core.Configuration
 
             try
             {
-                while ((line = reader.ReadLine()) != null)
+                while ((line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false)) != null)
                 {
                     _lineNumber++;
 

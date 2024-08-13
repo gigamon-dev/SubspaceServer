@@ -18,7 +18,7 @@ namespace SS.Matchmaking.Modules
         Manages 1v1 matchmaking.
         Configuration: {nameof(OneVersusOneMatch)}.conf
         """)]
-    public class OneVersusOneMatch : IModule, IMatchmakingQueueAdvisor
+    public class OneVersusOneMatch : IAsyncModule, IMatchmakingQueueAdvisor
     {
         private const string ConfigurationFileName = $"{nameof(OneVersusOneMatch)}.conf";
 
@@ -91,9 +91,9 @@ namespace SS.Matchmaking.Modules
 
         #region Module members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            if (!LoadConfiguration())
+            if (!await LoadConfigurationAsync().ConfigureAwait(false))
             {
                 return false;
             }
@@ -108,9 +108,10 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            broker.UnregisterAdvisor(ref _iMatchmakingQueueAdvisorToken);
+            if (!broker.UnregisterAdvisor(ref _iMatchmakingQueueAdvisorToken))
+                return Task.FromResult(false);
 
             _playerData.FreePlayerData(ref _pdKey);
 
@@ -127,7 +128,7 @@ namespace SS.Matchmaking.Modules
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             MatchmakingQueueChangedCallback.Unregister(broker, Callback_MatchmakingQueueChanged);
 
-            return true;
+            return Task.FromResult(true);
         }
 
         #endregion
@@ -399,9 +400,9 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
-        private bool LoadConfiguration()
+        private async Task<bool> LoadConfigurationAsync()
         {
-            ConfigHandle? ch = _configManager.OpenConfigFile(null, ConfigurationFileName);
+            ConfigHandle? ch = await _configManager.OpenConfigFile(null, ConfigurationFileName).ConfigureAwait(false);
             if (ch is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(OneVersusOneMatch), $"Error opening {ConfigurationFileName}.");

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace SS.Core.Configuration
 {
@@ -84,7 +85,7 @@ namespace SS.Core.Configuration
         /// <summary>
         /// Loads the document. Subsequent calls reload the document.
         /// </summary>
-        public void Load()
+        public async Task LoadAsync()
         {
             //
             // reset data members
@@ -107,7 +108,7 @@ namespace SS.Core.Configuration
             // read and pre-process
             //
 
-            _baseFile = _fileProvider.GetFile(_name);
+            _baseFile = await _fileProvider.GetFile(_name).ConfigureAwait(false);
             if (_baseFile is null)
             {
                 _logger?.Log(ComponentInterfaces.LogLevel.Error, $"Failed to load base conf file '{_name}'.");
@@ -119,7 +120,7 @@ namespace SS.Core.Configuration
             using (PreprocessorReader reader = new(_fileProvider, _baseFile, _logger))
             {
                 LineReference? lineReference;
-                while ((lineReference = reader.ReadLine()) is not null)
+                while ((lineReference = await reader.ReadLineAsync().ConfigureAwait(false)) is not null)
                 {
                     RawLine rawLine = lineReference.Line;
 
@@ -256,10 +257,11 @@ namespace SS.Core.Configuration
         /// Saves a copy of the document as a single standalone conf file.
         /// </summary>
         /// <param name="filePath">The complete file path to save the resulting file to.</param>
-        /// <exception cref="Exception">Error writing to file.</exception>
-        public void SaveAsStandaloneConf(string filePath)
+        /// <returns><see langword="true"/> if the file was successfully saved; otherwise, <see langword="false"/>.</returns>
+        /// <exception cref="ArgumentException"><paramref name="filePath"/> is null or white-space.</exception>
+        public async Task<bool> SaveAsStandaloneConf(string filePath)
         {
-            ArgumentException.ThrowIfNullOrEmpty(filePath);
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
             if (_baseFile is null)
                 throw new InvalidOperationException("No loaded.");
@@ -267,14 +269,24 @@ namespace SS.Core.Configuration
             if (File.Exists(filePath))
                 throw new Exception("A file already exists at the specified path.");
 
-            using StreamWriter writer = new(filePath, false, StringUtils.DefaultEncoding);
-            using PreprocessorReader reader = new(_fileProvider, _baseFile, _logger);
-
-            LineReference? lineReference;
-            while ((lineReference = reader.ReadLine()) is not null)
+            try
             {
-                RawLine rawLine = lineReference.Line;
-                rawLine.WriteTo(writer);
+                using StreamWriter writer = new(filePath, false, StringUtils.DefaultEncoding);
+                using PreprocessorReader reader = new(_fileProvider, _baseFile, _logger);
+
+                LineReference? lineReference;
+                while ((lineReference = await reader.ReadLineAsync().ConfigureAwait(false)) is not null)
+                {
+                    RawLine rawLine = lineReference.Line;
+                    rawLine.WriteTo(writer);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Log(ComponentInterfaces.LogLevel.Error, $"Error saving standalone conf to '{filePath}'. {ex}");
+                return false;
             }
         }
 
