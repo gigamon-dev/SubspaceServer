@@ -366,7 +366,7 @@ namespace SS.Core.Modules
             {
                 // Can't wait for main work items to drain if there is no thread processing the mainloop yet.
                 // This can happen if there is an issue during the initial load of modules,
-                // where it to aborts loading and never gets to running the mainloop.
+                // where it aborts loading and never gets to running the mainloop.
                 return;
             }
 

@@ -14,6 +14,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -1098,7 +1099,7 @@ namespace SS.Core.Modules
                                     arenaData.IsLoadingConfig = _mainloop.QueueThreadPoolWorkItem(_loadArenaConfig, arena);
                                 }
 
-                                continue;
+                                break;
                             }
 
                             arena.SpecFreq = (short)_configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DefaultSpecFreq);
@@ -1108,7 +1109,13 @@ namespace SS.Core.Modules
                             break;
 
                         case ArenaState.DoInit1:
-                            DoAttach(arena);
+                            arenaData.AttachTask ??= DoAttach(arena);
+                            if (!arenaData.AttachTask.IsCompleted)
+                                break;
+
+                            arenaData.AttachTask.Wait();
+                            arenaData.AttachTask = null;
+
                             arena.Status = ArenaState.WaitHolds1;
                             Debug.Assert(arenaData.Holds == 0);
                             FireArenaActionCallback(arena, ArenaAction.Create);
@@ -1172,7 +1179,14 @@ namespace SS.Core.Modules
                             break;
 
                         case ArenaState.DoDestroy2:
-                            if (_moduleManager.DetachAllFromArena(arena))
+                            arenaData.DetachTask ??= _moduleManager.DetachAllFromArenaAsync(arena);
+                            if (!arenaData.DetachTask.IsCompleted)
+                                break;
+
+                            bool detached = arenaData.DetachTask.Result;
+                            arenaData.DetachTask = null;
+
+                            if (detached)
                             {
                                 if (arena.Cfg is not null)
                                 {
@@ -1256,7 +1270,7 @@ namespace SS.Core.Modules
                 This is a list of modules that you want to take effect in this arena. 
                 Not all modules need to be attached to arenas to function, but some do.
                 """)]
-            void DoAttach(Arena arena)
+            async Task DoAttach(Arena arena)
             {
                 string? attachMods = _configManager.GetStr(arena.Cfg!, "Modules", "AttachModules");
                 if (string.IsNullOrWhiteSpace(attachMods))
@@ -1266,7 +1280,7 @@ namespace SS.Core.Modules
 
                 foreach (string moduleToAttach in attachModsArray)
                 {
-                    _moduleManager.AttachModule(moduleToAttach, arena);
+                    await _moduleManager.AttachModuleAsync(moduleToAttach, arena);
                 }
             }
         }
@@ -1906,6 +1920,8 @@ namespace SS.Core.Modules
             public int TotalCount = 0;
             public int PlayingCount = 0;
 
+            public Task? AttachTask = null;
+            public Task<bool>? DetachTask = null;
             bool IResettable.TryReset()
             {
                 IsLoadingConfig = false;
@@ -1914,6 +1930,8 @@ namespace SS.Core.Modules
                 Reap = false;
                 TotalCount = 0;
                 PlayingCount = 0;
+                AttachTask = null;
+                DetachTask = null;
                 return true;
             }
         }

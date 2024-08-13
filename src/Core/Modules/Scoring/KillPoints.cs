@@ -56,7 +56,7 @@ namespace SS.Core.Modules.Scoring
             return true;
         }
 
-        public bool AttachModule(Arena arena)
+        bool IArenaAttachableModule.AttachModule(Arena arena)
         {
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
@@ -66,7 +66,7 @@ namespace SS.Core.Modules.Scoring
             return true;
         }
 
-        public bool DetachModule(Arena arena)
+        bool IArenaAttachableModule.DetachModule(Arena arena)
         {
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;

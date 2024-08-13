@@ -94,11 +94,11 @@ namespace SS.Core
 
             if (!LoadModulesFromConfig("conf/Modules.config"))
             {
-                _mm.UnloadAllModules();
+                _mm.UnloadAllModulesAsync().Wait();
                 return false;
             }
 
-            _mm.DoPostLoadStage();
+            _mm.DoPostLoadStage().Wait();
 
             return true;
         }
@@ -108,7 +108,7 @@ namespace SS.Core
             IModuleLoader? loader = _mm!.GetInterface<IModuleLoader>();
             if (loader is null)
             {
-                if (!_mm.LoadModule<ModuleLoader>())
+                if (!_mm.LoadModuleAsync<ModuleLoader>().Result)
                 {
                     Console.Error.WriteLine("Failed to load ModuleLoader.");
                     return false;
@@ -194,10 +194,43 @@ namespace SS.Core
                 _mm.ReleaseInterface(ref mainloop);
             }
 
-            // Unload.
+            // Pre-Unload
             Console.WriteLine($"I <{nameof(Server)}> Unloading modules.");
-            _mm.DoPreUnloadStage();
-            _mm.UnloadAllModules();
+            Task preUnloadTask = _mm.DoPreUnloadStage();
+            while (!preUnloadTask.Wait(10))
+            {
+                mainloop = _mm!.GetInterface<IMainloop>();
+                if (mainloop is not null)
+                {
+                    try
+                    {
+                        mainloop.WaitForMainWorkItemDrain();
+                    }
+                    finally
+                    {
+                        _mm!.ReleaseInterface(ref mainloop);
+                    }
+                }
+            }
+
+            // Unload
+            Task unloadTask = Task.Run(_mm.UnloadAllModulesAsync);
+            while (!unloadTask.Wait(10))
+            {
+                mainloop = _mm!.GetInterface<IMainloop>();
+                if (mainloop is not null)
+                {
+                    try
+                    {
+                        mainloop.WaitForMainWorkItemDrain();
+                    }
+                    finally
+                    {
+                        _mm!.ReleaseInterface(ref mainloop);
+                    }
+                }
+            }
+
             _mm = null;
 
             return ret;

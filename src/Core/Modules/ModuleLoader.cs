@@ -11,9 +11,8 @@ namespace SS.Core.Modules
     /// Module that loads modules based on an xml configuration file.
     /// </summary>
     [CoreModuleInfo]
-    public class ModuleLoader(IComponentBroker broker, IModuleManager mm) : IModule, IModuleLoader
+    public class ModuleLoader(IModuleManager mm) : IModule, IModuleLoader
     {
-        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         private readonly IModuleManager _mm = mm ?? throw new ArgumentNullException(nameof(mm));
         private InterfaceRegistrationToken<IModuleLoader>? _iModuleLoaderToken;
 
@@ -21,7 +20,7 @@ namespace SS.Core.Modules
 
         bool IModule.Load(IComponentBroker broker)
         {
-            _iModuleLoaderToken = _broker.RegisterInterface<IModuleLoader>(this);
+            _iModuleLoaderToken = broker.RegisterInterface<IModuleLoader>(this);
             return true;
         }
 
@@ -88,9 +87,9 @@ namespace SS.Core.Modules
                     bool success;
 
                     if (string.IsNullOrWhiteSpace(path))
-                        success = _mm.LoadModule(type);
+                        success = _mm.LoadModuleAsync(type).Result;
                     else
-                        success = _mm.LoadModule(type, path);
+                        success = _mm.LoadModuleAsync(type, path).Result;
 
                     if (!success)
                     {

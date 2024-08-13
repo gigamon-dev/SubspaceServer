@@ -2563,17 +2563,15 @@ namespace SS.Core.Modules
 
             List<string> modulesList = new(); // TODO: use a pool
 
-            _mm!.EnumerateModules(
-                (moduleType, _) =>
-                {
-                    string? name = moduleType.FullName;
-                    if (!string.IsNullOrWhiteSpace(name))
-                    {
-                        if (substr == null || name.Contains(substr, StringComparison.OrdinalIgnoreCase))
-                            modulesList.Add(name);
-                    }
-                },
-                arena);
+            foreach (var moduleInfo in _mm!.GetModuleTypesAndDescriptions(arena))
+            {
+                string? name = moduleInfo.Type.FullName;
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+                
+                if (substr is null || name.Contains(substr, StringComparison.OrdinalIgnoreCase))
+                    modulesList.Add(name);
+            }
 
             if (sort)
             {
@@ -2708,7 +2706,23 @@ namespace SS.Core.Modules
                 path = parameters[(index + 1)..].Trim().Trim("\"\'").ToString();
             }
 
-            if (_mm!.LoadModule(moduleTypeName, path))
+            LoadModuleAsync(player.Name!, moduleTypeName, path);
+        }
+
+        // This purposely takes the player's name and not the player object,
+        // since the player object's state can change (e.g. disconnect) by the time the continuation executes.
+        private async void LoadModuleAsync(string playerName, string moduleTypeName, string? path)
+        {
+            if (_mm is null)
+                return;
+
+            bool success = await _mm.LoadModuleAsync(moduleTypeName, path);
+
+            Player? player = _playerData.FindPlayer(playerName);
+            if (player is null)
+                return;
+
+            if (success)
                 _chat.SendMessage(player, $"Module '{moduleTypeName}' loaded.");
             else
                 _chat.SendMessage(player, $"Failed to load module '{moduleTypeName}'.");
@@ -2723,10 +2737,26 @@ namespace SS.Core.Modules
             if (parameters.IsWhiteSpace())
                 return;
 
-            if (_mm!.UnloadModule(parameters.ToString()))
-                _chat.SendMessage(player, $"Module '{parameters}' unloaded.");
+            UnloadModuleAsync(player.Name!, parameters.ToString());
+        }
+
+        // This purposely takes the player's name and not the player object,
+        // since the player object's state can change (e.g. disconnect) by the time the continuation executes.
+        private async void UnloadModuleAsync(string playerName, string moduleTypeName)
+        {
+            if (_mm is null)
+                return;
+
+            int unloadCount = await _mm.UnloadModuleAsync(moduleTypeName);
+
+            Player? player = _playerData.FindPlayer(playerName);
+            if (player is null)
+                return;
+
+            if (unloadCount > 0)
+                _chat.SendMessage(player, $"Module '{moduleTypeName}' unloaded.");
             else
-                _chat.SendMessage(player, $"Failed to unload module '{parameters}'.");
+                _chat.SendMessage(player, $"Failed to unload module '{moduleTypeName}'.");
         }
 
         [CommandHelp(
@@ -2760,7 +2790,7 @@ namespace SS.Core.Modules
             if (module.IsEmpty)
                 return;
 
-            AttachDetachModule(player, module.ToString(), detach);
+            AttachDetachModuleAsync(player, module.ToString(), detach);
         }
 
         [CommandHelp(
@@ -2769,10 +2799,10 @@ namespace SS.Core.Modules
             Description = "Detaches the module from the arena.")]
         private void Command_detmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            AttachDetachModule(player, parameters.ToString(), true);
+            AttachDetachModuleAsync(player, parameters.ToString(), true);
         }
 
-        private void AttachDetachModule(Player player, string module, bool detach)
+        private async void AttachDetachModuleAsync(Player? player, string module, bool detach)
         {
             if (player is null)
                 return;
@@ -2781,20 +2811,26 @@ namespace SS.Core.Modules
             if (arena is null)
                 return;
 
-            if (detach)
-            {
-                if (_mm!.DetachModule(module, arena))
-                    _chat.SendMessage(player, $"Module '{module}' detached.");
-                else
-                    _chat.SendMessage(player, $"Failed to detach module '{module}'.");
-            }
+            // Clear the player in advance so no mistakes are made.
+            // We are about to await and the state could change (e.g. disconnect) by the time the continuation runs.
+            // So, instead we keep the player's name.
+            string playerName = player.Name!;
+            player = null;
+
+            bool success = detach
+                ? await _mm!.DetachModuleAsync(module, arena)
+                : await _mm!.AttachModuleAsync(module, arena);
+
+            // Check if the player is still on.
+            player = _playerData?.FindPlayer(playerName);
+            if (player is null)
+                return;
+
+            // Message the player.
+            if (success)
+                _chat.SendMessage(player, $"Module '{module}' {(detach ? "detached" : "attached")}.");
             else
-            {
-                if (_mm!.AttachModule(module, arena))
-                    _chat.SendMessage(player, $"Module '{module}' attached.");
-                else
-                    _chat.SendMessage(player, $"Failed to attach module '{module}'.");
-            }
+                _chat.SendMessage(player, $"Failed to {(detach ? "detach" : "attach")} module '{module}'.");
         }
 
         [CommandHelp(

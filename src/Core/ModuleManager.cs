@@ -3,11 +3,14 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core
 {
@@ -49,7 +52,24 @@ namespace SS.Core
         /// <summary>
         /// For synchronizing access to all data members.
         /// </summary>
-        private readonly object _moduleLockObj = new();
+        private readonly object _moduleLock = new();
+
+        /// <summary>
+        /// Semaphore for allowing a single writer.
+        /// </summary>
+        /// <remarks>
+        /// This is a semaphore since the methods for writing are async.
+        /// <para>
+        /// When writing to module data, the <see cref="_moduleLock"/> still needs to be held, to prevent concurrent reading.
+        /// However, as long as the semaphore is held, it's guaranteed that there are no other writers.
+        /// This means that as long as the semaphore is held, even if the <see cref="_moduleLock"/> is released, and then reaquired, 
+        /// the data is guaranteed to not have been modified.
+        /// </para>
+        /// <para>
+        /// To prevent deadlock, this semaphore should be taken before the <see cref="_moduleLock"/>.
+        /// </para>
+        /// </remarks>
+        private readonly SemaphoreSlim _moduleSemaphore = new(1, 1);
 
         /// <summary>
         /// Data for all loaded modules.
@@ -89,26 +109,34 @@ namespace SS.Core
 
         #region Arena Attach/Detach
 
-        public bool AttachModule(string moduleTypeName, Arena arena)
+        public async Task<bool> AttachModuleAsync(string moduleTypeName, Arena arena)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
             ArgumentNullException.ThrowIfNull(arena);
 
-            Type? type = Type.GetType(moduleTypeName);
-            if (type is not null)
-            {
-                return AttachModule(type, arena);
-            }
+            await _moduleSemaphore.WaitAsync();
 
-            lock (_moduleLockObj)
+            try
             {
-                IEnumerable<Type> types = GetPluginModuleTypes(moduleTypeName);
+                Type? type = Type.GetType(moduleTypeName);
+                if (type is not null)
+                {
+                    return await ProcessAttachModule(type, arena);
+                }
+
+                Type[] types;
+
+                lock (_moduleLock)
+                {
+                    types = GetPluginModuleTypes(moduleTypeName).ToArray();
+                }
+
                 bool success = false;
                 bool failure = false;
 
                 foreach (Type t in types)
                 {
-                    if (AttachModule(t, arena))
+                    if (await ProcessAttachModule(t, arena))
                         success = true;
                     else
                         failure = true;
@@ -117,12 +145,42 @@ namespace SS.Core
                 if (success && !failure)
                     return true;
             }
+            finally
+            {
+                _moduleSemaphore.Release();
+            }
 
             WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Unable to find module '{moduleTypeName}'.");
             return false;
         }
 
-        public bool AttachModule(Type type, Arena arena)
+        public async Task<bool> AttachModuleAsync(Type type, Arena arena)
+        {
+            ArgumentNullException.ThrowIfNull(type);
+            ArgumentNullException.ThrowIfNull(arena);
+
+            await _moduleSemaphore.WaitAsync();
+
+            try
+            {
+                return await ProcessAttachModule(type, arena);
+            }
+            finally
+            {
+                _moduleSemaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <remarks>
+        /// This method assumes the <see cref="_moduleSemaphore"/> is already taken.
+        /// </remarks>
+        /// <param name="type"></param>
+        /// <param name="arena"></param>
+        /// <returns></returns>
+        private async Task<bool> ProcessAttachModule(Type type, Arena arena)
         {
             ArgumentNullException.ThrowIfNull(type);
             ArgumentNullException.ThrowIfNull(arena);
@@ -133,9 +191,11 @@ namespace SS.Core
                 return false;
             }
 
-            lock (_moduleLockObj)
+            ModuleData? moduleData;
+
+            lock (_moduleLock)
             {
-                if (!_moduleTypeLookup.TryGetValue(type, out ModuleData? moduleData))
+                if (!_moduleTypeLookup.TryGetValue(type, out moduleData))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' is not registered, it needs to be loaded first.");
                     return false;
@@ -152,44 +212,66 @@ namespace SS.Core
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' is already attached to the arena.");
                     return false;
                 }
+            }
 
-                if (moduleData.Module is not IArenaAttachableModule arenaAttachableModule)
-                {
-                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' does not support attaching.");
-                    return false;
-                }
-
+            if (moduleData.Module is IArenaAttachableModule arenaAttachableModule)
+            {
                 if (!arenaAttachableModule.AttachModule(arena))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to attach.");
                     return false;
                 }
-
-                moduleData.AttachedArenas.Add(arena);
-                return true;
             }
+            else if (moduleData.Module is IAsyncArenaAttachableModule asyncArenaAttachableModule)
+            {
+                if (!await asyncArenaAttachableModule.AttachModuleAsync(arena, CancellationToken.None))
+                {
+                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to attach.");
+                    return false;
+                }
+            }
+            else
+            {
+                WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' does not support attaching.");
+                return false;
+            }
+
+            lock (_moduleLock)
+            {
+                moduleData.AttachedArenas.Add(arena);
+            }
+
+            return true;
         }
 
-        public bool DetachModule(string moduleTypeName, Arena arena)
+        public async Task<bool> DetachModuleAsync(string moduleTypeName, Arena arena)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
             ArgumentNullException.ThrowIfNull(arena);
 
-            Type? type = Type.GetType(moduleTypeName);
-            if (type is not null)
-            {
-                return DetachModule(type, arena);
-            }
+            await _moduleSemaphore.WaitAsync();
 
-            lock (_moduleLockObj)
+            try
             {
-                IEnumerable<Type> types = GetPluginModuleTypes(moduleTypeName);
+                Type? type = Type.GetType(moduleTypeName);
+                if (type is not null)
+                {
+                    return await ProcessDetachModule(type, arena);
+                }
+
+                Type[] types;
+
+                lock (_moduleLock)
+                {
+                    types = GetPluginModuleTypes(moduleTypeName).ToArray();
+                }
+
                 bool success = false;
                 bool failure = false;
 
                 foreach (Type t in types)
                 {
-                    if (DetachModule(t, arena))
+                    if (await ProcessDetachModule(t, arena))
                         success = true;
                     else
                         failure = true;
@@ -198,12 +280,42 @@ namespace SS.Core
                 if (success && !failure)
                     return true;
             }
+            finally
+            {
+                _moduleSemaphore.Release();
+            }
 
             WriteLogA(LogLevel.Error, arena, $"DetachModule failed: Unable to find module '{moduleTypeName}'.");
             return false;
         }
 
-        public bool DetachModule(Type type, Arena arena)
+        public async Task<bool> DetachModuleAsync(Type type, Arena arena)
+        {
+            ArgumentNullException.ThrowIfNull(type);
+            ArgumentNullException.ThrowIfNull(arena);
+
+            await _moduleSemaphore.WaitAsync();
+
+            try
+            {
+                return await ProcessDetachModule(type, arena);
+            }
+            finally
+            {
+                _moduleSemaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <remarks>
+        /// This method assumes the <see cref="_moduleSemaphore"/> is already taken.
+        /// </remarks>
+        /// <param name="type"></param>
+        /// <param name="arena"></param>
+        /// <returns></returns>
+        private async Task<bool> ProcessDetachModule(Type type, Arena arena)
         {
             ArgumentNullException.ThrowIfNull(type);
             ArgumentNullException.ThrowIfNull(arena);
@@ -214,9 +326,10 @@ namespace SS.Core
                 return false;
             }
 
-            lock (_moduleLockObj)
+            ModuleData? moduleData;
+            lock (_moduleLock)
             {
-                if (!_moduleTypeLookup.TryGetValue(type, out ModuleData? moduleData))
+                if (!_moduleTypeLookup.TryGetValue(type, out moduleData))
                 {
                     WriteLogA(LogLevel.Error, arena, $"DetachModule failed: Module '{type.FullName}' is not registered.");
                     return false;
@@ -227,40 +340,74 @@ namespace SS.Core
                     WriteLogA(LogLevel.Error, arena, $"DetachModule failed: Module '{type.FullName}' is not attached to the arena.");
                     return false;
                 }
+            }
 
-                if (moduleData.Module is not IArenaAttachableModule arenaAttachableModule)
-                {
-                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' does not support attaching.");
-                    return false;
-                }
-
+            if (moduleData.Module is IArenaAttachableModule arenaAttachableModule)
+            {
                 if (!arenaAttachableModule.DetachModule(arena))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to detach.");
                     return false;
                 }
-
-                moduleData.AttachedArenas.Remove(arena);
-                return true;
             }
+            else if (moduleData.Module is IAsyncArenaAttachableModule asyncArenaAttachableModule)
+            {
+                if (!await asyncArenaAttachableModule.DetachModuleAsync(arena, CancellationToken.None))
+                {
+                    WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to detach.");
+                    return false;
+                }
+            }
+            else
+            {
+                WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' does not support attaching.");
+                return false;
+            }
+
+            lock (_moduleLock)
+            {
+                moduleData.AttachedArenas.Remove(arena);
+            }
+
+            return true;
         }
 
-        public bool DetachAllFromArena(Arena arena)
+        public async Task<bool> DetachAllFromArenaAsync(Arena arena)
         {
             ArgumentNullException.ThrowIfNull(arena);
 
             bool ret = true;
 
-            lock (_moduleLockObj)
+            await _moduleSemaphore.WaitAsync();
+
+            try
             {
-                foreach (var moduleInfo in _moduleTypeLookup.Values)
+                Type[] types;
+                lock (_moduleLock)
                 {
-                    if (moduleInfo.AttachedArenas.Contains(arena))
+                    types = new Type[_moduleTypeLookup.Count];
+                    int index = 0;
+                    foreach (var moduleInfo in _moduleTypeLookup.Values)
                     {
-                        if (!DetachModule(moduleInfo.ModuleType, arena))
-                            ret = false;
+                        if (moduleInfo.AttachedArenas.Contains(arena))
+                        {
+                            types[index++] = moduleInfo.ModuleType;
+                        }
                     }
                 }
+
+                foreach (Type? type in types)
+                {
+                    if (type is null)
+                        break;
+
+                    if (!await ProcessDetachModule(type, arena))
+                        ret = false;
+                }
+            }
+            finally
+            {
+                _moduleSemaphore.Release();
             }
 
             return ret;
@@ -270,9 +417,9 @@ namespace SS.Core
 
         #region Load Module
 
-        public bool LoadModule(string moduleTypeName) => LoadModule(moduleTypeName, null);
+        public async Task<bool> LoadModuleAsync(string moduleTypeName) => await LoadModuleAsync(moduleTypeName, null);
 
-        public bool LoadModule(string moduleTypeName, string? path)
+        public async Task<bool> LoadModuleAsync(string moduleTypeName, string? path)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
 
@@ -280,89 +427,189 @@ namespace SS.Core
             if (string.IsNullOrWhiteSpace(path))
             {
                 type = Type.GetType(moduleTypeName);
+
+                if (type is null)
+                {
+                    // Not found.
+                    WriteLogM(LogLevel.Error, $"Unable to find module \"{moduleTypeName}\".");
+                    return false;
+                }
             }
             else
             {
                 type = GetTypeFromPluginAssemblyPath(moduleTypeName, path);
+
+                if (type is null)
+                {
+                    // Not found.
+                    WriteLogM(LogLevel.Error, $"Unable to find module \"{moduleTypeName}\" from plug-in assembly path \"{path}\".");
+                    return false;
+                }
             }
 
-            if (type is null)
-            {
-                // Not found.
-                WriteLogM(LogLevel.Error, $"Unable to find module '{moduleTypeName}'.");
-                return false;
-            }
-
-            return LoadModule(type);
+            return await LoadModule(type, null);
         }
 
-        public bool LoadModule<TModule>() where TModule : class, IModule
+        public async Task<bool> LoadModuleAsync<TModule>() where TModule : class
         {
             Type type = typeof(TModule);
-            return LoadModule(type);
+            return await LoadModule(type, null);
         }
 
-        public bool LoadModule(Type moduleType)
+        public async Task<bool> LoadModuleAsync(Type moduleType)
         {
             ArgumentNullException.ThrowIfNull(moduleType);
+
+            return await LoadModule(moduleType, null);
+        }
+
+        public async Task<bool> LoadModuleAsync(IModule module)
+        {
+            ArgumentNullException.ThrowIfNull(module);
+
+            return await LoadModule(module.GetType(), module);
+        }
+
+        public async Task<bool> LoadModuleAsync(IAsyncModule module)
+        {
+            ArgumentNullException.ThrowIfNull(module);
+
+            return await LoadModule(module.GetType(), module);
+        }
+
+        public async Task<bool> LoadModuleAsync<TModule>(TModule module) where TModule : class
+        {
+            ArgumentNullException.ThrowIfNull(module);
+
+            return await LoadModule(typeof(TModule), module);
+        }
+
+        private async Task<bool> LoadModule(Type moduleType, object? instance)
+        {
+            ArgumentNullException.ThrowIfNull(moduleType);
+
+            Debug.Assert(instance is null || instance.GetType() == moduleType);
 
             if (!IsModule(moduleType))
-            {
-                // Not a module.
                 return false;
-            }
 
-            ModuleData? moduleData;
+            await _moduleSemaphore.WaitAsync();
 
-            lock (_moduleLockObj)
+            try
             {
-                if (_moduleTypeLookup.ContainsKey(moduleType))
+                lock (_moduleLock)
                 {
-                    // Already loaded.
+                    if (_moduleTypeLookup.ContainsKey(moduleType))
+                    {
+                        // Already loaded.
+                        return false;
+                    }
+                }
+
+                ModuleData? moduleData;
+                if (instance is null)
+                {
+                    moduleData = CreateInstance(moduleType);
+                    if (moduleData is null)
+                    {
+                        // Unable to construct.
+                        return false;
+                    }
+                }
+                else
+                {
+                    moduleData = new(instance);
+                }
+
+                bool success;
+
+                try
+                {
+                    if (moduleData.Module is IAsyncModule asyncModule)
+                    {
+                        success = await asyncModule.LoadAsync(this, CancellationToken.None);
+                    }
+                    else if (moduleData.Module is IModule module)
+                    {
+                        success = module.Load(this);
+                    }
+                    else
+                    {
+                        success = false;
+                    }
+
+                    if (!success)
+                    {
+                        WriteLogM(LogLevel.Error, $"Error loading module [{moduleData.ModuleType.FullName}].");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    success = false;
+                    WriteLogM(LogLevel.Error, $"Error loading module [{moduleData.ModuleType.FullName}]. Exception: {ex}");
+                }
+
+                Assembly assembly = moduleData.ModuleType.Assembly;
+                AssemblyLoadContext? loadContext = AssemblyLoadContext.GetLoadContext(assembly);
+                ModulePluginLoadContext? pluginLoadContext = loadContext as ModulePluginLoadContext;
+
+                if (!success)
+                {
+                    // module loading failed
+                    ReleaseDependencies(moduleData);
+
+                    if (pluginLoadContext is not null)
+                    {
+                        // Unload the plug-in AssemblyLoadContext if there are no other modules.
+                        bool unload = true;
+                        foreach (Type pluginType in _pluginModuleTypeSet)
+                        {
+                            if (AssemblyLoadContext.GetLoadContext(pluginType.Assembly) == pluginLoadContext)
+                            {
+                                unload = false;
+                                break;
+                            }
+                        }
+
+                        if (unload)
+                        {
+                            pluginLoadContext.Unload();
+                        }
+                    }
+
                     return false;
                 }
 
-                moduleData = CreateInstance(moduleType);
-                if (moduleData is null)
+                moduleData.IsLoaded = true;
+
+                bool isPostLoaded;
+
+                lock (_moduleLock)
                 {
-                    // Unable to construct.
-                    return false;
+                    _moduleTypeLookup.Add(moduleData.ModuleType, moduleData);
+                    _loadedModules.AddLast(moduleData.ModuleType);
+
+                    if (pluginLoadContext is not null)
+                        _pluginModuleTypeSet.Add(moduleData.ModuleType);
+
+                    isPostLoaded = _isPostLoaded;
                 }
+
+                WriteLogM(LogLevel.Info, $"Loaded module [{moduleData.ModuleType.FullName}].");
+
+                if (isPostLoaded)
+                {
+                    // The startup sequence post load stage has already run.
+                    // After that, any module that gets loaded should also immediately get post loaded too.
+                    await PostLoad(moduleData);
+                }
+
+                return true;
             }
-
-            return LoadModule(moduleData);
-        }
-
-        public bool LoadModule(IModule module)
-        {
-            ArgumentNullException.ThrowIfNull(module);
-
-            return LoadModule(module.GetType(), module);
-        }
-
-        public bool LoadModule<TModule>(TModule module) where TModule : class, IModule
-        {
-            ArgumentNullException.ThrowIfNull(module);
-
-            return LoadModule(typeof(TModule), module);
-        }
-
-        private bool LoadModule(Type moduleType, IModule module)
-        {
-            ArgumentNullException.ThrowIfNull(moduleType);
-            ArgumentNullException.ThrowIfNull(module);
-
-            lock (_moduleLockObj)
+            finally
             {
-                if (_moduleTypeLookup.ContainsKey(moduleType))
-                {
-                    // Already loaded.
-                    return false;
-                }
+                _moduleSemaphore.Release();
             }
-
-            ModuleData moduleData = new(module);
-            return LoadModule(moduleData);
         }
 
         #endregion
@@ -377,8 +624,8 @@ namespace SS.Core
             if (type.IsClass == false)
                 return false;
 
-            // Verify it implements the IModule interface.
-            if (!typeof(IModule).IsAssignableFrom(type))
+            // Verify it implements either the IModule or IAsyncModule interface.
+            if (!typeof(IModule).IsAssignableFrom(type) && !typeof(IAsyncModule).IsAssignableFrom(type))
                 return false;
 
             return true;
@@ -459,12 +706,12 @@ namespace SS.Core
                     args[i] = dependencies[i].Instance!;
                 }
 
-                IModule module;
+                object module;
 
                 try
                 {
                     // Call the constructor.
-                    module = (IModule)constructorInfo.Invoke(args);
+                    module = constructorInfo.Invoke(args);
                 }
                 catch (Exception ex)
                 {
@@ -492,96 +739,212 @@ namespace SS.Core
 
         #region Unload Module
 
-        public bool UnloadModule(string moduleTypeName)
+        public async Task<int> UnloadModuleAsync(string moduleTypeName)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
 
             Type? type = Type.GetType(moduleTypeName);
             if (type is not null)
-                return UnloadModule(type);
-
-            return UnloadPluginModule(moduleTypeName);
-        }
-
-        private bool UnloadPluginModule(string moduleTypeName)
-        {
-            lock (_moduleLockObj)
             {
-                Type[] types = GetPluginModuleTypes(moduleTypeName).ToArray();
-                bool success = false;
-                bool failure = false;
-
-                foreach (Type type in types)
-                {
-                    if (UnloadModule(type))
-                        success = true;
-                    else
-                        failure = true;
-                }
-
-                if (success && !failure)
-                    return true;
+                bool success = await UnloadModuleAsync(type);
+                return success ? 1 : 0;
             }
 
-            return false;
+            return await UnloadPluginModule(moduleTypeName);
         }
 
-        public bool UnloadModule(Type type)
+        private async Task<int> UnloadPluginModule(string moduleTypeName)
+        {
+            Type[] types;
+
+            lock (_moduleLock)
+            {
+                types = GetPluginModuleTypes(moduleTypeName).ToArray();
+            }
+
+            int count = 0;
+
+            foreach (Type type in types)
+            {
+                if (await UnloadModuleAsync(type))
+                    count++;
+            }
+
+            return count;
+        }
+
+        public async Task<bool> UnloadModuleAsync(Type type)
         {
             ArgumentNullException.ThrowIfNull(type);
 
-            lock (_moduleLockObj)
+            await _moduleSemaphore.WaitAsync();
+
+            try
             {
-                LinkedListNode<Type>? node = _loadedModules.FindLast(type);
+                return await ProcessUnloadModule(type);
+            }
+            finally
+            {
+                _moduleSemaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <remarks>
+        /// This method assumes the <see cref="_moduleSemaphore"/> was already entered.
+        /// </remarks>
+        /// <param name="type"></param>
+        /// <returns></returns>
+        private async Task<bool> ProcessUnloadModule(Type type)
+        {
+            LinkedListNode<Type>? node;
+            ModuleData? moduleData;
+            
+            lock (_moduleLock)
+            {
+                node = _loadedModules.FindLast(type);
+
                 if (node is null)
                 {
                     WriteLogM(LogLevel.Error, $"Can't unload module [{type.FullName}] because it is not loaded.");
                     return false;
                 }
 
-                return UnloadModule(node);
-            }
-        }
-
-        private bool UnloadModule(LinkedListNode<Type> node)
-        {
-            ArgumentNullException.ThrowIfNull(node);
-
-            if (node.List != _loadedModules)
-                return false;
-
-            Type type = node.Value;
-
-            if (_moduleTypeLookup.TryGetValue(type, out ModuleData? moduleData) == false)
-            {
-                return false;
-            }
-
-            if (UnloadModule(moduleData) == false)
-            {
-                return false; // can't unload, possibly can't unregister one of its interfaces
-            }
-
-            _loadedModules.Remove(node);
-            _moduleTypeLookup.Remove(moduleData.ModuleType);
-
-            Assembly assembly = type.Assembly;
-            AssemblyLoadContext? loadContext = AssemblyLoadContext.GetLoadContext(assembly);
-            if (loadContext != AssemblyLoadContext.Default
-                && loadContext is ModulePluginLoadContext moduleLoadContext)
-            {
-                _pluginModuleTypeSet.Remove(type);
-
-                // Unload the moduleLoadContext if it's the last module from that context/assembly
-                if (_pluginModuleTypeSet.Any((t) => t.Assembly == assembly) == false)
+                if (!_moduleTypeLookup.TryGetValue(type, out moduleData))
                 {
-                    WriteLogM(LogLevel.Info, $"Unloaded last module from assembly [{assembly.FullName}].");
+                    return false;
+                }
+            }
 
-                    _loadedPluginAssemblies.Remove(moduleLoadContext.AssemblyPath);
+            // Detach from arenas
+            if (moduleData.AttachedArenas.Count > 0)
+            {
+                IObjectPoolManager? objectPoolManager = GetInterface<IObjectPoolManager>();
 
-                    PluginAssemblyUnloadingCallback.Fire(this, assembly);
+                try
+                {
+                    HashSet<Arena> arenas = objectPoolManager?.ArenaSetPool.Get() ?? new(moduleData.AttachedArenas.Count);
 
-                    //moduleLoadContext.Unload(); // TODO: Investigate why this sometimes causes a seg fault on Linux and Mac.
+                    try
+                    {
+                        // Copy the arenas because can't enumerate the collection and remove from it at the same time.
+                        arenas.UnionWith(moduleData.AttachedArenas);
+
+                        foreach (Arena arena in arenas)
+                        {
+                            await ProcessDetachModule(moduleData.ModuleType, arena);
+                        }
+                    }
+                    finally
+                    {
+                        objectPoolManager?.ArenaSetPool.Return(arenas);
+                    }
+                }
+                finally
+                {
+                    if (objectPoolManager is not null)
+                        ReleaseInterface(ref objectPoolManager);
+                }
+
+                if (moduleData.AttachedArenas.Count > 0)
+                {
+                    WriteLogM(LogLevel.Error, $"Can't unload module [{moduleData.ModuleType.FullName}] because it failed to detach from at least one arena.");
+                    return false;
+                }
+            }
+
+            // PreUnload
+            if (moduleData.IsPostLoaded && !await PreUnload(moduleData))
+            {
+                WriteLogM(LogLevel.Error, $"Can't unload module [{moduleData.ModuleType.FullName}] because it failed to pre-unload.");
+                return false;
+            }
+
+            // Unload
+            bool success;
+
+            try
+            {
+                if (moduleData.Module is IAsyncModule asyncModule)
+                {
+                    success = await asyncModule.UnloadAsync(this, CancellationToken.None);
+                }
+                else if (moduleData.Module is IModule module)
+                {
+                    success = module.Unload(this);
+                }
+                else
+                {
+                    success = false;
+                }
+
+                if (!success)
+                {
+                    WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}].");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}]. Exception: {ex.Message}");
+                return false;
+            }
+
+            // Dispose
+            if (moduleData.Module is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+            else if (moduleData.Module is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync();
+            }
+
+            ReleaseDependencies(moduleData);
+            
+            lock (_moduleLock)
+            {
+                moduleData.IsLoaded = false;
+                _loadedModules.Remove(node);
+                _moduleTypeLookup.Remove(moduleData.ModuleType);
+
+                Assembly assembly = type.Assembly;
+                AssemblyLoadContext? loadContext = AssemblyLoadContext.GetLoadContext(assembly);
+                ModulePluginLoadContext? moduleLoadContext = loadContext as ModulePluginLoadContext;
+
+                if (moduleLoadContext is not null)
+                {
+                    _pluginModuleTypeSet.Remove(type);
+                }
+
+                WriteLogM(LogLevel.Info, $"Unloaded module [{moduleData.ModuleType.FullName}].");
+
+                if (moduleLoadContext is not null)
+                {
+                    // Unload the moduleLoadContext if it's the last module from that context/assembly
+                    bool isLast = true;
+                    foreach (Type remainingType in _pluginModuleTypeSet)
+                    {
+                        if (remainingType.Assembly == assembly)
+                        {
+                            isLast = false;
+                            break;
+                        }
+                    }
+
+                    if (isLast)
+                    {
+                        WriteLogM(LogLevel.Info, $"Unloaded the last module from plug-in assembly [{assembly.FullName}].");
+
+                        _loadedPluginAssemblies.Remove(moduleLoadContext.AssemblyPath);
+
+                        PluginAssemblyUnloadingCallback.Fire(this, assembly);
+
+                        // TODO: Investigate why this sometimes causes a seg fault on Linux and Mac.
+                        //moduleLoadContext.Unload();
+                    }
                 }
             }
 
@@ -592,17 +955,39 @@ namespace SS.Core
 
         #region Bulk Operations
 
-        public void UnloadAllModules()
+        public async Task UnloadAllModulesAsync()
         {
-            lock (_moduleLockObj)
+            await _moduleSemaphore.WaitAsync();
+
+            try
             {
-                LinkedListNode<Type>? node = _loadedModules.Last;
-                while (node is not null)
+                Type[] toUnload;
+
+                lock (_moduleLock)
                 {
-                    LinkedListNode<Type>? previous = node.Previous;
-                    UnloadModule(node);
-                    node = previous;
+                    toUnload = new Type[_loadedModules.Count];
+
+                    // Unloading is processed in reverse order.
+                    LinkedListNode<Type>? node = _loadedModules.Last;
+                    int index = 0;
+                    while (node is not null && index < toUnload.Length)
+                    {
+                        toUnload[index++] = node.Value;
+                        node = node.Previous;
+                    }
                 }
+
+                foreach (Type? type in toUnload)
+                {
+                    if (type is null)
+                        return;
+
+                    await ProcessUnloadModule(type);
+                }
+            }
+            finally
+            {
+                _moduleSemaphore.Release();
             }
         }
 
@@ -610,16 +995,16 @@ namespace SS.Core
 
         #region Utility
 
-        public void EnumerateModules(EnumerateModulesDelegate enumerationCallback, Arena? arena)
+        public IEnumerable<(Type Type, string? Description)> GetModuleTypesAndDescriptions(Arena? arena)
         {
-            lock (_moduleLockObj)
+            lock (_moduleLock)
             {
                 foreach (ModuleData moduleData in _moduleTypeLookup.Values)
                 {
-                    if (arena != null && !moduleData.AttachedArenas.Contains(arena))
+                    if (arena is not null && !moduleData.AttachedArenas.Contains(arena))
                         continue;
 
-                    enumerationCallback(moduleData.ModuleType, moduleData.Description);
+                    yield return (moduleData.ModuleType, moduleData.Description);
                 }
             }
         }
@@ -631,15 +1016,19 @@ namespace SS.Core
             Type? moduleType = Type.GetType(moduleTypeName);
             if (moduleType is not null && TryGetModuleInfo(moduleType, out ModuleInfo info))
             {
+                // Matched a built-in module.
                 yield return info;
             }
-
-            lock (_moduleLockObj)
+            else
             {
-                foreach (Type type in GetPluginModuleTypes(moduleTypeName))
+                // Search plug-in modules.
+                lock (_moduleLock)
                 {
-                    if (TryGetModuleInfo(type, out info))
-                        yield return info;
+                    foreach (Type type in GetPluginModuleTypes(moduleTypeName))
+                    {
+                        if (TryGetModuleInfo(type, out info))
+                            yield return info;
+                    }
                 }
             }
         }
@@ -648,7 +1037,7 @@ namespace SS.Core
         {
             ArgumentNullException.ThrowIfNull(type);
 
-            lock (_moduleLockObj)
+            lock (_moduleLock)
             {
                 if (_moduleTypeLookup.TryGetValue(type, out ModuleData? moduleData) == false)
                 {
@@ -674,42 +1063,71 @@ namespace SS.Core
         /// <summary>
         /// Goes through all loaded modules and has them perform the <see cref="IModuleLoaderAware.PostLoad(ComponentBroker)"/> stage of loading.
         /// </summary>
-        public void DoPostLoadStage()
+        public async Task DoPostLoadStage()
         {
-            lock (_moduleLockObj)
+            await _moduleSemaphore.WaitAsync();
+
+            try
             {
-                if (!_isPostLoaded)
+                ModuleData[] moduleTypes;
+                
+
+                lock (_moduleLock)
                 {
+                    if (_isPostLoaded)
+                        return;
+
                     _isPostLoaded = true;
+                    moduleTypes = new ModuleData[_loadedModules.Count];
 
                     LinkedListNode<Type>? node = _loadedModules.First;
-                    while (node is not null)
+                    int index = 0;
+                    while (node is not null && index < moduleTypes.Length)
                     {
                         if (_moduleTypeLookup.TryGetValue(node.Value, out ModuleData? moduleData))
                         {
-                            PostLoad(moduleData);
+                            moduleTypes[index++] = moduleData;
                         }
 
                         node = node.Next;
                     }
                 }
+
+                foreach (ModuleData? moduleData in moduleTypes)
+                {
+                    if (moduleData is null)
+                        break;
+
+                    await PostLoad(moduleData);
+                }
+            }
+            finally
+            {
+                _moduleSemaphore.Release();
             }
         }
 
-        private bool PostLoad(ModuleData moduleData)
+        private async Task<bool> PostLoad(ModuleData moduleData)
         {
             if (moduleData is null)
                 return false;
 
-            if (moduleData.IsLoaded
-                && !moduleData.IsPostLoaded
-                && moduleData.Module is IModuleLoaderAware loaderAwareModule)
+            if (moduleData.IsLoaded && !moduleData.IsPostLoaded)
             {
                 try
                 {
-                    loaderAwareModule.PostLoad(this);
-                    moduleData.IsPostLoaded = true;
-                    return true;
+                    if (moduleData.Module is IModuleLoaderAware loaderAwareModule)
+                    {
+                        loaderAwareModule.PostLoad(this);
+                        moduleData.IsPostLoaded = true;
+                        return true;
+                    }
+                    else if (moduleData.Module is IAsyncModuleLoaderAware asyncloaderAwareModule)
+                    {
+                        await asyncloaderAwareModule.PostLoadAsync(this, CancellationToken.None);
+                        moduleData.IsPostLoaded = true;
+                        return true;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -723,42 +1141,72 @@ namespace SS.Core
         /// <summary>
         /// Goes through all loaded modules and has them perform the <see cref="IModuleLoaderAware.PreUnload(ComponentBroker)"/> stage of loading.
         /// </summary>
-        public void DoPreUnloadStage()
+        public async Task DoPreUnloadStage()
         {
-            lock (_moduleLockObj)
-            {
-                if (_isPostLoaded)
-                {
-                    _isPostLoaded = false;
+            await _moduleSemaphore.WaitAsync();
 
+            try
+            {
+                ModuleData[] moduleTypes;
+
+
+                lock (_moduleLock)
+                {
+                    if (!_isPostLoaded)
+                        return;
+
+                    _isPostLoaded = false;
+                    moduleTypes = new ModuleData[_loadedModules.Count];
+
+                    // Process in reverse order.
                     LinkedListNode<Type>? node = _loadedModules.Last;
-                    while (node is not null)
+                    int index = 0;
+                    while (node is not null && index < moduleTypes.Length)
                     {
                         if (_moduleTypeLookup.TryGetValue(node.Value, out ModuleData? moduleData))
                         {
-                            PreUnload(moduleData);
+                            moduleTypes[index++] = moduleData;
                         }
 
                         node = node.Previous;
                     }
                 }
+
+                foreach (ModuleData? moduleData in moduleTypes)
+                {
+                    if (moduleData is null)
+                        break;
+
+                    await PreUnload(moduleData);
+                }
+            }
+            finally
+            {
+                _moduleSemaphore.Release();
             }
         }
 
-        private bool PreUnload(ModuleData moduleData)
+        private async Task<bool> PreUnload(ModuleData moduleData)
         {
             if (moduleData is null)
                 return false;
 
-            if (moduleData.IsLoaded
-                && moduleData.IsPostLoaded
-                && moduleData.Module is IModuleLoaderAware loaderAwareModule)
+            if (moduleData.IsLoaded && moduleData.IsPostLoaded)
             {
                 try
                 {
-                    loaderAwareModule.PreUnload(this);
-                    moduleData.IsPostLoaded = false;
-                    return true;
+                    if (moduleData.Module is IModuleLoaderAware loaderAwareModule)
+                    {
+                        loaderAwareModule.PreUnload(this);
+                        moduleData.IsPostLoaded = false;
+                        return true;
+                    }
+                    else if (moduleData.Module is IAsyncModuleLoaderAware asyncLoaderAwareModule)
+                    {
+                        await asyncLoaderAwareModule.PreUnloadAsync(this, CancellationToken.None);
+                        moduleData.IsPostLoaded = false;
+                        return true;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -775,15 +1223,19 @@ namespace SS.Core
 
         private class ModuleData
         {
-            public ModuleData(IModule module) : this(module, null)
+            public ModuleData(object module) : this(module, null)
             {
             }
 
-            public ModuleData(IModule module, DependencyInfo[]? dependencies)
+            public ModuleData(object module, DependencyInfo[]? dependencies)
             {
                 ArgumentNullException.ThrowIfNull(module);
 
                 ModuleType = module.GetType();
+
+                if (!IsModule(ModuleType))
+                    throw new ArgumentException("Is not a module.", nameof(module));
+
 
                 if (ModuleInfoAttribute.TryGetAttribute(ModuleType, out ModuleInfoAttribute? attribute))
                     Description = attribute.Description;
@@ -804,7 +1256,7 @@ namespace SS.Core
             /// <summary>
             /// The instance of the module.
             /// </summary>
-            public IModule Module
+            public object Module
             {
                 get;
             }
@@ -861,125 +1313,6 @@ namespace SS.Core
             public required IComponentInterface? Instance { get; set; }
         }
 
-        private bool LoadModule(ModuleData moduleData)
-        {
-            ArgumentNullException.ThrowIfNull(moduleData);
-
-            if (moduleData.IsLoaded)
-            {
-                // Already loaded.
-                return false;
-            }
-
-            if (_moduleTypeLookup.ContainsKey(moduleData.ModuleType))
-            {
-                // Another instance already loaded.
-                return false;
-            }
-
-            bool success;
-
-            try
-            {
-                success = moduleData.Module.Load(this);
-
-                if (!success)
-                {
-                    WriteLogM(LogLevel.Error, $"Error loading module [{moduleData.ModuleType.FullName}].");
-                }
-            }
-            catch (Exception ex)
-            {
-                success = false;
-                WriteLogM(LogLevel.Error, $"Error loading module [{moduleData.ModuleType.FullName}]. Exception: {ex}");
-            }
-
-            if (!success)
-            {
-                // module loading failed
-                ReleaseDependencies(moduleData);
-                return false;
-            }
-
-            moduleData.IsLoaded = true;
-
-            _moduleTypeLookup.Add(moduleData.ModuleType, moduleData);
-            _loadedModules.AddLast(moduleData.ModuleType);
-
-            Assembly assembly = moduleData.ModuleType.Assembly;
-            AssemblyLoadContext? loadContext = AssemblyLoadContext.GetLoadContext(assembly);
-            if (loadContext != AssemblyLoadContext.Default
-                && loadContext is ModulePluginLoadContext)
-            {
-                _pluginModuleTypeSet.Add(moduleData.ModuleType);
-            }
-
-            WriteLogM(LogLevel.Info, $"Loaded module [{moduleData.ModuleType.FullName}].");
-
-            if (_isPostLoaded)
-            {
-                // The startup sequence post load stage has already run.
-                // After that, any module that gets loaded should also immediately get post loaded too.
-                PostLoad(moduleData);
-            }
-
-            return true;
-        }
-
-        private bool UnloadModule(ModuleData moduleData)
-        {
-            ArgumentNullException.ThrowIfNull(moduleData);
-
-            if (!moduleData.IsLoaded)
-                return true; // it's not loaded, nothing to do
-
-            if (moduleData.AttachedArenas.Count > 0)
-            {
-                var arenas = moduleData.AttachedArenas.ToArray();
-                foreach (Arena arena in arenas)
-                {
-                    DetachModule(moduleData.ModuleType, arena);
-                }
-
-                if (moduleData.AttachedArenas.Count > 0)
-                {
-                    WriteLogM(LogLevel.Error, $"Can't unload module [{moduleData.ModuleType.FullName}] because it failed to detach from at least one arena.");
-                    return false;
-                }
-            }
-
-            if (moduleData.IsPostLoaded && !PreUnload(moduleData))
-            {
-                WriteLogM(LogLevel.Error, $"Can't unload module [{moduleData.ModuleType.FullName}] because it failed to pre-unload.");
-                return false;
-            }
-
-            try
-            {
-                if (moduleData.Module.Unload(this) == false)
-                {
-                    WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}].");
-                    return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}]. Exception: {ex.Message}");
-                return false;
-            }
-
-            if (moduleData.Module is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
-
-            ReleaseDependencies(moduleData);
-
-            moduleData.IsLoaded = false;
-            WriteLogM(LogLevel.Info, $"Unloaded module [{moduleData.ModuleType.FullName}].");
-            return true;
-        }
-
         private void ReleaseDependencies(ModuleData moduleData)
         {
             ArgumentNullException.ThrowIfNull(moduleData);
@@ -1023,7 +1356,11 @@ namespace SS.Core
         /// <returns></returns>
         private IEnumerable<Type> GetPluginModuleTypes(string typeName)
         {
-            return _pluginModuleTypeSet.Where(t => string.Equals(t.FullName, typeName, StringComparison.Ordinal));
+            foreach (Type type in _pluginModuleTypeSet)
+            {
+                if (string.Equals(type.FullName, typeName, StringComparison.Ordinal))
+                    yield return type;
+            }
         }
 
         private Type? GetTypeFromPluginAssemblyPath(string typeName, string path)
@@ -1038,7 +1375,7 @@ namespace SS.Core
                 Assembly? assembly;
                 Type? type;
 
-                lock (_moduleLockObj)
+                lock (_moduleLock)
                 {
                     if (_loadedPluginAssemblies.TryGetValue(path, out assembly))
                     {
@@ -1048,7 +1385,17 @@ namespace SS.Core
                     // Assembly not loaded yet, try to load it.
                     ModulePluginLoadContext loadContext = new(path);
                     AssemblyName assemblyName = new(Path.GetFileNameWithoutExtension(path));
-                    assembly = loadContext.LoadFromAssemblyName(assemblyName);
+
+                    try
+                    {
+                        assembly = loadContext.LoadFromAssemblyName(assemblyName);
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLogM(LogLevel.Error, $"Error loading plug-in assembly from path \"{path}\". Exception: {ex}");
+                        loadContext.Unload();
+                        return null;
+                    }
 
                     type = assembly.GetType(typeName);
                     if (type is null)
@@ -1068,7 +1415,7 @@ namespace SS.Core
             }
             catch (Exception ex)
             {
-                WriteLogM(LogLevel.Error, $"Error loading assembly from path \"{path}\". Exception: {ex}");
+                WriteLogM(LogLevel.Error, $"Error getting type \"{typeName}\" from plug-in assembly path \"{path}\". Exception: {ex}");
                 return null;
             }
         }

@@ -6,6 +6,8 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -23,7 +25,7 @@ namespace SS.Core.Modules
     /// https://web.archive.org/web/20041208173200/http://www4.ncsu.edu/~rniyenga/subspace/old/dprotocol.html
     /// </remarks>
     [CoreModuleInfo]
-    public class DirectoryPublisher : IModule
+    public sealed class DirectoryPublisher : IAsyncModule, IDisposable
     {
         private readonly IComponentBroker _broker;
         private readonly IArenaManager _arenaManager;
@@ -36,7 +38,8 @@ namespace SS.Core.Modules
         private readonly Dictionary<IPAddress, Socket> _socketDictionary = [];
         private readonly List<DirectoryListing> _listings = [];
         private readonly List<(IPEndPoint, SocketAddress)> _servers = [];
-        private readonly object _lock = new();
+        private readonly SemaphoreSlim _semaphore = new(1, 1);
+        private bool _isDisposed;
 
         public DirectoryPublisher(
             IComponentBroker broker,
@@ -56,18 +59,21 @@ namespace SS.Core.Modules
             _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
         }
 
-        bool IModule.Load(IComponentBroker broker)
-        {
-            Initialize();
+        #region Module members
 
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
+        {
+            await InitializeAsync();
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _serverTimer.ClearTimer(Timer_SendAnnouncements, null);
 
-            lock (_lock)
+            _semaphore.Wait(cancellationToken);
+
+            try
             {
                 _listings.Clear();
 
@@ -78,9 +84,38 @@ namespace SS.Core.Modules
 
                 _socketDictionary.Clear();
             }
+            finally
+            {
+                _semaphore.Release();
+            }
 
-            return true;
+            return Task.FromResult(true);
         }
+
+        #endregion
+
+        #region IDisposable
+
+        private void Dispose(bool disposing)
+        {
+            if (!_isDisposed)
+            {
+                if (disposing)
+                {
+                    _semaphore.Dispose();
+                }
+
+                _isDisposed = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
 
         [ConfigHelp("Directory", "Password", ConfigScope.Global, typeof(string), DefaultValue = "cane",
             Description = "The password used to send information to the directory server. Don't change this.")]
@@ -106,9 +141,11 @@ namespace SS.Core.Modules
                 The port to connect to for the Nth directory server.
                 If no port is specified, Directory:Port is used.
                 """)]
-        private void Initialize()
+        private async Task InitializeAsync()
         {
-            lock (_lock)
+            await _semaphore.WaitAsync();
+
+            try
             {
                 //
                 // Listings
@@ -186,27 +223,21 @@ namespace SS.Core.Modules
 
                 int defaultPort = _configManager.GetInt(_configManager.Global, "Directory", "Port", 4991);
 
-                Span<char> keySpan = stackalloc char["Server##".Length];
+                
                 for (index = 1; index <= 99; index++)
                 {
-                    if (!keySpan.TryWrite($"Server{index}", out int charsWritten))
-                        break;
-
-                    string? server = _configManager.GetStr(_configManager.Global, "Directory", keySpan[..charsWritten]);
+                    string? server = GetServerSetting(index);
                     if (string.IsNullOrWhiteSpace(server))
                         break;
 
-                    if (!keySpan.TryWrite($"Port{index}", out charsWritten))
-                        break;
-
-                    int port = _configManager.GetInt(_configManager.Global, "Directory", keySpan[..charsWritten], defaultPort);
+                    int port = GetPortSetting(index, defaultPort);
 
                     IPHostEntry entry;
                     IPEndPoint? directoryEndpoint = null;
 
                     try
                     {
-                        entry = Dns.GetHostEntry(server);
+                        entry = await Dns.GetHostEntryAsync(server);
                         IPAddress? address = entry.AddressList.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
 
                         if (address == null)
@@ -228,6 +259,10 @@ namespace SS.Core.Modules
                     _logManager.LogM(LogLevel.Info, nameof(DirectoryPublisher), $"Using '{entry.HostName}' ({directoryEndpoint}) as a directory server.");
                 }
             }
+            finally
+            {
+                _semaphore.Release();
+            }
 
             //
             // Timer
@@ -235,6 +270,24 @@ namespace SS.Core.Modules
 
             _serverTimer.ClearTimer(Timer_SendAnnouncements, null);
             _serverTimer.SetTimer(Timer_SendAnnouncements, 10000, 60000, null);
+
+            string? GetServerSetting(int index)
+            {
+                Span<char> keySpan = stackalloc char["Server".Length + 11];
+                if (!keySpan.TryWrite($"Server{index}", out int charsWritten))
+                    return null;
+
+                return _configManager.GetStr(_configManager.Global, "Directory", keySpan[..charsWritten]);
+            }
+
+            int GetPortSetting(int index, int defaultPort)
+            {
+                Span<char> keySpan = stackalloc char["Port".Length + 11];
+                if (!keySpan.TryWrite($"Port{index}", out int charsWritten))
+                    return defaultPort;
+
+                return _configManager.GetInt(_configManager.Global, "Directory", keySpan[..charsWritten], defaultPort);
+            }
         }
 
         private Socket? GetOrCreateSocket(IPAddress bindAddress)
@@ -291,7 +344,9 @@ namespace SS.Core.Modules
                 }
             }
 
-            lock (_lock)
+            _semaphore.Wait();
+
+            try
             {
                 foreach (DirectoryListing listing in _listings)
                 {
@@ -326,6 +381,10 @@ namespace SS.Core.Modules
                         }
                     }
                 }
+            }
+            finally
+            {
+                _semaphore.Release();
             }
 
             return true;
