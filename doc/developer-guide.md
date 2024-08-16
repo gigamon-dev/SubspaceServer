@@ -6,7 +6,9 @@ The modular design that Subspace Server .NET uses mirrors that of ASSS and as su
 
 ## Modules
 
-The basic building block of the server is module. The server itself consists of many modules that are working together in unison. A module is simply just a class that the server creates an instance of and calls methods on to `Load` and `Unload`.
+The basic building block of the server is a server module. The server itself consists of many modules that are working together in unison. A module is simply just a class that the server creates an instance of and calls `Load` and `Unload` methods on.
+
+> **Tip:** When this guide mentions the term *module*, it's referring to server modules, the mechanism to extend the server. Don't confuse this with  a *.NET module*, which is a completely separate concept.
 
 ### Startup
 
@@ -26,13 +28,13 @@ The other form is for modules in separate plug-in assemblies. In other words, th
 ```
 Notice that it doesn't include the assembly name in the *type* attribute. Rather, it has a *path* attribute which contains the path of the assembly to load.  Also notice the path is within "bin/modules". That is where you put your own plug-in assemblies containing your custom modules.
 
-> **Fun fact:** A list of loaded modules can be listed in-game using the `?lsmod` command.
+> **Tip:** A list of loaded modules can be listed in-game using the `?lsmod` command.
 
 ### How to create a plugin project for a module
 
 > **Tip:** For those new to .NET plugins, it is recommended you read the [.NET documentation](https://docs.microsoft.com/en-us/dotnet/core/tutorials/creating-app-with-plugin-support) about it.
 
-> For an example of a plugin project, see the [Replay module](../src/Replay/Replay.csproj) or the [MatchMaking module](../src/Matchmaking/Matchmaking.csproj).
+The examples shown in this tutorial are included in the repository, see the [Example folder](../src/Example/). Also, other examples of plugins include the [Replay module](../src/Replay/Replay.csproj) and the [MatchMaking module](../src/Matchmaking/Matchmaking.csproj).
 
 First, create a new class library project and add a reference the [Core](../src/Core/Core.csproj) asssembly
 
@@ -42,13 +44,17 @@ Modify the .csproj file to tell the build process to build it in such a way that
 2. (optional but recommended) Change the OutDir to place built files into the modules folder.
 3. Edit references to prevent dependencies from being copied to the output folder.
 
-Most imporantly, enable dynamic loading by adding the `<EnableDynamicLoading>true</EnableDynamicLoading>` element to the `<PropertyGroup>`.
+In the .csproj file, add the:
+```XML
+<EnableDynamicLoading>true</EnableDynamicLoading>
+```
+element between the `<PropertyGroup>` tags.
 
-Next, it's recommended to change the output directory so that built files get placed under the Zone's bin\modules folder. To do this, add the `<OutDir>` element with a path under the modules folder.
+Next, it's recommended to change the output directory so that built files get placed under the Zone's bin\modules folder. To do this, add the `<OutDir>` element and set it to a path within the modules folder.
 
 Edit the reference to the Core assembly to tell the build process to not copy the SS.Core.dll or any libraries it depends on to the output directory. Add the `<Private>false</Private>` and `<ExcludeAssets>all</ExcludeAssets>` elements to the `<ProjectReference>`. These changes are very imporant! If SS.Core.dll was copied, a second copy of SS.Core.dll would get loaded and the server would fail to find the dependencies for your module.
 
-Here's what it should like:
+Here's what the .csproj file should like after the changes are made:
 ```XML
 <Project Sdk="Microsoft.NET.Sdk">
 
@@ -70,6 +76,8 @@ Here's what it should like:
 </Project>
 ```
 
+> View the [example .csproj file](/src/Example/Example.csproj).
+
 ### How to create a module
 
 To create a module, simply create a class and have it implement the `SS.Core.IModule` interface. Here's what it should look like:
@@ -78,8 +86,9 @@ To create a module, simply create a class and have it implement the `SS.Core.IMo
 using SS.Core;
 using SS.Core.ComponentInterfaces;
 
-namespace Example;
-
+/// <summary>
+/// This is an example of the simplest form of loading and unloading a module.
+/// </summary>
 public class ExampleModule : IModule
 {
     bool IModule.Load(IComponentBroker broker)
@@ -92,9 +101,8 @@ public class ExampleModule : IModule
         return true;
     }
 }
-
-
 ```
+> View the [example code](/src/Example/ModuleLifeCycleExamples/ExampleModule.cs)
 
 Both the `Load` and `Unload` methods return a `bool`, which indicates success (`true`) or failure (`false`). Also, both have a parameter of type `IComponentBroker`. More on that later (see the [ComponentBroker](#ComponentBroker) section below).
 
@@ -109,21 +117,81 @@ That is, you want the server to create an instance of the `ExampleModule` class 
 > **Fun fact:** Modules can also be manually loaded or unloaded using in-game commands <nobr>`?insmod`</nobr> and <nobr>`?rmmod`</nobr> respectively.
 
 ## Module life-cycle
-The `IModule.Load` and `IModule.Unload` methods are the two required methods of a module. In addition to `IModule`, there are interfaces that can be used to further hook into the steps of a module's life-cycle: `IModuleLoaderAware` and `IArenaAttachableModule`.
 
-Here's the order of method calls to a module:
-1. `Load`
-2. \(*optional*\) `IModuleLoaderAware.PostLoad`
-3. \(*optional*\) `IArenaAttachableModule.AttachModule`
-4. \(*optional*\) `IArenaAttachableModule.DetachModule`
-5. \(*optional*\) `IModuleLoaderAware.PreUnload`
-6. `IModule.Unload`
+There are many steps in a module's life-cycle that can be hooked into. The `Load` and `Unload` steps are the obvious, required steps. Here's an overview of the steps that are available and what interface provides the hook in.
 
-### IModuleLoaderAware
-`IModuleLoaderAware` is an interface that allows you to tie into additional steps of loading and unloading. `IModuleLoaderAware.PostLoad` is an additional step, called during startup after all modules listed in the Modules.config have been loaded.  Likewise, `IModuleLoaderAware.PreUnload` is an additional step called during shutdown, which happens before the `Unload` method of any module is called.
+| # | Step | Synchronous Method | Asynchronous Method |
+| --- | --- | --- | --- |
+| 1. | Load | `IModule.Load` | `IAsyncModule.LoadAsync` |
+| 2. | *(optional)* Post-Load | `IModuleLoaderAware.PostLoad` | `IAsyncModuleLoaderAware.PostLoadAsync` |
+| 3. | *(optional)* Attach to Arena ^ | `IArenaAttachableModule.AttachModule` | `IAsyncArenaAttachableModule.AttachModuleAsync` |
+| 4. |*(optional)* Detach from Arena ^ | `IArenaAttachableModule.DetachModule` | `IAsyncArenaAttachableModule.DetachModuleAsync` |
+| 5. | *(optional)* Pre-Unload | `IModuleLoaderAware.PreUnload` | `IAsyncModuleLoaderAware.PreUnloadAsync` |
+| 6. | Unload | `IModule.Unload` | `IAsyncModule.UnloadAsync` |
 
-### IArenaAttachableModule
-`IArenaAttachableModule` is an interface which gives the ability to do tasks specifically for an arena, rather than server-wide. That is, when you only want your module to affect certain arenas. There is an arena.conf setting `Modules:AttachModules` which allows you to specify the modules that should be attached. Here's an example of what that setting might look like:
+^ For as many arenas as the module is configured to be attached to.
+
+Notice that there are synchronous/asynchronous pairs of interfaces that provide equivalent hooks into the module life-cycle:
+
+- `IModule` / `IAsyncModule`
+- `IModuleLoaderAware` / `IAsyncModuleLoaderAware`
+- `IArenaAttachableModule` / `IAsyncArenaAttachableModule`
+
+The asynchronous versions are there in case there is a need to do asynchronous work such as: 
+- Accessing a database
+- Accessing a web service
+- Accessing a file
+- Opening a .conf file (`IConfigManager.OpenConfigFile`)
+- etc...
+
+> If for some strange reason both the synchronous and asynchronous interfaces are implemented, the server will use the asynchronous interface. 
+
+### `IModule` / `IAsyncModule`
+
+Loading and unloading a module is a necessity. Therefore, a module must implement either `IModule` or `IAsyncModule`.
+
+### `IModuleLoaderAware` / `IAsyncModuleLoaderAware`
+The `IModuleLoaderAware` and `IAsyncModuleLoaderAware` interfaces provide a mechanism that allows tying into additional steps of loading and unloading. The **PostLoad** step is done during startup after all modules listed in the *Modules.config* file have been loaded. Likewise, **PreUnload** is an additional step called during shutdown, which happens before the `Unload` method of any module is called.
+
+> **Tip:** Modules can be manually loaded and unloaded using in-game commands `?insmod` and `?rmmod` respectively. This obviously happens after the initial module loading process, so any module that implements `IModuleLoaderAware` or `IAsyncModuleLoaderAware` and is manually loaded with `?insmod` will be immediately be **PostLoad**ed. Likewise, any module that is manually unloaded with `?rmmod` will be **PreUnload**ed.
+
+Here's an example of hooking into the PostLoad and PreUnload steps:
+```C#
+using SS.Core;
+using SS.Core.ComponentInterfaces;
+
+/// <summary>
+/// This is an example of hooking into the PostLoad and PreUnload steps of the module life-cycle.
+/// </summary>
+public class LoaderAwareExample : IModule, IModuleLoaderAware
+{
+    public bool Load(IComponentBroker broker)
+    {
+        return true;
+    }
+
+    public void PostLoad(IComponentBroker broker)
+    {
+        // Do something after all modules have been loaded.
+    }
+
+    public void PreUnload(IComponentBroker broker)
+    {
+        // Do something before all modules are to be unloaded.
+    }
+
+    public bool Unload(IComponentBroker broker)
+    {
+        return true;
+    }
+}
+```
+
+> View the [example code](/src/Example/ModuleLifeCycleExamples/LoaderAwareExample.cs)
+
+
+### `IArenaAttachableModule` / `IAsyncArenaAttachableModule`
+The `IArenaAttachableModule` and `IAsyncArenaAttachableModule` interfaces provide a mechanism to perform tasks for specific arenas that they are configured for, rather than server-wide (all arenas). It can be used when you only want your module to affect certain arenas. There is an arena.conf setting `Modules:AttachModules` which allows you to specify the modules that should be attached. Here's an example of what that setting might look like:
 ```ini
 ; This is in an arena.conf
 [ Modules ]
@@ -133,7 +201,49 @@ AttachModules = \
 ```
 This tells the server to look for the `Example.AnAttachableModule` and `Example.AnotherAttachableModule`, and call the appropriate `IArenaAttachableModule.AttachModule` and `IArenaAttachableModule.DetachModule` methods when the arena is created or destroyed.
 
-> **Fun fact:** Modules can also be manually attached or detached from an arena using in-game commands <nobr>`?attmod`</nobr> and <nobr>`?detmod`</nobr> respectively.
+> **Tip:** Modules can also be manually attached or detached from an arena using in-game commands <nobr>`?attmod`</nobr> and <nobr>`?detmod`</nobr> respectively.
+
+Here's an example of hooking into the *Attach to Arena* and *Detach from Arena* steps:
+
+```C#
+using SS.Core;
+using SS.Core.ComponentInterfaces;
+
+/// <summary>
+/// This is an example of hooking into the PostLoad and PreUnload steps of the module life-cycle.
+/// </summary>
+/// <remarks>
+/// Configure the module to be attached in the arena.conf file:
+/// <code>
+/// [ Modules ]
+/// AttachModules = Example.ModuleLifeCycleExamples.LoaderAwareExample
+/// </code>
+/// </remarks>
+public class LoaderAwareExample : IModule, IModuleLoaderAware
+{
+    public bool Load(IComponentBroker broker)
+    {
+        return true;
+    }
+
+    public void PostLoad(IComponentBroker broker)
+    {
+        // Do something after all modules have been loaded.
+    }
+
+    public void PreUnload(IComponentBroker broker)
+    {
+        // Do something before all modules are to be unloaded.
+    }
+
+    public bool Unload(IComponentBroker broker)
+    {
+        return true;
+    }
+}
+```
+
+> View the [example code](/src/Example/ModuleLifeCycleExamples/ArenaAttachableExample.cs)
 
 ## ComponentBroker
 Now that you know how to create a module and get it to load, you'll want your module to talk to other parts of the the server. This is where the `ComponentBroker` comes in. The `ComponentBroker` acts as an intermediary providing services for modules to interact with one another. That is, modules use a `ComponentBroker` to discover parts from other modules and to expose parts of themselves to other modules. A `ComponentBroker` provides three mechanisms for modules to communicate with one another: [Component Interfaces](#component-interfacesinterfaces), [Component Callbacks](#component-callbackscallbacks), and [Component Advisors](#component-advisorsdvisors). 
@@ -715,8 +825,8 @@ In Subspace Server .NET, per-player data is stored using a Dictionary in each `P
 The `Arena` class is another type widely used within the server. As you've already learned, it's important as a `ComponentBroker`. It is passed in many callbacks and through many methods on interfaces. As with `Player`, it is very likely there will be a need to store data for an `Arena`. Therefore, the `ArenaManager` module provides a similar mechanism: **per-arena** data. It works identically to per-player data, except for arenas. Use the `IArenaManager` interface to call the `AllocateArenaData` and `FreeArenaData` methods. Use the `TryGetExtraData` method on an `Arena` to access that arena's data.
 
 ## IDisposable pattern
-- If a module implements the `IDisposable` interface, the server will call the `Dispose` method after the module is unloaded.
-- If the class provided for Per-Player Data or Per-Arena Data implements the `IDisposable` interface, the server handles calling the `Dispose` method before the object is dropped from use.
+- If a module implements the `IDisposable` or `IAsyncDisposable` interface, the server will dispose the module after it is unloaded.
+- If Per-Player Data or Per-Arena Data class implements the `IDisposable` interface, the server will handle disposing the object when if it is dropped from use.
 
 ## Threading
 The server is a multithreaded application. However, for the most part, your module's logic will be running on the mainloop thread. The mainloop thread is the thread that the majority of the server's logic runs on. 
@@ -796,3 +906,22 @@ If the class being used for per-player data or per-arena data implements the `Mi
 
 #### `IPooledObjectPolicy<T>` method overloads of `AllocatePlayerData` and `AllocateArenaData`
 There are overloads of the `IPlayerData.AllocatePlayerData` and `IArenaData.AllocateArenaData` methods which allow passing in an `IPooledObjectPolicy<T>`. This interface is the one from Microsoft.Extensions.ObjectPool. With a custom policy, you are able to define how an object is created and what to do when an object is being returned to the pool (such as resetting an object's state so that it can be reused).
+
+## Best Practices
+
+Here are some recommendations when writing code for Subspace Server .NET. I've tried to follow these as much as possible, though of course there are always exceptions.
+
+- Don't execute blocking logic on the mainloop thread.
+  + If during a module life-cycle step, implement the asynchronous interface (`IAsyncModule`, `IAsyncModuleLoaderAware`, and `IAsyncArenaAttachableModule`) with `async`/`await`.
+  + Otherwise, schedule the work to be done on a thread-pool thread or other worker thread.
+    - `IMainloop.QueueThreadPoolWorkItem`
+    - `Task/Task<T>.Run`
+- Avoid throwing exceptions. Only throw exceptions on input validation, which should be noticed during development and not during normal use.
+- Reuse objects using [Object Pooling](#object-pooling)
+- Reuse array objects using `ArrayPool`.
+- Try to avoid allocating strings
+  + Use a pooled `StringBuilder` from `IObjectPoolManager.StringBuilderPool`
+  + Consider using `Span<char>` when possible.
+  + When writing a chat or log message, use interpolated strings, so that it uses the interpolated string handler overloads.
+- Try to avoid using LINQ, especially in hot spots (memory allocations).
+- Use nullable reference types (why not?).
