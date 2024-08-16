@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using GlobalPasswdSettings = SS.Core.ConfigHelp.Constants.GlobalPasswd;
 
 namespace SS.Core.Modules
 {
@@ -43,11 +44,11 @@ namespace SS.Core.Modules
 
         #region Module members
 
-        [ConfigHelp("General", "HashAlgorithm", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "MD5",
+        [ConfigHelp("General", "HashAlgorithm", ConfigScope.Global, ConfigFileName, Default = "MD5",
             Description = "The algorithm to use for hashing passwords. Supported algorithms include: MD5, SHA256, and SHA512.")]
-        [ConfigHelp("General", "HashEncoding", ConfigScope.Global, ConfigFileName, typeof(string), DefaultValue = "hex",
+        [ConfigHelp("General", "HashEncoding", ConfigScope.Global, ConfigFileName, Default = "hex",
             Description = "How password hashes are encoded in the password file. hex|Base64")]
-        [ConfigHelp("General", "AllowUnknown", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1",
+        [ConfigHelp<bool>("General", "AllowUnknown", ConfigScope.Global, ConfigFileName, Default = true,
             Description = "Determines whether to allow players not listed in the password file.")]
         async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
@@ -61,18 +62,16 @@ namespace SS.Core.Modules
             string? hashAlgorithmName = configManager.GetStr(_pwdFile, "General", "HashAlgorithm");
             if (string.IsNullOrWhiteSpace(hashAlgorithmName))
             {
-                _hashAlgorithm = MD5.Create();
+                hashAlgorithmName = GlobalPasswdSettings.General.HashAlgorithm.Default;
             }
-            else
+
+            _hashAlgorithm = hashAlgorithmName switch
             {
-                _hashAlgorithm = hashAlgorithmName switch
-                {
-                    "MD5" => MD5.Create(),
-                    "SHA256" => SHA256.Create(),
-                    "SHA512" => SHA512.Create(),
-                    _ => null,
-                };
-            }
+                "MD5" => MD5.Create(),
+                "SHA256" => SHA256.Create(),
+                "SHA512" => SHA512.Create(),
+                _ => null,
+            };
 
             if (_hashAlgorithm is null)
             {
@@ -96,7 +95,7 @@ namespace SS.Core.Modules
 
             _encodedHashLength = GetEncodedHashLength();
 
-            _allowUnknown = configManager.GetInt(_pwdFile, "General", "AllowUnknown", 1) != 0;
+            _allowUnknown = configManager.GetBool(_pwdFile, "General", "AllowUnknown", GlobalPasswdSettings.General.AllowUnknown.Default);
 
             _pdKey = playerData.AllocatePlayerData<PlayerData>();
 
@@ -327,7 +326,7 @@ namespace SS.Core.Modules
                 billing server is disconnected). This command does not involve the billing 
                 server.
                 """)]
-        [ConfigHelp("General", "RequireAuthenticationToSetPassword", ConfigScope.Global, ConfigFileName, typeof(bool), DefaultValue = "1",
+        [ConfigHelp<bool>("General", "RequireAuthenticationToSetPassword", ConfigScope.Global, ConfigFileName, Default = true,
             Description = "If true, you must be authenticated (have used a correct password) according to this module or some other module before using ?local_password to change your local password.")]
         private void Command_passwd(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -340,7 +339,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                if (_configManager.GetInt(_pwdFile, "General", "RequireAuthenticationToSetPassword", 1) != 0
+                if (_configManager.GetBool(_pwdFile, "General", "RequireAuthenticationToSetPassword", GlobalPasswdSettings.General.RequireAuthenticationToSetPassword.Default)
                     && !player.Flags.Authenticated)
                 {
                     _chat.SendMessage(player, "You must be authenticated to change your local password.");

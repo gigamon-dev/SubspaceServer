@@ -6,6 +6,7 @@ using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using ArenaSettings = SS.Core.ConfigHelp.Constants.Arena;
 
 namespace SS.Core.Modules
 {
@@ -503,7 +504,7 @@ namespace SS.Core.Modules
 
         #region Callbacks
 
-        [ConfigHelp("Misc", "SendUpdatedSettings", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+        [ConfigHelp<bool>("Misc", "SendUpdatedSettings", ConfigScope.Arena, Default = true,
             Description = "Whether to send updates to players when the arena settings change.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -521,7 +522,7 @@ namespace SS.Core.Modules
                 }
                 else if (action == ArenaAction.ConfChanged)
                 {
-                    bool sendUpdated = _configManager.GetInt(arena.Cfg!, "Misc", "SendUpdatedSettings", 1) != 0;
+                    bool sendUpdated = _configManager.GetBool(arena.Cfg!, "Misc", "SendUpdatedSettings", ArenaSettings.Misc.SendUpdatedSettings.Default);
 
                     S2C_ClientSettings old = arenaData.Settings;
 
@@ -575,44 +576,98 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("Bullet", "ExactDamage", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to use exact bullet damage (Cont .36+)")]
-        [ConfigHelp("Spectator", "HideFlags", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to show dropped flags to spectators (Cont .36+)")]
-        [ConfigHelp("Spectator", "NoXRadar", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether spectators are disallowed from having X radar (Cont .36+)")]
-        [ConfigHelp("Misc", "SlowFrameCheck", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Description = "Whether to check for slow frames on the client (possible cheat technique) (flawed on some machines, do not use)")]
-        [ConfigHelp("Misc", "DisableScreenshot", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to disable Continuum's screenshot feature (Cont .37+)")]
-        [ConfigHelp("Misc", "MaxTimerDrift", ConfigScope.Arena, typeof(byte), DefaultValue = "0", Description = "Percentage how much client timer is allowed to differ from server timer.")]
-        [ConfigHelp("Soccer", "DisableWallPass", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to disable ball-passing through walls (Cont .38+)")]
-        [ConfigHelp("Soccer", "DisableBallKilling", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to disable ball killing in safe zones (Cont .38+)")]
-        [ConfigHelp("All", "ShrapnelMax", ConfigScope.Arena, typeof(byte), "Maximum amount of shrapnel released from a ship's bomb")]
-        [ConfigHelp("All", "ShrapnelRate", ConfigScope.Arena, typeof(byte), "Amount of additional shrapnel gained by a 'Shrapnel Upgrade' prize.")]
-        [ConfigHelp("All", "AntiWarpStatus", ConfigScope.Arena, typeof(byte), Range = "0-2", Description = "Whether ships are allowed to receive 'Anti-Warp' 0=no 1=yes 2=yes/start-with")]
-        [ConfigHelp("All", "CloakStatus", ConfigScope.Arena, typeof(byte), Range = "0-2", Description = "Whether ships are allowed to receive 'Cloak' 0=no 1=yes 2=yes/start-with")]
-        [ConfigHelp("All", "StealthStatus", ConfigScope.Arena, typeof(byte), Range = "0-2", Description = "Whether ships are allowed to receive 'Stealth' 0=no 1=yes 2=yes/start-with")]
-        [ConfigHelp("All", "XRadarStatus", ConfigScope.Arena, typeof(byte), Range = "0-2", Description = "Whether ships are allowed to receive 'X-Radar' 0=no 1=yes 2=yes/start-with")]
-        [ConfigHelp("All", "InitialGuns", ConfigScope.Arena, typeof(byte), Range = "0-3", Description = "Initial level a ship's guns fire")]
-        [ConfigHelp("All", "MaxGuns", ConfigScope.Arena, typeof(byte), Range = "0-3", Description = "Maximum level a ship's guns can fire")]
-        [ConfigHelp("All", "InitialBombs", ConfigScope.Arena, typeof(byte), Range = "0-3", Description = "Initial level a ship's bombs fire")]
-        [ConfigHelp("All", "MaxBombs", ConfigScope.Arena, typeof(byte), Range = "0-3", Description = "Maximum level a ship's bombs can fire")]
-        [ConfigHelp("All", "DoubleBarrel", ConfigScope.Arena, typeof(bool), "Whether ships fire with double barrel bullets")]
-        [ConfigHelp("All", "EmpBomb", ConfigScope.Arena, typeof(bool), "Whether ships fire EMP bombs")]
-        [ConfigHelp("All", "SeeMines", ConfigScope.Arena, typeof(bool), "Whether ships see mines on radar")]
-        [ConfigHelp("All", "SeeBombLevel", ConfigScope.Arena, typeof(int), Range = "0-4", Description = "If ship can see bombs on radar (0=Disabled, 1=All, 2=L2 and up, 3=L3 and up, 4=L4 bombs only)")]
-        [ConfigHelp("All", "DisableFastShooting", ConfigScope.Arena, typeof(bool), "If firing bullets, bombs, or thors is disabled after using afterburners (1=enabled) (Cont .36+)")]
-        [ConfigHelp("All", "Radius", ConfigScope.Arena, typeof(int), Range = "0-255", DefaultValue = "14", Description = "The ship's radius from center to outside, in pixels. (Cont .37+)")]
-        [ConfigHelp("Spawn", "Team0-X", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location x-coordinate. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team1-X", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location x-coordinate. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team2-X", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location x-coordinate. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team3-X", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location x-coordinate. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team0-Y", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location y-coordinate. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team1-Y", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location y-coordinate. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team2-Y", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location y-coordinate. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team3-Y", ConfigScope.Arena, typeof(ushort), Range = "0-1024", Description = "Spawn location y-coordinate. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team0-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team1-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. If only Team0 variables are set, all teams use them.  If Team0 and Team1 variables are set, even teams use Team0 and odd teams use Team1. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team2-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. (Cont .38+)")]
-        [ConfigHelp("Spawn", "Team3-Radius", ConfigScope.Arena, typeof(ushort), Range = "0-512", Description = "Spawn location radius. (Cont .38+)")]
-        [ConfigHelp("Prize", "UseDeathPrizeWeights", ConfigScope.Arena, typeof(bool), DefaultValue = "0", Description = "Whether to use the DPrizeWeight section for death prizes instead of the PrizeWeight section.")]
-        [ConfigHelp("DPrizeWeight", "NullPrize", ConfigScope.Arena, typeof(int), DefaultValue = "0", Description = "Likelihood of an empty prize appearing.")]
+        [ConfigHelp<bool>("Bullet", "ExactDamage", ConfigScope.Arena, Default = false, Description = "Whether to use exact bullet damage (Cont .36+)")]
+        [ConfigHelp<bool>("Spectator", "HideFlags", ConfigScope.Arena, Default = false, Description = "Whether to show dropped flags to spectators (Cont .36+)")]
+        [ConfigHelp<bool>("Spectator", "NoXRadar", ConfigScope.Arena, Default = false, Description = "Whether spectators are disallowed from having X radar (Cont .36+)")]
+        [ConfigHelp<bool>("Misc", "SlowFrameCheck", ConfigScope.Arena, Default = false, Description = "Whether to check for slow frames on the client (possible cheat technique) (flawed on some machines, do not use)")]
+        [ConfigHelp<bool>("Misc", "DisableScreenshot", ConfigScope.Arena, Default = false, Description = "Whether to disable Continuum's screenshot feature (Cont .37+)")]
+        [ConfigHelp<byte>("Misc", "MaxTimerDrift", ConfigScope.Arena, Default = 0, Description = "Percentage how much client timer is allowed to differ from server timer.")]
+        [ConfigHelp<bool>("Soccer", "DisableWallPass", ConfigScope.Arena, Default = false, Description = "Whether to disable ball-passing through walls (Cont .38+)")]
+        [ConfigHelp<bool>("Soccer", "DisableBallKilling", ConfigScope.Arena, Default = false, Description = "Whether to disable ball killing in safe zones (Cont .38+)")]
+        [ConfigHelp<byte>("All", "ShrapnelMax", ConfigScope.Arena, Description = "Maximum amount of shrapnel released from a ship's bomb")]
+        [ConfigHelp<byte>("All", "ShrapnelRate", ConfigScope.Arena, Description = "Amount of additional shrapnel gained by a 'Shrapnel Upgrade' prize.")]
+        [ConfigHelp<byte>("All", "AntiWarpStatus", ConfigScope.Arena, Min = 0, Max = 2, Description = "Whether ships are allowed to receive 'Anti-Warp' 0=no 1=yes 2=yes/start-with")]
+        [ConfigHelp<byte>("All", "CloakStatus", ConfigScope.Arena, Min = 0, Max = 2, Description = "Whether ships are allowed to receive 'Cloak' 0=no 1=yes 2=yes/start-with")]
+        [ConfigHelp<byte>("All", "StealthStatus", ConfigScope.Arena, Min = 0, Max = 2, Description = "Whether ships are allowed to receive 'Stealth' 0=no 1=yes 2=yes/start-with")]
+        [ConfigHelp<byte>("All", "XRadarStatus", ConfigScope.Arena, Min = 0, Max = 2, Description = "Whether ships are allowed to receive 'X-Radar' 0=no 1=yes 2=yes/start-with")]
+        [ConfigHelp<byte>("All", "InitialGuns", ConfigScope.Arena, Min = 0, Max = 3, Description = "Initial level a ship's guns fire")]
+        [ConfigHelp<byte>("All", "MaxGuns", ConfigScope.Arena, Min = 0, Max = 3, Description = "Maximum level a ship's guns can fire")]
+        [ConfigHelp<byte>("All", "InitialBombs", ConfigScope.Arena, Min = 0, Max = 3, Description = "Initial level a ship's bombs fire")]
+        [ConfigHelp<byte>("All", "MaxBombs", ConfigScope.Arena, Min = 0, Max = 3, Description = "Maximum level a ship's bombs can fire")]
+        [ConfigHelp<bool>("All", "DoubleBarrel", ConfigScope.Arena, Description = "Whether ships fire with double barrel bullets")]
+        [ConfigHelp<bool>("All", "EmpBomb", ConfigScope.Arena, Description = "Whether ships fire EMP bombs")]
+        [ConfigHelp<bool>("All", "SeeMines", ConfigScope.Arena, Description = "Whether ships see mines on radar")]
+        [ConfigHelp<int>("All", "SeeBombLevel", ConfigScope.Arena, Min = 0, Max = 4, Description = "If ship can see bombs on radar (0=Disabled, 1=All, 2=L2 and up, 3=L3 and up, 4=L4 bombs only)")]
+        [ConfigHelp<bool>("All", "DisableFastShooting", ConfigScope.Arena, Description = "If firing bullets, bombs, or thors is disabled after using afterburners (1=enabled) (Cont .36+)")]
+        [ConfigHelp<int>("All", "Radius", ConfigScope.Arena, Default = 14, Min = 0, Max = 255, Description = "The ship's radius from center to outside, in pixels. (Cont .37+)")]
+        [ConfigHelp<ushort>("Spawn", "Team0-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                If set to a value, this is the X coordinate for the center point
+                where freq 0 will start. (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team1-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                If set to a value, this is the X coordinate for the center point
+                where freq 1 will start. (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team2-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                If set to a value, this is the X coordinate for the center point
+                where freq 2 will start. NOTE: if the Team2 settings are 0, Team0
+                will apply to evens and Team1 will apply to odds. (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team3-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024
+            , Description = """
+                If set to a value, this is the X coordinate for the center point
+                where freq 3 will start. NOTE: Repeats, freq 4 will use Team0's,
+                freq 5 will use Team1's, etc. (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team0-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                If set to a value, this is the Y coordinate for the center point
+                where freq 0 will start. (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team1-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                If set to a value, this is the Y coordinate for the center point
+                where freq 1 will start. (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team2-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                If set to a value, this is the Y coordinate for the center point
+                where freq 2 will start. NOTE: if the Team2 settings are 0, Team0
+                will apply to evens and Team1 will apply to odds. (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team3-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                If set to a value, this is the Y coordinate for the center point
+                where freq 3 will start. NOTE: Repeats, freq 4 will use Team0's,
+                freq 5 will use Team1's, etc. (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team0-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                How large of a circle from the center point freq 0 can start.
+                (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team1-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                How large of a circle from the center point freq 1 can start.
+                (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team2-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                How large of a circle from the center point freq 2 can start.
+                NOTE: if the Team2 settings are 0, Team0 will apply to evens and 
+                Team1 will apply to odds. (Cont .38+)
+                """)]
+        [ConfigHelp<ushort>("Spawn", "Team3-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+            Description = """
+                How large of a circle from the center point freq 3 can start.
+                NOTE: Repeats, freq 4 will use Team0's, freq 5 will use Team1's, 
+                etc. (Cont .38+)
+                """)]
+        [ConfigHelp<bool>("Prize", "UseDeathPrizeWeights", ConfigScope.Arena, Default = false, Description = "Whether to use the DPrizeWeight section for death prizes instead of the PrizeWeight section.")]
+        [ConfigHelp<int>("DPrizeWeight", "NullPrize", ConfigScope.Arena, Default = 0, Description = "Likelihood of an empty prize appearing.")]
         private void LoadSettings(ArenaData arenaData, ConfigHandle ch)
         {
             if (arenaData is null)
@@ -708,7 +763,16 @@ namespace SS.Core.Modules
             {
                 cs.Int16Settings[i] = (short)_configManager.GetInt(ch, ClientSettingsConfig.ShortNames[i].Section, ClientSettingsConfig.ShortNames[i].Key, 0);
 
-                if (i == 11)
+                if (i == 2)
+                {
+                    Debug.Assert(string.Equals("Misc", ClientSettingsConfig.ShortNames[i].Section, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals("SendPositionDelay", ClientSettingsConfig.ShortNames[i].Key, StringComparison.OrdinalIgnoreCase));
+
+                    // Misc:SendPositionDelay of 0 will crash Continuum. Set it to 1 at least.
+                    if (cs.Int16Settings[i] == 0)
+                        cs.Int16Settings[i] = 1;
+                }
+                else if (i == 11)
                 {
                     Debug.Assert(string.Equals("Radar", ClientSettingsConfig.ShortNames[i].Section, StringComparison.OrdinalIgnoreCase)
                         && string.Equals("MapZoomFactor", ClientSettingsConfig.ShortNames[i].Key, StringComparison.OrdinalIgnoreCase));

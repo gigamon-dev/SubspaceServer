@@ -126,7 +126,7 @@ namespace SS.Core
     [DebuggerDisplay("{Name} ({Status})")]
     public class Arena : ComponentBroker, IArenaTarget
     {
-        public const int DefaultSpecFreq = 8025;
+        public const int DefaultSpecFreq = ConfigHelp.Constants.Arena.Team.SpectatorFrequency.Default;
 
         private static readonly char[] _digitChars = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
@@ -167,8 +167,6 @@ namespace SS.Core
         /// <summary>
         /// The frequency for spectators in this arena.
         /// </summary>
-        [ConfigHelp("Team", "SpectatorFrequency", ConfigScope.Arena, typeof(int), Range = "0-9999", DefaultValue = "8025",
-            Description = "The frequency that spectators are assigned to, by default.")]
         public short SpecFreq { get; internal set; } = DefaultSpecFreq;
 
         #region Player Counts

@@ -71,27 +71,27 @@ namespace SS.Core.Modules
 
         #region Callbacks
 
-        [ConfigHelp("Misc", "GreetMessage", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "GreetMessage", ConfigScope.Arena,
             Description = "The message to send to each player on entering the arena.")]
-        [ConfigHelp("Misc", "PeriodicMessage0", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "PeriodicMessage0", ConfigScope.Arena,
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
-        [ConfigHelp("Misc", "PeriodicMessage1", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "PeriodicMessage1", ConfigScope.Arena,
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
-        [ConfigHelp("Misc", "PeriodicMessage2", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "PeriodicMessage2", ConfigScope.Arena,
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
-        [ConfigHelp("Misc", "PeriodicMessage3", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "PeriodicMessage3", ConfigScope.Arena,
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
-        [ConfigHelp("Misc", "PeriodicMessage4", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "PeriodicMessage4", ConfigScope.Arena,
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
-        [ConfigHelp("Misc", "PeriodicMessage5", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "PeriodicMessage5", ConfigScope.Arena,
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
-        [ConfigHelp("Misc", "PeriodicMessage6", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "PeriodicMessage6", ConfigScope.Arena,
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
-        [ConfigHelp("Misc", "PeriodicMessage7", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "PeriodicMessage7", ConfigScope.Arena,
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
-        [ConfigHelp("Misc", "PeriodicMessage8", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "PeriodicMessage8", ConfigScope.Arena,
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
-        [ConfigHelp("Misc", "PeriodicMessage9", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "PeriodicMessage9", ConfigScope.Arena,
             Description = "10 20 periodic message. 10 is the interval and 20 is the initial delay (in minutes).")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {

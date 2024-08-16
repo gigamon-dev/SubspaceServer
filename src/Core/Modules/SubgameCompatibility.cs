@@ -449,14 +449,14 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("SGCompat", "TemporarySet", ConfigScope.Global, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("SGCompat", "TemporarySet", ConfigScope.Global, Default = false,
             Description = """
                 "If this setting is 0, the `?set` command will be mapped to `?seta`.
                 "If this setting is 1, the `?set` command will be mapped to `?seta -t`.
                 """)]
         private void ReadConfig()
         {
-            bool temporarySet = _configManager.GetInt(_configManager.Global, "SGCompat", "TemporarySet", 0) != 0;
+            bool temporarySet = _configManager.GetBool(_configManager.Global, "SGCompat", "TemporarySet", ConfigHelp.Constants.Global.SGCompat.TemporarySet.Default);
             _aliases.Remove("?set", out _);
             _aliases.Add("?set", temporarySet ? "seta -t" : "seta");
         }

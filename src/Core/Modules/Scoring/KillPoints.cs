@@ -3,6 +3,8 @@ using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
+using KillSettings = SS.Core.ConfigHelp.Constants.Arena.Kill;
+using MiscSettings = SS.Core.ConfigHelp.Constants.Arena.Misc;
 
 namespace SS.Core.Modules.Scoring
 {
@@ -131,31 +133,31 @@ namespace SS.Core.Modules.Scoring
 
         #region Callbacks
 
-        [ConfigHelp("Kill", "FixedKillReward", ConfigScope.Arena, typeof(int), DefaultValue = "-1",
+        [ConfigHelp<int>("Kill", "FixedKillReward", ConfigScope.Arena, Default = -1,
             Description = "If -1 use the bounty of the killed player to calculate kill reward. Otherwise use this fixed value.")]
-        [ConfigHelp("Kill", "FlagMinimumBounty", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Kill", "FlagMinimumBounty", ConfigScope.Arena, Default = 0,
             Description = "The minimum bounty the killing player must have to get any bonus kill points for flags transferred, carried or owned.")]
-        [ConfigHelp("Kill", "PointsPerKilledFlag", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Kill", "PointsPerKilledFlag", ConfigScope.Arena, Default = 0,
             Description = """
                 The number of extra points to give for each flag a killed player
                 was carrying.Note that the flags don't actually have to be
                 transferred to the killer to be counted here.
                 """)]
-        [ConfigHelp("Kill", "PointsPerCarriedFlag", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Kill", "PointsPerCarriedFlag", ConfigScope.Arena, Default = 0,
             Description = """
                 The number of extra points to give for each flag the killing
                 player is carrying.Note that flags that were transfered to
                 the killer as part of the kill are counted here, so adjust
                 PointsPerKilledFlag accordingly.
                 """)]
-        [ConfigHelp("Kill", "PointsPerTeamFlag", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Kill", "PointsPerTeamFlag", ConfigScope.Arena, Default = 0,
             Description = """
                 The number of extra points to give for each flag owned by
                 the killing team.Note that flags that were transfered to
                 the killer as part of the kill are counted here, so
                 adjust PointsPerKilledFlag accordingly.
                 """)]
-        [ConfigHelp("Misc", "TeamKillPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Misc", "TeamKillPoints", ConfigScope.Arena, Default = false,
             Description = "Whether points are awarded for a team-kill.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -165,12 +167,12 @@ namespace SS.Core.Modules.Scoring
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
                 ConfigHandle ch = arena.Cfg!;
-                ad.FixedKillReward = _configManager.GetInt(ch, "Kill", "FixedKillReward", -1);
-                ad.FlagMinimumBounty = _configManager.GetInt(ch, "Kill", "FlagMinimumBounty", 0);
-                ad.PointsPerKilledFlag = _configManager.GetInt(ch, "Kill", "PointsPerKilledFlag", 0);
-                ad.PointsPerCarriedFlag = _configManager.GetInt(ch, "Kill", "PointsPerCarriedFlag", 0);
-                ad.PointsPerTeamFlag = _configManager.GetInt(ch, "Kill", "PointsPerTeamFlag", 0);
-                ad.TeamKillPoints = _configManager.GetInt(ch, "Misc", "TeamKillPoints", 0) != 0;
+                ad.FixedKillReward = _configManager.GetInt(ch, "Kill", "FixedKillReward", KillSettings.FixedKillReward.Default);
+                ad.FlagMinimumBounty = _configManager.GetInt(ch, "Kill", "FlagMinimumBounty", KillSettings.FlagMinimumBounty.Default);
+                ad.PointsPerKilledFlag = _configManager.GetInt(ch, "Kill", "PointsPerKilledFlag", KillSettings.PointsPerKilledFlag.Default);
+                ad.PointsPerCarriedFlag = _configManager.GetInt(ch, "Kill", "PointsPerCarriedFlag", KillSettings.PointsPerCarriedFlag.Default);
+                ad.PointsPerTeamFlag = _configManager.GetInt(ch, "Kill", "PointsPerTeamFlag", KillSettings.PointsPerTeamFlag.Default);
+                ad.TeamKillPoints = _configManager.GetBool(ch, "Misc", "TeamKillPoints", MiscSettings.TeamKillPoints.Default);
             }
         }
 

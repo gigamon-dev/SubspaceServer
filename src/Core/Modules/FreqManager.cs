@@ -6,6 +6,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using GeneralSettings = SS.Core.ConfigHelp.Constants.Arena.General;
+using MiscSettings = SS.Core.ConfigHelp.Constants.Arena.Misc;
+using TeamSettings = SS.Core.ConfigHelp.Constants.Arena.Team;
 
 namespace SS.Core.Modules
 {
@@ -1020,49 +1023,49 @@ namespace SS.Core.Modules
             public readonly bool DefaultBalancer_forceEvenTeams;
             public readonly int DefaultBalancer_maxDifference;
 
-            [ConfigHelp("Team", "MaxFrequency", ConfigScope.Arena, typeof(int), DefaultValue = "10000",
+            [ConfigHelp<int>("Team", "MaxFrequency", ConfigScope.Arena, Default = 10000,
                 Description = "One more than the highest frequency allowed. Set this below PrivFreqStart to disallow private freqs.")]
-            [ConfigHelp("Team", "DesiredTeams", ConfigScope.Arena, typeof(int), DefaultValue = "2",
+            [ConfigHelp<int>("Team", "DesiredTeams", ConfigScope.Arena, Default = 2,
                 Description = "The number of teams that the freq balancer will form as players enter.")]
-            [ConfigHelp("Team", "RequiredTeams", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("Team", "RequiredTeams", ConfigScope.Arena, Default = 0,
                 Description = "The number of teams that the freq manager will require to exist.")]
-            [ConfigHelp("Team", "RememberedTeams", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("Team", "RememberedTeams", ConfigScope.Arena, Default = 0,
                 Description = "The number of teams that the freq manager will keep in memory. Must be at least as high as RequiredTeams.")]
-            [ConfigHelp("Team", "PrivFreqStart", ConfigScope.Arena, typeof(int), DefaultValue = "100",
+            [ConfigHelp<int>("Team", "PrivFreqStart", ConfigScope.Arena, Default = 100, Min = 0, Max = 100,
                 Description = "Freqs above this value are considered private freqs.")]
-            [ConfigHelp("Team", "BalancedAgainstStart", ConfigScope.Arena, typeof(int), DefaultValue = "1",
+            [ConfigHelp<int>("Team", "BalancedAgainstStart", ConfigScope.Arena, Default = 1,
                 Description = """
                     Freqs >= BalancedAgainstStart and < BalancedAgainstEnd will be
                     checked for balance even when players are not changing to or from
                     these freqs. Set End < Start to disable this check.
                     """)]
-            [ConfigHelp("Team", "BalancedAgainstEnd", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("Team", "BalancedAgainstEnd", ConfigScope.Arena, Default = 0,
                 Description = """
                     Freqs >= BalancedAgainstStart and < BalancedAgainstEnd will be
                     checked for balance even when players are not changing to or from
                     these freqs. Set End < Start to disable this check.
                     """)]
-            [ConfigHelp("Team", "DisallowTeamSpectators", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Team", "DisallowTeamSpectators", ConfigScope.Arena, Default = false,
                 Description = "If players are allowed to spectate outside of the spectator frequency.")]
-            [ConfigHelp("Team", "InitialSpec", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Team", "InitialSpec", ConfigScope.Arena, Default = false,
                 Description = "If players entering the arena are always assigned to spectator mode.")]
-            [ConfigHelp("General", "MaxPlaying", ConfigScope.Arena, typeof(int), DefaultValue = "100",
+            [ConfigHelp<int>("General", "MaxPlaying", ConfigScope.Arena, Default = 100,
                 Description = "This is the most players that will be allowed to play in the arena at once. Zero means no limit.")]
-            [ConfigHelp("Team", "MaxPerTeam", ConfigScope.Arena, typeof(int), DefaultValue = "1000",
+            [ConfigHelp<int>("Team", "MaxPerTeam", ConfigScope.Arena, Default = 1000,
                 Description = "The maximum number of players on a public freq. Zero means these teams are not accessible.")]
-            [ConfigHelp("Team", "MaxPerPrivateTeam", ConfigScope.Arena, typeof(int), DefaultValue = "1000",
+            [ConfigHelp<int>("Team", "MaxPerPrivateTeam", ConfigScope.Arena, Default = 1000,
                 Description = "The maximum number of players on a private freq. Zero means these teams are not accessible.")]
-            [ConfigHelp("Team", "IncludeSpectators", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Team", "IncludeSpectators", ConfigScope.Arena, Default = false,
                 Description = "Whether to include spectators when enforcing maximum freq sizes.")]
-            [ConfigHelp("Misc", "MaxXres", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("Misc", "MaxXres", ConfigScope.Arena, Default = 0,
                 Description = "Maximum screen width allowed in the arena. Zero means no limit.")]
-            [ConfigHelp("Misc", "MaxYres", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("Misc", "MaxYres", ConfigScope.Arena, Default = 0,
                 Description = "Maximum screen height allowed in the arena. Zero means no limit.")]
-            [ConfigHelp("Misc", "MaxResArea", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("Misc", "MaxResArea", ConfigScope.Arena, Default = 0,
                 Description = "Maximum screen area (x*y) allowed in the arena, Zero means no limit.")]
-            [ConfigHelp("Team", "ForceEvenTeams", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<bool>("Team", "ForceEvenTeams", ConfigScope.Arena, Default = false,
                 Description = "Whether the default balancer will enforce even teams. Does not apply if a custom balancer module is used.")]
-            [ConfigHelp("Team", "MaxTeamDifference", ConfigScope.Arena, typeof(int), DefaultValue = "1",
+            [ConfigHelp<int>("Team", "MaxTeamDifference", ConfigScope.Arena, Default = 1, Min = 1,
                 Description = "How many players difference the balancer should tolerate. Does not apply if a custom balancer module is used.")]
             public Config(IConfigManager configManager, ConfigHandle ch)
             {
@@ -1082,22 +1085,22 @@ namespace SS.Core.Modules
                 else if (RememberedTeams < RequiredTeams)
                     RememberedTeams = RequiredTeams;
 
-                FirstPrivateFreq = Math.Clamp(configManager.GetInt(ch, "Team", "PrivFreqStart", 100), 0, 9999);
-                FirstBalancedFreq = configManager.GetInt(ch, "Team", "BalancedAgainstStart", 1);
-                LastBalancedFreq = configManager.GetInt(ch, "Team", "BalancedAgainstEnd", 0);
-                DisallowTeamSpectators = configManager.GetInt(ch, "Team", "DisallowTeamSpectators", 0) != 0;
-                AlwaysStartInSpec = configManager.GetInt(ch, "Team", "InitialSpec", 0) != 0;
-                MaxPlaying = configManager.GetInt(ch, "General", "MaxPlaying", 100);
-                MaxPublicFreqSize = configManager.GetInt(ch, "Team", "MaxPerTeam", 1000);
-                MaxPrivateFreqSize = configManager.GetInt(ch, "Team", "MaxPerPrivateTeam", 1000);
-                SpectatorsCountForTeamSize = configManager.GetInt(ch, "Team", "IncludeSpectators", 0) != 0;
-                MaxXResolution = configManager.GetInt(ch, "Misc", "MaxXres", 0);
-                MaxYResolution = configManager.GetInt(ch, "Misc", "MaxYres", 0);
-                MaxResolutionPixels = configManager.GetInt(ch, "Misc", "MaxResArea", 0);
-                DefaultBalancer_forceEvenTeams = configManager.GetInt(ch, "Team", "ForceEvenTeams", 0) != 0;
-                DefaultBalancer_maxDifference = configManager.GetInt(ch, "Team", "MaxTeamDifference", 1);
-                if (DefaultBalancer_maxDifference < 1)
-                    DefaultBalancer_maxDifference = 1;
+                FirstPrivateFreq = Math.Clamp(configManager.GetInt(ch, "Team", "PrivFreqStart", TeamSettings.PrivFreqStart.Default), TeamSettings.PrivFreqStart.Min, TeamSettings.PrivFreqStart.Max);
+                FirstBalancedFreq = configManager.GetInt(ch, "Team", "BalancedAgainstStart", TeamSettings.BalancedAgainstStart.Default);
+                LastBalancedFreq = configManager.GetInt(ch, "Team", "BalancedAgainstEnd", TeamSettings.BalancedAgainstEnd.Default);
+                DisallowTeamSpectators = configManager.GetBool(ch, "Team", "DisallowTeamSpectators", TeamSettings.DisallowTeamSpectators.Default);
+                AlwaysStartInSpec = configManager.GetBool(ch, "Team", "InitialSpec", TeamSettings.InitialSpec.Default);
+                MaxPlaying = configManager.GetInt(ch, "General", "MaxPlaying", GeneralSettings.MaxPlaying.Default);
+                MaxPublicFreqSize = configManager.GetInt(ch, "Team", "MaxPerTeam", TeamSettings.MaxPerTeam.Default);
+                MaxPrivateFreqSize = configManager.GetInt(ch, "Team", "MaxPerPrivateTeam", TeamSettings.MaxPerPrivateTeam.Default);
+                SpectatorsCountForTeamSize = configManager.GetBool(ch, "Team", "IncludeSpectators", TeamSettings.IncludeSpectators.Default);
+                MaxXResolution = configManager.GetInt(ch, "Misc", "MaxXres", MiscSettings.MaxXres.Default);
+                MaxYResolution = configManager.GetInt(ch, "Misc", "MaxYres", MiscSettings.MaxYres.Default);
+                MaxResolutionPixels = configManager.GetInt(ch, "Misc", "MaxResArea", MiscSettings.MaxResArea.Default);
+                DefaultBalancer_forceEvenTeams = configManager.GetBool(ch, "Team", "ForceEvenTeams", TeamSettings.ForceEvenTeams.Default);
+                DefaultBalancer_maxDifference = configManager.GetInt(ch, "Team", "MaxTeamDifference", TeamSettings.MaxTeamDifference.Default);
+                if (DefaultBalancer_maxDifference < TeamSettings.MaxTeamDifference.Min)
+                    DefaultBalancer_maxDifference = TeamSettings.MaxTeamDifference.Min;
             }
         }
 

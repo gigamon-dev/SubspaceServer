@@ -7,6 +7,7 @@ using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Runtime.InteropServices;
+using SoccerSettings = SS.Core.ConfigHelp.Constants.Arena.Soccer;
 
 namespace SS.Core.Modules
 {
@@ -169,7 +170,7 @@ namespace SS.Core.Modules
 
         bool IBalls.TrySpawnBall(Arena arena, int ballId) => TrySpawnBall(arena, ballId);
 
-        [ConfigHelp("Soccer", "NewGameDelay", ConfigScope.Arena, typeof(int), DefaultValue = "-3000",
+        [ConfigHelp<int>("Soccer", "NewGameDelay", ConfigScope.Arena, Default = -3000, 
             Description = "How long to wait between games (in ticks). If this is negative, the actual delay is random, betwen zero and the absolute value.")]
         void IBalls.EndGame(Arena arena)
         {
@@ -188,7 +189,7 @@ namespace SS.Core.Modules
                     ad.Balls[i].Carrier = null;
                 }
 
-                int newGameDelay = _configManager.GetInt(arena.Cfg!, "Soccer", "NewGameDelay", -3000);
+                int newGameDelay = _configManager.GetInt(arena.Cfg!, "Soccer", "NewGameDelay", SoccerSettings.NewGameDelay.Default);
                 if (newGameDelay < 0)
                     newGameDelay = _prng.Number(0, -newGameDelay);
 
@@ -810,40 +811,41 @@ namespace SS.Core.Modules
             return true;
         }
 
-        [ConfigHelp("Soccer", "BallCount", ConfigScope.Arena, typeof(int), DefaultValue = "0", Range = "0-8",
+        private const string MultipleBallsNote = """
+            N is omitted from the first setting. N can be from 1 to 7 for subsequent settings.
+            If there are more balls than spawn settings defined, later balls will repeat the spawns in order.
+            For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second.
+            If only part of a spawn is undefined, that part will default to the first spawn's setting.
+            """;
+
+        [ConfigHelp<int>("Soccer", "BallCount", ConfigScope.Arena, Default = 0, Min = 0, Max = 8,
             Description = "The number of balls in this arena.")]
         // Note: Soccer:Mode is a client setting. So, it's [ConfigHelp] is in ClientSettingsConfig.cs
-        [ConfigHelp("Soccer", "SpawnX[N]", ConfigScope.Arena, typeof(int),
-            Description = """
+        [ConfigHelp<int>("Soccer", "SpawnX", ConfigScope.Arena, Default = 512, Min = 0, Max = 1023,
+            Description = $"""
                 The X coordinate that the ball spawns at (in tiles).
-                N is omitted from the first setting. N can be from 1 to 7 for subsequent settings.
-                If there are more balls than spawn settings defined, later balls will repeat the spawns in order.
-                For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second.
-                If only part of a spawn is undefined, that part will default to the first spawn's setting.
+                This can be set for each ball separately: SpawnX[N].
+                {MultipleBallsNote}
                 """)]
-        [ConfigHelp("Soccer", "SpawnY[N]", ConfigScope.Arena, typeof(int),
-            Description = """
+        [ConfigHelp<int>("Soccer", "SpawnY", ConfigScope.Arena, Default = 512, Min = 0, Max = 1023,
+            Description = $"""
                 The Y coordinate that the ball spawns at (in tiles).
-                N is omitted from the first setting. N can be from 1 to 7 for subsequent settings.
-                If there are more balls than spawn settings defined, later balls will repeat the spawns in order.
-                For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second.
-                If only part of a spawn is undefined, that part will default to the first spawn's setting.
+                This can be set for each ball separately: SpawnY[N].
+                {MultipleBallsNote}
                 """)]
-        [ConfigHelp("Soccer", "SpawnRadius[N]", ConfigScope.Arena, typeof(int),
-            Description = """
+        [ConfigHelp<int>("Soccer", "SpawnRadius", ConfigScope.Arena, Default = 20, Min = 0, Max = 1024,
+            Description = $"""
                 How far from the spawn center the ball can spawn (in tiles).
-                N is omitted from the first setting. N can be from 1 to 7 for subsequent settings.
-                If there are more balls than spawn settings defined, later balls will repeat the spawns in order.
-                For example, with 3 spawns, the fourth ball uses the first spawn, the fifth ball uses the second.
-                If only part of a spawn is undefined, that part will default to the first spawn's setting.
+                This can be set for each ball separately: SpawnRadius[N].
+                {MultipleBallsNote}
                 """)]
-        [ConfigHelp("Soccer", "SendTime", ConfigScope.Arena, typeof(int), DefaultValue = "100", Range = "25-500",
+        [ConfigHelp<int>("Soccer", "SendTime", ConfigScope.Arena, Default = 100, Min = 25, Max = 500,
             Description = "How often the server sends ball positions (in ticks).")]
-        [ConfigHelp("Soccer", "GoalDelay", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Soccer", "GoalDelay", ConfigScope.Arena, Default = 0,
             Description = "How long after a goal before the ball appears (in ticks).")]
-        [ConfigHelp("Soccer", "AllowGoalByDeath", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Soccer", "AllowGoalByDeath", ConfigScope.Arena, Default = false,
             Description = "Whether a goal is scored if a player dies while carrying the ball on a goal tile.")]
-        [ConfigHelp("Soccer", "KillerIgnorePassDelay", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Soccer", "KillerIgnorePassDelay", ConfigScope.Arena, Default = 0,
             Description = "How much 'pass delay' should be trimmed off for someone killing a ball carrier.")]
         private int LoadBallSettings(Arena arena)
         {
@@ -858,14 +860,14 @@ namespace SS.Core.Modules
             lock (ad.Lock)
             {
                 ConfigHandle ch = arena.Cfg!;
-                ad.Settings.BallCount = Math.Clamp(_configManager.GetInt(ch, "Soccer", "BallCount", 0), 0, MaxBalls);
+                ad.Settings.BallCount = Math.Clamp(_configManager.GetInt(ch, "Soccer", "BallCount", SoccerSettings.BallCount.Default), SoccerSettings.BallCount.Min, SoccerSettings.BallCount.Max);
                 ad.Settings.Mode = _configManager.GetEnum(ch, "Soccer", "Mode", SoccerMode.All);
 
                 Span<BallSpawn> spawns = stackalloc BallSpawn[MaxBalls];
 
-                spawns[0].X = _configManager.GetInt(ch, "Soccer", "SpawnX", 512);
-                spawns[0].Y = _configManager.GetInt(ch, "Soccer", "SpawnY", 512);
-                spawns[0].Radius = _configManager.GetInt(ch, "Soccer", "SpawnRadius", 20);
+                spawns[0].X = int.Clamp(_configManager.GetInt(ch, "Soccer", "SpawnX", SoccerSettings.SpawnX.Default), SoccerSettings.SpawnX.Min, SoccerSettings.SpawnX.Max);
+                spawns[0].Y = int.Clamp(_configManager.GetInt(ch, "Soccer", "SpawnY", SoccerSettings.SpawnY.Default), SoccerSettings.SpawnY.Min, SoccerSettings.SpawnY.Max);
+                spawns[0].Radius = int.Clamp(_configManager.GetInt(ch, "Soccer", "SpawnRadius", SoccerSettings.SpawnRadius.Default), SoccerSettings.SpawnRadius.Min, SoccerSettings.SpawnRadius.Max);
 
                 Span<char> xName = stackalloc char["SpawnX#".Length];
                 Span<char> yName = stackalloc char["SpawnY#".Length];
@@ -904,19 +906,18 @@ namespace SS.Core.Modules
                     {
                         spawns[i].Radius = spawns[0].Radius;
                     }
+
+                    spawns[i].X = int.Clamp(spawns[i].X, SoccerSettings.SpawnX.Min, SoccerSettings.SpawnX.Max);
+                    spawns[i].Y = int.Clamp(spawns[i].Y, SoccerSettings.SpawnY.Min, SoccerSettings.SpawnY.Max);
+                    spawns[i].Radius = int.Clamp(spawns[i].Radius, SoccerSettings.SpawnRadius.Min, SoccerSettings.SpawnRadius.Max);
                 }
 
                 ad.SetSpawns(spawns[..newSpawnCount]);
 
-                ad.Settings.SendTime = _configManager.GetInt(ch, "Soccer", "SendTime", 100);
-                if (ad.Settings.SendTime < 25)
-                    ad.Settings.SendTime = 25;
-                else if (ad.Settings.SendTime > 500)
-                    ad.Settings.SendTime = 500;
-
-                ad.Settings.RespawnTimeAfterGoal = _configManager.GetInt(ch, "Soccer", "GoalDelay", 0);
-                ad.Settings.DeathScoresGoal = _configManager.GetInt(ch, "Soccer", "AllowGoalByDeath", 0) != 0;
-                ad.Settings.KillerIgnorePassDelay = _configManager.GetInt(ch, "Soccer", "KillerIgnorePassDelay", 0);
+                ad.Settings.SendTime = int.Clamp(_configManager.GetInt(ch, "Soccer", "SendTime", SoccerSettings.SendTime.Default), SoccerSettings.SendTime.Min, SoccerSettings.SendTime.Max);
+                ad.Settings.RespawnTimeAfterGoal = _configManager.GetInt(ch, "Soccer", "GoalDelay", SoccerSettings.GoalDelay.Default);
+                ad.Settings.DeathScoresGoal = _configManager.GetBool(ch, "Soccer", "AllowGoalByDeath", SoccerSettings.AllowGoalByDeath.Default);
+                ad.Settings.KillerIgnorePassDelay = _configManager.GetInt(ch, "Soccer", "KillerIgnorePassDelay", SoccerSettings.KillerIgnorePassDelay.Default);
 
                 return ad.Settings.BallCount;
             }

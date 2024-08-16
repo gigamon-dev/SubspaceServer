@@ -134,7 +134,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Callbacks
 
-        [ConfigHelp("Kill", "JackpotBountyPercent", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Kill", "JackpotBountyPercent", ConfigScope.Arena, Default = 0,
             Description = "The percent of a player's bounty added to the jackpot on each kill. Units: 0.1%.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -145,7 +145,7 @@ namespace SS.Core.Modules.Scoring
             {
                 lock (ad.Lock)
                 {
-                    ad.BountyRatio = _configManager.GetInt(arena.Cfg!, "Kill", "JackpotBountyPercent", 0) / 1000d;
+                    ad.BountyRatio = _configManager.GetInt(arena.Cfg!, "Kill", "JackpotBountyPercent", ConfigHelp.Constants.Arena.Kill.JackpotBountyPercent.Default) / 1000d;
                 }
             }
         }

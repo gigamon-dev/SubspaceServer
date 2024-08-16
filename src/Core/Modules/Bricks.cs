@@ -9,6 +9,8 @@ using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using BrickSettings = SS.Core.ConfigHelp.Constants.Arena.Brick;
+using RoutingSettings = SS.Core.ConfigHelp.Constants.Arena.Routing;
 
 namespace SS.Core.Modules
 {
@@ -122,11 +124,11 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("Brick", "CountBricksAsWalls", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+        [ConfigHelp<bool>("Brick", "CountBricksAsWalls", ConfigScope.Arena, Default = true,
             Description = "Whether bricks snap to the edges of other bricks (as opposed to only snapping to walls).")]
-        [ConfigHelp("Brick", "BrickSpan", ConfigScope.Arena, typeof(int), DefaultValue = "10",
+        [ConfigHelp<int>("Brick", "BrickSpan", ConfigScope.Arena, Default = 10,
             Description = "The maximum length of a dropped brick.")]
-        [ConfigHelp("Brick", "BrickMode", ConfigScope.Arena, typeof(BrickMode), DefaultValue = "Lateral",
+        [ConfigHelp<BrickMode>("Brick", "BrickMode", ConfigScope.Arena, Default = BrickMode.Lateral,
             Description = """
                 How bricks behave when they are dropped:
                   VIE = improved VIE style
@@ -134,9 +136,9 @@ namespace SS.Core.Modules
                   LATERAL = drop laterally across player
                   CAGE = drop 4 bricks simultaneously to create a cage
                 """)]
-        [ConfigHelp("Brick", "BrickTime", ConfigScope.Arena, typeof(int), DefaultValue = "6000",
+        [ConfigHelp<int>("Brick", "BrickTime", ConfigScope.Arena, Default = 6000,
             Description = "How long bricks last (in ticks).")]
-        [ConfigHelp("Routing", "WallResendCount", ConfigScope.Global, typeof(int), DefaultValue = "0", Range = "0-3",
+        [ConfigHelp<int>("Routing", "WallResendCount", ConfigScope.Arena, Default = 0, Min = 0, Max = 3,
             Description = "# of times a brick packet is sent unreliably, in addition to the reliable send.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -152,11 +154,11 @@ namespace SS.Core.Modules
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
                 ConfigHandle ch = arena.Cfg!;
-                abd.CountBricksAsWalls = _configManager.GetInt(ch, "Brick", "CountBricksAsWalls", 1) != 0;
-                abd.BrickSpan = _configManager.GetInt(ch, "Brick", "BrickSpan", 10);
+                abd.CountBricksAsWalls = _configManager.GetBool(ch, "Brick", "CountBricksAsWalls", BrickSettings.CountBricksAsWalls.Default);
+                abd.BrickSpan = _configManager.GetInt(ch, "Brick", "BrickSpan", BrickSettings.BrickSpan.Default);
                 abd.BrickMode = _configManager.GetEnum(ch, "Brick", "BrickMode", BrickMode.Lateral);
-                abd.BrickTime = (uint)_configManager.GetInt(ch, "Brick", "BrickTime", 6000);
-                abd.WallResendCount = Math.Clamp(_configManager.GetInt(ch, "Routing", "WallResendCount", 0), 0, 3);
+                abd.BrickTime = (uint)_configManager.GetInt(ch, "Brick", "BrickTime", BrickSettings.BrickTime.Default);
+                abd.WallResendCount = Math.Clamp(_configManager.GetInt(ch, "Routing", "WallResendCount", RoutingSettings.WallResendCount.Default), RoutingSettings.WallResendCount.Min, RoutingSettings.WallResendCount.Max);
 
                 // TODO: Add AntiBrickWarpDistance logic
             }

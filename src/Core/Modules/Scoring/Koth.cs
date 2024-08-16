@@ -4,6 +4,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
 using System.Collections.Generic;
+using KingSettings = SS.Core.ConfigHelp.Constants.Arena.King;
 
 namespace SS.Core.Modules.Scoring
 {
@@ -700,38 +701,38 @@ namespace SS.Core.Modules.Scoring
             public int NonCrownMinimumBounty;
             public int CrownRecoverKills;
 
-            [ConfigHelp("King", "AutoStart", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("King", "AutoStart", ConfigScope.Arena, Default = true,
                 Description = "Whether KOTH games will automatically start.")]
-            [ConfigHelp("King", "StartDelay", ConfigScope.Arena, typeof(int), DefaultValue = "1000",
+            [ConfigHelp<int>("King", "StartDelay", ConfigScope.Arena, Default = 1000,
                 Description = "How long to wait before starting a new round in centiseconds.")]
-            [ConfigHelp("King", "MinPlayers", ConfigScope.Arena, typeof(int), DefaultValue = "3",
+            [ConfigHelp<int>("King", "MinPlayers", ConfigScope.Arena, Default = 2,
                 Description = "Minimum # of players required for a 'King of the Hill' round to begin.")]
-            [ConfigHelp("King", "SplitPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("King", "SplitPoints", ConfigScope.Arena, Default = true,
                 Description = "Whether to split a reward between the winners or give each the full amount.")]
-            [ConfigHelp("King", "RewardFactor", ConfigScope.Arena, typeof(int), DefaultValue = "1000",
+            [ConfigHelp<int>("King", "RewardFactor", ConfigScope.Arena, Default = 1000,
                 Description = "Number of points given to winner of 'King of the Hill' round calculated as (players in arena)^2 * RewardFactor / 1000.")]
-            [ConfigHelp("King", "DeathCount", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("King", "DeathCount", ConfigScope.Arena, Default = 0,
                 Description = "Number of deaths a player is allowed until his crown is removed.")]
-            [ConfigHelp("King", "ExpireTime", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("King", "ExpireTime", ConfigScope.Arena, Default = 0,
                 Description = "Initial time given to each player at the beginning of a 'King of the Hill' round.")]
-            [ConfigHelp("King", "NonCrownAdjustTime", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("King", "NonCrownAdjustTime", ConfigScope.Arena, Default = 0,
                 Description = "Amount of time added for killing a player without a crown.")]
-            [ConfigHelp("King", "NonCrownMinimumBounty", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("King", "NonCrownMinimumBounty", ConfigScope.Arena, Default = 0,
                 Description = "Minimum amount of bounty a player must have in order to receive the extra time.")]
-            [ConfigHelp("King", "CrownRecoverKills", ConfigScope.Arena, typeof(int), DefaultValue = "3",
+            [ConfigHelp<int>("King", "CrownRecoverKills", ConfigScope.Arena, Default = 3,
                 Description = "Number of crown kills a non-crown player must get in order to get their crown back.")]
             public Settings(IConfigManager configManager, ConfigHandle ch)
             {
-                AutoStart = configManager.GetInt(ch, "King", "AutoStart", 1) != 0;
-                StartDelay = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "King", "StartDelay", 1000) * 10);
-                MinPlaying = configManager.GetInt(ch, "King", "MinPlayers", 2);
-                SplitPoints = configManager.GetInt(ch, "King", "SplitPoints", 1) != 0;
-                RewardFactor = configManager.GetInt(ch, "King", "RewardFactor", 1000);
-                DeathCount = configManager.GetInt(ch, "King", "DeathCount", 0);
-                ExpireTimeSpan = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "King", "ExpireTime", 0) * 10);
-                NonCrownAdjustTimeSpan = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "King", "NonCrownAdjustTime", 0) * 10);
-                NonCrownMinimumBounty = configManager.GetInt(ch, "King", "NonCrownMinimumBounty", 0);
-                CrownRecoverKills = configManager.GetInt(ch, "King", "CrownRecoverKills", 3);
+                AutoStart = configManager.GetBool(ch, "King", "AutoStart", KingSettings.AutoStart.Default);
+                StartDelay = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "King", "StartDelay", KingSettings.StartDelay.Default) * 10);
+                MinPlaying = configManager.GetInt(ch, "King", "MinPlayers", KingSettings.MinPlayers.Default);
+                SplitPoints = configManager.GetBool(ch, "King", "SplitPoints", KingSettings.SplitPoints.Default);
+                RewardFactor = configManager.GetInt(ch, "King", "RewardFactor", KingSettings.RewardFactor.Default);
+                DeathCount = configManager.GetInt(ch, "King", "DeathCount", KingSettings.DeathCount.Default);
+                ExpireTimeSpan = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "King", "ExpireTime", KingSettings.ExpireTime.Default) * 10);
+                NonCrownAdjustTimeSpan = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "King", "NonCrownAdjustTime", KingSettings.NonCrownAdjustTime.Default) * 10);
+                NonCrownMinimumBounty = configManager.GetInt(ch, "King", "NonCrownMinimumBounty", KingSettings.NonCrownMinimumBounty.Default);
+                CrownRecoverKills = configManager.GetInt(ch, "King", "CrownRecoverKills", KingSettings.CrownRecoverKills.Default);
             }
         }
 

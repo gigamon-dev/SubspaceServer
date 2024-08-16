@@ -457,7 +457,7 @@ namespace SS.Core.Modules
                         return;
                     }
 
-                    foreach ((ConfigHelpAttribute attribute, Type? moduleType) in records)
+                    foreach ((IConfigHelpAttribute attribute, Type? moduleType) in records)
                     {
                         _chat.SendMessage(player, $"Help on setting '{attribute.Section}:{attribute.Key}':");
 
@@ -628,47 +628,27 @@ namespace SS.Core.Modules
                     {
                         foreach (var constructorInfo in type.GetConstructors())
                         {
-                            foreach (var attribute in constructorInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                            {
-                                Add(attribute, assembly, type);
-                                count++;
-                            }
+                            AddConfigHelpAttributes(constructorInfo, assembly, type, ref count);
                         }
 
                         foreach (var methodInfo in type.GetRuntimeMethods())
                         {
-                            foreach (var attribute in methodInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                            {
-                                Add(attribute, assembly, type);
-                                count++;
-                            }
+                            AddConfigHelpAttributes(methodInfo, assembly, type, ref count);
                         }
 
                         foreach (var fieldInfo in type.GetRuntimeFields())
                         {
-                            foreach (var attribute in fieldInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                            {
-                                Add(attribute, assembly, type);
-                                count++;
-                            }
+                            AddConfigHelpAttributes(fieldInfo, assembly, type, ref count);
                         }
 
                         foreach (var propertyInfo in type.GetRuntimeProperties())
                         {
-                            foreach (var attribute in propertyInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                            {
-                                Add(attribute, assembly, type);
-                                count++;
-                            }
+                            AddConfigHelpAttributes(propertyInfo, assembly, type, ref count);
                         }
 
                         foreach (var eventInfo in type.GetRuntimeEvents())
                         {
-                            foreach (var attribute in eventInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
-                            {
-                                Add(attribute, assembly, type);
-                                count++;
-                            }
+                            AddConfigHelpAttributes(eventInfo, assembly, type, ref count);
                         }
                     }
 
@@ -682,8 +662,25 @@ namespace SS.Core.Modules
                     _logManager.LogM(LogLevel.Warn, nameof(Help), $"Unable to read attributes from assembly '{assembly}'. {ex.Message}");
                 }
 
+                void AddConfigHelpAttributes(MemberInfo memberInfo, Assembly assembly, Type type, ref int count)
+                {
+                    foreach (var attribute in memberInfo.GetCustomAttributes<ConfigHelpAttribute>(false))
+                    {
+                        Add(attribute, assembly, type);
+                        count++;
+                    }
 
-                void Add(ConfigHelpAttribute attribute, Assembly assembly, Type type)
+                    foreach (var attribute in memberInfo.GetCustomAttributes(typeof(ConfigHelpAttribute<>)))
+                    {
+                        if (attribute is IConfigHelpAttribute configHelpAttribute)
+                        {
+                            Add(configHelpAttribute, assembly, type);
+                            count++;
+                        }
+                    }
+                }
+
+                void Add(IConfigHelpAttribute attribute, Assembly assembly, Type type)
                 {
                     if (attribute is null || assembly is null)
                         return;

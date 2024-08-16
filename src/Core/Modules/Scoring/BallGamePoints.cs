@@ -8,6 +8,7 @@ using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using SoccerSettings = SS.Core.ConfigHelp.Constants.Arena.Soccer;
 
 namespace SS.Core.Modules.Scoring
 {
@@ -163,7 +164,7 @@ namespace SS.Core.Modules.Scoring
         #region Callbacks
 
         // Note: Soccer:Mode is a client setting. So, it's [ConfigHelp] is in ClientSettingsConfig.cs
-        [ConfigHelp("Soccer", "CapturePoints", ConfigScope.Arena, typeof(int), DefaultValue = "1",
+        [ConfigHelp<int>("Soccer", "CapturePoints", ConfigScope.Arena, Default = 1,
             Description = """
                 If positive, these points are distributed to each goal/team.
                 When you make a goal, the points get transferred to your goal/team.
@@ -172,13 +173,13 @@ namespace SS.Core.Modules.Scoring
                 If negative, teams are given 1 point for each goal,
                 first team to reach -CapturePoints points wins the game.
                 """)]
-        [ConfigHelp("Soccer", "Reward", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Soccer", "Reward", ConfigScope.Arena, Default = 0,
             Description = "Negative numbers equal absolute points given, positive numbers use FlagReward formula.")]
-        [ConfigHelp("Soccer", "WinBy", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Soccer", "WinBy", ConfigScope.Arena, Default = 0,
             Description = "Have to beat other team by this many goals.")]
-        [ConfigHelp("Soccer", "MinPlayers", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Soccer", "MinPlayers", ConfigScope.Arena, Default = 0,
             Description = "The minimum number of players who must be playing for soccer points to be awarded.")]
-        [ConfigHelp("Soccer", "MinTeams", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Soccer", "MinTeams", ConfigScope.Arena, Default = 0,
             Description = "The minimum number of teams that must exist for soccer points to be awarded.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -191,11 +192,11 @@ namespace SS.Core.Modules.Scoring
             {
                 ConfigHandle ch = arena.Cfg!;
                 ad.Mode = _configManager.GetEnum(ch, "Soccer", "Mode", SoccerMode.All);
-                ad.CapturePoints = _configManager.GetInt(ch, "Soccer", "CapturePoints", 1);
-                ad.Reward = _configManager.GetInt(ch, "Soccer", "Reward", 0);
-                ad.WinBy = _configManager.GetInt(ch, "Soccer", "WinBy", 0);
-                ad.MinPlayers = _configManager.GetInt(ch, "Soccer", "MinPlayers", 0);
-                ad.MinTeams = _configManager.GetInt(ch, "Soccer", "MinTeams", 0);
+                ad.CapturePoints = _configManager.GetInt(ch, "Soccer", "CapturePoints", SoccerSettings.CapturePoints.Default);
+                ad.Reward = _configManager.GetInt(ch, "Soccer", "Reward", SoccerSettings.Reward.Default);
+                ad.WinBy = _configManager.GetInt(ch, "Soccer", "WinBy", SoccerSettings.WinBy.Default);
+                ad.MinPlayers = _configManager.GetInt(ch, "Soccer", "MinPlayers", SoccerSettings.MinPlayers.Default);
+                ad.MinTeams = _configManager.GetInt(ch, "Soccer", "MinTeams", SoccerSettings.MinTeams.Default);
                 ad.IsFrequencyShipTypes = _configManager.GetInt(ch, "Misc", "FrequencyShipTypes", 0) != 0;
                 ad.IsCustomGame = _configManager.GetInt(ch, "Soccer", "CustomGame", 0) != 0;
 

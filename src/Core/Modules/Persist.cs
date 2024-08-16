@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using PersistSettings = SS.Core.ConfigHelp.Constants.Global.Persist;
 
 namespace SS.Core.Modules
 {
@@ -45,7 +46,7 @@ namespace SS.Core.Modules
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        private const int DefaultMaxRecordLength = 4096;
+        private const int DefaultMaxRecordLength = PersistSettings.MaxRecordLength.Default;
         private static int _maxRecordLength = DefaultMaxRecordLength;
 
         private readonly Action<PersistWorkItem> _mainloopWorkItem_ExecuteCallbacksAndDispose;
@@ -78,9 +79,9 @@ namespace SS.Core.Modules
 
         #region Module memebers
 
-        [ConfigHelp("Persist", "SyncSeconds", ConfigScope.Global, typeof(int), DefaultValue = "180",
+        [ConfigHelp<int>("Persist", "SyncSeconds", ConfigScope.Global, Default = 180,
             Description = "The interval at which all persistent data is synced to the database.")]
-        [ConfigHelp("Persist", "MaxRecordLength", ConfigScope.Global, typeof(int), DefaultValue = "4096",
+        [ConfigHelp<int>("Persist", "MaxRecordLength", ConfigScope.Global, Default = 4096,
             Description = "The maximum # of bytes to store per record.")]
         bool IModule.Load(IComponentBroker broker)
         {
@@ -91,7 +92,7 @@ namespace SS.Core.Modules
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
 
             _syncTimeSpan = TimeSpan.FromSeconds(
-                _configManager.GetInt(_configManager.Global, "Persist", "SyncSeconds", 180)).Duration();
+                _configManager.GetInt(_configManager.Global, "Persist", "SyncSeconds", PersistSettings.SyncSeconds.Default)).Duration();
 
             if (_syncTimeSpan < TimeSpan.FromSeconds(10))
                 _syncTimeSpan = TimeSpan.FromSeconds(10);
@@ -277,7 +278,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("General", "ScoreGroup", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("General", "ScoreGroup", ConfigScope.Arena,
             Description = """
                 If this is set, it will be used as the score identifier for
                 shared scores for this arena(unshared scores, e.g. per - game

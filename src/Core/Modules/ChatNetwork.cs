@@ -65,7 +65,7 @@ namespace SS.Core.Modules
 
         #region Module members
 
-        [ConfigHelp("Net", "ChatMessageDelay", ConfigScope.Global, typeof(int), DefaultValue = "20",
+        [ConfigHelp<int>("Net", "ChatMessageDelay", ConfigScope.Global, Default = 20,
             Description = """
                 The delay between sending messages to clients using the
                 text-based chat protocol. (To limit bandwidth used by
@@ -73,7 +73,7 @@ namespace SS.Core.Modules
                 """)]
         bool IModule.Load(IComponentBroker broker)
         {
-            _messageDelay = TimeSpan.FromMilliseconds(_configManager.GetInt(_configManager.Global, "Net", "ChatMessageDelay", 20) * 10);
+            _messageDelay = TimeSpan.FromMilliseconds(_configManager.GetInt(_configManager.Global, "Net", "ChatMessageDelay", ConfigHelp.Constants.Global.Net.ChatMessageDelay.Default) * 10);
 
             _clientDataKey = _playerData.AllocatePlayerData<ClientData>();
 
@@ -93,7 +93,7 @@ namespace SS.Core.Modules
             return true;
 
 
-            [ConfigHelp("Net", "ChatListen", ConfigScope.Global, typeof(string),
+            [ConfigHelp("Net", "ChatListen", ConfigScope.Global, 
                 Description = """
                     The TCP endpoint to listen on for the 'simple chat protocol' (SS.Core.Modules.ChatNetwork module).
                     The setting can be either a port or IP:port.

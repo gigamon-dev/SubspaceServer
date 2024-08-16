@@ -261,26 +261,13 @@ namespace SS.Core.Modules
 
                 for (int helpIndex = 0; helpIndex < helpList.Count; helpIndex++)
                 {
-                    (ConfigHelpAttribute attribute, _) = helpList[helpIndex];
+                    (IConfigHelpAttribute attribute, _) = helpList[helpIndex];
 
                     if (attribute.Scope == ConfigScope.Arena
                         && string.IsNullOrWhiteSpace(attribute.FileName))
                     {
                         string? value = _configManager.GetStr(configHandle, sectionName, attribute.Key);
                         value ??= "<unset>";
-
-                        if (!string.IsNullOrWhiteSpace(attribute.Range))
-                        {
-                            int dashIndex = attribute.Range.IndexOf('-');
-
-                            if (dashIndex != -1
-                                && int.TryParse(attribute.Range[0..dashIndex], out int min)
-                                && int.TryParse(attribute.Range[(dashIndex + 1)..], out int max))
-                            {
-                                writer.Write($"{sectionName}:{attribute.Key}:{value}:{min}:{max}:{attribute.Description}\r\n");
-                                continue;
-                            }
-                        }
 
                         StringBuilder description = _objectPoolManager.StringBuilderPool.Get();
 
@@ -294,9 +281,7 @@ namespace SS.Core.Modules
 
                             try
                             {
-                                sb.Append($"{sectionName}:{attribute.Key}:{value}:::");
-                                sb.Append(description);
-                                sb.Append("\r\n");
+                                sb.Append($"{sectionName}:{attribute.Key}:{value}:{attribute.Min}:{attribute.Max}:{description}\r\n");
 
                                 writer.Write(sb);
                             }

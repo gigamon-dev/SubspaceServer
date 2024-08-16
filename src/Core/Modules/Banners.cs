@@ -103,7 +103,7 @@ namespace SS.Core.Modules
 
         #region IBannerAdvisor
 
-        [ConfigHelp("Misc", "BannerPoints", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Misc", "BannerPoints", ConfigScope.Arena, Default = 0,
             Description = "Number of points required to display a banner.")]
         bool IBannersAdvisor.IsAllowedBanner(Player player)
         {
@@ -122,7 +122,7 @@ namespace SS.Core.Modules
             // TODO: Add logic to automatically use a pending banner when the player passes the required point threshold.
             // This would require adding a StatChangedCallback (for being able to watch KillPoints a FlagPoints).
 
-            int bannerPoints = _configManager.GetInt(arena.Cfg!, "Misc", "BannerPoints", 0);
+            int bannerPoints = _configManager.GetInt(arena.Cfg!, "Misc", "BannerPoints", ConfigHelp.Constants.Arena.Misc.BannerPoints.Default);
             if (bannerPoints > 0)
             {
                 IScoreStats? scoreStats = arena.GetInterface<IScoreStats>();

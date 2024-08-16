@@ -21,6 +21,8 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using ListenSettings = SS.Core.ConfigHelp.Constants.Global.Listen;
+using NetSettings = SS.Core.ConfigHelp.Constants.Global.Net;
 
 namespace SS.Core.Modules
 {
@@ -332,8 +334,8 @@ namespace SS.Core.Modules
             return true;
 
 
-            [ConfigHelp("Net", "InternalClientPort", ConfigScope.Global, typeof(int),
-            Description = "The bind port for the internal client socket (used to communicate with biller and dirserver).")]
+            [ConfigHelp<int>("Net", "InternalClientPort", ConfigScope.Global, Default = 0, 
+                Description = "The bind port for the internal client socket (used to communicate with biller and dirserver).")]
             bool InitializeSockets()
             {
                 //
@@ -362,7 +364,7 @@ namespace SS.Core.Modules
                 // Client socket (for communicating with the biller and directory server)
                 //
 
-                int bindPort = _configManager.GetInt(_configManager.Global, "Net", "InternalClientPort", 0);
+                int bindPort = _configManager.GetInt(_configManager.Global, "Net", "InternalClientPort", NetSettings.InternalClientPort.Default);
 
                 try
                 {
@@ -375,27 +377,30 @@ namespace SS.Core.Modules
 
                 return true;
 
-                [ConfigHelp("Listen", "Port", ConfigScope.Global, typeof(int), """
-                    The port that the game protocol listens on. Sections named
-                    Listen1, Listen2, ... are also supported. All Listen
-                    sections must contain a port setting.
-                    """)]
-                [ConfigHelp("Listen", "BindAddress", ConfigScope.Global, typeof(string), """
-                    The interface address to bind to. This is optional, and if
-                    omitted, the server will listen on all available interfaces.
-                    """)]
-                [ConfigHelp("Listen", "ConnectAs", ConfigScope.Global, typeof(string), """
-                    This setting allows you to treat clients differently
-                    depending on which port they connect to. It serves as a
-                    virtual server identifier for the rest of the server.The
-                    standard arena placement module will use this as the name of
-                    a default arena to put clients who connect through this port
-                    in.
-                    """)]
-                [ConfigHelp("Listen", "AllowVIE", ConfigScope.Global, typeof(bool),
-                    "Whether VIE protocol clients (i.e., Subspace 1.34 and bots) are allowed to connect to this port.")]
-                [ConfigHelp("Listen", "AllowCont", ConfigScope.Global, typeof(bool),
-                    "Whether Continuum clients are allowed to connect to this port.")]
+                [ConfigHelp<int>("Listen", "Port", ConfigScope.Global, 
+                    Description = """
+                        The port that the game protocol listens on. Sections named
+                        Listen1, Listen2, ... are also supported. All Listen
+                        sections must contain a port setting.
+                        """)]
+                [ConfigHelp("Listen", "BindAddress", ConfigScope.Global,
+                    Description = """
+                        The interface address to bind to. This is optional, and if
+                        omitted, the server will listen on all available interfaces.
+                        """)]
+                [ConfigHelp("Listen", "ConnectAs", ConfigScope.Global,
+                    Description = """
+                        This setting allows you to treat clients differently
+                        depending on which port they connect to. It serves as a
+                        virtual server identifier for the rest of the server.The
+                        standard arena placement module will use this as the name of
+                        a default arena to put clients who connect through this port
+                        in.
+                        """)]
+                [ConfigHelp<bool>("Listen", "AllowVIE", ConfigScope.Global, Default = true,
+                    Description = "Whether VIE protocol clients (i.e., Subspace 1.34 and bots) are allowed to connect to this port.")]
+                [ConfigHelp<bool>("Listen", "AllowCont", ConfigScope.Global, Default = true,
+                    Description = "Whether Continuum clients are allowed to connect to this port.")]
                 ListenData? CreateListenDataSockets(int configIndex)
                 {
                     string configSection = (configIndex == 0) ? "Listen" : $"Listen{configIndex}";
@@ -449,8 +454,8 @@ namespace SS.Core.Modules
                     ListenData listenData = new(gameSocket, pingSocket)
                     {
                         ConnectAs = _configManager.GetStr(_configManager.Global, configSection, "ConnectAs"),
-                        AllowVIE = _configManager.GetInt(_configManager.Global, configSection, "AllowVIE", 1) > 0,
-                        AllowContinuum = _configManager.GetInt(_configManager.Global, configSection, "AllowCont", 1) > 0,
+                        AllowVIE = _configManager.GetBool(_configManager.Global, configSection, "AllowVIE", ListenSettings.AllowVIE.Default),
+                        AllowContinuum = _configManager.GetBool(_configManager.Global, configSection, "AllowCont", ListenSettings.AllowCont.Default),
                     };
 
                     return listenData;
@@ -5829,14 +5834,14 @@ namespace SS.Core.Modules
             /// <summary>
             /// How long to get no data from a client before disconnecting him.
             /// </summary>
-            [ConfigHelp("Net", "DropTimeout", ConfigScope.Global, typeof(int), DefaultValue = "3000",
+            [ConfigHelp<int>("Net", "DropTimeout", ConfigScope.Global, Default = 3000,
                 Description = "How long to get no data from a client before disconnecting him (in ticks).")]
             public TimeSpan DropTimeout { get; private set; }
 
             /// <summary>
             /// How many S2C packets the server will buffer for a client before dropping him.
             /// </summary>
-            [ConfigHelp("Net", "MaxOutlistSize", ConfigScope.Global, typeof(int), DefaultValue = "500",
+            [ConfigHelp<int>("Net", "MaxOutlistSize", ConfigScope.Global, Default = 500,
                 Description = "How many S2C packets the server will buffer for a client before dropping him.")]
             public int MaxOutlistSize { get; private set; }
 
@@ -5909,7 +5914,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// Display total or playing in simple ping responses.
             /// </summary>
-            [ConfigHelp("Net", "SimplePingPopulationMode", ConfigScope.Global, typeof(PingPopulationMode), DefaultValue = "1",
+            [ConfigHelp<PingPopulationMode>("Net", "SimplePingPopulationMode", ConfigScope.Global, Default = PingPopulationMode.Total,
                 Description = """
                     Which value to return in the simple ping response (Subspace and Continuum clients).
                     1 = Total player count (default);
@@ -5922,8 +5927,8 @@ namespace SS.Core.Modules
             {
                 ArgumentNullException.ThrowIfNull(configManager);
 
-                DropTimeout = TimeSpan.FromMilliseconds(configManager.GetInt(configManager.Global, "Net", "DropTimeout", 3000) * 10);
-                MaxOutlistSize = configManager.GetInt(configManager.Global, "Net", "MaxOutlistSize", 500);
+                DropTimeout = TimeSpan.FromMilliseconds(configManager.GetInt(configManager.Global, "Net", "DropTimeout", NetSettings.DropTimeout.Default) * 10);
+                MaxOutlistSize = configManager.GetInt(configManager.Global, "Net", "MaxOutlistSize", NetSettings.MaxOutlistSize.Default);
                 SimplePingPopulationMode = configManager.GetEnum(configManager.Global, "Net", "SimplePingPopulationMode", PingPopulationMode.Total);
 
                 // (deliberately) undocumented settings

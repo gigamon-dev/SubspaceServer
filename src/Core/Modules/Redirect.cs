@@ -52,7 +52,7 @@ namespace SS.Core.Modules
 
         #region IRedirect
 
-        [ConfigHelp("Redirects", "<name>", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Redirects", "_name_", ConfigScope.Global,
             Description = """
                 Settings in the Redirects section correspond to arena names. If a
                 player tries to ?go to an arena name listed in this section, they

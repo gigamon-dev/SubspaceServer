@@ -5,6 +5,7 @@ using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using LegalShipSettings = SS.Core.ConfigHelp.Constants.Arena.LegalShip;
 
 namespace SS.Core.Modules.Enforcers
 {
@@ -78,9 +79,9 @@ namespace SS.Core.Modules.Enforcers
 
         #region IFreqManagerEnforcerAdvisor
 
-        [ConfigHelp("Legalship", "ArenaMask", ConfigScope.Arena, typeof(int), Range = "0-255", DefaultValue = "255",
+        [ConfigHelp<int>("LegalShip", "ArenaMask", ConfigScope.Arena, Min = 0, Max = 255, Default = 255,
             Description = "The ship mask of allowed ships in the arena. 1=warbird, 2=javelin, etc.")]
-        [ConfigHelp("Legalship", "Freq0Mask", ConfigScope.Arena, typeof(int), Range = "0-255", DefaultValue = "255",
+        [ConfigHelp<int>("LegalShip", "Freq0Mask", ConfigScope.Arena, Min = 0, Max = 255, Default = 255,
             Description = "The ship mask of allowed ships for freq 0. Ships must also be allowed on the arena mask. You can define a mask for any freq (FreqXMask).")]
         ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder? errorMessage)
         {
@@ -93,7 +94,7 @@ namespace SS.Core.Modules.Enforcers
             // arena
             ShipMask arenaMask;
             if (ad.ArenaMask == null)
-                ad.ArenaMask = arenaMask = (ShipMask)_configManager.GetInt(ch, "Legalship", "ArenaMask", 255);
+                ad.ArenaMask = arenaMask = (ShipMask)_configManager.GetInt(ch, "LegalShip", "ArenaMask", LegalShipSettings.ArenaMask.Default);
             else
                 arenaMask = ad.ArenaMask.Value;
 
@@ -111,7 +112,7 @@ namespace SS.Core.Modules.Enforcers
                     freqMaskKey = freqMaskKey[.."Freq0Mask".Length];
                 }
 
-                ad.FreqMasks[freq] = freqMask = (ShipMask)_configManager.GetInt(ch, "Legalship", freqMaskKey, 255);
+                ad.FreqMasks[freq] = freqMask = (ShipMask)_configManager.GetInt(ch, "LegalShip", freqMaskKey, LegalShipSettings.Freq0Mask.Default);
             }
 
             // combined

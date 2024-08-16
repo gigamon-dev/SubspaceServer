@@ -84,7 +84,7 @@ namespace SS.Core.Modules
 
         #region Module Members
 
-        [ConfigHelp("General", "NewsFile", ConfigScope.Global, typeof(string), DefaultValue = "news.txt",
+        [ConfigHelp("General", "NewsFile", ConfigScope.Global, Default = "news.txt",
             Description = "The filename of the news file.")]
         bool IModule.Load(IComponentBroker broker)
         {
@@ -98,7 +98,7 @@ namespace SS.Core.Modules
 
             string? newsFilename = _configManager.GetStr(_configManager.Global, "General", "NewsFile");
             if (string.IsNullOrWhiteSpace(newsFilename))
-                newsFilename = "news.txt";
+                newsFilename = ConfigHelp.Constants.Global.General.NewsFile.Default;
 
             _newsManager = new NewsManager(this, newsFilename);
 

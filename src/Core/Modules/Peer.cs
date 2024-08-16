@@ -17,6 +17,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using static SS.Core.ComponentInterfaces.IPeer;
+using PeerSettings = SS.Core.ConfigHelp.Constants.Global.Peer0;
 
 namespace SS.Core.Modules
 {
@@ -913,41 +914,41 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("Peer0", "Address", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Peer0", "Address", ConfigScope.Global,
             Description = "Send and receive peer packets to/from this IP address.")]
-        [ConfigHelp("Peer0", "Port", ConfigScope.Global, typeof(ushort),
+        [ConfigHelp<int>("Peer0", "Port", ConfigScope.Global, Default = 0,
             Description = "Send and receive peer packets to/from this UDP port.")]
-        [ConfigHelp("Peer0", "Password", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Peer0", "Password", ConfigScope.Global,
             Description = "Peers must agree upon a common password.")]
-        [ConfigHelp("Peer0", "SendOnly", ConfigScope.Global, typeof(bool),
+        [ConfigHelp<bool>("Peer0", "SendOnly", ConfigScope.Global, Default = false,
             Description = "If set, we send data to our peer but we reject any that we might receive.")]
-        [ConfigHelp("Peer0", "SendPlayerList", ConfigScope.Global, typeof(bool),
+        [ConfigHelp<bool>("Peer0", "SendPlayerList", ConfigScope.Global, Default = true,
             Description = "If set, send a full arena and player list to the peer. Otherwise only send a summary of our population.")]
-        [ConfigHelp("Peer0", "SendZeroPlayerCount", ConfigScope.Global, typeof(bool),
+        [ConfigHelp<bool>("Peer0", "SendZeroPlayerCount", ConfigScope.Global, Default = false,
             Description = "If set and SendPlayerList is not set, always send a population count of 0.")]
-        [ConfigHelp("Peer0", "SendMessages", ConfigScope.Global, typeof(bool),
+        [ConfigHelp<bool>("Peer0", "SendMessages", ConfigScope.Global, Default = true,
             Description = "If set, forward alert and zone (?z) messages to the peer.")]
-        [ConfigHelp("Peer0", "ReceiveMessages", ConfigScope.Global, typeof(bool),
+        [ConfigHelp<bool>("Peer0", "ReceiveMessages", ConfigScope.Global, Default = true,
             Description = "If set, display the zone (*zone) and alert messages from this peer.")]
-        [ConfigHelp("Peer0", "IncludeInPopulation", ConfigScope.Global, typeof(bool),
+        [ConfigHelp<bool>("Peer0", "IncludeInPopulation", ConfigScope.Global, Default = true,
             Description = "If set, include the population count of this peer in the ping protocol.")]
-        [ConfigHelp("Peer0", "ProvidesDefaultArenas", ConfigScope.Global, typeof(bool),
+        [ConfigHelp<bool>("Peer0", "ProvidesDefaultArenas", ConfigScope.Global, Default = false,
             Description = "If set, any arena that would normally end up as (default) will be redirected to this peer zone.")]
-        [ConfigHelp("Peer0", "Arenas", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Peer0", "Arenas", ConfigScope.Global,
             Description = """
                 A list of arena's that belong to the peer. This server will redirect players that try to ?go to
                 this arena. These arena's will also be used for ?find and will be shown in ?arena. If you are also
                 using Peer0:RenameArenas, you should put the local arena name here; this is the one you would see
                 in the ?arena list if you are in this zone.
                 """)]
-        [ConfigHelp("Peer0", "SendDummyArenas", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Peer0", "SendDummyArenas", ConfigScope.Global,
             Description = """
                 A list of arena's that we send to the peer with a single dummy player. Instead of the full
                 player list.This will keep the arena in the arena list of the peer with a fixed count of 1.
                 """)]
-        [ConfigHelp("Peer0", "RelayArenas", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Peer0", "RelayArenas", ConfigScope.Global,
             Description = "A list of arena's of this peer that will be relayed to other peers.")]
-        [ConfigHelp("Peer0", "RenameArenas", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Peer0", "RenameArenas", ConfigScope.Global,
             Description = """
                 A list of arena's that belong to the peer which should be renamed to a different name locally.
                 For example `foo = bar, 0 = twpublic` will display the remote `foo` arena as `bar` instead.
@@ -984,7 +985,7 @@ namespace SS.Core.Modules
                         continue;
                     }
 
-                    ushort port = (ushort)_configManager.GetInt(_configManager.Global, peerSection, "Port", 0);
+                    ushort port = (ushort)_configManager.GetInt(_configManager.Global, peerSection, "Port", PeerSettings.Port.Default);
                     if (port == 0)
                         break;
 
@@ -1000,13 +1001,13 @@ namespace SS.Core.Modules
                         {
                             Id = i,
                             PasswordHash = hash,
-                            SendOnly = _configManager.GetInt(_configManager.Global, peerSection, "SendOnly", 0) != 0,
-                            SendPlayerList = _configManager.GetInt(_configManager.Global, peerSection, "SendPlayerList", 1) != 0,
-                            SendZeroPlayerCount = _configManager.GetInt(_configManager.Global, peerSection, "SendZeroPlayerCount", 0) != 0,
-                            SendMessages = _configManager.GetInt(_configManager.Global, peerSection, "SendMessages", 1) != 0,
-                            ReceiveMessages = _configManager.GetInt(_configManager.Global, peerSection, "ReceiveMessages", 1) != 0,
-                            IncludeInPopulation = _configManager.GetInt(_configManager.Global, peerSection, "IncludeInPopulation", 1) != 0,
-                            ProvideDefaultArenas = _configManager.GetInt(_configManager.Global, peerSection, "ProvidesDefaultArenas", 0) != 0,
+                            SendOnly = _configManager.GetBool(_configManager.Global, peerSection, "SendOnly", PeerSettings.SendOnly.Default),
+                            SendPlayerList = _configManager.GetBool(_configManager.Global, peerSection, "SendPlayerList", PeerSettings.SendPlayerList.Default),
+                            SendZeroPlayerCount = _configManager.GetBool(_configManager.Global, peerSection, "SendZeroPlayerCount", PeerSettings.SendZeroPlayerCount.Default),
+                            SendMessages = _configManager.GetBool(_configManager.Global, peerSection, "SendMessages", PeerSettings.SendMessages.Default),
+                            ReceiveMessages = _configManager.GetBool(_configManager.Global, peerSection, "ReceiveMessages", PeerSettings.ReceiveMessages.Default),
+                            IncludeInPopulation = _configManager.GetBool(_configManager.Global, peerSection, "IncludeInPopulation", PeerSettings.IncludeInPopulation.Default),
+                            ProvideDefaultArenas = _configManager.GetBool(_configManager.Global, peerSection, "ProvidesDefaultArenas", PeerSettings.ProvidesDefaultArenas.Default),
                         });
 
                     string? arenas = _configManager.GetStr(_configManager.Global, peerSection, "Arenas");

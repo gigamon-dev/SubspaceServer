@@ -3,6 +3,8 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using System;
+using FlagSettings = SS.Core.ConfigHelp.Constants.Arena.Flag;
+using MiscSettings = SS.Core.ConfigHelp.Constants.Arena.Misc;
 
 namespace SS.Core.Modules.Scoring
 {
@@ -51,18 +53,18 @@ namespace SS.Core.Modules.Scoring
             return true;
         }
 
-        [ConfigHelp("Flag", "FlagMode", ConfigScope.Arena, typeof(FlagMode), DefaultValue = "None",
+        [ConfigHelp<FlagMode>("Flag", "FlagMode", ConfigScope.Arena, Default = FlagMode.None,
             Description = """
                 Style of flag game.
                 0 = carry all flags to win (e.g. running/jackpot),
                 1 = own all dropped flags to win (e.g. warzone),
                 -1 = None (no win condition)
                 """)]
-        [ConfigHelp("Flag", "FlagReward", ConfigScope.Arena, typeof(int), DefaultValue = "5000",
+        [ConfigHelp<int>("Flag", "FlagReward", ConfigScope.Arena, Default = 5000,
             Description = "The basic flag reward is calculated as (players in arena)^2 * FlagReward / 1000.")]
-        [ConfigHelp("Flag", "SplitPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Flag", "SplitPoints", ConfigScope.Arena, Default = false,
             Description = "Whether to split a flag reward between the members of a freq or give them each the full amount.")]
-        [ConfigHelp("Misc", "VictoryMusic", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+        [ConfigHelp<bool>("Misc", "VictoryMusic", ConfigScope.Arena, Default = true,
             Description = "Whether to play victory music or not.")]
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
@@ -71,9 +73,9 @@ namespace SS.Core.Modules.Scoring
 
             ConfigHandle ch = arena.Cfg!;
             ad.FlagMode = _configManager.GetEnum(ch, "Flag", "FlagMode", FlagMode.None);
-            ad.FlagRewardRatio = _configManager.GetInt(ch, "Flag", "FlagReward", 5000) / 1000.0;
-            ad.SplitPoints = _configManager.GetInt(ch, "Flag", "SplitPoints", 0) != 0;
-            ad.IsVictoryMusicEnabled = _configManager.GetInt(ch, "Misc", "VictoryMusic", 1) != 0;
+            ad.FlagRewardRatio = _configManager.GetInt(ch, "Flag", "FlagReward", FlagSettings.FlagReward.Default) / 1000.0;
+            ad.SplitPoints = _configManager.GetBool(ch, "Flag", "SplitPoints", FlagSettings.SplitPoints.Default);
+            ad.IsVictoryMusicEnabled = _configManager.GetBool(ch, "Misc", "VictoryMusic", MiscSettings.VictoryMusic.Default);
 
             FlagGainCallback.Register(arena, Callback_FlagGain);
             FlagLostCallback.Register(arena, Callback_FlagLost);

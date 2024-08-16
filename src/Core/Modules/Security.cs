@@ -102,7 +102,7 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly object _lockObj = new();
 
-        [ConfigHelp("Security", "SecurityKickoff", ConfigScope.Global, typeof(bool), DefaultValue = "false",
+        [ConfigHelp<bool>("Security", "SecurityKickoff", ConfigScope.Global, Default = false,
             Description = "Whether to kick players off of the server for violating security checks.")]
         private bool _securityKickoff;
 
@@ -141,7 +141,7 @@ namespace SS.Core.Modules
 
             LoadScrty();
 
-            _securityKickoff = _configManager.GetInt(_configManager.Global, "Security", "SecurityKickoff", 0) != 0;
+            _securityKickoff = _configManager.GetBool(_configManager.Global, "Security", "SecurityKickoff", ConfigHelp.Constants.Global.Security.SecurityKickoff.Default);
 
             SwitchChecksums();
 

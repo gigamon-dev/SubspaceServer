@@ -145,36 +145,48 @@ namespace SS.Core.ComponentInterfaces
         void CloseConfigFile(ConfigHandle handle);
 
         /// <summary>
-        /// Gets a string value from a config file.
+        /// Gets the value of a <see langword="string"/> setting from a config file.
         /// </summary>
-        /// <param name="handle">the config file to use (ConfigFile.Global for global.conf)</param>
-        /// <param name="section">which section of the file the key is in</param>
-        /// <param name="key">the name of the key to read</param>
-        /// <returns>the value of the key as a string, or <see langword="null"/> if the key isn't present</returns>
+        /// <param name="handle">Handle to the config file to read from. Use <see cref="Global"/> for the "/conf/global.conf" file. Use <see cref="Arena.Cfg"/> for an arena's arena.conf file.</param>
+        /// <param name="section">The section to read.</param>
+        /// <param name="key">The key to read.</param>
+        /// <returns>The value of the setting, or <see langword="null"/> if not found.</returns>
         string? GetStr(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key);
 
         /// <summary>
-        /// Gets an integer value from a config file.
+        /// Gets the value of an <see langword="int"/> setting from a config file.
         /// </summary>
-        /// <param name="handle">the config file to use</param>
-        /// <param name="section">which section of the file the key is in</param>
-        /// <param name="key">the name of the key to read</param>
-        /// <param name="defvalue">the value to be returned if the key isn't found</param>
-        /// <returns>the value of the key converted to an integer, or defvalue if it wasn't found. one special conversion is done: if the key has a string value that starts with a letter "y", then 1 is returned instead of 0.</returns>
-        int GetInt(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, int defvalue);
+        /// <param name="handle"><inheritdoc cref="GetStr" path="/param[@name='handle']"/></param>
+        /// <param name="section"><inheritdoc cref="GetStr" path="/param[@name='section']"/></param>
+        /// <param name="key"><inheritdoc cref="GetStr" path="/param[@name='key']"/></param>
+        /// <param name="defaultValue">The value to return if the setting is not found or cannot be converted to an integer.</param>
+        /// <returns>
+        /// The value of the setting converted to an integer, or the <paramref name="defaultValue"/> if not found or unable to convert to integer.
+        /// This additional handles conversion of "Y"/"N", "Yes"/"No", and "True"/"False" to 1 and 0 respectively.
+        /// </returns>
+        int GetInt(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, int defaultValue);
 
         /// <summary>
-        /// Gets an enum value from a config file.
+        /// Geta the value of a <see langword="bool"/> setting from a config file.
         /// </summary>
-        /// <typeparam name="T">The type of Enum.</typeparam>
-        /// <param name="handle">Handle to the config.</param>
-        /// <param name="section">The section to read from.</param>
-        /// <param name="key">They key to read.</param>
-        /// <param name="defaultValue">The value to be returned if the setting could not be found or had an invalid entry.</param>
+        /// <param name="handle"><inheritdoc cref="GetStr" path="/param[@name='handle']"/></param>
+        /// <param name="section"><inheritdoc cref="GetStr" path="/param[@name='section']"/></param>
+        /// <param name="key"><inheritdoc cref="GetStr" path="/param[@name='key']"/></param>
+        /// <param name="defaultValue"></param>
+        /// <returns></returns>
+        bool GetBool(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, bool defaultValue);
+
+        /// <summary>
+        /// Gets the value of an <see langword="enum"/> setting from a config file.
+        /// </summary>
+        /// <typeparam name="T">The type of <see langword="enum"/>.</typeparam>
+        /// <param name="handle"><inheritdoc cref="GetStr" path="/param[@name='handle']"/></param>
+        /// <param name="section"><inheritdoc cref="GetStr" path="/param[@name='section']"/></param>
+        /// <param name="key"><inheritdoc cref="GetStr" path="/param[@name='key']"/></param>
+        /// <param name="defaultValue">The value to return if the setting is not found or cannot be converted to <typeparamref name="T"/>.</param>
         /// <returns>
-        /// The value, or <paramref name="defaultValue"/> if the setting was not found or was invalid.
-        /// If the enum has <see cref="FlagsAttribute"/>, the value can be a combination.
-        /// Otherwise, it will be a defined value of the Enum.
+        /// The value of the setting converted to a <typeparamref name="T"/>, or the <paramref name="defaultValue"/> if not found or unable to convert to <typeparamref name="T"/>.
+        /// If the enum has <see cref="FlagsAttribute"/>, the value can be a combination. Otherwise, it will be a defined value of <typeparamref name="T"/>.
         /// </returns>
         T GetEnum<T>(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, T defaultValue) where T : struct, Enum;
 

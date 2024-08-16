@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using FlagSettings = SS.Core.ConfigHelp.Constants.Arena.Flag;
 
 namespace SS.Core.Modules.FlagGame
 {
@@ -825,71 +826,73 @@ namespace SS.Core.Modules.FlagGame
             public int MaxFlags { get; private set; }
             public int MinFlags { get; private set; }
 
-            [ConfigHelp("Flag", "AutoStart", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Flag", "AutoStart", ConfigScope.Arena, Default = true,
                 Description = "Whether a flag game will automatically start.")]
-            [ConfigHelp("Flag", "SpawnX", ConfigScope.Arena, typeof(int), DefaultValue = "512",
+            [ConfigHelp<int>("Flag", "ResetDelay", ConfigScope.Arena, Default = 0, 
+                Description = "The length of the delay between flag games.")]
+            [ConfigHelp<int>("Flag", "SpawnX", ConfigScope.Arena, Default = 512,
                 Description = "The X coordinate that new flags spawn at (in tiles).")]
-            [ConfigHelp("Flag", "SpawnY", ConfigScope.Arena, typeof(int), DefaultValue = "512",
+            [ConfigHelp<int>("Flag", "SpawnY", ConfigScope.Arena, Default = 512,
                 Description = "The Y coordinate that new flags spawn at (in tiles).")]
-            [ConfigHelp("Flag", "SpawnRadius", ConfigScope.Arena, typeof(int), DefaultValue = "50",
+            [ConfigHelp<int>("Flag", "SpawnRadius", ConfigScope.Arena, Default = 50,
                 Description = "How far from the spawn center that new flags spawn (in tiles).")]
-            [ConfigHelp("Flag", "DropRadius", ConfigScope.Arena, typeof(int), DefaultValue = "2",
+            [ConfigHelp<int>("Flag", "DropRadius", ConfigScope.Arena, Default = 2,
                 Description = "How far from a player do dropped flags appear (in tiles).")]
-            [ConfigHelp("Flag", "FriendlyTransfer", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Flag", "FriendlyTransfer", ConfigScope.Arena, Default = true,
                 Description = "Whether you get a teammates flags when you kill him.")]
             // Flag:CarryFlags is in ClientSettingsConfig
-            [ConfigHelp("Flag", "DropOwned", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Flag", "DropOwned", ConfigScope.Arena, Default = true,
                 Description = "Whether flags you drop are owned by your team.")]
-            [ConfigHelp("Flag", "DropCenter", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Flag", "DropCenter", ConfigScope.Arena, Default = false,
                 Description = "Whether flags dropped normally go in the center of the map, as opposed to near the player.")]
-            [ConfigHelp("Flag", "NeutOwned", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Flag", "NeutOwned", ConfigScope.Arena, Default = false,
                 Description = "Whether flags that are neut-dropped are owned by your team.")]
-            [ConfigHelp("Flag", "NeutCenter", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Flag", "NeutCenter", ConfigScope.Arena, Default = false,
                 Description = "Whether flags that are neut-dropped go in the center of the map, as opposed to near the player.")]
-            [ConfigHelp("Flag", "TKOwned", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Flag", "TKOwned", ConfigScope.Arena, Default = true,
                 Description = "Whether flags that are dropped by a team-kill are owned by your team.")]
-            [ConfigHelp("Flag", "TKCenter", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Flag", "TKCenter", ConfigScope.Arena, Default = false,
                 Description = "Whether flags that are dropped by a team-kill go in the center of the map, as opposed to near the player.")]
-            [ConfigHelp("Flag", "SafeOwned", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Flag", "SafeOwned", ConfigScope.Arena, Default = true,
                 Description = "Whether flags that are dropped from a safe zone are owned by your team.")]
-            [ConfigHelp("Flag", "SafeCenter", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Flag", "SafeCenter", ConfigScope.Arena, Default = false,
                 Description = "Whether flags that are dropped from a safe zone go in the center of the map, as opposed to near the player.")]
-            [ConfigHelp("Flag", "WinDelay", ConfigScope.Arena, typeof(int), DefaultValue = "200",
+            [ConfigHelp<int>("Flag", "WinDelay", ConfigScope.Arena, Default = 200,
                 Description = "The amount of time needed for the win condition to be satisfied to count as a win (ticks).")]
-            [ConfigHelp("Flag", "FlagCount", ConfigScope.Arena, typeof(int), DefaultValue = "0", Range = "0-256",
+            [ConfigHelp<int>("Flag", "FlagCount", ConfigScope.Arena, Default = 0, Min = 0, Max = 256,
                 Description = "How many flags are present in this arena. This can be set to a range. For example, 6-8 to allow anywhere between 6 and and 8 flags to spawn.")]
             public Settings(IConfigManager configManager, ConfigHandle ch)
             {
-                AutoStart = configManager.GetInt(ch, "Flag", "AutoStart", 1) != 0;
+                AutoStart = configManager.GetBool(ch, "Flag", "AutoStart", FlagSettings.AutoStart.Default);
 
-                ResetDelay = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "Flag", "ResetDelay", 0) * 10);
+                ResetDelay = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "Flag", "ResetDelay", FlagSettings.ResetDelay.Default) * 10);
                 if (ResetDelay < TimeSpan.Zero)
                     ResetDelay = TimeSpan.Zero;
 
                 SpawnCoordinate = new(
-                    (short)configManager.GetInt(ch, "Flag", "SpawnX", 512),
-                    (short)configManager.GetInt(ch, "Flag", "SpawnY", 512));
+                    (short)configManager.GetInt(ch, "Flag", "SpawnX", FlagSettings.SpawnX.Default),
+                    (short)configManager.GetInt(ch, "Flag", "SpawnY", FlagSettings.SpawnY.Default));
 
-                SpawnRadius = configManager.GetInt(ch, "Flag", "SpawnRadius", 50);
-                DropRadius = configManager.GetInt(ch, "Flag", "DropRadius", 2);
+                SpawnRadius = configManager.GetInt(ch, "Flag", "SpawnRadius", FlagSettings.SpawnRadius.Default);
+                DropRadius = configManager.GetInt(ch, "Flag", "DropRadius", FlagSettings.DropRadius.Default);
 
-                FriendlyTransfer = configManager.GetInt(ch, "Flag", "FriendlyTransfer", 1) != 0;
+                FriendlyTransfer = configManager.GetBool(ch, "Flag", "FriendlyTransfer", FlagSettings.FriendlyTransfer.Default);
 
                 CarryFlags = configManager.GetEnum(ch, "Flag", "CarryFlags", (ConfigCarryFlags)(-1));
 
-                DropOwned = configManager.GetInt(ch, "Flag", "DropOwned", 1) != 0;
-                DropCenter = configManager.GetInt(ch, "Flag", "DropCenter", 0) != 0;
+                DropOwned = configManager.GetBool(ch, "Flag", "DropOwned", FlagSettings.DropOwned.Default);
+                DropCenter = configManager.GetBool(ch, "Flag", "DropCenter", FlagSettings.DropCenter.Default);
 
-                NeutOwned = configManager.GetInt(ch, "Flag", "NeutOwned", 0) != 0;
-                NeutCenter = configManager.GetInt(ch, "Flag", "NeutCenter", 0) != 0;
+                NeutOwned = configManager.GetBool(ch, "Flag", "NeutOwned", FlagSettings.NeutOwned.Default);
+                NeutCenter = configManager.GetBool(ch, "Flag", "NeutCenter", FlagSettings.NeutCenter.Default);
 
-                TeamKillOwned = configManager.GetInt(ch, "Flag", "TKOwned", 1) != 0;
-                TeamKillCenter = configManager.GetInt(ch, "Flag", "TKCenter", 0) != 0;
+                TeamKillOwned = configManager.GetBool(ch, "Flag", "TKOwned", FlagSettings.TKOwned.Default);
+                TeamKillCenter = configManager.GetBool(ch, "Flag", "TKCenter", FlagSettings.TKCenter.Default);
 
-                SafeOwned = configManager.GetInt(ch, "Flag", "SafeOwned", 1) != 0;
-                SafeCenter = configManager.GetInt(ch, "Flag", "SafeCenter", 0) != 0;
+                SafeOwned = configManager.GetBool(ch, "Flag", "SafeOwned", FlagSettings.SafeOwned.Default);
+                SafeCenter = configManager.GetBool(ch, "Flag", "SafeCenter", FlagSettings.SafeCenter.Default);
 
-                WinDelay = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "Flag", "WinDelay", 200) * 10);
+                WinDelay = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "Flag", "WinDelay", FlagSettings.WinDelay.Default) * 10);
 
                 string flagCountStr = configManager.GetStr(ch, "Flag", "FlagCount") ?? string.Empty;
                 string[] minMaxArray = flagCountStr.Split('-', StringSplitOptions.RemoveEmptyEntries);

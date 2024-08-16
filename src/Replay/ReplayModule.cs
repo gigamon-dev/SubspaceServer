@@ -16,6 +16,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text;
+using ReplaySettings = SS.Replay.ConfigHelp.ReplaySettings.Replay;
 
 namespace SS.Replay
 {
@@ -2356,39 +2357,39 @@ namespace SS.Replay
             private const string NotifyPlaybackHelpOptions = "None = no notifications, Player = the player that started the playback, Arena = players in the arena.";
             private const string NotifyRecordingHelpOptions = "None = no notifications, Player = the player that started the recording, Arena = players in the arena.";
 
-            [ConfigHelp("Replay", "NotifyPlayback", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Arena",
+            [ConfigHelp<NotifyOption>("Replay", "NotifyPlayback", ConfigScope.Arena, Default = NotifyOption.Arena,
                 Description = $"Who gets notifications about playback (start, stop, pause, and resume). {NotifyPlaybackHelpOptions}")]
-            [ConfigHelp("Replay", "NotifyPlaybackError", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Player",
+            [ConfigHelp<NotifyOption>("Replay", "NotifyPlaybackError", ConfigScope.Arena, Default = NotifyOption.Player,
                 Description = $"Who gets notifications about playback errors. {NotifyPlaybackHelpOptions}")]
-            [ConfigHelp("Replay", "NotifyRecording", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Player",
+            [ConfigHelp<NotifyOption>("Replay", "NotifyRecording", ConfigScope.Arena, Default = NotifyOption.Player,
                 Description = $"Who gets notifications about recording (start and stop). {NotifyRecordingHelpOptions}")]
-            [ConfigHelp("Replay", "NotifyRecordingError", ConfigScope.Arena, typeof(NotifyOption), DefaultValue = "Player",
+            [ConfigHelp<NotifyOption>("Replay", "NotifyRecordingError", ConfigScope.Arena, Default = NotifyOption.Player,
                 Description = $"Who gets notifications about recording errors. {NotifyRecordingHelpOptions}")]
-            [ConfigHelp("Replay", "PlaybackMapCheckEnabled", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "PlaybackMapCheckEnabled", ConfigScope.Arena, Default = true,
                 Description = $"Whether to check if the map in the current arena matches the recording's map when starting a playback.")]
-            [ConfigHelp("Replay", "PlaybackSpecFreqCheckEnabled", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "PlaybackSpecFreqCheckEnabled", ConfigScope.Arena, Default = true,
                 Description = $"Whether to check if the arena's spec freq matches the recording's.")]
-            [ConfigHelp("Replay", "PlaybackLockTeams", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Replay", "PlaybackLockTeams", ConfigScope.Arena, Default = false,
                 Description = $"Whether teams are locked during a playback.")]
-            [ConfigHelp("Replay", "RecordPublicChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "RecordPublicChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether public chat messages are recorded.")]
-            [ConfigHelp("Replay", "RecordPublicMacroChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "RecordPublicMacroChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether public macro chat messages are recorded.")]
-            [ConfigHelp("Replay", "RecordSpecChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "RecordSpecChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether spectator chat messages are recorded.")]
-            [ConfigHelp("Replay", "RecordTeamChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "RecordTeamChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether team chat messages are recorded.")]
-            [ConfigHelp("Replay", "RecordArenaChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "RecordArenaChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether arena (green) chat messages are recorded.")]
-            [ConfigHelp("Replay", "PlaybackPublicChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "PlaybackPublicChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether public chat messages are played back.")]
-            [ConfigHelp("Replay", "RecordPublicMacroChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "PlaybackPublicMacroChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether public macro chat messages are played back.")]
-            [ConfigHelp("Replay", "PlaybackSpecChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "PlaybackSpecChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether spectator chat messages are played back.")]
-            [ConfigHelp("Replay", "PlaybackTeamChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "PlaybackTeamChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether team chat messages are played back.")]
-            [ConfigHelp("Replay", "PlaybackArenaChat", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Replay", "PlaybackArenaChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether arena (green) chat messages are played back.")]
             public Settings(IConfigManager configManager, ConfigHandle ch) : this()
             {
@@ -2405,23 +2406,23 @@ namespace SS.Replay
                 NotifyRecordingError = configManager.GetEnum(ch, "Replay", "NotifyRecordingError", NotifyOption.Player);
 
                 // playback settings
-                PlaybackMapCheckEnabled = configManager.GetInt(ch, "Replay", "PlaybackMapCheckEnabled", 1) != 0;
-                PlaybackSpecFreqCheckEnabled = configManager.GetInt(ch, "Replay", "PlaybackSpecFreqCheckEnabled", 1) != 0;
-                PlaybackLockTeams = configManager.GetInt(ch, "Replay", "PlaybackLockTeams", 0) != 0;
+                PlaybackMapCheckEnabled = configManager.GetBool(ch, "Replay", "PlaybackMapCheckEnabled", ReplaySettings.PlaybackMapCheckEnabled.Default);
+                PlaybackSpecFreqCheckEnabled = configManager.GetBool(ch, "Replay", "PlaybackSpecFreqCheckEnabled", ReplaySettings.PlaybackSpecFreqCheckEnabled.Default);
+                PlaybackLockTeams = configManager.GetBool(ch, "Replay", "PlaybackLockTeams", ReplaySettings.PlaybackLockTeams.Default);
 
                 // chat settings (recording)
-                RecordPublicChat = configManager.GetInt(ch, "Replay", "RecordPublicChat", 1) != 0;
-                RecordPublicMacroChat = configManager.GetInt(ch, "Replay", "RecordPublicMacroChat", 1) != 0;
-                RecordSpecChat = configManager.GetInt(ch, "Replay", "RecordSpecChat", 1) != 0;
-                RecordTeamChat = configManager.GetInt(ch, "Replay", "RecordTeamChat", 1) != 0;
-                RecordArenaChat = configManager.GetInt(ch, "Replay", "RecordArenaChat", 1) != 0;
+                RecordPublicChat = configManager.GetBool(ch, "Replay", "RecordPublicChat", ReplaySettings.RecordPublicChat.Default);
+                RecordPublicMacroChat = configManager.GetBool(ch, "Replay", "RecordPublicMacroChat", ReplaySettings.RecordPublicMacroChat.Default);
+                RecordSpecChat = configManager.GetBool(ch, "Replay", "RecordSpecChat", ReplaySettings.RecordSpecChat.Default);
+                RecordTeamChat = configManager.GetBool(ch, "Replay", "RecordTeamChat", ReplaySettings.RecordTeamChat.Default);
+                RecordArenaChat = configManager.GetBool(ch, "Replay", "RecordArenaChat", ReplaySettings.RecordArenaChat.Default);
 
                 // chat settings (playback)
-                PlaybackPublicChat = configManager.GetInt(ch, "Replay", "PlaybackPublicChat", 1) != 0;
-                PlaybackPublicMacroChat = configManager.GetInt(ch, "Replay", "PlaybackPublicMacroChat", 1) != 0;
-                PlaybackSpecChat = configManager.GetInt(ch, "Replay", "PlaybackSpecChat", 1) != 0;
-                PlaybackTeamChat = configManager.GetInt(ch, "Replay", "PlaybackTeamChat", 1) != 0;
-                PlaybackArenaChat = configManager.GetInt(ch, "Replay", "PlaybackArenaChat", 1) != 0;
+                PlaybackPublicChat = configManager.GetBool(ch, "Replay", "PlaybackPublicChat", ReplaySettings.PlaybackPublicChat.Default);
+                PlaybackPublicMacroChat = configManager.GetBool(ch, "Replay", "PlaybackPublicMacroChat", ReplaySettings.PlaybackPublicMacroChat.Default);
+                PlaybackSpecChat = configManager.GetBool(ch, "Replay", "PlaybackSpecChat", ReplaySettings.PlaybackSpecChat.Default);
+                PlaybackTeamChat = configManager.GetBool(ch, "Replay", "PlaybackTeamChat", ReplaySettings.PlaybackTeamChat.Default);
+                PlaybackArenaChat = configManager.GetBool(ch, "Replay", "PlaybackArenaChat", ReplaySettings.PlaybackArenaChat.Default);
             }
         }
 

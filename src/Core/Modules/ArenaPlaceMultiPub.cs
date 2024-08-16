@@ -60,7 +60,7 @@ namespace SS.Core.Modules
 
         #region IArenaPlace Members
 
-        [ConfigHelp("General", "DesiredPlaying", ConfigScope.Arena, typeof(int), DefaultValue = "15",
+        [ConfigHelp<int>("General", "DesiredPlaying", ConfigScope.Arena, Default = 15,
             Description = """
                 The limit at which the server will try to create a new public arena for incoming players.
                 This setting works in conjunction with the General:PublicArenas global.conf setting.
@@ -110,7 +110,7 @@ namespace SS.Core.Modules
                         }
                         else
                         {
-                            int desired = _configManager.GetInt(arena.Cfg!, "General", "DesiredPlaying", 15);
+                            int desired = _configManager.GetInt(arena.Cfg!, "General", "DesiredPlaying", ConfigHelp.Constants.Arena.General.DesiredPlaying.Default);
                             if (playing < desired)
                             {
                                 // we have fewer playing than we want, place here
@@ -137,7 +137,7 @@ namespace SS.Core.Modules
             LoadPubNames();
         }
 
-        [ConfigHelp("General", "PublicArenas", ConfigScope.Global, typeof(string),
+        [ConfigHelp("General", "PublicArenas", ConfigScope.Global, 
             Description = """
                 A list of public arenas (base arena names) that the server should place players in when a specific arena is not requested.
                 Allowed delimiters include: ' ' (space), ',', ':', and ';'.

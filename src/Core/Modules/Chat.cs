@@ -13,6 +13,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using GlobalChatSettings = SS.Core.ConfigHelp.Constants.Global.Chat;
 using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules
@@ -725,7 +726,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("Chat", "RestrictChat", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Chat", "RestrictChat", ConfigScope.Arena, Default = 0,
             Description = "This specifies an initial chat mask for the arena. Don't use this unless you know what you're doing.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -737,7 +738,7 @@ namespace SS.Core.Modules
                 if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                     return;
 
-                arenaData.Mask = new(_configManager.GetInt(arena.Cfg!, "Chat", "RestrictChat", 0));
+                arenaData.Mask = new(_configManager.GetInt(arena.Cfg!, "Chat", "RestrictChat", ConfigHelp.Constants.Arena.Chat.RestrictChat.Default));
             }
         }
 
@@ -1571,45 +1572,45 @@ namespace SS.Core.Modules
             /// <summary>
             /// Whether to send chat messages reliably.
             /// </summary>
-            [ConfigHelp("Chat", "MessageReliable", ConfigScope.Global, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Chat", "MessageReliable", ConfigScope.Global, Default = true,
                 Description = "Whether to send chat messages reliably.")]
             public readonly bool MessageReliable;
 
             /// <summary>
             /// How many messages needed to be sent in a short period of time (about a second) to qualify for chat flooding.
             /// </summary>
-            [ConfigHelp("Chat", "FloodLimit", ConfigScope.Global, typeof(int), DefaultValue = "10",
+            [ConfigHelp<int>("Chat", "FloodLimit", ConfigScope.Global, Default = 10,
                 Description = "How many messages needed to be sent in a short period of time (about a second) to qualify for chat flooding.")]
             public readonly int FloodLimit;
 
             /// <summary>
             /// How many seconds to disable chat for a player that is flooding chat messages.
             /// </summary>
-            [ConfigHelp("Chat", "FloodShutup", ConfigScope.Global, typeof(int), DefaultValue = "60",
+            [ConfigHelp<int>("Chat", "FloodShutup", ConfigScope.Global, Default = 60,
                 Description = "How many seconds to disable chat for a player that is flooding chat messages.")]
             public readonly int FloodShutup;
 
             /// <summary>
             /// How many commands are allowed on a single line.
             /// </summary>
-            [ConfigHelp("Chat", "CommandLimit", ConfigScope.Global, typeof(int), DefaultValue = "5",
+            [ConfigHelp<int>("Chat", "CommandLimit", ConfigScope.Global, Default = 5,
                 Description = "How many commands are allowed on a single line.")]
             public readonly int CommandLimit;
 
             /// <summary>
             /// If true, replace obscene words with garbage characters, otherwise suppress whole line.
             /// </summary>
-            [ConfigHelp("Chat", "FilterMode", ConfigScope.Global, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Chat", "FilterMode", ConfigScope.Global, Default = true,
                 Description = "If true, replace obscene words with garbage characters, otherwise suppress whole line.")]
             public readonly bool ObsceneFilterSendGarbageText;
 
             public Config(IConfigManager configManager)
             {
-                MessageReliable = configManager.GetInt(configManager.Global, "Chat", "MessageReliable", 1) != 0;
-                FloodLimit = configManager.GetInt(configManager.Global, "Chat", "FloodLimit", 10);
-                FloodShutup = configManager.GetInt(configManager.Global, "Chat", "FloodShutup", 60);
-                CommandLimit = configManager.GetInt(configManager.Global, "Chat", "CommandLimit", 5);
-                ObsceneFilterSendGarbageText = configManager.GetInt(configManager.Global, "Chat", "FilterMode", 1) != 0;
+                MessageReliable = configManager.GetBool(configManager.Global, "Chat", "MessageReliable", GlobalChatSettings.MessageReliable.Default);
+                FloodLimit = configManager.GetInt(configManager.Global, "Chat", "FloodLimit", GlobalChatSettings.FloodLimit.Default);
+                FloodShutup = configManager.GetInt(configManager.Global, "Chat", "FloodShutup", GlobalChatSettings.FloodShutup.Default);
+                CommandLimit = configManager.GetInt(configManager.Global, "Chat", "CommandLimit", GlobalChatSettings.CommandLimit.Default);
+                ObsceneFilterSendGarbageText = configManager.GetBool(configManager.Global, "Chat", "FilterMode", GlobalChatSettings.FilterMode.Default);
             }
         }
 

@@ -3,6 +3,7 @@ using SS.Core.ComponentInterfaces;
 using System;
 using System.IO;
 using System.Text;
+using LogSettings = SS.Core.ConfigHelp.Constants.Global.Log;
 
 namespace SS.Core.Modules
 {
@@ -36,7 +37,7 @@ namespace SS.Core.Modules
 
         #region Module methods
 
-        [ConfigHelp("Log", "FileFlushPeriod", ConfigScope.Global, typeof(int), DefaultValue = "10",
+        [ConfigHelp<int>("Log", "FileFlushPeriod", ConfigScope.Global, Default = 10,
             Description = "How often to flush the log file to disk (in minutes).")]
         bool IModule.Load(IComponentBroker broker)
         {
@@ -44,7 +45,7 @@ namespace SS.Core.Modules
 
             LogCallback.Register(broker, Callback_Log);
 
-            int flushMinutes = _configManager.GetInt(_configManager.Global, "Log", "FileFlushPeriod", 10);
+            int flushMinutes = _configManager.GetInt(_configManager.Global, "Log", "FileFlushPeriod", LogSettings.FileFlushPeriod.Default);
             int flushMilliseconds = (int)TimeSpan.FromMinutes(flushMinutes).TotalMilliseconds;
             _serverTimer.SetTimer(ServerTimer_FlushLog, flushMilliseconds, flushMilliseconds, null);
 
@@ -163,8 +164,7 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("Log", "DatedLogsPath", ConfigScope.Global, typeof(string), DefaultValue = "log",
-            Description = "Path of the folder to store logs.")]
+        [ConfigHelp("Log", "DatedLogsPath", ConfigScope.Global, Default = "log", Description = "Path of the folder to store logs.")]
         private void ReopenLog()
         {
             lock (_lockObj)
@@ -175,7 +175,7 @@ namespace SS.Core.Modules
 
                 string? path = _configManager.GetStr(_configManager.Global, "Log", "DatedLogsPath");
                 if (string.IsNullOrWhiteSpace(path))
-                    path = "log";
+                    path = LogSettings.DatedLogsPath.Default;
 
                 _fileDate = DateTime.UtcNow.Date;
                 string fileName = $"{_fileDate:yyyy-MM-dd}.log";

@@ -6,6 +6,7 @@ using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using PeriodicSettings = SS.Core.ConfigHelp.Constants.Arena.Periodic;
 
 namespace SS.Core.Modules.Scoring
 {
@@ -420,24 +421,24 @@ namespace SS.Core.Modules.Scoring
 
             public bool IncludeSafeZones { get; }
 
-            [ConfigHelp("Periodic", "RewardDelay", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("Periodic", "RewardDelay", ConfigScope.Arena, Default = 0,
                 Description = "The interval between periodic rewards (in ticks). Zero to disable.")]
-            [ConfigHelp("Periodic", "RewardMinimumPlayers", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("Periodic", "RewardMinimumPlayers", ConfigScope.Arena, Default = 0,
                 Description = "The minimum players necessary in the arena to give out periodic rewards.")]
-            [ConfigHelp("Periodic", "RewardPoints", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+            [ConfigHelp<int>("Periodic", "RewardPoints", ConfigScope.Arena, Default = 0,
                 Description = """
                     Periodic rewards are calculated as follows: If this setting is
                     positive, you get this many points per flag.If it's negative,
                     you get it's absolute value points per flag, times the number of
                     players in the arena.
                     """)]
-            [ConfigHelp("Periodic", "SplitPoints", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Periodic", "SplitPoints", ConfigScope.Arena, Default = false,
                 Description = "Whether points are divided among players on a team.")]
-            [ConfigHelp("Periodic", "SendZeroRewards", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+            [ConfigHelp<bool>("Periodic", "SendZeroRewards", ConfigScope.Arena, Default = true,
                 Description = "Whether frequencies with zero points will still get a reward notification during the ding.")]
-            [ConfigHelp("Periodic", "IncludeSpectators", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Periodic", "IncludeSpectators", ConfigScope.Arena, Default = false,
                 Description = "Whether players in spectator mode receive rewards.")]
-            [ConfigHelp("Periodic", "IncludeSafeZones", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+            [ConfigHelp<bool>("Periodic", "IncludeSafeZones", ConfigScope.Arena, Default = false,
                 Description = "Whether players in safe zones receive rewards.")]
             public Settings(IConfigManager configManager, ConfigHandle ch)
             {
@@ -447,13 +448,13 @@ namespace SS.Core.Modules.Scoring
                 if (ch == null)
                     throw new ArgumentNullException(nameof(ch));
 
-                RewardDelay = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "Periodic", "RewardDelay", 0) * 10);
-                RewardMinimumPlayers = configManager.GetInt(ch, "Periodic", "RewardMinimumPlayers", 0);
-                RewardPoints = configManager.GetInt(ch, "Periodic", "RewardPoints", 0);
-                SplitPoints = configManager.GetInt(ch, "Periodic", "SplitPoints", 0) != 0;
-                SendZeroRewards = configManager.GetInt(ch, "Periodic", "SendZeroRewards", 1) != 0;
-                IncludeSpectators = configManager.GetInt(ch, "Periodic", "IncludeSpectators", 0) != 0;
-                IncludeSafeZones = configManager.GetInt(ch, "Periodic", "IncludeSafeZones", 0) != 0;
+                RewardDelay = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "Periodic", "RewardDelay", PeriodicSettings.RewardDelay.Default) * 10);
+                RewardMinimumPlayers = configManager.GetInt(ch, "Periodic", "RewardMinimumPlayers", PeriodicSettings.RewardMinimumPlayers.Default);
+                RewardPoints = configManager.GetInt(ch, "Periodic", "RewardPoints", PeriodicSettings.RewardPoints.Default);
+                SplitPoints = configManager.GetBool(ch, "Periodic", "SplitPoints", PeriodicSettings.SplitPoints.Default);
+                SendZeroRewards = configManager.GetBool(ch, "Periodic", "SendZeroRewards", PeriodicSettings.SendZeroRewards.Default);
+                IncludeSpectators = configManager.GetBool(ch, "Periodic", "IncludeSpectators", PeriodicSettings.IncludeSpectators.Default);
+                IncludeSafeZones = configManager.GetBool(ch, "Periodic", "IncludeSafeZones", PeriodicSettings.IncludeSafeZones.Default);
             }
         }
 

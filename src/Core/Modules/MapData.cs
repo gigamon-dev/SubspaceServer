@@ -69,7 +69,7 @@ namespace SS.Core.Modules
 
         #region IMapData Members
 
-        [ConfigHelp("General", "Map", ConfigScope.Arena, typeof(string), Description = "The name of the level file for the arena.")]
+        [ConfigHelp("General", "Map", ConfigScope.Arena, Description = "The name of the level file for the arena.")]
         string? IMapData.GetMapFilename(Arena arena, string? mapName)
         {
             ArgumentNullException.ThrowIfNull(arena);
@@ -92,8 +92,8 @@ namespace SS.Core.Modules
                 arena.BaseName);
         }
 
-        [ConfigHelp("General", "LevelFiles", ConfigScope.Arena, typeof(string),
-            "The list of lvz files for the arena. LevelFiles1 through LevelFiles15 are also supported.")]
+        [ConfigHelp("General", "LevelFiles", ConfigScope.Arena,
+            Description = "The list of lvz files for the arena. LevelFiles1 through LevelFiles15 are also supported.")]
         IEnumerable<LvzFileInfo> IMapData.LvzFilenames(Arena arena)
         {
             ArgumentNullException.ThrowIfNull(arena);

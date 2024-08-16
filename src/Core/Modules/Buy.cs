@@ -25,53 +25,55 @@ namespace SS.Core.Modules
         private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IScoreStats _scoreStats = scoreStats ?? throw new ArgumentNullException(nameof(scoreStats));
 
-        [ConfigHelp("Cost", "XRadar", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        private const int DefaultCost = 0;
+
+        [ConfigHelp<int>("Cost", "XRadar", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for XRadar. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Recharge", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Recharge", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Recharge Upgrade. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Energy", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Energy", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Energy Upgrade. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Rotation", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Rotation", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Rotation Upgrade. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Stealth", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Stealth", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Stealth Ability. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Cloak", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Cloak", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Cloak Ability. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Gun", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Gun", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Gun Upgrade. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Bomb", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Bomb", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Bomb Upgrade. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Bounce", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Bounce", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Bouncing Bullets. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Thrust", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Thrust", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Thrust Upgrade. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Speed", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Speed", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Top Speed. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "MultiFire", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "MultiFire", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for MultiFire. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Prox", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Prox", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Proximity Bombs. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Super", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Super", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Super. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Shield", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Shield", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Shields. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Shrap", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Shrap", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Shrapnel Upgrade. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "AntiWarp", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "AntiWarp", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for AntiWarp Ability. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Repel", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Repel", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Repel. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Burst", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Burst", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Burst. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Decoy", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Decoy", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Decoy. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Thor", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Thor", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Thor. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Brick", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Brick", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Brick. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Rocket", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Rocket", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Rocket. 0 to disallow purchase.")]
-        [ConfigHelp("Cost", "Portal", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Cost", "Portal", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Portal. 0 to disallow purchase.")]
         private static readonly (string MatchString, string SettingKey, Prize Prize)[] _items = new[]
         {
@@ -158,7 +160,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            int cost = _configManager.GetInt(arena.Cfg!, "Cost", _items[itemIndex].SettingKey, 0);
+            int cost = _configManager.GetInt(arena.Cfg!, "Cost", _items[itemIndex].SettingKey, DefaultCost);
             if (cost == 0)
             {
                 _chat.SendMessage(player, "That item isn't available for purchase.");

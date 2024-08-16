@@ -4,6 +4,7 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
 using System.Text;
+using MiscSettings = SS.Core.ConfigHelp.Constants.Arena.Misc;
 
 namespace SS.Core.Modules.Enforcers
 {
@@ -142,11 +143,11 @@ namespace SS.Core.Modules.Enforcers
 
         #region Callbacks
 
-        [ConfigHelp("Misc", "ShipChangeInterval", ConfigScope.Arena, typeof(int), DefaultValue = "500",
+        [ConfigHelp<int>("Misc", "ShipChangeInterval", ConfigScope.Arena, Default = 500,
             Description = "The allowable interval between player ship changes, in ticks.")]
-        [ConfigHelp("Misc", "AntiwarpShipChange", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Misc", "AntiwarpShipChange", ConfigScope.Arena, Default = false,
             Description = "Whether to prevent players without flags from changing ships while antiwarped.")]
-        [ConfigHelp("Misc", "AntiwarpFlagShipChange", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Misc", "AntiwarpFlagShipChange", ConfigScope.Arena, Default = false,
             Description = "Whether to prevent players with flags from changing ships while antiwarped.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -156,9 +157,9 @@ namespace SS.Core.Modules.Enforcers
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
                 ConfigHandle ch = arena.Cfg!;
-                ad.ShipChangeInterval = TimeSpan.FromMilliseconds(_configManager.GetInt(ch, "Misc", "ShipChangeInterval", 500) * 10);
-                ad.AntiwarpNonFlagger = _configManager.GetInt(ch, "Misc", "AntiwarpShipChange", 0) != 0;
-                ad.AntiwarpFlagger = _configManager.GetInt(ch, "Misc", "AntiwarpFlagShipChange", 0) != 0;
+                ad.ShipChangeInterval = TimeSpan.FromMilliseconds(_configManager.GetInt(ch, "Misc", "ShipChangeInterval", MiscSettings.ShipChangeInterval.Default) * 10);
+                ad.AntiwarpNonFlagger = _configManager.GetBool(ch, "Misc", "AntiwarpShipChange", MiscSettings.AntiwarpShipChange.Default);
+                ad.AntiwarpFlagger = _configManager.GetBool(ch, "Misc", "AntiwarpFlagShipChange", MiscSettings.AntiwarpFlagShipChange.Default);
             }
         }
 

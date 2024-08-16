@@ -15,6 +15,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using TeamSettings = SS.Core.ConfigHelp.Constants.Arena.Team;
 
 namespace SS.Core.Modules
 {
@@ -143,7 +144,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        [ConfigHelp("Arenas", "PermanentArenas", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Arenas", "PermanentArenas", ConfigScope.Global, 
             Description = """
                 Names of arenas to permanently keep running.
                 These arenas will be created when the server is started
@@ -837,7 +838,7 @@ namespace SS.Core.Modules
 
         #region Packet handlers
 
-        [ConfigHelp("Chat", "ForceFilter", ConfigScope.Global, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Chat", "ForceFilter", ConfigScope.Global, Default = false,
             Description = "If true, players will always start with the obscenity filter on by default. If false, use their preference.")]
         private void Packet_GotoArena(Player player, Span<byte> data, NetReceiveFlags flags)
         {
@@ -961,7 +962,7 @@ namespace SS.Core.Modules
                 go.YRes,
                 optionalGraphics,
                 go.WavMsg != 0,
-                (go.ObscenityFilter != 0) || (_configManager.GetInt(_configManager.Global, "Chat", "ForceFilter", 0) != 0),
+                (go.ObscenityFilter != 0) || (_configManager.GetBool(_configManager.Global, "Chat", "ForceFilter", ConfigHelp.Constants.Global.Chat.ForceFilter.Default)),
                 spx,
                 spy);
 
@@ -1053,6 +1054,8 @@ namespace SS.Core.Modules
 
         #region Timers
 
+        [ConfigHelp<short>("Team", "SpectatorFrequency", ConfigScope.Arena, Min = 0, Max = 9999, Default = 8025,
+            Description = "The frequency that spectators are assigned to, by default.")]
         private bool MainloopTimer_ProcessArenaStates()
         {
             WriteLock();
@@ -1105,7 +1108,7 @@ namespace SS.Core.Modules
                                 }
                             }
 
-                            arena.SpecFreq = (short)_configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DefaultSpecFreq);
+                            arena.SpecFreq = short.Clamp((short)_configManager.GetInt(arena.Cfg, "Team", "SpectatorFrequency", Arena.DefaultSpecFreq), TeamSettings.SpectatorFrequency.Min, TeamSettings.SpectatorFrequency.Max);
                             arena.Status = ArenaState.WaitHolds0;
                             Debug.Assert(arenaData.Holds == 0);
                             FireArenaActionCallback(arena, ArenaAction.PreCreate);
@@ -1268,7 +1271,7 @@ namespace SS.Core.Modules
             return true;
 
 
-            [ConfigHelp("Modules", "AttachModules", ConfigScope.Arena, typeof(string),
+            [ConfigHelp("Modules", "AttachModules", ConfigScope.Arena, 
             Description = """
                 This is a list of modules that you want to take effect in this arena. 
                 Not all modules need to be attached to arenas to function, but some do.

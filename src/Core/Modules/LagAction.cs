@@ -3,6 +3,7 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
 using System.Threading;
+using LagSettings = SS.Core.ConfigHelp.Constants.Arena.Lag;
 
 namespace SS.Core.Modules
 {
@@ -72,14 +73,14 @@ namespace SS.Core.Modules
 
         #region Module members
 
-        [ConfigHelp("Lag", "CheckInterval", ConfigScope.Global, typeof(int), DefaultValue = "300",
+        [ConfigHelp<int>("Lag", "CheckInterval", ConfigScope.Global, Default = 300,
             Description = "How often to check each player for out-of-bounds lag values (in ticks).")]
         bool IModule.Load(IComponentBroker broker)
         {
             _adKey = _arenaManager.AllocateArenaData<ArenaLagLimits>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
-            _checkInterval = TimeSpan.FromMilliseconds(_configManager.GetInt(_configManager.Global, "Lag", "CheckInterval", 300) * 10);
+            _checkInterval = TimeSpan.FromMilliseconds(_configManager.GetInt(_configManager.Global, "Lag", "CheckInterval", ConfigHelp.Constants.Global.Lag.CheckInterval.Default) * 10);
 
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
 
@@ -110,35 +111,35 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("Lag", "PingToSpec", ConfigScope.Arena, typeof(int), DefaultValue = "600",
+        [ConfigHelp<int>("Lag", "PingToSpec", ConfigScope.Arena, Default = 600,
             Description = "The average ping at which to force a player to spec.")]
-        [ConfigHelp("Lag", "PingToStartIgnoringWeapons", ConfigScope.Arena, typeof(int), DefaultValue = "300",
+        [ConfigHelp<int>("Lag", "PingToStartIgnoringWeapons", ConfigScope.Arena, Default = 300,
             Description = "The average ping at which to start ignoring weapons.")]
-        [ConfigHelp("Lag", "PingToIgnoreAllWeapons", ConfigScope.Arena, typeof(int), DefaultValue = "1000",
+        [ConfigHelp<int>("Lag", "PingToIgnoreAllWeapons", ConfigScope.Arena, Default = 1000,
             Description = "The average ping at which all weapons should be ignored.")]
-        [ConfigHelp("Lag", "PingToDisallowFlags", ConfigScope.Arena, typeof(int), DefaultValue = "1000",
+        [ConfigHelp<int>("Lag", "PingToDisallowFlags", ConfigScope.Arena, Default = 500,
             Description = "The average ping at which a player isn't allowed to pick up flags or balls.")]
-        [ConfigHelp("Lag", "S2CLossToSpec", ConfigScope.Arena, typeof(int), DefaultValue = "150",
+        [ConfigHelp<int>("Lag", "S2CLossToSpec", ConfigScope.Arena, Default = 150,
             Description = "The S2C packetloss at which to force a player to spec. Units 0.1%.")]
-        [ConfigHelp("Lag", "S2CLossToStartIgnoringWeapons", ConfigScope.Arena, typeof(int), DefaultValue = "40",
+        [ConfigHelp<int>("Lag", "S2CLossToStartIgnoringWeapons", ConfigScope.Arena, Default = 40,
             Description = "The S2C packetloss at which to start ignoring weapons. Units 0.1%.")]
-        [ConfigHelp("Lag", "S2CLossToIgnoreAllWeapons", ConfigScope.Arena, typeof(int), DefaultValue = "500",
+        [ConfigHelp<int>("Lag", "S2CLossToIgnoreAllWeapons", ConfigScope.Arena, Default = 500,
             Description = "The S2C packetloss at which all weapons should be ignored. Units 0.1%.")]
-        [ConfigHelp("Lag", "S2CLossToDisallowFlags", ConfigScope.Arena, typeof(int), DefaultValue = "50",
+        [ConfigHelp<int>("Lag", "S2CLossToDisallowFlags", ConfigScope.Arena, Default = 50,
             Description = "The S2C packetloss at which a player isn't allowed to pick up flags or balls. Units 0.1%.")]
-        [ConfigHelp("Lag", "WeaponLossToSpec", ConfigScope.Arena, typeof(int), DefaultValue = "150",
+        [ConfigHelp<int>("Lag", "WeaponLossToSpec", ConfigScope.Arena, Default = 150,
             Description = "The weapon packetloss at which to force a player to spec. Units 0.1%.")]
-        [ConfigHelp("Lag", "WeaponLossToStartIgnoringWeapons", ConfigScope.Arena, typeof(int), DefaultValue = "40",
+        [ConfigHelp<int>("Lag", "WeaponLossToStartIgnoringWeapons", ConfigScope.Arena, Default = 40,
             Description = "The weapon packetloss at which to start ignoring weapons. Units 0.1%.")]
-        [ConfigHelp("Lag", "WeaponLossToIgnoreAllWeapons", ConfigScope.Arena, typeof(int), DefaultValue = "500",
+        [ConfigHelp<int>("Lag", "WeaponLossToIgnoreAllWeapons", ConfigScope.Arena, Default = 500,
             Description = "The weapon packetloss at which all weapons should be ignored. Units 0.1%.")]
-        [ConfigHelp("Lag", "WeaponLossToDisallowFlags", ConfigScope.Arena, typeof(int), DefaultValue = "50",
+        [ConfigHelp<int>("Lag", "WeaponLossToDisallowFlags", ConfigScope.Arena, Default = 50,
             Description = "The weapon packetloss at which a player isn't allowed to pick up flags or balls. Units 0.1%.")]
-        [ConfigHelp("Lag", "C2SLossToSpec", ConfigScope.Arena, typeof(int), DefaultValue = "150",
+        [ConfigHelp<int>("Lag", "C2SLossToSpec", ConfigScope.Arena, Default = 150,
             Description = "The C2S packetloss at which to force a player to spec. Units 0.1%.")]
-        [ConfigHelp("Lag", "C2SLossToDisallowFlags", ConfigScope.Arena, typeof(int), DefaultValue = "50",
+        [ConfigHelp<int>("Lag", "C2SLossToDisallowFlags", ConfigScope.Arena, Default = 50,
             Description = "The C2S packetloss at which a player isn't allowed to pick up flags or balls. Units 0.1%.")]
-        [ConfigHelp("Lag", "SpikeToSpec", ConfigScope.Arena, typeof(int), DefaultValue = "3000",
+        [ConfigHelp<int>("Lag", "SpikeToSpec", ConfigScope.Arena, Default = 3000,
             Description = "The amount of time (in ms) the server can get no data from a player before forcing him to spectator mode.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -153,35 +154,35 @@ namespace SS.Core.Modules
                 {
                     lagLimits.Ping = new PingLimits
                     {
-                        ForceSpec = _configManager.GetInt(ch, "Lag", "PingToSpec", 600),
-                        IgnoreWeaponStart = _configManager.GetInt(ch, "Lag", "PingToStartIgnoringWeapons", 300),
-                        IgnoreWeaponAll = _configManager.GetInt(ch, "Lag", "PingToIgnoreAllWeapons", 1000),
-                        NoFlags = _configManager.GetInt(ch, "Lag", "PingToDisallowFlags", 500),
+                        ForceSpec = _configManager.GetInt(ch, "Lag", "PingToSpec", LagSettings.PingToSpec.Default),
+                        IgnoreWeaponStart = _configManager.GetInt(ch, "Lag", "PingToStartIgnoringWeapons", LagSettings.PingToStartIgnoringWeapons.Default),
+                        IgnoreWeaponAll = _configManager.GetInt(ch, "Lag", "PingToIgnoreAllWeapons", LagSettings.PingToIgnoreAllWeapons.Default),
+                        NoFlags = _configManager.GetInt(ch, "Lag", "PingToDisallowFlags", LagSettings.PingToDisallowFlags.Default),
                     };
 
                     lagLimits.S2CLoss = new S2CPacketlossLimits
                     {
-                        ForceSpec = _configManager.GetInt(ch, "Lag", "S2CLossToSpec", 150),
-                        IgnoreWeaponStart = _configManager.GetInt(ch, "Lag", "S2CLossToStartIgnoringWeapons", 40),
-                        IgnoreWeaponAll = _configManager.GetInt(ch, "Lag", "S2CLossToIgnoreAllWeapons", 500),
-                        NoFlags = _configManager.GetInt(ch, "Lag", "S2CLossToDisallowFlags", 50),
+                        ForceSpec = _configManager.GetInt(ch, "Lag", "S2CLossToSpec", LagSettings.S2CLossToSpec.Default),
+                        IgnoreWeaponStart = _configManager.GetInt(ch, "Lag", "S2CLossToStartIgnoringWeapons", LagSettings.S2CLossToStartIgnoringWeapons.Default),
+                        IgnoreWeaponAll = _configManager.GetInt(ch, "Lag", "S2CLossToIgnoreAllWeapons", LagSettings.S2CLossToIgnoreAllWeapons.Default),
+                        NoFlags = _configManager.GetInt(ch, "Lag", "S2CLossToDisallowFlags", LagSettings.S2CLossToDisallowFlags.Default),
                     };
 
                     lagLimits.WeaponLoss = new S2CPacketlossLimits
                     {
-                        ForceSpec = _configManager.GetInt(ch, "Lag", "WeaponLossToSpec", 150),
-                        IgnoreWeaponStart = _configManager.GetInt(ch, "Lag", "WeaponLossToStartIgnoringWeapons", 40),
-                        IgnoreWeaponAll = _configManager.GetInt(ch, "Lag", "WeaponLossToIgnoreAllWeapons", 500),
-                        NoFlags = _configManager.GetInt(ch, "Lag", "WeaponLossToDisallowFlags", 50),
+                        ForceSpec = _configManager.GetInt(ch, "Lag", "WeaponLossToSpec", LagSettings.WeaponLossToSpec.Default),
+                        IgnoreWeaponStart = _configManager.GetInt(ch, "Lag", "WeaponLossToStartIgnoringWeapons", LagSettings.WeaponLossToStartIgnoringWeapons.Default),
+                        IgnoreWeaponAll = _configManager.GetInt(ch, "Lag", "WeaponLossToIgnoreAllWeapons", LagSettings.WeaponLossToIgnoreAllWeapons.Default),
+                        NoFlags = _configManager.GetInt(ch, "Lag", "WeaponLossToDisallowFlags", LagSettings.WeaponLossToDisallowFlags.Default),
                     };
 
                     lagLimits.C2SLoss = new C2SPacketlossLimits
                     {
-                        ForceSpec = _configManager.GetInt(ch, "Lag", "C2SLossToSpec", 150),
-                        NoFlags = _configManager.GetInt(ch, "Lag", "C2SLossToDisallowFlags", 50),
+                        ForceSpec = _configManager.GetInt(ch, "Lag", "C2SLossToSpec", LagSettings.C2SLossToSpec.Default),
+                        NoFlags = _configManager.GetInt(ch, "Lag", "C2SLossToDisallowFlags", LagSettings.C2SLossToDisallowFlags.Default),
                     };
 
-                    lagLimits.SpikeForceSpec = TimeSpan.FromMilliseconds(_configManager.GetInt(ch, "Lag", "SpikeToSpec", 3000));
+                    lagLimits.SpikeForceSpec = TimeSpan.FromMilliseconds(_configManager.GetInt(ch, "Lag", "SpikeToSpec", LagSettings.SpikeToSpec.Default));
 
                     lagLimits.SpecFreq = arena.SpecFreq;
                 }

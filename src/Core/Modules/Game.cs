@@ -14,6 +14,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using SSProto = SS.Core.Persist.Protobuf;
+using ArenaSettings = SS.Core.ConfigHelp.Constants.Arena;
 
 namespace SS.Core.Modules
 {
@@ -592,37 +593,37 @@ namespace SS.Core.Modules
         #endregion
 
         // Flag:FlaggerKillMultiplier is a client setting, so it's in ClientSettingsConfig.cs
-        [ConfigHelp("Misc", "RegionCheckInterval", ConfigScope.Arena, typeof(int), DefaultValue = "100",
+        [ConfigHelp<int>("Misc", "RegionCheckInterval", ConfigScope.Arena, Default = 100,
             Description = "How often to check for region enter/exit events (in ticks).")]
-        [ConfigHelp("Misc", "SpecSeeExtra", ConfigScope.Arena, typeof(bool), DefaultValue = "1",
+        [ConfigHelp<bool>("Misc", "SpecSeeExtra", ConfigScope.Arena, Default = true,
             Description = "Whether spectators can see extra data for the person they're spectating.")]
-        [ConfigHelp("Misc", "SpecSeeEnergy", ConfigScope.Arena, typeof(SeeEnergy), DefaultValue = "All",
+        [ConfigHelp<SeeEnergy>("Misc", "SpecSeeEnergy", ConfigScope.Arena, Default = SeeEnergy.All,
             Description = "Whose energy levels spectators can see. The options are the same as for Misc:SeeEnergy, with one addition: 'Spec' means only the player you're spectating.")]
-        [ConfigHelp("Misc", "SeeEnergy", ConfigScope.Arena, typeof(SeeEnergy), DefaultValue = "None",
+        [ConfigHelp<SeeEnergy>("Misc", "SeeEnergy", ConfigScope.Arena, Default = SeeEnergy.None,
             Description = "Whose energy levels everyone can see: 'None' means nobody else's, 'All' is everyone's, 'Team' is only teammates.")]
-        [ConfigHelp("Security", "MaxDeathWithoutFiring", ConfigScope.Arena, typeof(int), DefaultValue = "5",
+        [ConfigHelp<int>("Security", "MaxDeathWithoutFiring", ConfigScope.Arena, Default = 5,
             Description = "The number of times a player can die without firing a weapon before being placed in spectator mode.")]
-        [ConfigHelp("Misc", "NoSafeAntiwarp", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Misc", "NoSafeAntiwarp", ConfigScope.Arena, Default = false,
             Description = "Disables antiwarp on players in safe zones.")]
-        [ConfigHelp("Misc", "WarpTresholdDelta", ConfigScope.Arena, typeof(int), DefaultValue = "320",
+        [ConfigHelp<int>("Misc", "WarpTresholdDelta", ConfigScope.Arena, Default = 320,
             Description = "The amount of change in a players position (in pixels) that is considered a warp (only while he is flashing).")]
-        [ConfigHelp("Misc", "CheckFastBombing", ConfigScope.Arena, typeof(CheckFastBombing), DefaultValue = "0",
+        [ConfigHelp<CheckFastBombing>("Misc", "CheckFastBombing", ConfigScope.Arena, Default = CheckFastBombing.None,
             Description = "Fast bombing detection, can be a combination (sum) of the following:  1 - Send sysop alert when fastbombing is detected, 2 - Filter out fastbombs, 4 - Kick fastbombing player off.")]
-        [ConfigHelp("Misc", "FastBombingThreshold", ConfigScope.Arena, typeof(int), DefaultValue = "30",
+        [ConfigHelp<int>("Misc", "FastBombingThreshold", ConfigScope.Arena, Default = 30,
             Description = "Tuning for fast bomb detection. A bomb/mine is considered to be fast bombing if delay between 2 bombs/mines is less than <ship>:BombFireDelay - Misc:FastBombingThreshold.")]
-        [ConfigHelp("Prize", "DontShareThor", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Prize", "DontShareThor", ConfigScope.Arena, Default = false,
             Description = "Whether Thor greens don't go to the whole team.")]
-        [ConfigHelp("Prize", "DontShareBurst", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Prize", "DontShareBurst", ConfigScope.Arena, Default = false,
             Description = "Whether Burst greens don't go to the whole team.")]
-        [ConfigHelp("Prize", "DontShareBrick", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Prize", "DontShareBrick", ConfigScope.Arena, Default = false,
             Description = "Whether Brick greens don't go to the whole team.")]
-        [ConfigHelp("Net", "BulletPixels", ConfigScope.Arena, typeof(int), DefaultValue = "1500",
+        [ConfigHelp<int>("Net", "BulletPixels", ConfigScope.Arena, Default = 1500,
             Description = "How far away to always send bullets (in pixels).")]
-        [ConfigHelp("Net", "WeaponPixels", ConfigScope.Arena, typeof(int), DefaultValue = "2000",
+        [ConfigHelp<int>("Net", "WeaponPixels", ConfigScope.Arena, Default = 2000,
             Description = "How far away to always weapons (in pixels).")]
-        [ConfigHelp("Net", "PositionExtraPixels", ConfigScope.Arena, typeof(int), DefaultValue = "8000",
+        [ConfigHelp<int>("Net", "PositionExtraPixels", ConfigScope.Arena, Default = 8000,
             Description = "How far away to to send positions of players on radar (in pixels).")]
-        [ConfigHelp("Net", "AntiwarpSendPercent", ConfigScope.Arena, typeof(int), DefaultValue = "5",
+        [ConfigHelp<int>("Net", "AntiwarpSendPercent", ConfigScope.Arena, Default = 5,
             Description = "Percent of position packets with antiwarp enabled to send to the whole arena.")]
         // Note: Toggle:AntiwarpPixels is a client setting, so it's [ConfigHelp] is in ClientSettingsConfig.cs
         // Note: Kill:EnterDelay is a client setting, so it's [ConfigHelp] is in ClientSettingsConfig.cs
@@ -640,44 +641,44 @@ namespace SS.Core.Modules
 
                 ad.FlaggerKillMultiplier = _configManager.GetInt(ch, "Flag", "FlaggerKillMultiplier", 0);
 
-                ad.RegionCheckTime = TimeSpan.FromMilliseconds(_configManager.GetInt(ch, "Misc", "RegionCheckInterval", 100) * 10);
+                ad.RegionCheckTime = TimeSpan.FromMilliseconds(_configManager.GetInt(ch, "Misc", "RegionCheckInterval", ArenaSettings.Misc.RegionCheckInterval.Default) * 10);
 
-                ad.SpecSeeExtra = _configManager.GetInt(ch, "Misc", "SpecSeeExtra", 1) != 0;
+                ad.SpecSeeExtra = _configManager.GetBool(ch, "Misc", "SpecSeeExtra", ArenaSettings.Misc.SpecSeeExtra.Default);
 
                 ad.SpecSeeEnergy = _configManager.GetEnum(ch, "Misc", "SpecSeeEnergy", SeeEnergy.All);
 
                 ad.AllSeeEnergy = _configManager.GetEnum(ch, "Misc", "SeeEnergy", SeeEnergy.None);
 
-                ad.MaxDeathWithoutFiring = _configManager.GetInt(ch, "Security", "MaxDeathWithoutFiring", 5);
+                ad.MaxDeathWithoutFiring = _configManager.GetInt(ch, "Security", "MaxDeathWithoutFiring", ArenaSettings.Security.MaxDeathWithoutFiring.Default);
 
-                ad.NoSafeAntiwarp = _configManager.GetInt(ch, "Misc", "NoSafeAntiwarp", 0) != 0;
+                ad.NoSafeAntiwarp = _configManager.GetBool(ch, "Misc", "NoSafeAntiwarp", ArenaSettings.Misc.NoSafeAntiwarp.Default);
 
-                ad.WarpThresholdDelta = _configManager.GetInt(ch, "Misc", "WarpTresholdDelta", 320);
+                ad.WarpThresholdDelta = _configManager.GetInt(ch, "Misc", "WarpTresholdDelta", ArenaSettings.Misc.WarpTresholdDelta.Default);
                 ad.WarpThresholdDelta *= ad.WarpThresholdDelta;
 
                 ad.CheckFastBombing = _configManager.GetEnum(ch, "Misc", "CheckFastBombing", CheckFastBombing.None);
-                ad.FastBombingThreshold = (short)Math.Abs(_configManager.GetInt(ch, "Misc", "FastBombingThreshold", 30));
+                ad.FastBombingThreshold = (short)Math.Abs(_configManager.GetInt(ch, "Misc", "FastBombingThreshold", ArenaSettings.Misc.FastBombingThreshold.Default));
 
                 PersonalGreen pg = PersonalGreen.None;
 
-                if (_configManager.GetInt(ch, "Prize", "DontShareThor", 0) != 0)
+                if (_configManager.GetBool(ch, "Prize", "DontShareThor", ArenaSettings.Prize.DontShareThor.Default))
                     pg |= PersonalGreen.Thor;
 
-                if (_configManager.GetInt(ch, "Prize", "DontShareBurst", 0) != 0)
+                if (_configManager.GetBool(ch, "Prize", "DontShareBurst", ArenaSettings.Prize.DontShareBurst.Default))
                     pg |= PersonalGreen.Burst;
 
-                if (_configManager.GetInt(ch, "Prize", "DontShareBrick", 0) != 0)
+                if (_configManager.GetBool(ch, "Prize", "DontShareBrick", ArenaSettings.Prize.DontShareBrick.Default))
                     pg |= PersonalGreen.Brick;
 
                 ad.PersonalGreen = pg;
 
-                int cfg_bulletpix = _configManager.GetInt(ch, "Net", "BulletPixels", 1500);
+                int cfg_bulletpix = _configManager.GetInt(ch, "Net", "BulletPixels", ArenaSettings.Net.BulletPixels.Default);
 
-                int cfg_wpnpix = _configManager.GetInt(ch, "Net", "WeaponPixels", 2000);
+                int cfg_wpnpix = _configManager.GetInt(ch, "Net", "WeaponPixels", ArenaSettings.Net.WeaponPixels.Default);
 
-                ad.cfg_pospix = _configManager.GetInt(ch, "Net", "PositionExtraPixels", 8000);
+                ad.cfg_pospix = _configManager.GetInt(ch, "Net", "PositionExtraPixels", ArenaSettings.Net.PositionExtraPixels.Default);
 
-                ad.cfg_sendanti = _configManager.GetInt(ch, "Net", "AntiwarpSendPercent", 5);
+                ad.cfg_sendanti = _configManager.GetInt(ch, "Net", "AntiwarpSendPercent", ArenaSettings.Net.AntiwarpSendPercent.Default);
                 ad.cfg_sendanti = Constants.RandMax / 100 * ad.cfg_sendanti;
 
                 int cfg_AntiwarpPixels = _configManager.GetInt(ch, "Toggle", "AntiwarpPixels", 1);
@@ -1864,9 +1865,9 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("Prize", "UseTeamkillPrize", ConfigScope.Arena, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Prize", "UseTeamkillPrize", ConfigScope.Arena, Default = false,
             Description = "Whether to use a special prize for teamkills. Prize:TeamkillPrize specifies the prize #.")]
-        [ConfigHelp("Prize", "TeamkillPrize", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Prize", "TeamkillPrize", ConfigScope.Arena, Default = 0,
             Description = "The prize # to give for a teamkill, if Prize:UseTeamkillPrize=1.")]
         private void Packet_Die(Player player, Span<byte> data, NetReceiveFlags flags)
         {
@@ -1940,9 +1941,9 @@ namespace SS.Core.Modules
 
             // Pick the green.
             Prize green;
-            if ((player.Freq == killer.Freq) && (_configManager.GetInt(arena.Cfg!, "Prize", "UseTeamkillPrize", 0) != 0))
+            if ((player.Freq == killer.Freq) && (_configManager.GetBool(arena.Cfg!, "Prize", "UseTeamkillPrize", ArenaSettings.Prize.UseTeamkillPrize.Default)))
             {
-                green = (Prize)_configManager.GetInt(arena.Cfg!, "Prize", "TeamkillPrize", 0);
+                green = (Prize)_configManager.GetInt(arena.Cfg!, "Prize", "TeamkillPrize", ArenaSettings.Prize.TeamkillPrize.Default);
             }
             else
             {

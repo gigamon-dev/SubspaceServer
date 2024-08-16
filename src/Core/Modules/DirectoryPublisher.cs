@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using DirectorySettings = SS.Core.ConfigHelp.Constants.Global.Directory;
 
 namespace SS.Core.Modules
 {
@@ -117,9 +118,9 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("Directory", "Password", ConfigScope.Global, typeof(string), DefaultValue = "cane",
+        [ConfigHelp("Directory", "Password", ConfigScope.Global, Default = "cane",
             Description = "The password used to send information to the directory server. Don't change this.")]
-        [ConfigHelp("Directory", "Name", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Directory", "Name", ConfigScope.Global,
             Description = """
                 The server name to send to the directory server. Virtual
                 servers will use section name 'Directory-<vs-name>' for this
@@ -127,20 +128,15 @@ namespace SS.Core.Modules
                 'Directory' if that section doesn't exist. See Net:Listen
                 help for how to identify virtual servers.
                 """)]
-        [ConfigHelp("Directory", "Description", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Directory", "Description", ConfigScope.Global,
             Description = """
                 The server description to send to the directory server. See
                 Directory:Name for more information about the section name.
                 """)]
-        [ConfigHelp("Directory", "Port", ConfigScope.Global, typeof(int), DefaultValue = "4991",
+        [ConfigHelp<int>("Directory", "Port", ConfigScope.Global, Default = 4991, Min = IPEndPoint.MinPort, Max = IPEndPoint.MaxPort,
             Description = "The port to connect to for the directory server.")]
-        [ConfigHelp("Directory", "ServerN", ConfigScope.Global, typeof(int),
+        [ConfigHelp("Directory", "ServerN", ConfigScope.Global,
             Description = "The DNS name to connect to for the Nth directory server.")]
-        [ConfigHelp("Directory", "PortN", ConfigScope.Global, typeof(int),
-            Description = """
-                The port to connect to for the Nth directory server.
-                If no port is specified, Directory:Port is used.
-                """)]
         private async Task InitializeAsync()
         {
             await _semaphore.WaitAsync().ConfigureAwait(false);
@@ -154,8 +150,8 @@ namespace SS.Core.Modules
                 _listings.Clear();
 
                 string? password = _configManager.GetStr(_configManager.Global, "Directory", "Password");
-                if (string.IsNullOrEmpty(password))
-                    password = "cane";
+                if (string.IsNullOrWhiteSpace(password))
+                    password = DirectorySettings.Password.Default;
 
                 string? defaultName = _configManager.GetStr(_configManager.Global, "Directory", "Name");
                 string? defaultDescription = _configManager.GetStr(_configManager.Global, "Directory", "Description");
@@ -221,7 +217,7 @@ namespace SS.Core.Modules
 
                 _servers.Clear();
 
-                int defaultPort = _configManager.GetInt(_configManager.Global, "Directory", "Port", 4991);
+                int defaultPort = _configManager.GetInt(_configManager.Global, "Directory", "Port", DirectorySettings.Port.Default);
 
                 
                 for (index = 1; index <= 99; index++)
@@ -232,27 +228,34 @@ namespace SS.Core.Modules
 
                     int port = GetPortSetting(index, defaultPort);
 
+                    if (port < DirectorySettings.Port.Min || port > DirectorySettings.Port.Max)
+                    {
+                        _logManager.LogM(LogLevel.Warn, nameof(DirectoryPublisher), $"Invalid directory server configuration for '{server}'. Invalid port (actual:{port}, min:{DirectorySettings.Port.Min}, max:{DirectorySettings.Port.Max}).");
+                        continue;
+                    }
+
                     IPHostEntry entry;
                     IPEndPoint? directoryEndpoint = null;
 
                     try
                     {
                         entry = await Dns.GetHostEntryAsync(server).ConfigureAwait(false);
-                        IPAddress? address = entry.AddressList.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
-
-                        if (address == null)
-                        {
-                            _logManager.LogM(LogLevel.Warn, nameof(DirectoryPublisher), $"Error looking up DNS entry of '{server}'. No IPv4 address found.");
-                            continue;
-                        }
-
-                        directoryEndpoint = new IPEndPoint(address, port);
                     }
                     catch (Exception ex)
                     {
                         _logManager.LogM(LogLevel.Warn, nameof(DirectoryPublisher), $"Error looking up DNS entry of '{server}'. {ex.Message}");
                         continue;
                     }
+
+                    IPAddress? address = entry.AddressList.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
+
+                    if (address == null)
+                    {
+                        _logManager.LogM(LogLevel.Warn, nameof(DirectoryPublisher), $"Error looking up DNS entry of '{server}'. No IPv4 address found.");
+                        continue;
+                    }
+
+                    directoryEndpoint = new IPEndPoint(address, port);
 
                     _servers.Add((directoryEndpoint, directoryEndpoint.Serialize()));
 

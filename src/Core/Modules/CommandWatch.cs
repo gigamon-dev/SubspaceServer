@@ -87,7 +87,7 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("log_staff", "commands", ConfigScope.Global, typeof(string), DefaultValue = "warn kick setcm",
+        [ConfigHelp("log_staff", "commands", ConfigScope.Global, Default = "warn kick setcm",
             Description = "A list of commands that trigger messages to all logged-in staff.")]
         private void Initialize()
         {
@@ -96,7 +96,7 @@ namespace SS.Core.Modules
                 _watchedCommands.Clear();
 
                 // Using the same setting name as ASSS for compatibility.
-                ReadOnlySpan<char> commands = _configManager.GetStr(_configManager.Global, "log_staff", "commands") ?? "warn kick setcm";
+                ReadOnlySpan<char> commands = _configManager.GetStr(_configManager.Global, "log_staff", "commands") ?? ConfigHelp.Constants.Global.log_staff.commands.Default;
                 ReadOnlySpan<char> command;
                 while (!(command = commands.GetToken(" ,:;", out commands)).IsEmpty)
                 {

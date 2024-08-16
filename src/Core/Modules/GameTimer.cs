@@ -271,13 +271,13 @@ namespace SS.Core.Modules
 
         #endregion
 
-        [ConfigHelp("Misc", "TimerWarnings", ConfigScope.Arena, typeof(string),
+        [ConfigHelp("Misc", "TimerWarnings", ConfigScope.Arena,
             Description = """
                 Comma delimited list defining when notifications should be sent to the arena.
                 Values are in seconds, indicating the remaining time. E.g. a value of "10,30" means send
                 notifications when when 10 seconds remain and when 30 seconds remain.
                 """)]
-        [ConfigHelp("Misc", "TimedGame", ConfigScope.Arena, typeof(int), DefaultValue = "0",
+        [ConfigHelp<int>("Misc", "TimedGame", ConfigScope.Arena, Default = 0,
             Description = "How long the game timer lasts (in ticks). Zero to disable.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -299,7 +299,7 @@ namespace SS.Core.Modules
                 ad.WarningAt.Sort();
 
                 TimeSpan oldGameLength = ad.GameLength;
-                ad.GameLength = TimeSpan.FromMilliseconds(_configManager.GetInt(arena.Cfg!, "Misc", "TimedGame", 0) * 10);
+                ad.GameLength = TimeSpan.FromMilliseconds(_configManager.GetInt(arena.Cfg!, "Misc", "TimedGame", ConfigHelp.Constants.Arena.Misc.TimedGame.Default) * 10);
 
                 if (action == ArenaAction.Create && ad.GameLength > TimeSpan.Zero)
                 {

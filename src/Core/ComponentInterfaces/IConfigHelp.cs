@@ -5,11 +5,11 @@ using System.Diagnostics.CodeAnalysis;
 namespace SS.Core.ComponentInterfaces
 {
     /// <summary>
-    /// A <see cref="ConfigHelpAttribute"/> and the module it came from.
+    /// An <see cref="IConfigHelpAttribute"/> and the module it came from.
     /// </summary>
     /// <param name="Attribute">Attribute containing info about a config setting.</param>
     /// <param name="Module">The module the <paramref name="Attribute"/> is in. <see langword="null"/> for attributes not in a module.</param>
-    public readonly record struct ConfigHelpRecord(ConfigHelpAttribute Attribute, Type? Module);
+    public readonly record struct ConfigHelpRecord(IConfigHelpAttribute Attribute, Type? Module);
 
     /// <summary>
     /// Interface for getting information about config settings.

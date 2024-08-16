@@ -12,6 +12,7 @@ using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using BillingSettings = SS.Core.ConfigHelp.Constants.Global.Billing;
 
 namespace SS.Core.Modules
 {
@@ -109,12 +110,14 @@ namespace SS.Core.Modules
 
         #region Module methods
 
-        [ConfigHelp("Billing", "RetryInterval", ConfigScope.Global, typeof(int), DefaultValue = "180",
+        [ConfigHelp<int>("Billing", "RetryInterval", ConfigScope.Global, Default = 180,
             Description = "How many seconds to wait between tries to connect to the user database server.")]
-        [ConfigHelp("Billing", "LoadPublicPlayerScores", ConfigScope.Global, typeof(bool), DefaultValue = "0",
+        [ConfigHelp<bool>("Billing", "LoadPublicPlayerScores", ConfigScope.Global, Default = false,
             Description = "Whether player scores (for the public arena) should be loaded from the biller. Not recommended, so off by default.")]
-        [ConfigHelp("Billing", "SavePublicPlayerScores", ConfigScope.Global, typeof(bool), DefaultValue = "1",
+        [ConfigHelp<bool>("Billing", "SavePublicPlayerScores", ConfigScope.Global, Default = true,
             Description = "Whether player scores (for the public arena) should be saved to the biller.")]
+        [ConfigHelp<int>("Billing", "MaxConcurrentBannerUpload", ConfigScope.Global, Default = 1,
+            Description = "The maximum # of banners to upload concurrently.")]
         bool IModule.Load(IComponentBroker broker)
         {
             _arenaPlayerStats = broker.GetInterface<IArenaPlayerStats>();
@@ -124,10 +127,10 @@ namespace SS.Core.Modules
 
             _network.AddPacket(C2SPacketType.RegData, Packet_RegData);
 
-            _cfgLoadPublicPlayerScores = _configManager.GetInt(_configManager.Global, "Billing", "LoadPublicPlayerScores", 0) != 0;
-            _cfgSavePublicPlayerScores = _configManager.GetInt(_configManager.Global, "Billing", "SavePublicPlayerScores", 1) != 0;
-            _cfgRetryTimeSpan = TimeSpan.FromSeconds(_configManager.GetInt(_configManager.Global, "Billing", "RetryInterval", 180));
-            _cfgMaxConcurrentBannerUpload = _configManager.GetInt(_configManager.Global, "Billing", "MaxConcurrentBannerUpload", 5);
+            _cfgLoadPublicPlayerScores = _configManager.GetBool(_configManager.Global, "Billing", "LoadPublicPlayerScores", BillingSettings.LoadPublicPlayerScores.Default);
+            _cfgSavePublicPlayerScores = _configManager.GetBool(_configManager.Global, "Billing", "SavePublicPlayerScores", BillingSettings.SavePublicPlayerScores.Default);
+            _cfgRetryTimeSpan = TimeSpan.FromSeconds(_configManager.GetInt(_configManager.Global, "Billing", "RetryInterval", BillingSettings.RetryInterval.Default));
+            _cfgMaxConcurrentBannerUpload = _configManager.GetInt(_configManager.Global, "Billing", "MaxConcurrentBannerUpload", BillingSettings.MaxConcurrentBannerUpload.Default);
 
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
@@ -404,16 +407,11 @@ namespace SS.Core.Modules
 
         #region IClientConnectionHandler
 
-        [ConfigHelp("Billing", "ServerName", ConfigScope.Global, typeof(string),
-            Description = "The server name to send to the user database server.")]
-        [ConfigHelp("Billing", "Password", ConfigScope.Global, typeof(string),
-            Description = "The password to log in to the user database server with.")]
-        [ConfigHelp("Billing", "ServerID", ConfigScope.Global, typeof(int), DefaultValue = "0",
-            Description = "ServerID identifying zone to user database server.")]
-        [ConfigHelp("Billing", "GroupID", ConfigScope.Global, typeof(int), DefaultValue = "1",
-            Description = "GroupID identifying zone to user database server.")]
-        [ConfigHelp("Billing", "ScoreID", ConfigScope.Global, typeof(int), DefaultValue = "0",
-            Description = "Server realm.")]
+        [ConfigHelp("Billing", "ServerName", ConfigScope.Global, Description = "The server name to send to the user database server.")]
+        [ConfigHelp("Billing", "Password", ConfigScope.Global, Description = "The password to log in to the user database server with.")]
+        [ConfigHelp<int>("Billing", "ServerID", ConfigScope.Global, Default = 0, Description = "ServerID identifying zone to user database server.")]
+        [ConfigHelp<int>("Billing", "GroupID", ConfigScope.Global, Default = 1, Description = "GroupID identifying zone to user database server.")]
+        [ConfigHelp<int>("Billing", "ScoreID", ConfigScope.Global, Default = 0, Description = "Server realm.")]
         void IClientConnectionHandler.Connected()
         {
             ushort port;
@@ -423,9 +421,9 @@ namespace SS.Core.Modules
                 port = 0;
 
             S2B_ServerConnect packet = new(
-                (uint)_configManager.GetInt(_configManager.Global, "Billing", "ServerID", 0),
-                (uint)_configManager.GetInt(_configManager.Global, "Billing", "GroupID", 1),
-                (uint)_configManager.GetInt(_configManager.Global, "Billing", "ScoreID", 0),
+                (uint)_configManager.GetInt(_configManager.Global, "Billing", "ServerID", BillingSettings.ServerID.Default),
+                (uint)_configManager.GetInt(_configManager.Global, "Billing", "GroupID", BillingSettings.GroupID.Default),
+                (uint)_configManager.GetInt(_configManager.Global, "Billing", "ScoreID", BillingSettings.ScoreID.Default),
                 _configManager.GetStr(_configManager.Global, "Billing", "ServerName"),
                 port,
                 _configManager.GetStr(_configManager.Global, "Billing", "Password"));
@@ -551,12 +549,12 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("Billing", "IP", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Billing", "IP", ConfigScope.Global,
             Description = "The IP address of the user database server (no DNS hostnames allowed).")]
-        [ConfigHelp("Billing", "Port", ConfigScope.Global, typeof(int), DefaultValue = "1850",
+        [ConfigHelp<int>("Billing", "Port", ConfigScope.Global, Default = 1850, Min = IPEndPoint.MinPort, Max = IPEndPoint.MaxPort,
             Description = "The port to connect to on the user database server.")]
         // Billing:Encryptor is purposely not documented. The EncryptionVIE module is the only usable option.
-        [ConfigHelp("Billing", "BandwidthLimiterProvider", ConfigScope.Global, typeof(int), DefaultValue = "1850",
+        [ConfigHelp("Billing", "BandwidthLimiterProvider", ConfigScope.Global,
             Description = "The bandwidth limiter provider to use for the connection to the user database server.")]
         private bool MainloopTimer_DoWork()
         {
@@ -565,7 +563,7 @@ namespace SS.Core.Modules
                 if (_state == BillingState.NoSocket)
                 {
                     string? ipAddressStr = _configManager.GetStr(_configManager.Global, "Billing", "IP");
-                    int port = _configManager.GetInt(_configManager.Global, "Billing", "Port", 1850);
+                    int port = _configManager.GetInt(_configManager.Global, "Billing", "Port", BillingSettings.Port.Default);
                     string encryptorName = _configManager.GetStr(_configManager.Global, "Billing", "Encryptor") ?? EncryptionVIE.InterfaceIdentifier;
                     string bandwidthLimiterProviderName = _configManager.GetStr(_configManager.Global, "Billing", "BandwidthLimiterProvider") ?? BandwidthNoLimit.InterfaceIdentifier;
 
@@ -1104,10 +1102,10 @@ namespace SS.Core.Modules
             }
             
 
-            [ConfigHelp("Billing", "StaffChats", ConfigScope.Global, typeof(string), Description = "Comma separated staff chat list.")]
-            [ConfigHelp("Billing", "StaffChatPrefix", ConfigScope.Global, typeof(string), Description = "Secret prefix to prepend to staff chats.")]
-            [ConfigHelp("Billing", "LocalChats", ConfigScope.Global, typeof(string), Description = "Comma separated local chat list.")]
-            [ConfigHelp("Billing", "LocalChatPrefix", ConfigScope.Global, typeof(string), Description = "Secret prefix to prepend to local chats.")]
+            [ConfigHelp("Billing", "StaffChats", ConfigScope.Global, Description = "Comma separated staff chat list.")]
+            [ConfigHelp("Billing", "StaffChatPrefix", ConfigScope.Global, Description = "Secret prefix to prepend to staff chats.")]
+            [ConfigHelp("Billing", "LocalChats", ConfigScope.Global, Description = "Comma separated local chat list.")]
+            [ConfigHelp("Billing", "LocalChatPrefix", ConfigScope.Global, Description = "Secret prefix to prepend to local chats.")]
             int RewriteChatCommand(Player player, ReadOnlySpan<char> line, Span<byte> packetBytes)
             {
                 static bool FindChat(ReadOnlySpan<char> searchFor, ReadOnlySpan<char> list)
@@ -1702,9 +1700,9 @@ namespace SS.Core.Modules
             }
         }
 
-        [ConfigHelp("Billing", "HonorScoreResetRequests", ConfigScope.Global, typeof(bool), DefaultValue = "1",
+        [ConfigHelp<bool>("Billing", "HonorScoreResetRequests", ConfigScope.Global, Default = true,
             Description = "Whether to reset scores when the billing server says it is time to.")]
-        [ConfigHelp("Billing", "ScoreResetArenaGroups", ConfigScope.Global, typeof(string), DefaultValue = Constants.ArenaGroup_Public,
+        [ConfigHelp("Billing", "ScoreResetArenaGroups", ConfigScope.Global, Default = Constants.ArenaGroup_Public,
             Description = "Which arena group(s) to affect when honoring a billing server score reset request.")]
         private void ProcessScoreReset(Span<byte> data)
         {
@@ -1721,7 +1719,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (_configManager.GetInt(_configManager.Global, "Billing", "HonorScoreResetRequests", 1) != 0)
+            if (_configManager.GetBool(_configManager.Global, "Billing", "HonorScoreResetRequests", BillingSettings.HonorScoreResetRequests.Default))
             {
                 IPersistExecutor? persistExecutor = _broker.GetInterface<IPersistExecutor>();
 
@@ -1730,8 +1728,8 @@ namespace SS.Core.Modules
                     try
                     {
                         string? arenaGroups = _configManager.GetStr(_configManager.Global, "Billing", "ScoreResetArenaGroups");
-                        arenaGroups ??= Constants.ArenaGroup_Public; // null only, white-space means none
-
+                        arenaGroups ??= BillingSettings.ScoreResetArenaGroups.Default; // null only, white-space means none
+                        
                         ReadOnlySpan<char> remaining = arenaGroups;
                         ReadOnlySpan<char> token;
                         while ((token = remaining.GetToken(", \t", out remaining)).Length > 0)

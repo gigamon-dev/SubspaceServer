@@ -1,6 +1,7 @@
 ﻿using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
+using NotifySettings = SS.Core.ConfigHelp.Constants.Global.Notify;
 
 namespace SS.Core.Modules
 {
@@ -30,18 +31,18 @@ namespace SS.Core.Modules
 
         #region Module members
 
-        [ConfigHelp("Notify", "AlertCommand", ConfigScope.Global, typeof(string), DefaultValue = "cheater",
+        [ConfigHelp("Notify", "AlertCommand", ConfigScope.Global, Default = "cheater",
             Description = """
                 A delimited list of commands that notify online staff.
                 Allowed delimiters include: space, comma, colon, semicolon.
                 """)]
-        [ConfigHelp("Notify", "EmptyReply", ConfigScope.Global, typeof(string), DefaultValue = "",
+        [ConfigHelp("Notify", "EmptyReply", ConfigScope.Global, Default = "Please include a message to send to online staff.",
             Description = "Reply to send when trying to send a Notify:AlertCommand without a message.")]
         bool IModule.Load(IComponentBroker broker)
         {
             string? delimitedCommands = _configManager.GetStr(_configManager.Global, "Notify", "AlertCommand");
             if (string.IsNullOrWhiteSpace(delimitedCommands))
-                delimitedCommands = "cheater";
+                delimitedCommands = NotifySettings.AlertCommand.Default;
 
             foreach (string commandName in delimitedCommands.Split(_alertCommandDelimiters, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
             {
@@ -82,7 +83,7 @@ namespace SS.Core.Modules
             {
                 if (parameters.IsWhiteSpace())
                 {
-                    _chat.SendMessage(player, !string.IsNullOrWhiteSpace(_emptyReply) ? _emptyReply : "Please include a message to send to online staff.");
+                    _chat.SendMessage(player, !string.IsNullOrWhiteSpace(_emptyReply) ? _emptyReply : NotifySettings.EmptyReply.Default);
                 }
                 else
                 {

@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using ConfigSettings = SS.Core.ConfigHelp.Constants.Global.Config;
 
 namespace SS.Core.Modules
 {
@@ -109,19 +110,25 @@ namespace SS.Core.Modules
 
         #region Timers
 
-        [ConfigHelp("Config", "FlushDirtyValuesInterval", ConfigScope.Global, typeof(int), DefaultValue = "500",
+        [ConfigHelp<int>("Config", "FlushDirtyValuesInterval", ConfigScope.Global, Default = 500, Min = 100,
             Description = "How often to write modified config settings back to disk (in ticks).")]
-        [ConfigHelp("Config", "CheckModifiedFilesInterval", ConfigScope.Global, typeof(int), DefaultValue = "1500",
+        [ConfigHelp<int>("Config", "CheckModifiedFilesInterval", ConfigScope.Global, Default = 1500, Min = 100,
             Description = "How often to check for modified config files on disk (in ticks).")]
         private void SetTimers()
         {
-            int dirty = ((IConfigManager)this).GetInt(_globalConfigHandle!, "Config", "FlushDirtyValuesInterval", 500);
-            _serverTimer.ClearTimer(ServerTimer_SaveChanges, null);
-            _serverTimer.SetTimer(ServerTimer_SaveChanges, 700, dirty * 10, null);
+            int flushInterval = ((IConfigManager)this).GetInt(_globalConfigHandle!, "Config", "FlushDirtyValuesInterval", ConfigSettings.FlushDirtyValuesInterval.Default);
+            if (flushInterval < ConfigSettings.FlushDirtyValuesInterval.Min)
+                flushInterval = ConfigSettings.FlushDirtyValuesInterval.Min;
 
-            int files = ((IConfigManager)this).GetInt(_globalConfigHandle!, "Config", "CheckModifiedFilesInterval", 1500);
+            _serverTimer.ClearTimer(ServerTimer_SaveChanges, null);
+            _serverTimer.SetTimer(ServerTimer_SaveChanges, 700, flushInterval * 10, null);
+
+            int checkInterval = ((IConfigManager)this).GetInt(_globalConfigHandle!, "Config", "CheckModifiedFilesInterval", ConfigSettings.CheckModifiedFilesInterval.Default);
+            if (checkInterval < ConfigSettings.CheckModifiedFilesInterval.Min)
+                checkInterval = ConfigSettings.CheckModifiedFilesInterval.Min;
+
             _serverTimer.ClearTimer(ServerTimer_ReloadModified, null);
-            _serverTimer.SetTimer(ServerTimer_ReloadModified, 1500, files * 10, null);
+            _serverTimer.SetTimer(ServerTimer_ReloadModified, 1500, checkInterval * 10, null);
         }
 
         private bool ServerTimer_ReloadModified()
@@ -402,6 +409,11 @@ namespace SS.Core.Modules
             _logManager?.LogM(LogLevel.Drivel, nameof(ConfigManager), $"Failed to parse {section}:{key} as an integer, using the provided default value ({defaultValue}).");
 
             return defaultValue; // Note: This differs from ASSS which returns 0.
+        }
+
+        bool IConfigManager.GetBool(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, bool defaultValue)
+        {
+            return ((IConfigManager)this).GetInt(handle, section, key, defaultValue ? 1 : 0) != 0;
         }
 
         T IConfigManager.GetEnum<T>(ConfigHandle handle, ReadOnlySpan<char> section, ReadOnlySpan<char> key, T defaultValue)

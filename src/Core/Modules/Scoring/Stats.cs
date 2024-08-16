@@ -81,7 +81,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Module members
 
-        [ConfigHelp("Stats", "AdditionalIntervals", ConfigScope.Global, typeof(string),
+        [ConfigHelp("Stats", "AdditionalIntervals", ConfigScope.Global,
             Description = $"""
                 By default {nameof(Stats)} module tracks intervals: forever, reset, and game.
                 This setting allows tracking of additional intervals.
