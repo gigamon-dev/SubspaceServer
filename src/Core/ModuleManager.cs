@@ -214,17 +214,17 @@ namespace SS.Core
                 }
             }
 
-            if (moduleData.Module is IArenaAttachableModule arenaAttachableModule)
+            if (moduleData.Module is IAsyncArenaAttachableModule asyncArenaAttachableModule)
             {
-                if (!arenaAttachableModule.AttachModule(arena))
+                if (!await asyncArenaAttachableModule.AttachModuleAsync(arena, CancellationToken.None).ConfigureAwait(false))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to attach.");
                     return false;
                 }
             }
-            else if (moduleData.Module is IAsyncArenaAttachableModule asyncArenaAttachableModule)
+            else if (moduleData.Module is IArenaAttachableModule arenaAttachableModule)
             {
-                if (!await asyncArenaAttachableModule.AttachModuleAsync(arena, CancellationToken.None).ConfigureAwait(false))
+                if (!arenaAttachableModule.AttachModule(arena))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to attach.");
                     return false;
@@ -342,17 +342,17 @@ namespace SS.Core
                 }
             }
 
-            if (moduleData.Module is IArenaAttachableModule arenaAttachableModule)
+            if (moduleData.Module is IAsyncArenaAttachableModule asyncArenaAttachableModule)
             {
-                if (!arenaAttachableModule.DetachModule(arena))
+                if (!await asyncArenaAttachableModule.DetachModuleAsync(arena, CancellationToken.None).ConfigureAwait(false))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to detach.");
                     return false;
                 }
             }
-            else if (moduleData.Module is IAsyncArenaAttachableModule asyncArenaAttachableModule)
+            else if (moduleData.Module is IArenaAttachableModule arenaAttachableModule)
             {
-                if (!await asyncArenaAttachableModule.DetachModuleAsync(arena, CancellationToken.None).ConfigureAwait(false))
+                if (!arenaAttachableModule.DetachModule(arena))
                 {
                     WriteLogA(LogLevel.Error, arena, $"AttachModule failed: Module '{type.FullName}' failed to detach.");
                     return false;
@@ -893,13 +893,13 @@ namespace SS.Core
             }
 
             // Dispose
-            if (moduleData.Module is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
-            else if (moduleData.Module is IAsyncDisposable asyncDisposable)
+            if (moduleData.Module is IAsyncDisposable asyncDisposable)
             {
                 await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            }
+            else if (moduleData.Module is IDisposable disposable)
+            {
+                disposable.Dispose();
             }
 
             ReleaseDependencies(moduleData);
@@ -1116,15 +1116,15 @@ namespace SS.Core
             {
                 try
                 {
-                    if (moduleData.Module is IModuleLoaderAware loaderAwareModule)
+                    if (moduleData.Module is IAsyncModuleLoaderAware asyncloaderAwareModule)
                     {
-                        loaderAwareModule.PostLoad(this);
+                        await asyncloaderAwareModule.PostLoadAsync(this, CancellationToken.None).ConfigureAwait(false);
                         moduleData.IsPostLoaded = true;
                         return true;
                     }
-                    else if (moduleData.Module is IAsyncModuleLoaderAware asyncloaderAwareModule)
+                    else if (moduleData.Module is IModuleLoaderAware loaderAwareModule)
                     {
-                        await asyncloaderAwareModule.PostLoadAsync(this, CancellationToken.None).ConfigureAwait(false);
+                        loaderAwareModule.PostLoad(this);
                         moduleData.IsPostLoaded = true;
                         return true;
                     }
@@ -1195,15 +1195,15 @@ namespace SS.Core
             {
                 try
                 {
-                    if (moduleData.Module is IModuleLoaderAware loaderAwareModule)
+                    if (moduleData.Module is IAsyncModuleLoaderAware asyncLoaderAwareModule)
                     {
-                        loaderAwareModule.PreUnload(this);
+                        await asyncLoaderAwareModule.PreUnloadAsync(this, CancellationToken.None).ConfigureAwait(false);
                         moduleData.IsPostLoaded = false;
                         return true;
                     }
-                    else if (moduleData.Module is IAsyncModuleLoaderAware asyncLoaderAwareModule)
+                    else if (moduleData.Module is IModuleLoaderAware loaderAwareModule)
                     {
-                        await asyncLoaderAwareModule.PreUnloadAsync(this, CancellationToken.None).ConfigureAwait(false);
+                        loaderAwareModule.PreUnload(this);
                         moduleData.IsPostLoaded = false;
                         return true;
                     }
