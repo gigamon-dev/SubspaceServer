@@ -741,12 +741,14 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = null,
             Description = "Resets your own score, or the target player's score.")]
+        [ConfigHelp<bool>("Misc", "SelfScoreReset", ConfigScope.Arena, Default = false,
+            Description = "Whether players can reset their own scores using ?scorereset.")]
         private void Command_scorereset(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // For now, only reset PersistInterval.Reset scores, since those are the only ones the client sees.
             if (target.TryGetArenaTarget(out Arena? arena))
             {
-                if (_configManager!.GetInt(arena.Cfg!, "Misc", "SelfScoreReset", 0) != 0)
+                if (_configManager!.GetBool(arena.Cfg!, "Misc", "SelfScoreReset", ConfigHelp.Constants.Arena.Misc.SelfScoreReset.Default))
                 {
                     _scoreStats!.ScoreReset(player, PersistInterval.Reset);
                     _scoreStats.SendUpdates(arena, null);
@@ -1177,6 +1179,8 @@ namespace SS.Core.Modules
             }
         }
 
+        [ConfigHelp("Misc", "SheepMessage", ConfigScope.Arena, Default = "Sheep successfully cloned -- hello Dolly",
+            Description = "The message that appears when someone says ?sheep")]
         private void Command_sheep(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (target.Type != TargetType.Arena)
@@ -1187,11 +1191,10 @@ namespace SS.Core.Modules
                 return;
 
             string? sheepMessage = _configManager!.GetStr(arena.Cfg!, "Misc", "SheepMessage");
+            if (string.IsNullOrWhiteSpace(sheepMessage))
+                sheepMessage = ConfigHelp.Constants.Arena.Misc.SheepMessage.Default;
 
-            if (sheepMessage != null)
-                _chat.SendMessage(player, ChatSound.Sheep, sheepMessage);
-            else
-                _chat.SendMessage(player, ChatSound.Sheep, "Sheep successfully cloned -- hello Dolly");
+            _chat.SendMessage(player, ChatSound.Sheep, sheepMessage);
         }
 
         [CommandHelp(

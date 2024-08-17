@@ -19,7 +19,6 @@ namespace SS.Core.Modules
     {
         private readonly IComponentBroker _broker;
         private readonly ICommandManager _commandManager;
-        private readonly IConfigManager _configManager;
         private readonly ILogManager _logManager;
         private readonly IMainloop _mainloop;
         private readonly IObjectPoolManager _objectPoolManager;
@@ -39,14 +38,12 @@ namespace SS.Core.Modules
         public Obscene(
             IComponentBroker broker,
             ICommandManager commandManager,
-            IConfigManager configManager,
             ILogManager logManager,
             IMainloop mainloop,
             IObjectPoolManager objectPoolManager)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));

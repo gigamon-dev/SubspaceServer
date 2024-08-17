@@ -101,7 +101,7 @@ namespace SS.Core.Modules
             ConfigHandle ch = arena.Cfg!;
             int count = 0;
 
-            for (int x = 0; x <= 15; x++)
+            for (int x = 0; x < S2C_MapFilename.MaxLvzFiles; x++)
             {
                 string? lvz;
 
@@ -114,7 +114,7 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    lvz = _configManager.GetStr(ch, "General", "LevelFiles" + x);
+                    lvz = GetLevelFileSetting(ch, x);
                 }
 
                 if (string.IsNullOrWhiteSpace(lvz))
@@ -133,6 +133,15 @@ namespace SS.Core.Modules
                     if (++count >= S2C_MapFilename.MaxLvzFiles)
                         yield break;
                 }
+            }
+
+            string? GetLevelFileSetting(ConfigHandle ch, int number)
+            {
+                Span<char> key = stackalloc char["LevelFiles".Length + 11];
+                if (!key.TryWrite($"LevelFiles{number}", out int charsWritten))
+                    return null;
+
+                return _configManager.GetStr(ch, "General", key[..charsWritten]);
             }
         }
 
