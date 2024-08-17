@@ -65,10 +65,14 @@ namespace SS.Core.Modules
                 The limit at which the server will try to create a new public arena for incoming players.
                 This setting works in conjunction with the General:PublicArenas global.conf setting.
                 """)]
-        bool IArenaPlace.TryPlace(Span<char> arenaName, ref int spawnX, ref int spawnY, Player player, out int charsWritten)
+        bool IArenaPlace.TryPlace(Player player, Span<char> arenaName, out int charsWritten, out int spawnX, out int spawnY)
         {
             arenaName.Clear();
             charsWritten = 0;
+
+            // This implementation of IArenaPlace does not set spawn coordinates.
+            spawnX = 0;
+            spawnY = 0;
 
             List<string> tryList = _stringListPool.Get();
 
@@ -88,6 +92,9 @@ namespace SS.Core.Modules
                     }
                 }
 
+                // Refresh population counts for all arenas since we'll be looking at the "playing" count.
+                _arenaManager.GetPopulationSummary(out _, out _);
+
                 Span<char> buffer = stackalloc char[Constants.MaxArenaNameLength];
 
                 for (int pass = 0; pass < 10; pass++)
@@ -98,7 +105,7 @@ namespace SS.Core.Modules
                             continue;
 
                         ReadOnlySpan<char> tryName = buffer[..bufferWritten];
-                        Arena? arena = _arenaManager.FindArena(tryName, out _, out int playing);
+                        Arena? arena = _arenaManager.FindArena(tryName);
                         if (arena is null)
                         {
                             // doesn't exist yet, use as a backup only
@@ -110,6 +117,9 @@ namespace SS.Core.Modules
                         }
                         else
                         {
+                            // Get the playing count for the arena.
+                            arena.GetPlayerCounts(out _, out int playing);
+
                             int desired = _configManager.GetInt(arena.Cfg!, "General", "DesiredPlaying", ConfigHelp.Constants.Arena.General.DesiredPlaying.Default);
                             if (playing < desired)
                             {

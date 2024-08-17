@@ -359,62 +359,7 @@ namespace SS.Core.Modules
 
         Arena? IArenaManager.FindArena(ReadOnlySpan<char> name)
         {
-            ReadLock();
-            try
-            {
-                return FindArena(name, ArenaState.Running, ArenaState.Running);
-            }
-            finally
-            {
-                ReadUnlock();
-            }
-        }
-
-        Arena? IArenaManager.FindArena(ReadOnlySpan<char> name, out int totalCount, out int playing)
-        {
-            Arena? arena = ((IArenaManager)this).FindArena(name);
-
-            if (arena is not null)
-            {
-                CountPlayers(arena, out totalCount, out playing);
-            }
-            else
-            {
-                totalCount = 0;
-                playing = 0;
-            }
-
-            return arena;
-
-            void CountPlayers(Arena arena, out int total, out int playing)
-            {
-                int totalCount = 0;
-                int playingCount = 0;
-
-                _playerData.Lock();
-                try
-                {
-                    foreach (Player player in _playerData.Players)
-                    {
-                        if (player.Status == PlayerState.Playing &&
-                            player.Arena == arena &&
-                            player.Type != ClientType.Fake)
-                        {
-                            totalCount++;
-
-                            if (player.Ship != ShipType.Spec)
-                                playingCount++;
-                        }
-                    }
-                }
-                finally
-                {
-                    _playerData.Unlock();
-                }
-
-                total = totalCount;
-                playing = playingCount;
-            }
+            return FindArena(name, ArenaState.Running, ArenaState.Running);
         }
 
         void IArenaManager.GetPopulationSummary(out int total, out int playing)
@@ -448,6 +393,9 @@ namespace SS.Core.Modules
 
                     try
                     {
+                        // This is purposely a read lock, for reading the _arenaDictionary.
+                        // Yes, the counts within the Arenas are being changed, but those are synchronized separately inside Arena.SetPlayerCounts(...).
+                        // Writing to ArenaData is synchronized with the _populationLock being held.
                         ReadLock();
 
                         try
@@ -881,7 +829,7 @@ namespace SS.Core.Modules
                 {
                     try
                     {
-                        if (arenaPlace.TryPlace(nameBuffer, ref spx, ref spy, player, out int charsWritten))
+                        if (arenaPlace.TryPlace(player, nameBuffer, out int charsWritten, out spx, out spy))
                         {
                             name = nameBuffer[..charsWritten];
                         }
@@ -1018,9 +966,7 @@ namespace SS.Core.Modules
                 {
                     try
                     {
-                        int spawnX = 0;
-                        int spawnY = 0;
-                        if (arenaPlace.TryPlace(nameBuffer, ref spawnX, ref spawnY, player, out int charsWritten))
+                        if (arenaPlace.TryPlace(player, nameBuffer, out int charsWritten, out int spawnX, out int spawnY))
                         {
                             nameBuffer = nameBuffer[..charsWritten];
                         }
@@ -1532,8 +1478,7 @@ namespace SS.Core.Modules
                     {
                         try
                         {
-                            int spx = 0, spy = 0;
-                            if (arenaPlace.TryPlace(name, ref spx, ref spy, player, out charsWritten))
+                            if (arenaPlace.TryPlace(player, name, out charsWritten, out _, out _))
                             {
                                 name = name[..charsWritten];
                             }
@@ -1644,10 +1589,10 @@ namespace SS.Core.Modules
                 if (_arenaTrie.TryGetValue(name, out Arena? arena) == false)
                     return null;
 
-                if (minState != null && arena.Status < minState)
+                if (minState is not null && arena.Status < minState)
                     return null;
 
-                if (maxState != null && arena.Status > maxState)
+                if (maxState is not null && arena.Status > maxState)
                     return null;
 
                 return arena;

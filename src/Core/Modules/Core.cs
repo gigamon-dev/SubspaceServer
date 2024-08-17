@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.HighPerformance.Buffers;
 using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
@@ -10,6 +11,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Hashing;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace SS.Core.Modules
 {
@@ -28,6 +30,7 @@ namespace SS.Core.Modules
     {
         // required dependencies
         private readonly IComponentBroker _broker;
+        private readonly IArenaManager _arenaManager;
         private readonly IArenaManagerInternal _arenaManagerInternal;
         private readonly ICapabilityManager _capabiltyManager;
         private readonly IConfigManager _configManager;
@@ -43,6 +46,7 @@ namespace SS.Core.Modules
         private INetwork? _network;
 
         // optional dependencies (available on PostLoad)
+        private IChat? _chat;
         private IPersistExecutor? _persistExecutor;
         private IScoreStats? _scoreStats;
 
@@ -66,6 +70,7 @@ namespace SS.Core.Modules
 
         internal Core(
             IComponentBroker broker,
+            IArenaManager arenaManager,
             IArenaManagerInternal arenaManagerInternal,
             ICapabilityManager capabilityManager,
             IConfigManager configManager,
@@ -77,6 +82,7 @@ namespace SS.Core.Modules
             IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _arenaManagerInternal = arenaManagerInternal ?? throw new ArgumentNullException(nameof(arenaManagerInternal));
             _capabiltyManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
@@ -127,12 +133,18 @@ namespace SS.Core.Modules
 
         void IModuleLoaderAware.PostLoad(IComponentBroker broker)
         {
+            _chat = broker.GetInterface<IChat>();
             _persistExecutor = broker.GetInterface<IPersistExecutor>();
             _scoreStats = broker.GetInterface<IScoreStats>();
         }
 
         void IModuleLoaderAware.PreUnload(IComponentBroker broker)
         {
+            if (_chat is not null)
+            {
+                broker.ReleaseInterface(ref _chat);
+            }
+
             if (_persistExecutor != null)
             {
                 broker.ReleaseInterface(ref _persistExecutor);
@@ -230,6 +242,8 @@ namespace SS.Core.Modules
 
         private bool MainloopTimer_ProcessPlayerStates()
         {
+            Span<char> arenaName = stackalloc char[Constants.MaxArenaNameLength];
+
             _playerData.WriteLock();
 
             try
@@ -263,11 +277,82 @@ namespace SS.Core.Modules
                             // check if the player's arena is ready.
                             // LOCK: we don't grab the arena status lock because it
                             // doesn't matter if we miss it this time around
-                            if (player.NewArena != null && player.NewArena.Status == ArenaState.Running)
+                            Arena? newArena = player.NewArena;
+                            if (newArena is not null && newArena.Status == ArenaState.Running)
                             {
-                                player.Arena = player.NewArena;
                                 player.NewArena = null;
-                                player.Status = PlayerState.DoFreqAndArenaSync;
+
+                                bool isAuthorized;
+                                StringBuilder errorMessage = _objectPoolManager.StringBuilderPool.Get();
+                                try
+                                {
+                                    isAuthorized = IsPlayerAuthorizedToEnterArena(player, newArena, errorMessage);
+
+                                    if (!isAuthorized)
+                                    {
+                                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                                        try
+                                        {
+                                            sb.Append($"You don't have permission to enter arena '{newArena.Name}'.");
+
+                                            if (errorMessage.Length > 0)
+                                            {
+                                                sb.Append(' ');
+                                                sb.Append(errorMessage);
+                                            }
+
+                                            _chat?.SendMessage(player, sb);
+                                        }
+                                        finally
+                                        {
+                                            _objectPoolManager.StringBuilderPool.Return(sb);
+                                        }
+                                    }
+                                }
+                                finally
+                                {
+                                    _objectPoolManager.StringBuilderPool.Return(errorMessage);
+                                }
+
+                                if (!isAuthorized)
+                                {
+                                    IArenaPlace? arenaPlace = _broker.GetInterface<IArenaPlace>();
+                                    if (arenaPlace is not null)
+                                    {
+                                        try
+                                        {
+                                            bool ok = arenaPlace.TryPlace(player, arenaName, out int charsWritten, out _, out _);
+                                            if (ok)
+                                            {
+                                                Arena? arena = _arenaManager.FindArena(arenaName);
+                                                if (arena is not null)
+                                                {
+                                                    if (!IsPlayerAuthorizedToEnterArena(player, arena, null))
+                                                    {
+                                                        // The player isn't authorized to enter the placed arena.
+                                                        // This will prevent an infinite loop of being sent to an arena that a player isn't authorized to enter.
+                                                        ok = false;
+                                                    }
+                                                }
+                                            }
+
+                                            if (ok)
+                                            {
+                                                _logManager.LogP(LogLevel.Info, nameof(Core), player, $"Redirected from arena '{newArena.Name}' to '{arenaName}'.");
+                                                _arenaManager.SendToArena(player, arenaName[..charsWritten], 0, 0);
+                                            }
+                                        }
+                                        finally
+                                        {
+                                            _broker.ReleaseInterface(ref arenaPlace);
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    player.Arena = newArena;
+                                    player.Status = PlayerState.DoFreqAndArenaSync;
+                                }
                             }
 
                             // check whenloggedin. this is used to move players to
@@ -475,6 +560,24 @@ namespace SS.Core.Modules
 
             _actionsList.Clear();
             return true;
+
+            // local function that wraps calling the IArenaAuthorizationAdvisor
+            static bool IsPlayerAuthorizedToEnterArena(Player player, Arena arena, StringBuilder? errorMessage)
+            {
+                var advisors = arena.GetAdvisors<IArenaAuthorizationAdvisor>();
+                if (!advisors.IsEmpty)
+                {
+                    foreach (var advisor in advisors)
+                    {
+                        if (!advisor.IsAuthorizedToEnter(player, arena, errorMessage))
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            }
         }
 
         private bool MainloopTimer_SendKeepAlive()

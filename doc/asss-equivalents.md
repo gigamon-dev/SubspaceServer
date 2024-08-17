@@ -8,7 +8,7 @@ This document provides an overview of the various server parts and their relatio
 | aliasdb | - | No plans to add it. Use billing server functionality instead. |
 | ap_multipub | SS.Core.Modules.ArenaPlaceMultiPub | |
 | arenaman | SS.Core.Modules.ArenaManager | |
-| arenaperm | - | No plans to add it. |
+| arenaperm | SS.Core.Modules.ArenaAuthorization |  |
 | auth_ban | SS.Core.Modules.AuthBan | |
 | auth_file | SS.Core.Modules.AuthFile | |
 | auth_prefix | | |
@@ -213,6 +213,7 @@ This document provides an overview of the various server parts and their relatio
 ## Advisors
 | ASSS  | Subspace Server .NET | Notes |
 | --- | --- | --- |
+| - | SS.Core.ComponentAdvsiors.IArenaAuthorizationAdvsior | |
 | Aballs | SS.Core.ComponentAdvisors.IBallsAdvisor | |
 | - | SS.Core.ComponentAdvisors.IBannersAdvisor | |
 | - | SS.Core.ComponentAdvisors.IChatAdvisor | |

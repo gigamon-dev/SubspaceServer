@@ -50,23 +50,11 @@ namespace SS.Core.ComponentInterfaces
         /// Tries to find an arena.
         /// </summary>
         /// <remarks>
-        /// This only includes that are in the <see cref="ArenaState.Running"/> state.
+        /// This only includes arenas that are in the <see cref="ArenaState.Running"/> state.
         /// </remarks>
         /// <param name="name">The name of the arena to find.</param>
         /// <returns>The arena if found. Otherwise, <see langword="null"/>.</returns>
         Arena? FindArena(ReadOnlySpan<char> name);
-
-        /// <summary>
-        /// Tries to find an arena, and get player counts.
-        /// </summary>
-        /// <remarks>
-        /// This only includes that are in the <see cref="ArenaState.Running"/> state.
-        /// </remarks>
-        /// <param name="name">The name of the arena to find.</param>
-        /// <param name="totalCount">When this method returns and an arena was found, the total number of players.</param>
-        /// <param name="playing">When this method returns and an arena was found, the number of players playing (not in spec).</param>
-        /// <returns>The arena if found. Otherwise, <see langword="null"/>.</returns>
-        Arena? FindArena(ReadOnlySpan<char> name, out int totalCount, out int playing);
 
         /// <summary>
         /// Counts the number of players on the server and in each arena.
