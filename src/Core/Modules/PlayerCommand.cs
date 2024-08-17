@@ -3417,9 +3417,9 @@ namespace SS.Core.Modules
             if (errors.Count > 0 && _capabilityManager!.HasCapability(player, Constants.Capabilities.IsStaff))
             {
                 _chat.SendMessage(player, "Error details:");
-                foreach (var error in errors)
+                for (int i = 0; i < errors.Count; i++)
                 {
-                    _chat.SendMessage(player, $"- {error}");
+                    _chat.SendMessage(player, $"- {errors[i]}");
                 }
             }
 

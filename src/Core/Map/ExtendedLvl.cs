@@ -59,6 +59,10 @@ namespace SS.Core.Map
         /// </summary>
         private readonly Dictionary<MapRegion, HashSet<ImmutableHashSet<MapRegion>>> _regionMemberSetLookup = new Dictionary<MapRegion, HashSet<ImmutableHashSet<MapRegion>>>();
 
+        // Cached delegates that will get allocated only if there is a map region
+        private ProcessChunkCallback<MapRegion>? _processRegionChunk;
+        private Action<string>? _addError;
+
         protected override void ClearLevel()
         {
             _chunks.Clear();
@@ -146,7 +150,8 @@ namespace SS.Core.Map
                                     va,
                                     bitmapHeader.Reserved + MetadataHeader.Length,
                                     metadataHeader.TotalSize - MetadataHeader.Length,
-                                    ProcessBackwardsCompatibleMapChunk);
+                                    ProcessMapChunk,
+                                    true);
                             }
                         }
                     }
@@ -171,7 +176,8 @@ namespace SS.Core.Map
                             va,
                             MetadataHeader.Length,
                             metadataHeader.TotalSize - MetadataHeader.Length,
-                            ProcessNonBackwardsCompatibleMapChunk);
+                            ProcessMapChunk,
+                            false);
 
                         // in a non-backwards compatible extended lvl, the tile data should be included in the metadata
                         if (!IsTileDataLoaded)
@@ -295,11 +301,14 @@ namespace SS.Core.Map
             return true;
         }
 
-        private void ReadChunks(
+        private delegate void ProcessChunkCallback<T>(MemoryMappedViewAccessor accessor, uint chunkType, long position, int length, T state);
+
+        private void ReadChunks<T>(
             MemoryMappedViewAccessor accessor,
             long position,
             long length,
-            Action<MemoryMappedViewAccessor, uint, long, int> processChunkCallback)
+            ProcessChunkCallback<T> processChunkCallback, //Action<MemoryMappedViewAccessor, uint, long, int, T> processChunkCallback,
+            T state)
         {
             ArgumentNullException.ThrowIfNull(accessor);
             ArgumentNullException.ThrowIfNull(processChunkCallback);
@@ -317,7 +326,7 @@ namespace SS.Core.Map
                     break;
                 }
 
-                processChunkCallback(accessor, chunkHeader.Type, position + ChunkHeader.Length, (int)chunkHeader.Size);
+                processChunkCallback(accessor, chunkHeader.Type, position + ChunkHeader.Length, (int)chunkHeader.Size, state);
 
                 position += chunkSize;
                 length -= chunkSize;
@@ -330,18 +339,6 @@ namespace SS.Core.Map
                 }
             }
         }
-
-        private void ProcessBackwardsCompatibleMapChunk(
-            MemoryMappedViewAccessor accessor,
-            uint chunkType,
-            long position,
-            int length) => ProcessMapChunk(accessor, chunkType, position, length, true);
-
-        private void ProcessNonBackwardsCompatibleMapChunk(
-            MemoryMappedViewAccessor accessor,
-            uint chunkType,
-            long position,
-            int length) => ProcessMapChunk(accessor, chunkType, position, length, false);
 
         private void ProcessMapChunk(
             MemoryMappedViewAccessor accessor,
@@ -386,13 +383,13 @@ namespace SS.Core.Map
             }
             else if (chunkType == MapMetadataChunkType.REGN)
             {
-                MapRegion region = new MapRegion();
+                MapRegion region = new();
+                ReadChunks(accessor, position, length, _processRegionChunk ??= ProcessRegionChunk, region);
 
-                ReadChunks(
-                    accessor,
-                    position,
-                    length,
-                    (va, chunkType, position, length) => region.ProcessRegionChunk(va, chunkType, position, length, AddError));
+                if (region.Name is null)
+                {
+                    AddError($"Processed a 'REGN' chunk, but the region was missing a name.");
+                }
 
                 AddRegion(region);
             }
@@ -425,6 +422,16 @@ namespace SS.Core.Map
                 accessor.ReadArray(position, buffer, 0, length);
                 _chunks.AddLast(chunkType, buffer);
             }
+        }
+
+        private void ProcessRegionChunk(
+            MemoryMappedViewAccessor accessor,
+            uint chunkType,
+            long position,
+            int length,
+            MapRegion region)
+        {
+            region.ProcessRegionChunk(accessor, chunkType, position, length, _addError ??= AddError);
         }
 
         public bool TryGetAttribute(string key, [MaybeNullWhen(false)] out string value)
