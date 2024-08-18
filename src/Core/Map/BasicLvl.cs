@@ -18,7 +18,7 @@ namespace SS.Core.Map
         /// </summary>
         public const int MaxFlags = 255;
 
-        private readonly MapTileCollection _tileLookup = [];
+        private readonly MapCoordinateCollection<MapTile> _tileLookup = new(65536);
         private readonly List<MapCoordinate> _flagCoordinateList = new(MaxFlags);
         private readonly List<string> _errorList = [];
         private readonly ReadOnlyCollection<string> _readOnlyErrors;
@@ -107,7 +107,7 @@ namespace SS.Core.Map
         {
             ClearLevel();
 
-            _tileLookup.Add(0, 0, new MapTile(1));
+            _tileLookup[new MapCoordinate(0, 0)] = new MapTile(1);
             IsTileDataLoaded = true;
             TrimExcess();
         }
@@ -136,7 +136,7 @@ namespace SS.Core.Map
                     MapCoordinate coord = new MapCoordinate(td.X, td.Y);
                     MapTile tile = new MapTile(td.Type);
 
-                    if (tile.IsTurfFlag)
+                    if (tile.IsFlag)
                     {
                         _flagCoordinateList.Add(coord);
                     }
@@ -150,7 +150,7 @@ namespace SS.Core.Map
                     {
                         for (short x = 0; x < tileSize; x++)
                             for (short y = 0; y < tileSize; y++)
-                                _tileLookup.Add((short)(coord.X + x), (short)(coord.Y + y), tile);
+                                _tileLookup[new MapCoordinate((short)(coord.X + x), (short)(coord.Y + y))] = tile;
                     }
                     else
                     {
@@ -273,7 +273,7 @@ namespace SS.Core.Map
                 {
                     { IsDoor: true } => SKColors.Blue,
                     { IsSafe: true } => SKColors.LightGreen,
-                    { IsTurfFlag: true } => SKColors.Yellow,
+                    { IsFlag: true } => SKColors.Yellow,
                     { IsGoal: true } => SKColors.Red,
                     { IsWormhole: true } => SKColors.Purple,
                     { IsFlyOver: true } => SKColors.DarkGray,

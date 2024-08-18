@@ -391,20 +391,20 @@ namespace SS.Core.Modules.FlagGame
 
         private bool IsFlyThrough(Arena arena, MapCoordinate coordinate)
         {
-            MapTile? tile = _mapData.GetTile(arena, coordinate);
-            return tile == null || IsFlyThrough(tile.Value);
+            MapTile tile = _mapData.GetTile(arena, coordinate);
+            return tile == MapTile.None || IsFlyThrough(tile);
         }
 
         private static bool IsFlyThrough(MapTile mapTile)
         {
-            return mapTile.IsDoor || mapTile.IsSafe || mapTile.IsGoal || mapTile.IsFlyOver || mapTile.IsFlyUnder || mapTile.IsBrick || mapTile.IsTurfFlag;
+            return mapTile.IsDoor || mapTile.IsSafe || mapTile.IsGoal || mapTile.IsFlyOver || mapTile.IsFlyUnder || mapTile.IsBrick || mapTile.IsFlag;
         }
 
         private bool IsAvailableToPlaceFlag(Arena arena, MapCoordinate coordinate)
         {
             // is an empty tile
-            MapTile? tile = _mapData.GetTile(arena, coordinate);
-            if (tile != null)
+            MapTile tile = _mapData.GetTile(arena, coordinate);
+            if (tile != MapTile.None)
                 return false;
 
             // not occupied by another flag

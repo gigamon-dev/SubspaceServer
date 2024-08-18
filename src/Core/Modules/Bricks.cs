@@ -25,7 +25,7 @@ namespace SS.Core.Modules
     /// Normally, bricks are prizes given to players, which can be used/placed at their current location.
     /// To do this, the client sends a request (0x1C) to place a brick and the server then decides the 
     /// location to actually place it.  This is usually determined using the x and y coordinates from 
-    /// the request, but that is not necessary; the server can choose do what it wants, even ingore the 
+    /// the request, but that is not necessary; the server can choose do what it wants, even ignore the 
     /// request if it so chooses.
     /// </para>
     /// 
@@ -54,7 +54,7 @@ namespace SS.Core.Modules
         /// The maximum # of bricks to allow active at the same time.
         /// Attempts to place bricks beyond this limit will be ignored.
         /// </summary>
-        private const int MaxActiveBricks = 256; // the Continuum client limit
+        public const int MaxActiveBricks = 256; // the Continuum client limit
 
         /// <summary>
         /// The maximum # of bricks to include in a packet, assuming it'll be sent reliably.
@@ -187,20 +187,20 @@ namespace SS.Core.Modules
 
         private void Callback_DoBrickMode(Player player, BrickMode brickMode, short x, short y, int length, IList<BrickLocation> bricks)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             Arena? arena = player.Arena;
-            if (arena == null)
+            if (arena is null)
                 return;
 
             if (length < 1)
                 return;
 
-            if (bricks == null)
+            if (bricks is null)
                 return;
 
-            if (_mapData.GetTile(arena, new Map.MapCoordinate(x, y)) != null)
+            if (_mapData.GetTile(arena, new MapCoordinate(x, y), true) != MapTile.None)
                 return; // can't place a brick on a tile
 
             // TODO: add other modes
@@ -235,7 +235,7 @@ namespace SS.Core.Modules
                         if (!isStartDone && start.Y > 0)
                         {
                             MapCoordinate newStart = new(start.X, (short)(start.Y - 1));
-                            if (_mapData.GetTile(arena, newStart) == null)
+                            if (_mapData.GetTile(arena, newStart, true) == MapTile.None)
                             {
                                 start = newStart;
                                 tileCount++;
@@ -252,7 +252,7 @@ namespace SS.Core.Modules
                         if (!isEndDone && end.Y < 1023)
                         {
                             MapCoordinate newEnd = new(end.X, (short)(end.Y + 1));
-                            if (_mapData.GetTile(arena, newEnd) == null)
+                            if (_mapData.GetTile(arena, newEnd, true) == MapTile.None)
                             {
                                 end = newEnd;
                                 tileCount++;
@@ -271,7 +271,7 @@ namespace SS.Core.Modules
                         if (!isStartDone && start.X > 0)
                         {
                             MapCoordinate newStart = new((short)(start.X - 1), start.Y);
-                            if (_mapData.GetTile(arena, newStart) == null)
+                            if (_mapData.GetTile(arena, newStart, true) == MapTile.None)
                             {
                                 start = newStart;
                                 tileCount++;
@@ -288,7 +288,7 @@ namespace SS.Core.Modules
                         if (!isEndDone && end.X < 1023)
                         {
                             MapCoordinate newEnd = new((short)(end.X + 1), end.Y);
-                            if (_mapData.GetTile(arena, newEnd) == null)
+                            if (_mapData.GetTile(arena, newEnd, true) == MapTile.None)
                             {
                                 end = newEnd;
                                 tileCount++;
@@ -315,7 +315,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (player.Status != PlayerState.Playing || player.Ship == ShipType.Spec || arena == null)
+            if (player.Status != PlayerState.Playing || player.Ship == ShipType.Spec || arena is null)
             {
                 _logManager.LogP(LogLevel.Warn, nameof(Bricks), player, "Ignored request from bad state.");
                 return;
@@ -326,8 +326,10 @@ namespace SS.Core.Modules
 
             ref C2S_Brick c2sBrick = ref MemoryMarshal.AsRef<C2S_Brick>(data);
 
+            ExpireBricks(arena);
+
             IBrickHandler? brickHandler = _broker.GetInterface<IBrickHandler>();
-            if (brickHandler == null)
+            if (brickHandler is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(Bricks), "No brick handler found.");
                 return;
@@ -366,6 +368,8 @@ namespace SS.Core.Modules
             try
             {
                 brickList.Add(new BrickLocation(x1, y1, x2, y2));
+
+                ExpireBricks(arena);
                 DropBricks(arena, freq, null, brickList);
             }
             finally
@@ -376,10 +380,10 @@ namespace SS.Core.Modules
 
         private void DropBricks(Arena arena, short freq, Player? player, List<BrickLocation> bricks)
         {
-            if (arena == null)
+            if (arena is null)
                 return;
 
-            if (bricks == null || bricks.Count <= 0)
+            if (bricks is null || bricks.Count <= 0)
                 return;
 
             if (!arena.TryGetExtraData(_adKey, out ArenaBrickData? abd))
@@ -387,8 +391,6 @@ namespace SS.Core.Modules
 
             lock (abd.Lock)
             {
-                ExpireBricks(arena);
-
                 int available = MaxActiveBricks - abd.Bricks.Count;
                 if (available <= 0 || available < bricks.Count)
                 {
@@ -418,9 +420,8 @@ namespace SS.Core.Modules
 
                         _logManager.LogA(LogLevel.Drivel, nameof(Bricks), arena, $"Brick dropped ({brickData.X1},{brickData.Y1})-({brickData.X2},{brickData.Y2}) (freq={brickData.Freq}) (id={brickData.BrickId})");
 
-                        // TODO: CountBricksAsWalls
-                        //if(abd.CountBricksAsWalls)
-                        //_mapData.DoBrick()
+                        if (abd.CountBricksAsWalls)
+                            _mapData.TryAddBrick(arena, brickData.BrickId, new MapCoordinate(brickData.X1, brickData.Y1), new MapCoordinate(brickData.X2, brickData.Y2));
                     }
 
                     SendToPlayerOrArena(null, arena, brickDataList, abd.WallResendCount);
@@ -436,7 +437,7 @@ namespace SS.Core.Modules
 
         private void ExpireBricks(Arena arena)
         {
-            if (arena == null)
+            if (arena is null)
                 return;
 
             if (!arena.TryGetExtraData(_adKey, out ArenaBrickData? abd))
@@ -449,9 +450,8 @@ namespace SS.Core.Modules
                 while (abd.Bricks.TryPeek(out BrickData brick)
                     && now >= brick.StartTime + abd.BrickTime)
                 {
-                    // TODO: CountBricksAsWalls
-                    //if (abd.CountBricksAsWalls)
-                    //_mapData.DoBrick()
+                    if (abd.CountBricksAsWalls)
+                        _mapData.TryRemoveBrick(arena, brick.BrickId);
 
                     abd.Bricks.Dequeue();
                 }
@@ -460,10 +460,10 @@ namespace SS.Core.Modules
 
         private void SendToPlayerOrArena<T>(Player? player, Arena? arena, T bricks, int wallResendCount) where T : IReadOnlyCollection<BrickData>
         {
-            if (player == null && arena == null)
+            if (player is null && arena is null)
                 return;
 
-            if (bricks == null || bricks.Count <= 0)
+            if (bricks is null || bricks.Count <= 0)
                 return;
 
             //
@@ -495,7 +495,7 @@ namespace SS.Core.Modules
 
             void SendToPlayerOrArena(Player? player, Arena? arena, Span<byte> data, int wallResendCount)
             {
-                if (player == null && arena == null)
+                if (player is null && arena is null)
                     return;
 
                 if (data.Length <= 0)
@@ -512,15 +512,15 @@ namespace SS.Core.Modules
 
                 void SendToPlayerOrArena(Player? player, Arena? arena, Span<byte> data, NetSendFlags flags)
                 {
-                    if (player == null && arena == null)
+                    if (player is null && arena is null)
                         return;
 
                     if (data.Length <= 0)
                         return;
 
-                    if (player != null)
+                    if (player is not null)
                         _network.SendToOne(player, data, flags);
-                    else if (arena != null)
+                    else if (arena is not null)
                         _network.SendToArena(arena, null, data, flags);
                 }
             }
@@ -534,11 +534,11 @@ namespace SS.Core.Modules
         // Of course, the arena can be accessed through the player too.
         void IBrickHandler.HandleBrick(Player player, short x, short y, IList<BrickLocation> bricks)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             Arena? arena = player.Arena;
-            if (arena == null)
+            if (arena is null)
                 return;
 
             if (!arena.TryGetExtraData(_adKey, out ArenaBrickData? abd))
@@ -552,7 +552,7 @@ namespace SS.Core.Modules
         public class ArenaBrickData : IResettable
         {
             /// <summary>
-            /// Whether bricks should snap to the edges of other bricks
+            /// Whether bricks snap to the edges of other bricks (as opposed to only snapping to walls).
             /// </summary>
             public bool CountBricksAsWalls;
 

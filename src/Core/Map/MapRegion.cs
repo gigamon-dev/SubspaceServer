@@ -29,7 +29,7 @@ namespace SS.Core.Map
             private set;
         }
 
-        private readonly MultiDictionary<uint, ReadOnlyMemory<byte>> _chunks = new();
+        private readonly MultiDictionary<uint, ReadOnlyMemory<byte>> _chunks = new(16);
 
         /// <summary>
         /// To get chunk data that was not processed.
@@ -104,7 +104,7 @@ namespace SS.Core.Map
             public string? ArenaName { get; }
         }
 
-        private readonly List<AutoWarpDestination> _autoWarpDestinations = new();
+        private readonly List<AutoWarpDestination> _autoWarpDestinations = [];
         private readonly ReadOnlyCollection<AutoWarpDestination> _readOnlyAutoWarpDestinations;
 
         /// <summary>
@@ -136,7 +136,7 @@ namespace SS.Core.Map
         /// <summary>
         /// To enumerate on all the coordinates contained in the map region.
         /// </summary>
-        public IEnumerable<MapCoordinate> Coords
+        public IEnumerable<MapCoordinate> Coordinates
         {
             get
             {

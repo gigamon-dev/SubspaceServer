@@ -31,33 +31,37 @@ namespace SS.Core.Map
         /// <summary>
         /// chunk type --> data of the chunk
         /// </summary>
-        private readonly MultiDictionary<uint, ReadOnlyMemory<byte>> _chunks = new MultiDictionary<uint, ReadOnlyMemory<byte>>(); // using multi because many chunks will have the same type
+        /// <remarks>Multiple chunks can have the same type.</remarks>
+        private readonly MultiDictionary<uint, ReadOnlyMemory<byte>> _chunks = new(8);
 
         /// <summary>
         /// Extended LVL attributes:
         /// attribute name --> attribute value
         /// </summary>
-        private readonly Dictionary<string, string> _attributeLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _attributeLookup = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// region name --> region
         /// </summary>
-        private readonly Dictionary<string, MapRegion> _regionLookup = new Dictionary<string, MapRegion>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, MapRegion> _regionLookup = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// coordinate --> region set
         /// </summary>
-        private readonly MapRegionSetCollection _regionSetCoordinateLookup = new MapRegionSetCollection(); // asss stores set index, instead we store a reference to the set
+        /// <remarks>
+        /// ASSS stores set index, instead we store a reference to the set.
+        /// </remarks>
+        private readonly MapCoordinateCollection<ImmutableHashSet<MapRegion>> _regionSetCoordinateLookup = new(32);
 
         /// <summary>
         /// list of all region sets
         /// </summary>
-        private readonly List<ImmutableHashSet<MapRegion>> _regionSetList = new List<ImmutableHashSet<MapRegion>>();
+        private readonly List<ImmutableHashSet<MapRegion>> _regionSetList = new(32);
 
         /// <summary>
         /// region --> region sets it belongs to
         /// </summary>
-        private readonly Dictionary<MapRegion, HashSet<ImmutableHashSet<MapRegion>>> _regionMemberSetLookup = new Dictionary<MapRegion, HashSet<ImmutableHashSet<MapRegion>>>();
+        private readonly Dictionary<MapRegion, HashSet<ImmutableHashSet<MapRegion>>> _regionMemberSetLookup = new(32);
 
         // Cached delegates that will get allocated only if there is a map region
         private ProcessChunkCallback<MapRegion>? _processRegionChunk;
@@ -232,7 +236,7 @@ namespace SS.Core.Map
 
         public ImmutableHashSet<MapRegion> RegionsAtCoord(short x, short y)
         {
-            if (!_regionSetCoordinateLookup.TryGetValue(x, y, out ImmutableHashSet<MapRegion>? regionSet))
+            if (!_regionSetCoordinateLookup.TryGetValue(new MapCoordinate(x, y), out ImmutableHashSet<MapRegion>? regionSet))
                 return ImmutableHashSet<MapRegion>.Empty;
 
             return regionSet;
@@ -248,11 +252,11 @@ namespace SS.Core.Map
 
             _regionLookup[region.Name] = region;
 
-            foreach (MapCoordinate coords in region.Coords)
+            foreach (MapCoordinate coordinate in region.Coordinates)
             {
                 ImmutableHashSet<MapRegion>? newRegionSet = null;
 
-                if (_regionSetCoordinateLookup.TryGetValue(coords, out ImmutableHashSet<MapRegion>? oldRegionSet))
+                if (_regionSetCoordinateLookup.TryGetValue(coordinate, out ImmutableHashSet<MapRegion>? oldRegionSet))
                 {
                     // there is already a set at this coordinate
 
@@ -287,7 +291,7 @@ namespace SS.Core.Map
                 {
                     // no set at this coordinate yet
 
-                    // look for an existing set that conains only this region
+                    // look for an existing set that contains only this region
                     foreach (ImmutableHashSet<MapRegion> regionToCheck in _regionSetList)
                     {
                         if (regionToCheck.Count == 1 && regionToCheck.Contains(region))
@@ -305,7 +309,7 @@ namespace SS.Core.Map
                     }
                 }
 
-                _regionSetCoordinateLookup[coords] = newRegionSet;
+                _regionSetCoordinateLookup[coordinate] = newRegionSet;
 
                 if (!_regionMemberSetLookup.TryGetValue(region, out HashSet<ImmutableHashSet<MapRegion>>? memberOfSet))
                 {
@@ -324,7 +328,7 @@ namespace SS.Core.Map
             MemoryMappedViewAccessor accessor,
             long position,
             long length,
-            ProcessChunkCallback<T> processChunkCallback, //Action<MemoryMappedViewAccessor, uint, long, int, T> processChunkCallback,
+            ProcessChunkCallback<T> processChunkCallback,
             T state)
         {
             ArgumentNullException.ThrowIfNull(accessor);

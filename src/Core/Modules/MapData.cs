@@ -2,6 +2,7 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
+using SS.Core.Modules.FlagGame;
 using SS.Packets.Game;
 using System;
 using System.Collections.Generic;
@@ -271,7 +272,42 @@ namespace SS.Core.Modules
             }
         }
 
-        MapTile? IMapData.GetTile(Arena arena, MapCoordinate coord)
+        uint IMapData.GetChecksum(Arena arena, uint key)
+        {
+            ArgumentNullException.ThrowIfNull(arena);
+
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            int saveKey = (int)key;
+
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                if (ad.Lvl is null)
+                    throw new InvalidOperationException(Error_ArenaDataNotLoaded);
+
+                // this is the same way asss 1.4.4 calculates the checksum
+                for (short y = (short)(saveKey % 32); y < 1024; y += 32)
+                {
+                    for (short x = (short)(saveKey % 31); x < 1024; x += 31)
+                    {
+                        ad.Lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile); // if no tile, it will be zero'd out which is what we want
+                        if ((tile >= MapTile.TileStart && tile <= MapTile.TileEnd) || tile.IsSafe)
+                            key += (uint)(saveKey ^ (byte)tile);
+                    }
+                }
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+
+            return key;
+        }
+
+        MapTile IMapData.GetTile(Arena arena, MapCoordinate coordinate)
         {
             ArgumentNullException.ThrowIfNull(arena);
 
@@ -285,7 +321,38 @@ namespace SS.Core.Modules
                 if (ad.Lvl is null)
                     throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
-                return ad.Lvl.TryGetTile(coord, out MapTile tile) ? tile : null;
+                if (ad.Lvl.TryGetTile(coordinate, out MapTile tile))
+                    return tile;
+
+                return MapTile.None;
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+        }
+
+        MapTile IMapData.GetTile(Arena arena, MapCoordinate coordinate, bool includeTemporaryTiles)
+        {
+            ArgumentNullException.ThrowIfNull(arena);
+
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                if (ad.Lvl is null)
+                    throw new InvalidOperationException(Error_ArenaDataNotLoaded);
+
+                if (ad.Lvl.TryGetTile(coordinate, out MapTile tile))
+                    return tile;
+
+                if (includeTemporaryTiles && ad.TemporaryTileData.TryGetTile(coordinate, out tile))
+                    return tile;
+
+                return MapTile.None;
             }
             finally
             {
@@ -394,41 +461,6 @@ namespace SS.Core.Modules
             }
         }
 
-        uint IMapData.GetChecksum(Arena arena, uint key)
-        {
-            ArgumentNullException.ThrowIfNull(arena);
-
-            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
-                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
-
-            int saveKey = (int)key;
-
-            ad.Lock.EnterReadLock();
-
-            try
-            {
-                if (ad.Lvl is null)
-                    throw new InvalidOperationException(Error_ArenaDataNotLoaded);
-
-                // this is the same way asss 1.4.4 calculates the checksum
-                for (short y = (short)(saveKey % 32); y < 1024; y += 32)
-                {
-                    for (short x = (short)(saveKey % 31); x < 1024; x += 31)
-                    {
-                        ad.Lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile); // if no tile, it will be zero'd out which is what we want
-                        if ((tile >= MapTile.TileStart && tile <= MapTile.TileEnd) || tile.IsSafe)
-                            key += (uint)(saveKey ^ (byte)tile);
-                    }
-                }
-            }
-            finally
-            {
-                ad.Lock.ExitReadLock();
-            }
-
-            return key;
-        }
-
         int IMapData.GetRegionCount(Arena arena)
         {
             ArgumentNullException.ThrowIfNull(arena);
@@ -473,9 +505,9 @@ namespace SS.Core.Modules
             }
         }
 
-        ImmutableHashSet<MapRegion> IMapData.RegionsAt(Arena arena, MapCoordinate coord)
+        ImmutableHashSet<MapRegion> IMapData.RegionsAt(Arena arena, MapCoordinate location)
         {
-            return ((IMapData)this).RegionsAt(arena, coord.X, coord.Y);
+            return ((IMapData)this).RegionsAt(arena, location.X, location.Y);
         }
 
         ImmutableHashSet<MapRegion> IMapData.RegionsAt(Arena arena, short x, short y)
@@ -493,6 +525,82 @@ namespace SS.Core.Modules
                     throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
                 return ad.Lvl.RegionsAtCoord(x, y);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+        }
+
+        bool IMapData.TryAddBrick(Arena arena, int brickId, MapCoordinate start, MapCoordinate end)
+        {
+            ArgumentNullException.ThrowIfNull(arena);
+
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.TemporaryTileData.TryAddBrick(brickId, start, end);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+        }
+
+        bool IMapData.TryRemoveBrick(Arena arena, int brickId)
+        {
+            ArgumentNullException.ThrowIfNull(arena);
+
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.TemporaryTileData.TryRemoveBrick(brickId);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+        }
+
+        bool IMapData.TryAddDroppedFlag(Arena arena, short flagId, MapCoordinate coordinate)
+        {
+            ArgumentNullException.ThrowIfNull(arena);
+
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.TemporaryTileData.TryAddFlag(flagId, coordinate);
+            }
+            finally
+            {
+                ad.Lock.ExitReadLock();
+            }
+        }
+
+        bool IMapData.TryRemoveDroppedFlag(Arena arena, short flagId)
+        {
+            ArgumentNullException.ThrowIfNull(arena);
+
+            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            ad.Lock.EnterReadLock();
+
+            try
+            {
+                return ad.TemporaryTileData.TryRemoveFlag(flagId);
             }
             finally
             {
@@ -742,12 +850,229 @@ namespace SS.Core.Modules
             }
         }
 
+        /// <summary>
+        /// Identifies a temporarily placed map object (brick or flag).
+        /// </summary>
+        /// <param name="Id">Id of the object (BrickId or FlagId)</param>
+        /// <param name="Tile">The type of tile (<see cref="MapTile.Brick"/> or <see cref="MapTile.Flag"/>).</param>
+        private readonly record struct TemporaryTileKey(int Id, MapTile Tile);
+
+        /// <summary>
+        /// Data about a temporarily placed map object (brick or flag).
+        /// </summary>
+        /// <param name="Key"></param>
+        /// <param name="Start"></param>
+        /// <param name="End"></param>
+        private readonly record struct TemporaryTilePlacement(TemporaryTileKey Key, MapCoordinate Start, MapCoordinate End);
+
+        /// <summary>
+        /// Helper to manage tiles that are temporarily placed (bricks and flags).
+        /// </summary>
+        private class TemporaryTileData
+        {
+            private readonly Dictionary<TemporaryTileKey, TemporaryTilePlacement> _placementDictionary = new(Bricks.MaxActiveBricks + CarryFlags.MaxFlags);
+            private readonly MapCoordinateCollection<TemporaryTileKey> _tiles = new(8192);
+            private readonly object _lock = new();
+
+            public void Clear()
+            {
+                lock (_lock)
+                {
+                    _placementDictionary.Clear();
+                    _tiles.Clear();
+                }
+            }
+
+            public bool TryGetTile(MapCoordinate coordinate, out MapTile tile)
+            {
+                lock (_lock)
+                {
+                    if (_tiles.TryGetValue(coordinate, out TemporaryTileKey key))
+                    {
+                        tile = key.Tile;
+                        return true;
+                    }
+                    else
+                    {
+                        tile = MapTile.None;
+                        return false;
+                    }
+                }
+            }
+
+            public bool TryAddBrick(int brickId, MapCoordinate start, MapCoordinate end)
+            {
+                TemporaryTileKey key = new(brickId, MapTile.Brick);
+                TemporaryTilePlacement placement = new(key, start, end);
+
+                lock (_lock)
+                {
+                    if (!_placementDictionary.TryAdd(key, placement))
+                    {
+                        if (!TryRemoveBrick(brickId))
+                            return false;
+
+                        if (!_placementDictionary.TryAdd(key, placement))
+                            return false;
+                    }
+
+                    ProcessTiles(
+                        key, 
+                        start, 
+                        end, 
+                        static (k, c, s) => s.SetTile(k, c),
+                        this);
+
+                    return true;
+                }
+            }
+
+            public bool TryAddFlag(short flagId, MapCoordinate coordinate)
+            {
+                TemporaryTileKey key = new(flagId, MapTile.Flag);
+                TemporaryTilePlacement placement = new(key, coordinate, coordinate);
+
+                lock (_lock)
+                {
+                    if (!_placementDictionary.TryAdd(key, placement))
+                    {
+                        if (!TryRemoveFlag(flagId))
+                            return false;
+
+                        if (!_placementDictionary.TryAdd(key, placement))
+                            return false;
+                    }
+
+                    SetTile(key, coordinate);
+                    return true;
+                }
+            }
+
+            public bool TryRemoveBrick(int brickId)
+            {
+                return TryRemove(new TemporaryTileKey(brickId, MapTile.Brick));
+                
+            }
+
+            public bool TryRemoveFlag(short flagId)
+            {
+                return TryRemove(new TemporaryTileKey(flagId, MapTile.Flag));
+            }
+
+            private bool TryRemove(TemporaryTileKey key)
+            {
+                lock (_lock)
+                {
+                    if (!_placementDictionary.Remove(key, out TemporaryTilePlacement placement))
+                        return false;
+
+                    ProcessTiles(
+                        key,
+                        placement.Start,
+                        placement.End,
+                        static (k, c, s) => s.RemoveTile(k.Id, c),
+                        this);
+
+                    return true;
+                }
+            }
+
+            private bool SetTile(TemporaryTileKey key, MapCoordinate coordinate)
+            {
+                if (_tiles.TryAdd(coordinate, key))
+                    return true;
+
+                // A tile already exists at the coordinate.
+                if (_tiles.TryGetValue(coordinate, out TemporaryTileKey existing))
+                {
+                    // A flag can override an existing brick.
+                    // A brick can override an existing brick.
+                    if ((key.Tile == MapTile.Flag && existing.Tile == MapTile.Brick)
+                        && (key.Tile == MapTile.Brick && existing.Tile == MapTile.Brick))
+                    {
+                        _tiles[coordinate] = key;
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            private bool RemoveTile(int id, MapCoordinate coordinate)
+            {
+                if (!_tiles.TryGetValue(coordinate, out TemporaryTileKey key))
+                    return false;
+
+                if (key.Id != id)
+                    return false;
+                
+                return _tiles.Remove(coordinate);
+            }
+
+            /// <summary>
+            /// Processes a line of tiles from <paramref name="start"/> to <paramref name="end"/>, calling <paramref name="executeCallback"/> for each coordinate.
+            /// </summary>
+            /// <remarks>The line of tiles is expected to be horizontal or vertical.</remarks>
+            /// <typeparam name="T">Type of the state to pass into <paramref name="executeCallback"/>.</typeparam>
+            /// <param name="key">Identifies the object that tiles are being processed for, passed to the <paramref name="executeCallback"/>.</param>
+            /// <param name="start">The starting coordinate.</param>
+            /// <param name="end">The ending coordinate.</param>
+            /// <param name="executeCallback">The callback to invoke for each coordinate.</param>
+            /// <param name="state">The state to pass to the <paramref name="executeCallback"/>.</param>
+            /// <returns>The number of affected tiles.</returns>
+            private static int ProcessTiles<T>(TemporaryTileKey key, MapCoordinate start, MapCoordinate end, Func<TemporaryTileKey, MapCoordinate, T, bool> executeCallback, T state)
+            {
+                int count = 0;
+
+                if (start.X == end.X)
+                {
+                    short from = start.Y;
+                    short to = end.Y;
+
+                    if (from > to)
+                    {
+                        // Swap
+                        (to, from) = (from, to);
+                    }
+
+                    for (short y = from; y <= to; y++)
+                    {
+                        if (executeCallback(key, new MapCoordinate(start.X, y), state))
+                            count++;
+                    }
+                }
+                else if (start.Y == end.Y)
+                {
+                    short from = start.X;
+                    short to = end.X;
+
+                    if (from > to)
+                    {
+                        // Swap
+                        (to, from) = (from, to);
+                    }
+
+                    for (short x = from; x <= to; x++)
+                    {
+                        if (executeCallback(key, new MapCoordinate(x, start.Y), state))
+                            count++;
+                    }
+                }
+
+                return count;
+            }
+        }
+
         private class ArenaData : IResettable
         {
-            public LvlData? LvlData = null;
             public readonly ReaderWriterLockSlim Lock = new();
 
-            // TODO: temporary tile data for bricks and dropped flags
+            public LvlData? LvlData = null;
+
+            /// <summary>
+            /// Temporarily placed tiles (bricks and flags)
+            /// </summary>
+            public readonly TemporaryTileData TemporaryTileData = new();
 
             public ExtendedLvl? Lvl => LvlData?.Lvl;
 
@@ -758,6 +1083,7 @@ namespace SS.Core.Modules
                 try
                 {
                     LvlData = null;
+                    TemporaryTileData.Clear();
                 }
                 finally
                 {

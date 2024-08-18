@@ -216,7 +216,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 throw new ArgumentNullException(nameof(arena));
 
-            if (_mapData.GetTile(arena, coordinate)?.IsGoal != true)
+            if (!_mapData.GetTile(arena, coordinate).IsGoal)
             {
                 isScorable = false;
                 ownerFreq = null;
@@ -674,7 +674,7 @@ namespace SS.Core.Modules
 
                     MapCoordinate mapCoordinate = new((short)(bd.X / 16), (short)(bd.Y / 16));
                     if (bd.Carrier != null
-                        && _mapData.GetTile(arena, mapCoordinate)?.IsGoal == true)
+                        && _mapData.GetTile(arena, mapCoordinate).IsGoal)
                     {
                         // Shot a ball on top of a goal tile.
                         // Check whether it's a goal and if it is don't wait for the goal packet.
@@ -1312,7 +1312,7 @@ namespace SS.Core.Modules
                         MapCoordinate coordinate = new((short)(b.X / 16), (short)(b.Y / 16));
                         if (!newt
                             && b.Carrier != null
-                            && _mapData.GetTile(arena, coordinate)?.IsGoal == true)
+                            && _mapData.GetTile(arena, coordinate).IsGoal)
                         {
                             // Dropped an unneuted ball on a goal tile.
                             // Check whether it's a goal and if it is don't wait for the goal packet.

@@ -1,32 +1,23 @@
 ﻿using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
 
 namespace SS.Core.Map
 {
+    /// <summary>
+    /// Currently this is just derived from <see cref="Dictionary{TKey, TValue}"/>.
+    /// The plan is to eventually switch to a different data structure, such as the trie/sparse array that ASSS' uses to save on memory usage.
+    /// For now this will suffice, it probably will use more memory though.
+    /// </summary>
+    /// <typeparam name="TValue"></typeparam>
     public class MapCoordinateCollection<TValue> : Dictionary<MapCoordinate, TValue>
     {
-        public void Add(short x, short y, TValue value)
+        // TODO: Switch to different data structure that is less memory intensive?
+
+        public MapCoordinateCollection() : base()
         {
-            this[new MapCoordinate(x, y)] = value;
         }
 
-        public bool TryGetValue(short x, short y, [MaybeNullWhen(false)] out TValue value)
+        public MapCoordinateCollection(int capacity) : base(capacity)
         {
-            return TryGetValue(new MapCoordinate(x, y), out value);
         }
-    }
-
-    /// <summary>
-    /// collection for storing map tiles
-    /// this differs from asss use of a trie for the sparse array (could implement it, but don't feel like wasting time on it just to save some memory)
-    /// instead of a 1024x1024 array of tiles which are mostly empty, i have opted for putting it into a dictionary which will probably use more memory than a trie, but less than a full array implmentation without losing speed
-    /// </summary>
-    public class MapTileCollection : MapCoordinateCollection<MapTile>
-    {
-    }
-
-    public class MapRegionSetCollection : MapCoordinateCollection<ImmutableHashSet<MapRegion>>
-    {
     }
 }

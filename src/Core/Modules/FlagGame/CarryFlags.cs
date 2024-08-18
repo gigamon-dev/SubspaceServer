@@ -297,6 +297,8 @@ namespace SS.Core.Modules.FlagGame
                 flagInfo.Location = MapCoordinate.FlagOutsideMapCoordinate;
                 flagInfo.Freq = -1;
 
+                _mapData.TryRemoveDroppedFlag(arena, flagId);
+
                 _logManager.LogA(LogLevel.Warn, nameof(CarryFlags), arena, $"Faked removing flag {flagId}.");
 
                 return true;
@@ -366,6 +368,8 @@ namespace SS.Core.Modules.FlagGame
                 flagInfo.Location = location;
                 flagInfo.Freq = freq;
 
+                _mapData.TryAddDroppedFlag(arena, flagId, location);
+
                 FlagOnMapCallback.Fire(arena, arena, flagId, location, freq);
 
                 return true;
@@ -381,6 +385,8 @@ namespace SS.Core.Modules.FlagGame
                     flagInfo.State = FlagState.OnMap;
                     flagInfo.Location = location;
                     flagInfo.Freq = freq;
+
+                    _mapData.TryAddDroppedFlag(arena, flagId, location);
 
                     FlagOnMapCallback.Fire(arena, arena, flagId, location, freq);
                 }
@@ -439,6 +445,8 @@ namespace SS.Core.Modules.FlagGame
                 flagInfo.Carrier = carrier;
                 flagInfo.Freq = carrier.Freq;
                 flagInfo.Location = null;
+
+                _mapData.TryRemoveDroppedFlag(arena, flagId);
 
                 FlagGainCallback.Fire(arena, arena, carrier, flagId, reason);
             }
