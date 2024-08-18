@@ -117,18 +117,35 @@ namespace SS.Core.Map
         /// <summary>
         /// Initializes a new instance from a file.
         /// </summary>
-        /// <param name="path"></param>
+        /// <param name="path">The path to the lvl file to read.</param>
         public ExtendedLvl(string path)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-            using MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
-            using MemoryMappedViewAccessor va = mmf.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
-
+            using MemoryMappedFile file = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
             long length = new FileInfo(path).Length;
-            long position = 0;
+            Load(file, length);
+        }
 
+        /// <summary>
+        /// Initializes a new instance from a file stream.
+        /// </summary>
+        /// <param name="fileStream">The file stream of the lvl to read.</param>
+        public ExtendedLvl(FileStream fileStream)
+        {
+            ArgumentNullException.ThrowIfNull(fileStream);
+            
+            using MemoryMappedFile file = MemoryMappedFile.CreateFromFile(fileStream, null, 0, MemoryMappedFileAccess.Read, HandleInheritability.None, true);
+            Load(file, fileStream.Length);
+        }
+
+        private void Load(MemoryMappedFile file, long length)
+        {
+            ArgumentNullException.ThrowIfNull(file);
+
+            using MemoryMappedViewAccessor va = file.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+
+            long position = 0;
             if (length >= BitmapHeader.Length)
             {
                 va.Read(position, out BitmapHeader bitmapHeader);

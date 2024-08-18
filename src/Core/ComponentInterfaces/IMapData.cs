@@ -6,15 +6,17 @@ using System.IO;
 
 namespace SS.Core.ComponentInterfaces
 {
-    public struct LvzFileInfo
+    /// <summary>
+    /// Info about an lvz file.
+    /// </summary>
+    public readonly struct LvzFileInfo
     {
-        public string Filename { get; init; }
-        public bool IsOptional { get; init; }
+        public readonly string Filename;
+        public readonly bool IsOptional;
 
         public LvzFileInfo(string filename, bool isOptional)
         {
-            if (string.IsNullOrWhiteSpace(filename))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(filename));
+            ArgumentException.ThrowIfNullOrWhiteSpace(filename);
 
             Filename = filename;
             IsOptional = isOptional;
