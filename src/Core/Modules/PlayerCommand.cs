@@ -1997,26 +1997,21 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.Player | CommandTarget.Team | CommandTarget.Arena,
-            Args = "<x xoord> <y coord>",
+            Args = "<x coord> <y coord>",
             Description = "Warps target player(s) to an x,y coordinate.")]
         private void Command_warpto(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (parameters.IsWhiteSpace())
                 return;
 
-            ReadOnlySpan<char> coordsSpan = parameters.Trim();
-
-            int index = coordsSpan.IndexOf(' ');
-            if (index == -1)
+            Span<Range> ranges = stackalloc Range[2];
+            if (parameters.SplitAny(ranges, [' ', ','], StringSplitOptions.TrimEntries) != 2)
                 return;
 
-            if (!short.TryParse(coordsSpan[..index], out short x))
+            if (!short.TryParse(parameters[ranges[0]], out short x))
                 return;
 
-            if (!short.TryParse(coordsSpan[(index + 1)..], out short y))
-                return;
-
-            if (x == 0 && y == 0)
+            if (!short.TryParse(parameters[ranges[1]], out short y))
                 return;
 
             _game!.WarpTo(target, x, y);
