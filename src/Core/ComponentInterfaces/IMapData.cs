@@ -107,30 +107,30 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <remarks>
         /// This does not include any temporarily placed tiles (bricks and dropped flags).
-        /// Use <see cref="GetTile(Arena, MapCoordinate, bool)"/> to access temporary tiles.
+        /// Use <see cref="GetTile(Arena, TileCoordinates, bool)"/> to access temporary tiles.
         /// </remarks>
         /// <param name="arena">The arena to retrieve the map info for.</param>
-        /// <param name="coordinate">The coordinate to check.</param>
+        /// <param name="coordinates">The coordinates to check.</param>
         /// <returns>The tile. <see cref="MapTile.None"/> indicates no tile.</returns>
-        MapTile GetTile(Arena arena, MapCoordinate coordinate);
+        MapTile GetTile(Arena arena, TileCoordinates coordinates);
 
         /// <summary>
         /// Gets a single tile by coordinates.
         /// </summary>
         /// <param name="arena">The arena to retrieve the map info for.</param>
-        /// <param name="coordinate">The coordinate to check.</param>
+        /// <param name="coordinates">The coordinates to check.</param>
         /// <param name="includeTemporaryTiles">Whether to include temporary tiles such as bricks and dropped flags.</param>
         /// <returns>The tile. <see cref="MapTile.None"/> indicates no tile.</returns>
-        MapTile GetTile(Arena arena, MapCoordinate coordinate, bool includeTemporaryTiles);
+        MapTile GetTile(Arena arena, TileCoordinates coordinates, bool includeTemporaryTiles);
 
         /// <summary>
-        /// Gets the coordinate of a static, turf-style flag.
+        /// Gets the coordinates of a static, turf-style flag.
         /// </summary>
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="flagId">Id of the flag to get the coordinate of.</param>
-        /// <param name="coordinate">The coordinate of the flag.</param>
+        /// <param name="coordinates">The coordinates of the flag.</param>
         /// <returns><see langword="true"/> if the coordinate could be retrieved. Otherwise, <see langword="false"/>.</returns>
-        bool TryGetFlagCoordinate(Arena arena, short flagId, out MapCoordinate coordinate);
+        bool TryGetFlagCoordinates(Arena arena, short flagId, out TileCoordinates coordinates);
 
         /// <summary>
         /// Tries to find an empty tile nearest to the given coordinates.
@@ -163,13 +163,13 @@ namespace SS.Core.ComponentInterfaces
         MapRegion? FindRegionByName(Arena arena, string name);
 
         /// <summary>
-        /// To get the regions that are at a specific coordinate.
+        /// Gets the regions at a specified pair of coordinates.
         /// </summary>
         /// <remarks>Similar to asss' Imapdata.EnumContaining, but without using a callback.</remarks>
         /// <param name="arena">The arena to retrieve the map info for.</param>
-        /// <param name="coordinate">The coordinates to check.</param>
+        /// <param name="coordinates">The coordinates to check.</param>
         /// <returns>A set of regions (empty if the coordinate is not in a region).</returns>
-        ImmutableHashSet<MapRegion> RegionsAt(Arena arena, MapCoordinate coordinate);
+        ImmutableHashSet<MapRegion> RegionsAt(Arena arena, TileCoordinates coordinates);
 
         /// <summary>
         /// To get the regions that are at a specific coordinate.
@@ -193,7 +193,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="start">The starting coordinates of the brick.</param>
         /// <param name="end">The ending coordinates of the brick.</param>
         /// <returns><see langword="true"/> if a change was made; otherwise, <see langword="false"/>.</returns>
-        bool TryAddBrick(Arena arena, int brickId, MapCoordinate start, MapCoordinate end);
+        bool TryAddBrick(Arena arena, int brickId, TileCoordinates start, TileCoordinates end);
 
         /// <summary>
         /// Removes temporarily placed map tile(s) for a brick.
@@ -211,9 +211,9 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="arena">The arena to add the temporarily placed tile to.</param>
         /// <param name="flagId">The Id of the flag.</param>
-        /// <param name="coordinate">The coordinate the flag is being dropped at.</param>
+        /// <param name="coordinates">The coordinates the flag is being dropped at.</param>
         /// <returns><see langword="true"/> if a change was made; otherwise, <see langword="false"/>.</returns>
-        bool TryAddDroppedFlag(Arena arena, short flagId, MapCoordinate coordinate);
+        bool TryAddDroppedFlag(Arena arena, short flagId, TileCoordinates coordinates);
 
         /// <summary>
         /// Removes a temporarily placed map tile for a carriable flag that was dropped on the map.

@@ -13,7 +13,7 @@ namespace SS.Core.ComponentCallbacks
     /// </remarks>
     public static class BallGameGoalCallback
     {
-        public delegate void BallGameGoalDelegate(Arena arena, Player player, byte ballId, MapCoordinate coordinate);
+        public delegate void BallGameGoalDelegate(Arena arena, Player player, byte ballId, TileCoordinates goalCoordinates);
 
         public static void Register(IComponentBroker broker, BallGameGoalDelegate handler)
         {
@@ -25,12 +25,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(IComponentBroker broker, Arena arena, Player player, byte ballId, MapCoordinate coordinate)
+        public static void Fire(IComponentBroker broker, Arena arena, Player player, byte ballId, TileCoordinates goalCoordinates)
         {
-            broker?.GetCallback<BallGameGoalDelegate>()?.Invoke(arena, player, ballId, coordinate);
+            broker?.GetCallback<BallGameGoalDelegate>()?.Invoke(arena, player, ballId, goalCoordinates);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, arena, player, ballId, coordinate);
+                Fire(broker.Parent, arena, player, ballId, goalCoordinates);
         }
     }
 }

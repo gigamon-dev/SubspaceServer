@@ -18,8 +18,8 @@ namespace SS.Core.Map
         /// </summary>
         public const int MaxFlags = 255;
 
-        private readonly MapCoordinateCollection<MapTile> _tileLookup = new(65536);
-        private readonly List<MapCoordinate> _flagCoordinateList = new(MaxFlags);
+        private readonly Dictionary<TileCoordinates, MapTile> _tiles = new(65536);
+        private readonly List<TileCoordinates> _flagCoordinatesList = new(MaxFlags);
         private readonly List<string> _errorList = [];
         private readonly ReadOnlyCollection<string> _readOnlyErrors;
 
@@ -39,7 +39,7 @@ namespace SS.Core.Map
         /// </summary>
         public int TileCount
         {
-            get { return _tileLookup.Count; }
+            get { return _tiles.Count; }
         }
 
         /// <summary>
@@ -47,24 +47,24 @@ namespace SS.Core.Map
         /// </summary>
         public int FlagCount
         {
-            get { return _flagCoordinateList.Count; }
+            get { return _flagCoordinatesList.Count; }
         }
 
         /// <summary>
         /// Gets the coordinate of a flag by the <paramref name="flagId"/>.
         /// </summary>
         /// <param name="flagId">Id of the flag.</param>
-        /// <param name="coordinate">When this method returns, contains the coordinate of the specified flag, if found; otherwise, the default value.</param>
+        /// <param name="coordinates">When this method returns, contains the coordinate of the specified flag, if found; otherwise, the default value.</param>
         /// <returns><see langword="true"/> if the flag was found. Otherwise, <see langword="false"/>.</returns>
-        public bool TryGetFlagCoordinate(short flagId, out MapCoordinate coordinate)
+        public bool TryGetFlagCoordinate(short flagId, out TileCoordinates coordinates)
         {
-            if (flagId < _flagCoordinateList.Count)
+            if (flagId < _flagCoordinatesList.Count)
             {
-                coordinate = _flagCoordinateList[flagId];
+                coordinates = _flagCoordinatesList[flagId];
                 return true;
             }
 
-            coordinate = default;
+            coordinates = default;
             return false;
         }
 
@@ -87,16 +87,16 @@ namespace SS.Core.Map
         /// </summary>
         protected virtual void ClearLevel()
         {
-            _tileLookup.Clear();
-            _flagCoordinateList.Clear();
+            _tiles.Clear();
+            _flagCoordinatesList.Clear();
             _errorList.Clear();
             IsTileDataLoaded = false;
         }
 
         protected virtual void TrimExcess()
         {
-            _tileLookup.TrimExcess();
-            _flagCoordinateList.TrimExcess();
+            _tiles.TrimExcess();
+            _flagCoordinatesList.TrimExcess();
             _errorList.TrimExcess();
         }
 
@@ -107,14 +107,14 @@ namespace SS.Core.Map
         {
             ClearLevel();
 
-            _tileLookup[new MapCoordinate(0, 0)] = new MapTile(1);
+            _tiles[new TileCoordinates(0, 0)] = new MapTile(1);
             IsTileDataLoaded = true;
             TrimExcess();
         }
 
-        public bool TryGetTile(MapCoordinate coord, out MapTile tile)
+        public bool TryGetTile(TileCoordinates coordinates, out MapTile tile)
         {
-            return _tileLookup.TryGetValue(coord, out tile);
+            return _tiles.TryGetValue(coordinates, out tile);
         }
 
         /// <summary>
@@ -133,28 +133,28 @@ namespace SS.Core.Map
 
                 if (td.X < 1024 && td.Y < 1024 && td.Type != MapTile.None)
                 {
-                    MapCoordinate coord = new MapCoordinate(td.X, td.Y);
-                    MapTile tile = new MapTile(td.Type);
+                    TileCoordinates coordinates = new(td.X, td.Y);
+                    MapTile tile = new(td.Type);
 
                     if (tile.IsFlag)
                     {
-                        _flagCoordinateList.Add(coord);
+                        _flagCoordinatesList.Add(coordinates);
                     }
 
                     int tileSize = tile.TileSize;
                     if (tileSize == 1)
                     {
-                        _tileLookup.Add(coord, tile);
+                        _tiles.Add(coordinates, tile);
                     }
                     else if (tileSize > 1)
                     {
                         for (short x = 0; x < tileSize; x++)
                             for (short y = 0; y < tileSize; y++)
-                                _tileLookup[new MapCoordinate((short)(coord.X + x), (short)(coord.Y + y))] = tile;
+                                _tiles[new TileCoordinates((short)(coordinates.X + x), (short)(coordinates.Y + y))] = tile;
                     }
                     else
                     {
-                        AddError($"Bad tile size ({tileSize}) for coordinate ({td.X},{td.Y}) of type {td.Type}.");
+                        AddError($"Bad tile size ({tileSize}) for coordinate {coordinates} of type {td.Type}.");
                     }
                 }
                 else
@@ -167,11 +167,11 @@ namespace SS.Core.Map
             }
 
             // order the flags, allowing them to be accessed by index (flag id)
-            _flagCoordinateList.Sort();
+            _flagCoordinatesList.Sort();
 
-            if (_flagCoordinateList.Count > MaxFlags)
+            if (_flagCoordinatesList.Count > MaxFlags)
             {
-                AddError($"Too many flags ({_flagCoordinateList.Count}/{MaxFlags}).");
+                AddError($"Too many flags ({_flagCoordinatesList.Count}/{MaxFlags}).");
             }
 
             IsTileDataLoaded = true;
@@ -267,9 +267,9 @@ namespace SS.Core.Map
             using SKCanvas canvas = new(bitmap);
             canvas.Clear(SKColors.Black);
 
-            foreach (KeyValuePair<MapCoordinate, MapTile> kvp in _tileLookup)
+            foreach ((TileCoordinates coordinates, MapTile tile) in _tiles)
             {
-                SKColor color = kvp.Value switch
+                SKColor color = tile switch
                 {
                     { IsDoor: true } => SKColors.Blue,
                     { IsSafe: true } => SKColors.LightGreen,
@@ -281,7 +281,7 @@ namespace SS.Core.Map
                     _ => SKColors.White
                 };
 
-                canvas.DrawPoint(kvp.Key.X, kvp.Key.Y, color);
+                canvas.DrawPoint(coordinates.X, coordinates.Y, color);
             }
 
             return bitmap;

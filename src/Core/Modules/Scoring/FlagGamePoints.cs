@@ -9,7 +9,7 @@ using MiscSettings = SS.Core.ConfigHelp.Constants.Arena.Misc;
 namespace SS.Core.Modules.Scoring
 {
     /// <summary>
-    /// Scoring module for carryable flag games.
+    /// Scoring module for carriable flag games.
     /// </summary>
     /// <remarks>
     /// For a warzone-style win, it watches for a flag drop and checks if all flags are dropped and owned by one team.
@@ -158,7 +158,7 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_FlagOnMap(Arena arena, short flagId, MapCoordinate mapCoordinate, short freq)
+        private void Callback_FlagOnMap(Arena arena, short flagId, TileCoordinates coordinates, short freq)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;

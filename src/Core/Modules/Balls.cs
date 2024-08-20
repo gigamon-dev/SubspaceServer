@@ -171,7 +171,7 @@ namespace SS.Core.Modules
         bool IBalls.TrySpawnBall(Arena arena, int ballId) => TrySpawnBall(arena, ballId);
 
         [ConfigHelp<int>("Soccer", "NewGameDelay", ConfigScope.Arena, Default = -3000, 
-            Description = "How long to wait between games (in ticks). If this is negative, the actual delay is random, betwen zero and the absolute value.")]
+            Description = "How long to wait between games (in ticks). If this is negative, the actual delay is random, between zero and the absolute value.")]
         void IBalls.EndGame(Arena arena)
         {
             if (arena == null)
@@ -211,12 +211,11 @@ namespace SS.Core.Modules
             }
         }
 
-        void IBalls.GetGoalInfo(Arena arena, short freq, MapCoordinate coordinate, out bool isScorable, out short? ownerFreq)
+        void IBalls.GetGoalInfo(Arena arena, short freq, TileCoordinates coordinates, out bool isScorable, out short? ownerFreq)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
-            if (!_mapData.GetTile(arena, coordinate).IsGoal)
+            if (!_mapData.GetTile(arena, coordinates).IsGoal)
             {
                 isScorable = false;
                 ownerFreq = null;
@@ -237,7 +236,7 @@ namespace SS.Core.Modules
                 mode = ad.Settings.Mode;
             }
 
-            (short x, short y) = coordinate;
+            (short x, short y) = coordinates;
 
             switch (mode)
             {
@@ -452,7 +451,7 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
-            // Players entering will automaticaly get ball information by packets sent by the timer. Nothing special needed here for that.
+            // Players entering will automatically get ball information by packets sent by the timer. Nothing special needed here for that.
 
             if (action == PlayerAction.LeaveArena)
                 CleanupAfter(arena, player, null, true, true);
@@ -519,7 +518,7 @@ namespace SS.Core.Modules
 
                 if (ballId >= ad.BallCount)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"State sync problem: tried to pick up nonexistant ball {ballId}");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"State sync problem: tried to pick up nonexistent ball {ballId}");
                     return;
                 }
 
@@ -608,7 +607,7 @@ namespace SS.Core.Modules
 
             if (player.Ship >= ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: ball shoot packet from specator mode.");
+                _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: ball shoot packet from spectator mode.");
                 return;
             }
 
@@ -622,7 +621,7 @@ namespace SS.Core.Modules
             {
                 if (ballId >= ad.BallCount)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"State sync problem: tried to shoot nonexistant ball {ballId}");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"State sync problem: tried to shoot nonexistent ball {ballId}");
                     return;
                 }
 
@@ -672,15 +671,15 @@ namespace SS.Core.Modules
 
                     _logManager.LogP(LogLevel.Info, nameof(Balls), player, $"Shot ball {ballId}.");
 
-                    MapCoordinate mapCoordinate = new((short)(bd.X / 16), (short)(bd.Y / 16));
+                    TileCoordinates coordinates = new((short)(bd.X / 16), (short)(bd.Y / 16));
                     if (bd.Carrier != null
-                        && _mapData.GetTile(arena, mapCoordinate).IsGoal)
+                        && _mapData.GetTile(arena, coordinates).IsGoal)
                     {
                         // Shot a ball on top of a goal tile.
                         // Check whether it's a goal and if it is don't wait for the goal packet.
                         // Waiting for the goal packet is undesirable because it is a race between who has the better connection.
                         _logManager.LogP(LogLevel.Drivel, nameof(Balls), player, $"Shot ball {ballId} on top of goal tile.");
-                        HandleGoal(arena, bd.Carrier, ballId, mapCoordinate);
+                        HandleGoal(arena, bd.Carrier, ballId, coordinates);
                     }
                 }
             }
@@ -703,7 +702,7 @@ namespace SS.Core.Modules
 
             if (player.Ship >= ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: ball goal packet from specator mode.");
+                _logManager.LogP(LogLevel.Warn, nameof(Balls), player, "State sync problem: ball goal packet from spectator mode.");
                 return;
             }
 
@@ -717,7 +716,7 @@ namespace SS.Core.Modules
             {
                 if (ballId >= ad.BallCount)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"State sync problem: tried a goal for nonexistant ball {ballId}");
+                    _logManager.LogP(LogLevel.Warn, nameof(Balls), player, $"State sync problem: tried a goal for nonexistent ball {ballId}");
                     return;
                 }
 
@@ -741,7 +740,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                HandleGoal(arena, player, ballId, new MapCoordinate(c2s.X, c2s.Y));
+                HandleGoal(arena, player, ballId, new TileCoordinates(c2s.X, c2s.Y));
             }
         }
 
@@ -1149,7 +1148,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void HandleGoal(Arena arena, Player player, int ballId, MapCoordinate mapCoordinate)
+        private void HandleGoal(Arena arena, Player player, int ballId, TileCoordinates goalCoordinates)
         {
             if (arena == null)
                 return;
@@ -1177,7 +1176,7 @@ namespace SS.Core.Modules
                 var advisors = arena.GetAdvisors<IBallsAdvisor>();
                 foreach (var advisor in advisors)
                 {
-                    bool allow = advisor.AllowGoal(arena, player, ballId, mapCoordinate, ref bd);
+                    bool allow = advisor.AllowGoal(arena, player, ballId, goalCoordinates, ref bd);
                     if (!allow)
                     {
                         block = true;
@@ -1222,9 +1221,9 @@ namespace SS.Core.Modules
                         bd.LastUpdate = now;
                     }
 
-                    BallGoalCallback.Fire(arena, arena, player, (byte)ballId, mapCoordinate);
+                    BallGoalCallback.Fire(arena, arena, player, (byte)ballId, goalCoordinates);
 
-                    _logManager.LogP(LogLevel.Info, nameof(Balls), player, $"Goal with ball {ballId} at ({mapCoordinate.X},{mapCoordinate.Y}).");
+                    _logManager.LogP(LogLevel.Info, nameof(Balls), player, $"Goal with ball {ballId} at {goalCoordinates}.");
                 }
             }
         }
@@ -1237,7 +1236,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
-            // Nake sure that if someone leaves, any balls the player was carrying drop.
+            // Make sure that if someone leaves, any balls the player was carrying drop.
             lock (ad.Lock)
             {
                 for (int i = 0; i < ad.BallCount; i++)
@@ -1309,16 +1308,16 @@ namespace SS.Core.Modules
                         // The ball is leaving the carrier no matter what, so the callback needs to be fired.
                         BallShootCallback.Fire(arena, arena, player, (byte)i);
 
-                        MapCoordinate coordinate = new((short)(b.X / 16), (short)(b.Y / 16));
+                        TileCoordinates coordinates = new((short)(b.X / 16), (short)(b.Y / 16));
                         if (!newt
                             && b.Carrier != null
-                            && _mapData.GetTile(arena, coordinate).IsGoal)
+                            && _mapData.GetTile(arena, coordinates).IsGoal)
                         {
                             // Dropped an unneuted ball on a goal tile.
                             // Check whether it's a goal and if it is don't wait for the goal packet.
                             // Waiting for the goal packet is undesirable because it is a race between who has the better connection.
                             _logManager.LogP(LogLevel.Drivel, nameof(Balls), player, $"Dropped ball {i} on top of goal tile.");
-                            HandleGoal(arena, b.Carrier, i, coordinate);
+                            HandleGoal(arena, b.Carrier, i, coordinates);
                         }
                     }
                     else if (newt && b.Carrier == player)

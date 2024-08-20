@@ -13,9 +13,9 @@ namespace SS.Core.ComponentCallbacks
         /// </summary>
         /// <param name="arena">The arena.</param>
         /// <param name="flagId">The ID of the flag that was placed.</param>
-        /// <param name="mapCoordinate">The coordinates the flag was placed.</param>
+        /// <param name="coordinates">The coordinates the flag was placed.</param>
         /// <param name="freq">The team the flag is owned by. -1 means unowned.</param>
-        public delegate void FlagOnMapDelegate(Arena arena, short flagId, MapCoordinate mapCoordinate, short freq);
+        public delegate void FlagOnMapDelegate(Arena arena, short flagId, TileCoordinates coordinates, short freq);
 
         public static void Register(IComponentBroker broker, FlagOnMapDelegate handler)
         {
@@ -27,12 +27,12 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(IComponentBroker broker, Arena arena, short flagId, MapCoordinate mapCoordinate, short freq)
+        public static void Fire(IComponentBroker broker, Arena arena, short flagId, TileCoordinates coordinates, short freq)
         {
-            broker?.GetCallback<FlagOnMapDelegate>()?.Invoke(arena, flagId, mapCoordinate, freq);
+            broker?.GetCallback<FlagOnMapDelegate>()?.Invoke(arena, flagId, coordinates, freq);
 
             if (broker?.Parent != null)
-                Fire(broker.Parent, arena, flagId, mapCoordinate, freq);
+                Fire(broker.Parent, arena, flagId, coordinates, freq);
         }
     }
 }

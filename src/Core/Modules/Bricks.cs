@@ -200,7 +200,7 @@ namespace SS.Core.Modules
             if (bricks is null)
                 return;
 
-            if (_mapData.GetTile(arena, new MapCoordinate(x, y), true) != MapTile.None)
+            if (_mapData.GetTile(arena, new TileCoordinates(x, y), true) != MapTile.None)
                 return; // can't place a brick on a tile
 
             // TODO: add other modes
@@ -221,8 +221,8 @@ namespace SS.Core.Modules
                 };
 
                 // start at the center and move outward until we can't move further, or hit the desired max brick length
-                MapCoordinate start = new(x, y);
-                MapCoordinate end = new(x, y);
+                TileCoordinates start = new(x, y);
+                TileCoordinates end = new(x, y);
 
                 bool isStartDone = false;
                 bool isEndDone = false;
@@ -234,7 +234,7 @@ namespace SS.Core.Modules
                     {
                         if (!isStartDone && start.Y > 0)
                         {
-                            MapCoordinate newStart = new(start.X, (short)(start.Y - 1));
+                            TileCoordinates newStart = new(start.X, (short)(start.Y - 1));
                             if (_mapData.GetTile(arena, newStart, true) == MapTile.None)
                             {
                                 start = newStart;
@@ -251,7 +251,7 @@ namespace SS.Core.Modules
 
                         if (!isEndDone && end.Y < 1023)
                         {
-                            MapCoordinate newEnd = new(end.X, (short)(end.Y + 1));
+                            TileCoordinates newEnd = new(end.X, (short)(end.Y + 1));
                             if (_mapData.GetTile(arena, newEnd, true) == MapTile.None)
                             {
                                 end = newEnd;
@@ -270,7 +270,7 @@ namespace SS.Core.Modules
                     {
                         if (!isStartDone && start.X > 0)
                         {
-                            MapCoordinate newStart = new((short)(start.X - 1), start.Y);
+                            TileCoordinates newStart = new((short)(start.X - 1), start.Y);
                             if (_mapData.GetTile(arena, newStart, true) == MapTile.None)
                             {
                                 start = newStart;
@@ -287,7 +287,7 @@ namespace SS.Core.Modules
 
                         if (!isEndDone && end.X < 1023)
                         {
-                            MapCoordinate newEnd = new((short)(end.X + 1), end.Y);
+                            TileCoordinates newEnd = new((short)(end.X + 1), end.Y);
                             if (_mapData.GetTile(arena, newEnd, true) == MapTile.None)
                             {
                                 end = newEnd;
@@ -421,7 +421,7 @@ namespace SS.Core.Modules
                         _logManager.LogA(LogLevel.Drivel, nameof(Bricks), arena, $"Brick dropped ({brickData.X1},{brickData.Y1})-({brickData.X2},{brickData.Y2}) (freq={brickData.Freq}) (id={brickData.BrickId})");
 
                         if (abd.CountBricksAsWalls)
-                            _mapData.TryAddBrick(arena, brickData.BrickId, new MapCoordinate(brickData.X1, brickData.Y1), new MapCoordinate(brickData.X2, brickData.Y2));
+                            _mapData.TryAddBrick(arena, brickData.BrickId, new TileCoordinates(brickData.X1, brickData.Y1), new TileCoordinates(brickData.X2, brickData.Y2));
                     }
 
                     SendToPlayerOrArena(null, arena, brickDataList, abd.WallResendCount);
@@ -526,7 +526,7 @@ namespace SS.Core.Modules
             }
         }
 
-        // Default implemention of IBrickHandler which fires the DoBrickModeCallback.
+        // Default implementation of IBrickHandler which fires the DoBrickModeCallback.
         // The callback provides a way for other modules to add new brick modes, without affecting existing ones.
         // It is a cleaner alternative than than having to override IBrickHandler.
         // NOTE: compared to ASSS, the callback passes Player instead of Arena.

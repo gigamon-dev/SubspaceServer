@@ -51,7 +51,7 @@ namespace SS.Core.Modules.Scoring
     ///     </item>
     ///     <item>
     ///         <term><see cref="StatCodes.FlagPickups"/></term>
-    ///         <description>Number of carryable flags picked up</description>
+    ///         <description>Number of carriable flags picked up</description>
     ///     </item>
     ///     <item>
     ///         <term><see cref="StatCodes.FlagCarryTime"/></term>
@@ -249,7 +249,7 @@ namespace SS.Core.Modules.Scoring
             _allPlayerStats.StopTimer(player, StatCodes.BallCarryTime, null);
         }
 
-        private void Callback_BallGoal(Arena arena, Player player, byte ballId, MapCoordinate coordinate)
+        private void Callback_BallGoal(Arena arena, Player player, byte ballId, TileCoordinates goalCoordinates)
         {
             _allPlayerStats.IncrementStat(player, StatCodes.BallGoals, null, 1);
         }

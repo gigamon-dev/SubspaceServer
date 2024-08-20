@@ -136,7 +136,7 @@ namespace SS.Core.Map
         /// <summary>
         /// To enumerate on all the coordinates contained in the map region.
         /// </summary>
-        public IEnumerable<MapCoordinate> Coordinates
+        public IEnumerable<TileCoordinates> Coordinates
         {
             get
             {
@@ -147,7 +147,7 @@ namespace SS.Core.Map
 
                     for (short x = entry.X; x < (entry.X + entry.Width); x++)
                         for (short y = entry.Y; y < (entry.Y + entry.Height); y++)
-                            yield return new MapCoordinate(x, y);
+                            yield return new TileCoordinates(x, y);
 
                     node = node.Next;
                 }
@@ -178,13 +178,13 @@ namespace SS.Core.Map
         }
 
         /// <summary>
-        /// To check if a coordinate is in the region.
+        /// Checks if coordinates are in the region.
         /// </summary>
-        /// <param name="coordinate"></param>
+        /// <param name="coordinates"></param>
         /// <returns></returns>
-        public bool ContainsCoordinate(MapCoordinate coordinate)
+        public bool ContainsCoordinate(TileCoordinates coordinates)
         {
-            return ContainsCoordinate(coordinate.X, coordinate.Y);
+            return ContainsCoordinate(coordinates.X, coordinates.Y);
         }
 
         /// <summary>
@@ -432,7 +432,7 @@ namespace SS.Core.Map
             return true;
         }
 
-        public void TrimExcess()
+        internal void TrimExcess()
         {
             _chunks.TrimExcess();
         }

@@ -38,30 +38,30 @@ namespace SS.Core.Map
         /// Extended LVL attributes:
         /// attribute name --> attribute value
         /// </summary>
-        private readonly Dictionary<string, string> _attributeLookup = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _attributes = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// region name --> region
         /// </summary>
-        private readonly Dictionary<string, MapRegion> _regionLookup = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, MapRegion> _regions = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// coordinate --> region set
+        /// coordinates --> region set
         /// </summary>
         /// <remarks>
         /// ASSS stores set index, instead we store a reference to the set.
         /// </remarks>
-        private readonly MapCoordinateCollection<ImmutableHashSet<MapRegion>> _regionSetCoordinateLookup = new(32);
+        private readonly Dictionary<TileCoordinates, ImmutableHashSet<MapRegion>> _regionSetCoordinates = new(32);
 
         /// <summary>
         /// list of all region sets
         /// </summary>
-        private readonly List<ImmutableHashSet<MapRegion>> _regionSetList = new(32);
+        private readonly List<ImmutableHashSet<MapRegion>> _regionSets = new(32);
 
         /// <summary>
         /// region --> region sets it belongs to
         /// </summary>
-        private readonly Dictionary<MapRegion, HashSet<ImmutableHashSet<MapRegion>>> _regionMemberSetLookup = new(32);
+        private readonly Dictionary<MapRegion, HashSet<ImmutableHashSet<MapRegion>>> _regionMemberSets = new(32);
 
         // Cached delegates that will get allocated only if there is a map region
         private ProcessChunkCallback<MapRegion>? _processRegionChunk;
@@ -70,11 +70,11 @@ namespace SS.Core.Map
         protected override void ClearLevel()
         {
             _chunks.Clear();
-            _attributeLookup.Clear();
-            _regionLookup.Clear();
-            _regionSetCoordinateLookup.Clear();
-            _regionSetList.Clear();
-            _regionMemberSetLookup.Clear();
+            _attributes.Clear();
+            _regions.Clear();
+            _regionSetCoordinates.Clear();
+            _regionSets.Clear();
+            _regionMemberSets.Clear();
 
             base.ClearLevel();
         }
@@ -82,13 +82,13 @@ namespace SS.Core.Map
         protected override void TrimExcess()
         {
             _chunks.TrimExcess();
-            _attributeLookup.TrimExcess();
-            _regionLookup.TrimExcess();
-            _regionSetCoordinateLookup.TrimExcess();
-            _regionSetList.TrimExcess();
-            _regionMemberSetLookup.TrimExcess();
+            _attributes.TrimExcess();
+            _regions.TrimExcess();
+            _regionSetCoordinates.TrimExcess();
+            _regionSets.TrimExcess();
+            _regionMemberSets.TrimExcess();
 
-            foreach (MapRegion region in _regionMemberSetLookup.Keys)
+            foreach (MapRegion region in _regionMemberSets.Keys)
             {
                 region.TrimExcess();
             }
@@ -225,18 +225,18 @@ namespace SS.Core.Map
         /// </summary>
         public int RegionCount
         {
-            get { return _regionMemberSetLookup.Count; }
+            get { return _regionMemberSets.Count; }
         }
 
         public MapRegion? FindRegionByName(string name)
         {
-            _regionLookup.TryGetValue(name, out MapRegion? region);
+            _regions.TryGetValue(name, out MapRegion? region);
             return region;
         }
 
         public ImmutableHashSet<MapRegion> RegionsAtCoord(short x, short y)
         {
-            if (!_regionSetCoordinateLookup.TryGetValue(new MapCoordinate(x, y), out ImmutableHashSet<MapRegion>? regionSet))
+            if (!_regionSetCoordinates.TryGetValue(new TileCoordinates(x, y), out ImmutableHashSet<MapRegion>? regionSet))
                 return ImmutableHashSet<MapRegion>.Empty;
 
             return regionSet;
@@ -250,13 +250,13 @@ namespace SS.Core.Map
             if (string.IsNullOrEmpty(region.Name))
                 return false; // all regions must have a name
 
-            _regionLookup[region.Name] = region;
+            _regions[region.Name] = region;
 
-            foreach (MapCoordinate coordinate in region.Coordinates)
+            foreach (TileCoordinates coordinates in region.Coordinates)
             {
                 ImmutableHashSet<MapRegion>? newRegionSet = null;
 
-                if (_regionSetCoordinateLookup.TryGetValue(coordinate, out ImmutableHashSet<MapRegion>? oldRegionSet))
+                if (_regionSetCoordinates.TryGetValue(coordinates, out ImmutableHashSet<MapRegion>? oldRegionSet))
                 {
                     // there is already a set at this coordinate
 
@@ -264,7 +264,7 @@ namespace SS.Core.Map
                         continue; // the set at this coordinate already contains the region, skip it
 
                     // look for an existing set that contains the old set and the region
-                    foreach (ImmutableHashSet<MapRegion> regionToCheck in _regionSetList)
+                    foreach (ImmutableHashSet<MapRegion> regionToCheck in _regionSets)
                     {
                         if (regionToCheck.Count == (oldRegionSet.Count + 1) &&
                             regionToCheck.Contains(region) &&
@@ -279,11 +279,11 @@ namespace SS.Core.Map
                     {
                         // set does not exist yet, create it
                         newRegionSet = oldRegionSet.Add(region);
-                        _regionSetList.Add(newRegionSet);
+                        _regionSets.Add(newRegionSet);
 
                         foreach (MapRegion existingRegion in oldRegionSet)
                         {
-                            _regionMemberSetLookup[existingRegion].Add(newRegionSet);
+                            _regionMemberSets[existingRegion].Add(newRegionSet);
                         }
                     }
                 }
@@ -292,7 +292,7 @@ namespace SS.Core.Map
                     // no set at this coordinate yet
 
                     // look for an existing set that contains only this region
-                    foreach (ImmutableHashSet<MapRegion> regionToCheck in _regionSetList)
+                    foreach (ImmutableHashSet<MapRegion> regionToCheck in _regionSets)
                     {
                         if (regionToCheck.Count == 1 && regionToCheck.Contains(region))
                         {
@@ -305,16 +305,16 @@ namespace SS.Core.Map
                     {
                         // set does not exist yet, create it
                         newRegionSet = ImmutableHashSet.Create(region);
-                        _regionSetList.Add(newRegionSet);
+                        _regionSets.Add(newRegionSet);
                     }
                 }
 
-                _regionSetCoordinateLookup[coordinate] = newRegionSet;
+                _regionSetCoordinates[coordinates] = newRegionSet;
 
-                if (!_regionMemberSetLookup.TryGetValue(region, out HashSet<ImmutableHashSet<MapRegion>>? memberOfSet))
+                if (!_regionMemberSets.TryGetValue(region, out HashSet<ImmutableHashSet<MapRegion>>? memberOfSet))
                 {
                     memberOfSet = new HashSet<ImmutableHashSet<MapRegion>>();
-                    _regionMemberSetLookup.Add(region, memberOfSet);
+                    _regionMemberSets.Add(region, memberOfSet);
                 }
                 memberOfSet.Add(newRegionSet);
             }
@@ -385,7 +385,7 @@ namespace SS.Core.Map
                         {
                             string key = Encoding.ASCII.GetString(buffer, 0, delimiterIndex);
                             string value = Encoding.ASCII.GetString(buffer, delimiterIndex + 1, length - delimiterIndex - 1);
-                            _attributeLookup[key] = value; // if the same attribute is specified more than once, overwrite the existing one
+                            _attributes[key] = value; // if the same attribute is specified more than once, overwrite the existing one
                         }
                         else
                         {
@@ -457,7 +457,7 @@ namespace SS.Core.Map
 
         public bool TryGetAttribute(string key, [MaybeNullWhen(false)] out string value)
         {
-            return _attributeLookup.TryGetValue(key, out value);
+            return _attributes.TryGetValue(key, out value);
         }
 
         /// <summary>

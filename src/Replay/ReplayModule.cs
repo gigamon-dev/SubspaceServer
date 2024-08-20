@@ -34,7 +34,7 @@ namespace SS.Replay
     /// This implementation adds the following functionality which is not included in ASSS:
     /// - balls (based on the PowerBall Zone fork of the 'record' module)
     /// - bricks (based on the PowerBall Zone fork of the 'record' module)
-    /// - flags (both static flags and carryable flags)
+    /// - flags (both static flags and carriable flags)
     /// - crowns
     /// - door & green seeds (door timings will be in sync, greens will gradually become in sync)
     ///
@@ -50,7 +50,7 @@ namespace SS.Replay
     /// ASSS does not record the Position packet "time" field. It actually stores playerId in it.
     /// When it plays back a recording, the packet will be processed based on the event header ticks, and it uses the current tick count as "time".
     /// This doesn't seem accurate. Is there a better way? 
-    /// The Game module's position packet handler does something similiar when sending S2C position packets (rather than use the C2S postition packet "time").
+    /// The Game module's position packet handler does something similar when sending S2C position packets (rather than use the C2S position packet "time").
     /// </remarks>
     [ModuleInfo($"""
         This module is based on the ASSS funky:record module. It also aims to be 
@@ -418,14 +418,14 @@ namespace SS.Replay
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, StaticFlagClaimed.Length));
         }
 
-        private void Callback_CarryFlagOnMap(Arena arena, short flagId, MapCoordinate mapCoordinate, short freq)
+        private void Callback_CarryFlagOnMap(Arena arena, short flagId, TileCoordinates coordinates, short freq)
         {
             Debug.Assert(_mainloop.IsMainloop);
 
             if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
-            QueueCarryFlagOnMap(ad, flagId, mapCoordinate, freq);
+            QueueCarryFlagOnMap(ad, flagId, coordinates, freq);
         }
 
         private void Callback_CarryFlagPickup(Arena arena, Player player, short flagId, FlagPickupReason reason)
@@ -862,11 +862,11 @@ namespace SS.Replay
             }
         }
 
-        private static void QueueCarryFlagOnMap(ArenaData ad, short flagId, MapCoordinate location, short freq)
+        private static void QueueCarryFlagOnMap(ArenaData ad, short flagId, TileCoordinates coordinates, short freq)
         {
             byte[] buffer = _recordBufferPool.Rent(CarryFlagOnMap.Length);
             ref CarryFlagOnMap onMap = ref MemoryMarshal.AsRef<CarryFlagOnMap>(buffer);
-            onMap = new(ServerTick.Now, flagId, location.X, location.Y, freq);
+            onMap = new(ServerTick.Now, flagId, coordinates.X, coordinates.Y, freq);
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, CarryFlagOnMap.Length));
         }
 
@@ -2393,11 +2393,8 @@ namespace SS.Replay
                 Description = $"Whether arena (green) chat messages are played back.")]
             public Settings(IConfigManager configManager, ConfigHandle ch) : this()
             {
-                if (configManager is null)
-                    throw new ArgumentNullException(nameof(configManager));
-
-                if (ch is null)
-                    throw new ArgumentNullException(nameof(ch));
+                ArgumentNullException.ThrowIfNull(configManager);
+                ArgumentNullException.ThrowIfNull(ch);
 
                 // notification settings
                 NotifyPlayback = configManager.GetEnum(ch, "Replay", "NotifyPlayback", NotifyOption.Arena);

@@ -225,12 +225,12 @@ namespace SS.Matchmaking.Modules
                         if (boxState.Player1 == player && boxState.Player1State == PlayerMatchmakingState.SwitchingArena)
                         {
                             boxState.Player1State = PlayerMatchmakingState.Waiting;
-                            QueueMatchInitialzation(boxState.MatchIdentifier);
+                            QueueMatchInitialization(boxState.MatchIdentifier);
                         }
                         else if (boxState.Player2 == player && boxState.Player2State == PlayerMatchmakingState.SwitchingArena)
                         {
                             boxState.Player2State = PlayerMatchmakingState.Waiting;
-                            QueueMatchInitialzation(boxState.MatchIdentifier);
+                            QueueMatchInitialization(boxState.MatchIdentifier);
                         }
                     }
                 }
@@ -431,14 +431,14 @@ namespace SS.Matchmaking.Modules
                     }
 
                     string? coordinateStr = _configManager.GetStr(ch, $"Box{box}", "StartPlayer1");
-                    if (!MapCoordinate.TryParse(coordinateStr, out MapCoordinate startLocation1))
+                    if (!TileCoordinates.TryParse(coordinateStr, out TileCoordinates startLocation1))
                     {
                         _logManager.LogM(LogLevel.Error, nameof(OneVersusOneMatch), $"Invalid StartPlayer1 for Box{box}.");
                         return false;
                     }
 
                     coordinateStr = _configManager.GetStr(ch, $"Box{box}", "StartPlayer2");
-                    if (!MapCoordinate.TryParse(coordinateStr, out MapCoordinate startLocation2))
+                    if (!TileCoordinates.TryParse(coordinateStr, out TileCoordinates startLocation2))
                     {
                         _logManager.LogM(LogLevel.Error, nameof(OneVersusOneMatch), $"Invalid StartPlayer2 for Box{box}.");
                         return false;
@@ -552,7 +552,7 @@ namespace SS.Matchmaking.Modules
                 _arenaManager.SendToArena(player2, arenaName, 0, 0);
             }
 
-            QueueMatchInitialzation(boxState.MatchIdentifier);
+            QueueMatchInitialization(boxState.MatchIdentifier);
             return true;
 
             bool TryGetAvailableArenaAndBox(OneVersusOneQueue queue, out int arenaNumber, out int boxId, [MaybeNullWhen(false)] out ArenaData arenaData)
@@ -578,7 +578,7 @@ namespace SS.Matchmaking.Modules
                 }
                 while (arenaNumber < _maxArenas);
 
-                // no availablity
+                // no availability
                 arenaNumber = 0;
                 arenaData = null;
                 boxId = 0;
@@ -601,7 +601,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void QueueMatchInitialzation(MatchIdentifier matchIdentifier)
+        private void QueueMatchInitialization(MatchIdentifier matchIdentifier)
         {
             _mainloop.QueueMainWorkItem(DoMatchInitialization, matchIdentifier);
 
@@ -927,7 +927,7 @@ namespace SS.Matchmaking.Modules
 
         private struct BoxConfiguration
         {
-            public BoxConfiguration(OneVersusOneQueue queue, MapCoordinate startLocation1, MapCoordinate startLocation2)
+            public BoxConfiguration(OneVersusOneQueue queue, TileCoordinates startLocation1, TileCoordinates startLocation2)
             {
                 Queue = queue ?? throw new ArgumentNullException(nameof(queue));
                 StartLocation1 = startLocation1;
@@ -935,8 +935,8 @@ namespace SS.Matchmaking.Modules
             }
 
             public OneVersusOneQueue Queue { get; }
-            public MapCoordinate StartLocation1 { get; }
-            public MapCoordinate StartLocation2 { get; }
+            public TileCoordinates StartLocation1 { get; }
+            public TileCoordinates StartLocation2 { get; }
         }
 
         private enum BoxStatus

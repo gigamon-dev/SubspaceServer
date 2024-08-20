@@ -152,10 +152,10 @@ namespace SS.Core.Modules.Scoring
 
         #region IBallsAdvisor
 
-        bool IBallsAdvisor.AllowGoal(Arena arena, Player player, int ballId, MapCoordinate mapCoordinate, ref BallData ballData)
+        bool IBallsAdvisor.AllowGoal(Arena arena, Player player, int ballId, TileCoordinates coordinates, ref BallData ballData)
         {
             // Allow the goal if the tile is a goal and it can be scored on by the player's freq.
-            _balls.GetGoalInfo(arena, player.Freq, mapCoordinate, out bool isScoreable, out _);
+            _balls.GetGoalInfo(arena, player.Freq, coordinates, out bool isScoreable, out _);
             return isScoreable;
         }
 
@@ -205,7 +205,7 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private void Callback_BallGoal(Arena arena, Player player, byte ballId, MapCoordinate coordinate)
+        private void Callback_BallGoal(Arena arena, Player player, byte ballId, TileCoordinates goalCoordinates)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
@@ -220,7 +220,7 @@ namespace SS.Core.Modules.Scoring
             if (scoringFreq < 0)
                 return;
 
-            _balls.GetGoalInfo(arena, scoringFreq, coordinate, out _, out short? ownerFreq);
+            _balls.GetGoalInfo(arena, scoringFreq, goalCoordinates, out _, out short? ownerFreq);
 
             bool nullGoal = false;
 
@@ -301,7 +301,7 @@ namespace SS.Core.Modules.Scoring
             // However, what rules does the client logic use regarding being in a safe zone and being in spec mode?
             _scoreStats.SendUpdates(arena, null);
 
-            BallGameGoalCallback.Fire(arena, arena, player, ballId, coordinate);
+            BallGameGoalCallback.Fire(arena, arena, player, ballId, goalCoordinates);
 
             if (ad.Mode != SoccerMode.All)
             {

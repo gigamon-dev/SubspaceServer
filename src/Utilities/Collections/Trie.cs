@@ -564,7 +564,7 @@ namespace SS.Utilities.Collections
             private char[]? _currentKeyArray = null;
             private int _currentKeyLength = 0;
 
-            private const int MininumInitialKeyArrayLength = 16;
+            private const int MinimumInitialKeyArrayLength = 16;
 
             /// <summary>
             /// Initializes an <see cref="Enumerator"/> over an entire Trie.
@@ -591,7 +591,7 @@ namespace SS.Utilities.Collections
                 {
                     _nextNode = node;
 
-                    _currentKeyArray = ArrayPool<char>.Shared.Rent(Math.Max(prefix.Length, MininumInitialKeyArrayLength));
+                    _currentKeyArray = ArrayPool<char>.Shared.Rent(Math.Max(prefix.Length, MinimumInitialKeyArrayLength));
                     prefix.CopyTo(_currentKeyArray);
                     _currentKeyLength = prefix.Length;
                 }
@@ -704,7 +704,7 @@ namespace SS.Utilities.Collections
 
                 if (_currentKeyArray is null)
                 {
-                    _currentKeyArray = ArrayPool<char>.Shared.Rent(Math.Max(length, MininumInitialKeyArrayLength));
+                    _currentKeyArray = ArrayPool<char>.Shared.Rent(Math.Max(length, MinimumInitialKeyArrayLength));
                 }
                 else if (length > _currentKeyArray.Length)
                 {

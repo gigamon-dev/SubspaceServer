@@ -593,7 +593,7 @@ namespace SS.Core.Modules
             Targets = CommandTarget.None | CommandTarget.Player,
             Args = "[-r]",
             Description = """
-                Displays a historgram containing lag information about you or a target player.
+                Displays a histogram containing lag information about you or a target player.
                 By default, c2s position ping data is returned. Use -r to get reliable ping data.
                 """)]
         private void Command_laghist(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -723,7 +723,7 @@ namespace SS.Core.Modules
 
             if (interval == null)
             {
-                _chat.SendMessage(player, $"An interval must be speciifed.");
+                _chat.SendMessage(player, $"An interval must be specified.");
                 return;
             }
 
@@ -2076,7 +2076,7 @@ namespace SS.Core.Modules
                 "3 reps", "anti"). Negative prizes can be specified with a '-' before
                 the prize name or the count (e.g. "-prox", "-3 bricks", "5 -guns"). More
                 than one prize can be specified in one command. A count without a prize
-                name means random. For compatability, numerical prize ids with # are
+                name means random. For compatibility, numerical prize ids with # are
                 supported.
                 """)]
         private void Command_prize(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -2809,16 +2809,15 @@ namespace SS.Core.Modules
             if (arena is null)
                 return;
 
-            // Clear the player in advance so no mistakes are made.
-            // We are about to await and the state could change (e.g. disconnect) by the time the continuation runs.
+            // We are about to await and the player object's state could change (e.g. disconnect) by the time the continuation runs.
             // So, instead we keep the player's name.
             string playerName = player.Name!;
-            player = null;
 
             bool success = detach
                 ? await _mm!.DetachModuleAsync(module, arena).ConfigureAwait(false)
                 : await _mm!.AttachModuleAsync(module, arena).ConfigureAwait(false);
 
+            // The player's state could have changed (e.g. disconnect) by the time the continuation runs for the await.
             // Check if the player is still on.
             player = _playerData?.FindPlayer(playerName);
             if (player is null)
@@ -3158,15 +3157,15 @@ namespace SS.Core.Modules
                 targetPlayer = player;
 
             // right shift by 4 is divide by 16 (each tile is 16 pixels)
-            int x = targetPlayer.Position.X >> 4;
-            int y = targetPlayer.Position.Y >> 4;
+            short x = (short)(targetPlayer.Position.X >> 4);
+            short y = (short)(targetPlayer.Position.Y >> 4);
 
             string name = (targetPlayer == player) ? "You" : targetPlayer.Name!;
             string verb = (targetPlayer == player) ? "are" : "is";
 
             if (targetPlayer.IsStandard)
             {
-                _chat.SendMessage(player, $"{name} {verb} at {(char)('A' + (x * 20 / 1024))}{(y * 20 / 1024 + 1)} ({x},{y})");
+                _chat.SendMessage(player, $"{name} {verb} at {(char)('A' + (x * 20 / 1024))}{(y * 20 / 1024 + 1)} {new TileCoordinates(x, y)}");
             }
             else
             {
@@ -3682,7 +3681,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                MapCoordinate? location = flagInfo.Location;
+                TileCoordinates? location = flagInfo.Location;
 
                 if (!remaining.IsWhiteSpace())
                 {
@@ -3704,7 +3703,7 @@ namespace SS.Core.Modules
                         return;
                     }
 
-                    location = new MapCoordinate(x, y);
+                    location = new TileCoordinates(x, y);
                 }
 
                 if (location is null)

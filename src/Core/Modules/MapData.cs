@@ -293,7 +293,7 @@ namespace SS.Core.Modules
                 {
                     for (short x = (short)(saveKey % 31); x < 1024; x += 31)
                     {
-                        ad.Lvl.TryGetTile(new MapCoordinate(x, y), out MapTile tile); // if no tile, it will be zero'd out which is what we want
+                        ad.Lvl.TryGetTile(new TileCoordinates(x, y), out MapTile tile); // if no tile, it will be zero'd out which is what we want
                         if ((tile >= MapTile.TileStart && tile <= MapTile.TileEnd) || tile.IsSafe)
                             key += (uint)(saveKey ^ (byte)tile);
                     }
@@ -307,7 +307,7 @@ namespace SS.Core.Modules
             return key;
         }
 
-        MapTile IMapData.GetTile(Arena arena, MapCoordinate coordinate)
+        MapTile IMapData.GetTile(Arena arena, TileCoordinates coordinates)
         {
             ArgumentNullException.ThrowIfNull(arena);
 
@@ -321,7 +321,7 @@ namespace SS.Core.Modules
                 if (ad.Lvl is null)
                     throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
-                if (ad.Lvl.TryGetTile(coordinate, out MapTile tile))
+                if (ad.Lvl.TryGetTile(coordinates, out MapTile tile))
                     return tile;
 
                 return MapTile.None;
@@ -332,7 +332,7 @@ namespace SS.Core.Modules
             }
         }
 
-        MapTile IMapData.GetTile(Arena arena, MapCoordinate coordinate, bool includeTemporaryTiles)
+        MapTile IMapData.GetTile(Arena arena, TileCoordinates coordinates, bool includeTemporaryTiles)
         {
             ArgumentNullException.ThrowIfNull(arena);
 
@@ -346,10 +346,10 @@ namespace SS.Core.Modules
                 if (ad.Lvl is null)
                     throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
-                if (ad.Lvl.TryGetTile(coordinate, out MapTile tile))
+                if (ad.Lvl.TryGetTile(coordinates, out MapTile tile))
                     return tile;
 
-                if (includeTemporaryTiles && ad.TemporaryTileData.TryGetTile(coordinate, out tile))
+                if (includeTemporaryTiles && ad.TemporaryTileData.TryGetTile(coordinates, out tile))
                     return tile;
 
                 return MapTile.None;
@@ -360,7 +360,7 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IMapData.TryGetFlagCoordinate(Arena arena, short flagId, out MapCoordinate coordinate)
+        bool IMapData.TryGetFlagCoordinates(Arena arena, short flagId, out TileCoordinates coordinates)
         {
             ArgumentNullException.ThrowIfNull(arena);
 
@@ -374,7 +374,7 @@ namespace SS.Core.Modules
                 if (ad.Lvl is null)
                     throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
-                return ad.Lvl.TryGetFlagCoordinate(flagId, out coordinate);
+                return ad.Lvl.TryGetFlagCoordinate(flagId, out coordinates);
             }
             finally
             {
@@ -441,7 +441,7 @@ namespace SS.Core.Modules
 
                     // check if it's a valid coordinate and that it's empty
                     if (context.X < 0 || context.X > 1023 || context.Y < 0 || context.Y > 1023
-                        || (ad.Lvl.TryGetTile(new MapCoordinate(context.X, context.Y), out MapTile tile) && tile != MapTile.None))
+                        || (ad.Lvl.TryGetTile(new TileCoordinates(context.X, context.Y), out MapTile tile) && tile != MapTile.None))
                     {
                         if (context.UpTo < 35)
                             continue;
@@ -505,7 +505,7 @@ namespace SS.Core.Modules
             }
         }
 
-        ImmutableHashSet<MapRegion> IMapData.RegionsAt(Arena arena, MapCoordinate location)
+        ImmutableHashSet<MapRegion> IMapData.RegionsAt(Arena arena, TileCoordinates location)
         {
             return ((IMapData)this).RegionsAt(arena, location.X, location.Y);
         }
@@ -532,7 +532,7 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IMapData.TryAddBrick(Arena arena, int brickId, MapCoordinate start, MapCoordinate end)
+        bool IMapData.TryAddBrick(Arena arena, int brickId, TileCoordinates start, TileCoordinates end)
         {
             ArgumentNullException.ThrowIfNull(arena);
 
@@ -570,7 +570,7 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IMapData.TryAddDroppedFlag(Arena arena, short flagId, MapCoordinate coordinate)
+        bool IMapData.TryAddDroppedFlag(Arena arena, short flagId, TileCoordinates coordinates)
         {
             ArgumentNullException.ThrowIfNull(arena);
 
@@ -581,7 +581,7 @@ namespace SS.Core.Modules
 
             try
             {
-                return ad.TemporaryTileData.TryAddFlag(flagId, coordinate);
+                return ad.TemporaryTileData.TryAddFlag(flagId, coordinates);
             }
             finally
             {
@@ -863,7 +863,7 @@ namespace SS.Core.Modules
         /// <param name="Key"></param>
         /// <param name="Start"></param>
         /// <param name="End"></param>
-        private readonly record struct TemporaryTilePlacement(TemporaryTileKey Key, MapCoordinate Start, MapCoordinate End);
+        private readonly record struct TemporaryTilePlacement(TemporaryTileKey Key, TileCoordinates Start, TileCoordinates End);
 
         /// <summary>
         /// Helper to manage tiles that are temporarily placed (bricks and flags).
@@ -871,7 +871,7 @@ namespace SS.Core.Modules
         private class TemporaryTileData
         {
             private readonly Dictionary<TemporaryTileKey, TemporaryTilePlacement> _placementDictionary = new(Bricks.MaxActiveBricks + CarryFlags.MaxFlags);
-            private readonly MapCoordinateCollection<TemporaryTileKey> _tiles = new(8192);
+            private readonly Dictionary<TileCoordinates, TemporaryTileKey> _tiles = new(8192);
             private readonly object _lock = new();
 
             public void Clear()
@@ -883,11 +883,11 @@ namespace SS.Core.Modules
                 }
             }
 
-            public bool TryGetTile(MapCoordinate coordinate, out MapTile tile)
+            public bool TryGetTile(TileCoordinates coordinates, out MapTile tile)
             {
                 lock (_lock)
                 {
-                    if (_tiles.TryGetValue(coordinate, out TemporaryTileKey key))
+                    if (_tiles.TryGetValue(coordinates, out TemporaryTileKey key))
                     {
                         tile = key.Tile;
                         return true;
@@ -900,7 +900,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            public bool TryAddBrick(int brickId, MapCoordinate start, MapCoordinate end)
+            public bool TryAddBrick(int brickId, TileCoordinates start, TileCoordinates end)
             {
                 TemporaryTileKey key = new(brickId, MapTile.Brick);
                 TemporaryTilePlacement placement = new(key, start, end);
@@ -927,10 +927,10 @@ namespace SS.Core.Modules
                 }
             }
 
-            public bool TryAddFlag(short flagId, MapCoordinate coordinate)
+            public bool TryAddFlag(short flagId, TileCoordinates coordinates)
             {
                 TemporaryTileKey key = new(flagId, MapTile.Flag);
-                TemporaryTilePlacement placement = new(key, coordinate, coordinate);
+                TemporaryTilePlacement placement = new(key, coordinates, coordinates);
 
                 lock (_lock)
                 {
@@ -943,7 +943,7 @@ namespace SS.Core.Modules
                             return false;
                     }
 
-                    SetTile(key, coordinate);
+                    SetTile(key, coordinates);
                     return true;
                 }
             }
@@ -977,20 +977,20 @@ namespace SS.Core.Modules
                 }
             }
 
-            private bool SetTile(TemporaryTileKey key, MapCoordinate coordinate)
+            private bool SetTile(TemporaryTileKey key, TileCoordinates coordinates)
             {
-                if (_tiles.TryAdd(coordinate, key))
+                if (_tiles.TryAdd(coordinates, key))
                     return true;
 
                 // A tile already exists at the coordinate.
-                if (_tiles.TryGetValue(coordinate, out TemporaryTileKey existing))
+                if (_tiles.TryGetValue(coordinates, out TemporaryTileKey existing))
                 {
                     // A flag can override an existing brick.
                     // A brick can override an existing brick.
                     if ((key.Tile == MapTile.Flag && existing.Tile == MapTile.Brick)
                         && (key.Tile == MapTile.Brick && existing.Tile == MapTile.Brick))
                     {
-                        _tiles[coordinate] = key;
+                        _tiles[coordinates] = key;
                         return true;
                     }
                 }
@@ -998,15 +998,15 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            private bool RemoveTile(int id, MapCoordinate coordinate)
+            private bool RemoveTile(int id, TileCoordinates coordinates)
             {
-                if (!_tiles.TryGetValue(coordinate, out TemporaryTileKey key))
+                if (!_tiles.TryGetValue(coordinates, out TemporaryTileKey key))
                     return false;
 
                 if (key.Id != id)
                     return false;
                 
-                return _tiles.Remove(coordinate);
+                return _tiles.Remove(coordinates);
             }
 
             /// <summary>
@@ -1020,7 +1020,7 @@ namespace SS.Core.Modules
             /// <param name="executeCallback">The callback to invoke for each coordinate.</param>
             /// <param name="state">The state to pass to the <paramref name="executeCallback"/>.</param>
             /// <returns>The number of affected tiles.</returns>
-            private static int ProcessTiles<T>(TemporaryTileKey key, MapCoordinate start, MapCoordinate end, Func<TemporaryTileKey, MapCoordinate, T, bool> executeCallback, T state)
+            private static int ProcessTiles<T>(TemporaryTileKey key, TileCoordinates start, TileCoordinates end, Func<TemporaryTileKey, TileCoordinates, T, bool> executeCallback, T state)
             {
                 int count = 0;
 
@@ -1037,7 +1037,7 @@ namespace SS.Core.Modules
 
                     for (short y = from; y <= to; y++)
                     {
-                        if (executeCallback(key, new MapCoordinate(start.X, y), state))
+                        if (executeCallback(key, new TileCoordinates(start.X, y), state))
                             count++;
                     }
                 }
@@ -1054,7 +1054,7 @@ namespace SS.Core.Modules
 
                     for (short x = from; x <= to; x++)
                     {
-                        if (executeCallback(key, new MapCoordinate(x, start.Y), state))
+                        if (executeCallback(key, new TileCoordinates(x, start.Y), state))
                             count++;
                     }
                 }

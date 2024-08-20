@@ -103,7 +103,7 @@ namespace SS.Core.ComponentInterfaces
     {
         FlagState State { get; }
         Player? Carrier { get; }
-        MapCoordinate? Location { get; }
+        TileCoordinates? Location { get; }
         short Freq { get; }
     }
 
@@ -111,7 +111,7 @@ namespace SS.Core.ComponentInterfaces
     {
         bool AutoStart { get; }
         TimeSpan ResetDelay { get; }
-        MapCoordinate SpawnCoordinate { get; }
+        TileCoordinates SpawnCoordinates { get; }
         int SpawnRadius { get; }
         int DropRadius { get; }
         bool FriendlyTransfer { get; }
@@ -181,9 +181,9 @@ namespace SS.Core.ComponentInterfaces
 
         bool TryGetFlagInfo(Arena arena, short flagId, [MaybeNullWhen(false)] out IFlagInfo flagInfo);
 
-        bool TrySetFlagNeuted(Arena arena, short flagId, MapCoordinate? location = null, short freq = -1);
+        bool TrySetFlagNeuted(Arena arena, short flagId, TileCoordinates? location = null, short freq = -1);
 
-        bool TrySetFlagOnMap(Arena arena, short flagId, MapCoordinate location, short freq);
+        bool TrySetFlagOnMap(Arena arena, short flagId, TileCoordinates location, short freq);
 
         bool TrySetFlagCarried(Arena arena, short flagId, Player carrier, FlagPickupReason reason);
     }

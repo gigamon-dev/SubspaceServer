@@ -442,7 +442,7 @@ namespace SS.Matchmaking.Modules
                         && string.Equals(arena!.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase))
                     {
                         // The player entered an arena for a match that's starting up.
-                        QueueMatchInitialzation(slot.MatchData);
+                        QueueMatchInitialization(slot.MatchData);
                     }
                     else if (playerData.IsReturning
                         && string.Equals(arena!.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase))
@@ -991,7 +991,7 @@ namespace SS.Matchmaking.Modules
             }
 
             _chat.SendArenaMessage(player.Arena, $"{player.Name} has requested to be subbed out.");
-            SendSubAvailablityNotificationToQueuedPlayers(slot.MatchData);
+            SendSubAvailabilityNotificationToQueuedPlayers(slot.MatchData);
         }
 
         [CommandHelp(
@@ -1733,7 +1733,7 @@ namespace SS.Matchmaking.Modules
 
             bool LoadMatchBoxesConfiguration(ConfigHandle ch, string matchIdentifier, MatchConfiguration matchConfiguration)
             {
-                List<MapCoordinate> tempCoordList = new();
+                List<TileCoordinates> tempCoordList = new();
 
                 for (int boxIdx = 0; boxIdx < matchConfiguration.Boxes.Length; boxIdx++)
                 {
@@ -1744,7 +1744,7 @@ namespace SS.Matchmaking.Modules
 
                     MatchBoxConfiguration boxConfiguration = new()
                     {
-                        TeamStartLocations = new MapCoordinate[matchConfiguration.NumTeams][],
+                        TeamStartLocations = new TileCoordinates[matchConfiguration.NumTeams][],
                         PlayAreaMapRegion = playAreaMapRegion,
                     };
 
@@ -1759,14 +1759,14 @@ namespace SS.Matchmaking.Modules
                         string? coordStr;
                         while (!string.IsNullOrWhiteSpace(coordStr = _configManager.GetStr(ch, boxSection, $"Team{teamNumber}StartLocation{coordId}")))
                         {
-                            if (!MapCoordinate.TryParse(coordStr, out MapCoordinate mapCoordinate))
+                            if (!TileCoordinates.TryParse(coordStr, out TileCoordinates coordinates))
                             {
                                 _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Invalid starting location for Match '{matchIdentifier}', Box:{boxNumber}, Team:{teamNumber}, #:{coordId}.");
                                 continue;
                             }
                             else
                             {
-                                tempCoordList.Add(mapCoordinate);
+                                tempCoordList.Add(coordinates);
                             }
 
                             coordId++;
@@ -1971,7 +1971,7 @@ namespace SS.Matchmaking.Modules
                 }
                 else
                 {
-                    QueueMatchInitialzation(matchData);
+                    QueueMatchInitialization(matchData);
                 }
             }
 
@@ -2028,7 +2028,7 @@ namespace SS.Matchmaking.Modules
                 await _teamVersusStatsBehavior.InitializeAsync(matchData);
 
                 // Now that the stats module is ready, check whether the match can be started.
-                QueueMatchInitialzation(matchData);
+                QueueMatchInitialization(matchData);
             }
 
             bool TryGetAvailableMatch(MatchConfiguration matchConfiguration, [MaybeNullWhen(false)] out MatchData matchData)
@@ -2061,7 +2061,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                // no availablity
+                // no availability
                 matchData = null;
                 return false;
             }
@@ -2215,7 +2215,7 @@ namespace SS.Matchmaking.Modules
                             _chat.SendSetMessage(players, $"{slot.PlayerName} has left the arena. The slot is now available for ?{CommandNames.Sub}.");
                         }
 
-                        SendSubAvailablityNotificationToQueuedPlayers(matchData);
+                        SendSubAvailabilityNotificationToQueuedPlayers(matchData);
                     }
                 }
                 else
@@ -2287,7 +2287,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void SendSubAvailablityNotificationToQueuedPlayers(MatchData matchData)
+        private void SendSubAvailabilityNotificationToQueuedPlayers(MatchData matchData)
         {
             if (!_queueDictionary.TryGetValue(matchData.Configuration.QueueName, out var queue))
                 return;
@@ -2338,7 +2338,7 @@ namespace SS.Matchmaking.Modules
                 _objectPoolManager.PlayerSetPool.Return(players);
             }
 
-            SendSubAvailablityNotificationToQueuedPlayers(slot.MatchData);
+            SendSubAvailabilityNotificationToQueuedPlayers(slot.MatchData);
 
             return false;
         }
@@ -2399,7 +2399,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void QueueMatchInitialzation(MatchData matchData)
+        private void QueueMatchInitialization(MatchData matchData)
         {
             if (matchData is null)
                 return;
@@ -2451,9 +2451,9 @@ namespace SS.Matchmaking.Modules
                     // Reset ships and move players to their starting locations.
                     foreach (Team team in matchData.Teams)
                     {
-                        MapCoordinate[] startLocations = matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx].TeamStartLocations[team.TeamIdx];
+                        TileCoordinates[] startLocations = matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx].TeamStartLocations[team.TeamIdx];
                         int startLocationIdx = startLocations.Length == 1 ? 0 : _prng.Number(0, startLocations.Length - 1);
-                        MapCoordinate startLocation = startLocations[startLocationIdx];
+                        TileCoordinates startLocation = startLocations[startLocationIdx];
 
                         foreach (PlayerSlot playerSlot in team.Slots)
                         {
@@ -2480,7 +2480,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void SetShipAndFreq(PlayerSlot slot, bool isRefill, MapCoordinate? startLocation)
+        private void SetShipAndFreq(PlayerSlot slot, bool isRefill, TileCoordinates? startLocation)
         {
             Player? player = slot.Player;
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
@@ -2842,7 +2842,7 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// Available starting locations for each team.
             /// </summary>
-            public required MapCoordinate[][] TeamStartLocations;
+            public required TileCoordinates[][] TeamStartLocations;
 
             public string? PlayAreaMapRegion;
         }
@@ -3015,7 +3015,7 @@ namespace SS.Matchmaking.Modules
 
             /// <summary>
             /// The time the slot became inactive (player changed to spec or left the arena).
-            /// This will allow us to figure out when the slot can be given to a substibute player.
+            /// This will allow us to figure out when the slot can be given to a substitute player.
             /// </summary>
             public DateTime? InactiveTimestamp;
 
@@ -3261,8 +3261,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Add(Player player, DateTime timestamp)
             {
-                if (player is null)
-                    throw new ArgumentNullException(nameof(player));
+                ArgumentNullException.ThrowIfNull(player);
 
                 LinkedListNode<QueuedPlayerOrGroup> node = s_nodePool.Get();
                 node.ValueRef = new(player, timestamp);
@@ -3272,8 +3271,7 @@ namespace SS.Matchmaking.Modules
 
             public bool Add(IPlayerGroup group, DateTime timestamp)
             {
-                if (group is null)
-                    throw new ArgumentNullException(nameof(group));
+                ArgumentNullException.ThrowIfNull(group);
 
                 LinkedListNode<QueuedPlayerOrGroup> node = s_nodePool.Get();
                 node.ValueRef = new(group, timestamp);
@@ -3356,8 +3354,7 @@ namespace SS.Matchmaking.Modules
             /// <exception cref="ArgumentNullException"><paramref name="player"/> was null.</exception>
             public bool ContainsSoloPlayer(Player player)
             {
-                if (player is null)
-                    throw new ArgumentNullException(nameof(player));
+                ArgumentNullException.ThrowIfNull(player);
 
                 foreach (QueuedPlayerOrGroup pog in _queue)
                 {
@@ -3391,14 +3388,9 @@ namespace SS.Matchmaking.Modules
                 IReadOnlyList<TeamLineup> teamList,
                 List<Player> participantList)
             {
-                if (matchConfiguration is null)
-                    throw new ArgumentNullException(nameof(matchConfiguration));
-
-                if (teamList is null)
-                    throw new ArgumentNullException(nameof(teamList));
-
-                if (participantList is null)
-                    throw new ArgumentNullException(nameof(participantList));
+                ArgumentNullException.ThrowIfNull(matchConfiguration);
+                ArgumentNullException.ThrowIfNull(teamList);
+                ArgumentNullException.ThrowIfNull(participantList);
 
                 int numTeams = matchConfiguration.NumTeams;
                 int playersPerTeam = matchConfiguration.PlayersPerTeam;

@@ -173,7 +173,7 @@ namespace SS.Core.ComponentInterfaces
         bool TryPlaceBall(Arena arena, byte ballId, ref BallData ballData);
 
         /// <summary>
-        /// Trys to respawn a specified ball.
+        /// Tries to respawn a specified ball.
         /// </summary>
         /// <param name="arena">The arena to respawn the ball in..</param>
         /// <param name="ballId">The Id of the ball to respawn.</param>
@@ -192,7 +192,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena to get information for.</param>
         /// <param name="freq">The team to get information for.</param>
-        /// <param name="coordinate">The coordinate to check.</param>
+        /// <param name="coordinates">The coordinates to check.</param>
         /// <param name="isScorable">True if the coordinate is a goal tile and the <paramref name="freq"/> can score on it. Otherwise, false.</param>
         /// <param name="ownerFreq">
         /// The freq that owns the goal. <see langword="null"/> if there is no owner. 
@@ -200,6 +200,6 @@ namespace SS.Core.ComponentInterfaces
         /// </param>
         /// <exception cref="ArgumentNullException">Arena is null.</exception>
         /// <exception cref="Exception">Invalid <see cref="SoccerMode"/> for the arena.</exception>
-        void GetGoalInfo(Arena arena, short freq, MapCoordinate coordinate, out bool isScorable, out short? ownerFreq);
+        void GetGoalInfo(Arena arena, short freq, TileCoordinates coordinates, out bool isScorable, out short? ownerFreq);
     }
 }

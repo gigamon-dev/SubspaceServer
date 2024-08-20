@@ -269,7 +269,7 @@ namespace SS.Core.Modules.FlagGame
             return true;
         }
 
-        bool ICarryFlagGame.TrySetFlagNeuted(Arena arena, short flagId, MapCoordinate? location, short freq)
+        bool ICarryFlagGame.TrySetFlagNeuted(Arena arena, short flagId, TileCoordinates? location, short freq)
         {
             if (arena == null
                 || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
@@ -294,7 +294,7 @@ namespace SS.Core.Modules.FlagGame
                 _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
 
                 flagInfo.State = FlagState.None;
-                flagInfo.Location = MapCoordinate.FlagOutsideMapCoordinate;
+                flagInfo.Location = TileCoordinates.FlagOutsideMapCoordinates;
                 flagInfo.Freq = -1;
 
                 _mapData.TryRemoveDroppedFlag(arena, flagId);
@@ -348,7 +348,7 @@ namespace SS.Core.Modules.FlagGame
             return false;
         }
 
-        bool ICarryFlagGame.TrySetFlagOnMap(Arena arena, short flagId, MapCoordinate location, short freq)
+        bool ICarryFlagGame.TrySetFlagOnMap(Arena arena, short flagId, TileCoordinates location, short freq)
         {
             if (arena == null
                 || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
@@ -817,7 +817,7 @@ namespace SS.Core.Modules.FlagGame
         {
             public bool AutoStart { get; private set; }
             public TimeSpan ResetDelay { get; private set; }
-            public MapCoordinate SpawnCoordinate { get; private set; }
+            public TileCoordinates SpawnCoordinates { get; private set; }
             public int SpawnRadius { get; private set; }
             public int DropRadius { get; private set; }
             public bool FriendlyTransfer { get; private set; }
@@ -877,7 +877,7 @@ namespace SS.Core.Modules.FlagGame
                 if (ResetDelay < TimeSpan.Zero)
                     ResetDelay = TimeSpan.Zero;
 
-                SpawnCoordinate = new(
+                SpawnCoordinates = new(
                     (short)configManager.GetInt(ch, "Flag", "SpawnX", FlagSettings.SpawnX.Default),
                     (short)configManager.GetInt(ch, "Flag", "SpawnY", FlagSettings.SpawnY.Default));
 
@@ -953,7 +953,7 @@ namespace SS.Core.Modules.FlagGame
         {
             public FlagState State { get; set; } = FlagState.None;
             public Player? Carrier { get; set; } = null;
-            public MapCoordinate? Location { get; set; } = null;
+            public TileCoordinates? Location { get; set; } = null;
             public short Freq { get; set; } = -1;
 
             bool IResettable.TryReset()

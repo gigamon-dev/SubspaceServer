@@ -8,7 +8,7 @@ using System.Collections.Generic;
 namespace SS.Core.Modules.FlagGame
 {
     /// <summary>
-    /// Default implementation of behaviors for carryable flags.
+    /// Default implementation of behaviors for carriable flags.
     /// </summary>
     public class DefaultCarryFlagBehavior : ICarryFlagBehavior
     {
@@ -17,8 +17,8 @@ namespace SS.Core.Modules.FlagGame
         private readonly IMapData _mapData;
         private readonly IPrng _prng;
 
-        private static readonly DefaultObjectPool<HashSet<MapCoordinate>> _mapCoordinateHashSetPool = new(new HashSetPooledObjectPolicy<MapCoordinate>() { InitialCapacity = 256 });
-        private static readonly DefaultObjectPool<List<MapCoordinate>> _mapCoordinateListPool = new(new ListPooledObjectPolicy<MapCoordinate>() { InitialCapacity = 256 });
+        private static readonly DefaultObjectPool<HashSet<TileCoordinates>> _tileCoordinatesHashSetPool = new(new HashSetPooledObjectPolicy<TileCoordinates>() { InitialCapacity = 256 });
+        private static readonly DefaultObjectPool<List<TileCoordinates>> _tileCoordinatesListPool = new(new ListPooledObjectPolicy<TileCoordinates>() { InitialCapacity = 256 });
 
         public DefaultCarryFlagBehavior(
             ICarryFlagGame carryFlagGame,
@@ -49,7 +49,7 @@ namespace SS.Core.Modules.FlagGame
                 if (!_carryFlagGame.TryAddFlag(arena, out flagId))
                     break;
 
-                SpawnFlag(arena, flagId, settings.SpawnCoordinate, settings.SpawnRadius, -1);
+                SpawnFlag(arena, flagId, settings.SpawnCoordinates, settings.SpawnRadius, -1);
             }
 
             // TODO: maybe each flag needs a DateTime on when it should be spawned and have a setting to control the delay?
@@ -73,7 +73,7 @@ namespace SS.Core.Modules.FlagGame
 
                 if (flagInfo.State == FlagState.None)
                 {
-                    SpawnFlag(arena, flagId, settings.SpawnCoordinate, settings.SpawnRadius, -1);
+                    SpawnFlag(arena, flagId, settings.SpawnCoordinates, settings.SpawnRadius, -1);
                 }
             }
         }
@@ -160,8 +160,8 @@ namespace SS.Core.Modules.FlagGame
                 }
                 else
                 {
-                    MapCoordinate coordinate = new((short)(killed.Position.X >> 4), (short)(killed.Position.Y >> 4));
-                    DropFlags(arena, flagIds, coordinate, freq);
+                    TileCoordinates coordinates = new((short)(killed.Position.X >> 4), (short)(killed.Position.Y >> 4));
+                    DropFlags(arena, flagIds, coordinates, freq);
                 }
             }
         }
@@ -216,15 +216,15 @@ namespace SS.Core.Modules.FlagGame
                 }
                 else
                 {
-                    MapCoordinate coordinate = new((short)(oldCarrier.Position.X >> 4), (short)(oldCarrier.Position.Y >> 4));
-                    DropFlags(arena, flagIds, coordinate, freq);
+                    TileCoordinates coordinates = new((short)(oldCarrier.Position.X >> 4), (short)(oldCarrier.Position.Y >> 4));
+                    DropFlags(arena, flagIds, coordinates, freq);
                 }
             }
         }
 
         #endregion
 
-        protected void DropFlags(Arena arena, ReadOnlySpan<short> flagIds, MapCoordinate coordinate, short ownerFreq)
+        protected void DropFlags(Arena arena, ReadOnlySpan<short> flagIds, TileCoordinates coordinates, short ownerFreq)
         {
             if (arena == null)
                 return;
@@ -236,11 +236,11 @@ namespace SS.Core.Modules.FlagGame
             if (settings == null)
                 return;
 
-            List<MapCoordinate> available = _mapCoordinateListPool.Get();
+            List<TileCoordinates> available = _tileCoordinatesListPool.Get();
 
             try
             {
-                GetAvailableFlagDropCoordinates(arena, flagIds.Length, settings.DropRadius, coordinate, available);
+                GetAvailableFlagDropCoordinates(arena, flagIds.Length, settings.DropRadius, coordinates, available);
 
                 // Randomize the available coordinates (Fisher–Yates shuffle)
                 for (int i = available.Count - 1; i > 0; i--)
@@ -263,11 +263,11 @@ namespace SS.Core.Modules.FlagGame
 
                     if (i < dropCount)
                     {
-                        MapCoordinate dropCoordinate = available[i];
+                        TileCoordinates dropCoordinates = available[i];
 
-                        _carryFlagGame.TrySetFlagOnMap(arena, flagId, dropCoordinate, ownerFreq);
+                        _carryFlagGame.TrySetFlagOnMap(arena, flagId, dropCoordinates, ownerFreq);
 
-                        _logManager.LogA(LogLevel.Info, nameof(CarryFlags), arena, $"Set flag {flagId} location to ({dropCoordinate.X},{dropCoordinate.Y}).");
+                        _logManager.LogA(LogLevel.Info, nameof(CarryFlags), arena, $"Set flag {flagId} location to ({dropCoordinates.X},{dropCoordinates.Y}).");
                     }
                     else
                     {
@@ -275,30 +275,30 @@ namespace SS.Core.Modules.FlagGame
                         _logManager.LogA(LogLevel.Warn, nameof(CarryFlags), arena, $"Unable to find a location to drop flag {flagId}.");
 
                         // Spawn it in the center instead.
-                        SpawnFlag(arena, flagId, settings.SpawnCoordinate, settings.SpawnRadius, ownerFreq);
+                        SpawnFlag(arena, flagId, settings.SpawnCoordinates, settings.SpawnRadius, ownerFreq);
                     }
                 }
             }
             finally
             {
-                _mapCoordinateListPool.Return(available);
+                _tileCoordinatesListPool.Return(available);
             }
         }
 
-        private void GetAvailableFlagDropCoordinates(Arena arena, int needed, int desiredWalkDistance, MapCoordinate startCoordinate, List<MapCoordinate> available)
+        private void GetAvailableFlagDropCoordinates(Arena arena, int needed, int desiredWalkDistance, TileCoordinates startCoordinates, List<TileCoordinates> available)
         {
-            HashSet<MapCoordinate> all = _mapCoordinateHashSetPool.Get();
-            HashSet<MapCoordinate> check = _mapCoordinateHashSetPool.Get();
-            HashSet<MapCoordinate> next = _mapCoordinateHashSetPool.Get();
+            HashSet<TileCoordinates> all = _tileCoordinatesHashSetPool.Get();
+            HashSet<TileCoordinates> check = _tileCoordinatesHashSetPool.Get();
+            HashSet<TileCoordinates> next = _tileCoordinatesHashSetPool.Get();
 
             try
             {
-                all.Add(startCoordinate);
+                all.Add(startCoordinates);
 
-                if (IsAvailableToPlaceFlag(arena, startCoordinate))
-                    available.Add(startCoordinate);
+                if (IsAvailableToPlaceFlag(arena, startCoordinates))
+                    available.Add(startCoordinates);
 
-                next.Add(startCoordinate);
+                next.Add(startCoordinates);
 
                 while (needed > available.Count || desiredWalkDistance-- > 0)
                 {
@@ -310,7 +310,7 @@ namespace SS.Core.Modules.FlagGame
                     if (next.Count == 0)
                         break; // there was no where left to walk
 
-                    foreach (MapCoordinate candidate in next)
+                    foreach (TileCoordinates candidate in next)
                     {
                         if (IsAvailableToPlaceFlag(arena, candidate))
                         {
@@ -321,26 +321,21 @@ namespace SS.Core.Modules.FlagGame
             }
             finally
             {
-                _mapCoordinateHashSetPool.Return(all);
-                _mapCoordinateHashSetPool.Return(check);
-                _mapCoordinateHashSetPool.Return(next);
+                _tileCoordinatesHashSetPool.Return(all);
+                _tileCoordinatesHashSetPool.Return(check);
+                _tileCoordinatesHashSetPool.Return(next);
             }
         }
 
         private void WalkToNextAvailableCoordinate(
             Arena arena,
-            HashSet<MapCoordinate> all,
-            HashSet<MapCoordinate> check,
-            HashSet<MapCoordinate> next)
+            HashSet<TileCoordinates> all,
+            HashSet<TileCoordinates> check,
+            HashSet<TileCoordinates> next)
         {
-            if (all == null)
-                throw new ArgumentNullException(nameof(all));
-
-            if (check == null)
-                throw new ArgumentNullException(nameof(check));
-
-            if (next == null)
-                throw new ArgumentNullException(nameof(next));
+            ArgumentNullException.ThrowIfNull(all);
+            ArgumentNullException.ThrowIfNull(check);
+            ArgumentNullException.ThrowIfNull(next);
 
             if (check.Count == 0)
                 throw new ArgumentException("At least one coordinate is required", nameof(check));
@@ -348,22 +343,22 @@ namespace SS.Core.Modules.FlagGame
             if (next.Count != 0)
                 next.Clear();
 
-            foreach (MapCoordinate coordinate in check)
+            foreach (TileCoordinates coordinates in check)
             {
-                if (coordinate.X > 0)
-                    CheckCoordinate(new MapCoordinate((short)(coordinate.X - 1), coordinate.Y));
+                if (coordinates.X > 0)
+                    CheckCoordinate(new TileCoordinates((short)(coordinates.X - 1), coordinates.Y));
 
-                if (coordinate.Y > 0)
-                    CheckCoordinate(new MapCoordinate(coordinate.X, (short)(coordinate.Y - 1)));
+                if (coordinates.Y > 0)
+                    CheckCoordinate(new TileCoordinates(coordinates.X, (short)(coordinates.Y - 1)));
 
-                if (coordinate.X < 1023)
-                    CheckCoordinate(new MapCoordinate((short)(coordinate.X + 1), coordinate.Y));
+                if (coordinates.X < 1023)
+                    CheckCoordinate(new TileCoordinates((short)(coordinates.X + 1), coordinates.Y));
 
-                if (coordinate.Y < 1023)
-                    CheckCoordinate(new MapCoordinate(coordinate.X, (short)(coordinate.Y + 1)));
+                if (coordinates.Y < 1023)
+                    CheckCoordinate(new TileCoordinates(coordinates.X, (short)(coordinates.Y + 1)));
             }
 
-            void CheckCoordinate(MapCoordinate toCheck)
+            void CheckCoordinate(TileCoordinates toCheck)
             {
                 if (!all.Add(toCheck))
                     return;
@@ -374,24 +369,24 @@ namespace SS.Core.Modules.FlagGame
             }
         }
 
-        private bool IsSingleWide(Arena arena, MapCoordinate coordinate)
+        private bool IsSingleWide(Arena arena, TileCoordinates coordinates)
         {
-            bool top = coordinate.Y == 0 || !IsFlyThrough(arena, coordinate with { Y = (short)(coordinate.Y - 1) });
-            bool bottom = coordinate.Y == 1023 || !IsFlyThrough(arena, coordinate with { Y = (short)(coordinate.Y + 1) });
+            bool top = coordinates.Y == 0 || !IsFlyThrough(arena, coordinates with { Y = (short)(coordinates.Y - 1) });
+            bool bottom = coordinates.Y == 1023 || !IsFlyThrough(arena, coordinates with { Y = (short)(coordinates.Y + 1) });
             if (top && bottom)
                 return true;
 
-            bool left = coordinate.X == 0 || !IsFlyThrough(arena, coordinate with { X = (short)(coordinate.X - 1) });
-            bool right = coordinate.X == 1023 || !IsFlyThrough(arena, coordinate with { X = (short)(coordinate.X + 1) });
+            bool left = coordinates.X == 0 || !IsFlyThrough(arena, coordinates with { X = (short)(coordinates.X - 1) });
+            bool right = coordinates.X == 1023 || !IsFlyThrough(arena, coordinates with { X = (short)(coordinates.X + 1) });
             if (left && right)
                 return true;
 
             return false;
         }
 
-        private bool IsFlyThrough(Arena arena, MapCoordinate coordinate)
+        private bool IsFlyThrough(Arena arena, TileCoordinates coordinates)
         {
-            MapTile tile = _mapData.GetTile(arena, coordinate);
+            MapTile tile = _mapData.GetTile(arena, coordinates);
             return tile == MapTile.None || IsFlyThrough(tile);
         }
 
@@ -400,10 +395,10 @@ namespace SS.Core.Modules.FlagGame
             return mapTile.IsDoor || mapTile.IsSafe || mapTile.IsGoal || mapTile.IsFlyOver || mapTile.IsFlyUnder || mapTile.IsBrick || mapTile.IsFlag;
         }
 
-        private bool IsAvailableToPlaceFlag(Arena arena, MapCoordinate coordinate)
+        private bool IsAvailableToPlaceFlag(Arena arena, TileCoordinates coordinates)
         {
             // is an empty tile
-            MapTile tile = _mapData.GetTile(arena, coordinate);
+            MapTile tile = _mapData.GetTile(arena, coordinates);
             if (tile != MapTile.None)
                 return false;
 
@@ -413,12 +408,12 @@ namespace SS.Core.Modules.FlagGame
                 if (!_carryFlagGame.TryGetFlagInfo(arena, flagId, out IFlagInfo? flagInfo))
                     continue;
 
-                if (flagInfo.Location == coordinate)
+                if (flagInfo.Location == coordinates)
                     return false;
             }
 
             // not in a "no flag drop" region
-            foreach (MapRegion region in _mapData.RegionsAt(arena, coordinate))
+            foreach (MapRegion region in _mapData.RegionsAt(arena, coordinates))
                 if (region.NoFlagDrops)
                     return false;
 
@@ -433,23 +428,23 @@ namespace SS.Core.Modules.FlagGame
 
             foreach (short flagId in flagIds)
             {
-                SpawnFlag(arena, flagId, settings.SpawnCoordinate, settings.SpawnRadius, ownerFreq);
+                SpawnFlag(arena, flagId, settings.SpawnCoordinates, settings.SpawnRadius, ownerFreq);
             }
         }
 
-        protected void SpawnFlag(Arena arena, short flagId, MapCoordinate coordinate, int radius, short ownerFreq)
+        protected void SpawnFlag(Arena arena, short flagId, TileCoordinates coordinates, int radius, short ownerFreq)
         {
-            MapCoordinate? location = null;
+            TileCoordinates? location = null;
             int tries = 0;
 
             while (location == null && tries < 30)
             {
                 // Pick a random point.
-                (short x, short y) = CircularRandom(coordinate, radius + tries);
+                (short x, short y) = CircularRandom(coordinates, radius + tries);
 
                 if (_mapData.TryFindEmptyTileNear(arena, ref x, ref y)) // Move off any tiles.
                 {
-                    location = new MapCoordinate(x, y);
+                    location = new TileCoordinates(x, y);
                     if (!IsAvailableToPlaceFlag(arena, location.Value)) // Check if a flag can be dropped there.
                         location = null;
                 }
@@ -463,19 +458,19 @@ namespace SS.Core.Modules.FlagGame
             }
             else
             {
-                _logManager.LogA(LogLevel.Warn, nameof(CarryFlags), arena, $"Unable to find a location to spawn flag {flagId} at ({coordinate.X},{coordinate.Y}) with radius {radius}.");
+                _logManager.LogA(LogLevel.Warn, nameof(CarryFlags), arena, $"Unable to find a location to spawn flag {flagId} at {coordinates} with radius {radius}.");
             }
         }
 
-        private MapCoordinate CircularRandom(MapCoordinate coordinate, int radius)
+        private TileCoordinates CircularRandom(TileCoordinates coordinates, int radius)
         {
             double r = Math.Sqrt(_prng.Uniform()) * radius;
 
-            double cx = coordinate.X + .5;
-            double cy = coordinate.Y + .5;
+            double cx = coordinates.X + .5;
+            double cy = coordinates.Y + .5;
             double theta = _prng.Uniform() * 2 * Math.PI;
 
-            return new MapCoordinate(
+            return new TileCoordinates(
                 Wrap((short)(cx + r * Math.Cos(theta))),
                 Wrap((short)(cy + r * Math.Sin(theta))));
         }
