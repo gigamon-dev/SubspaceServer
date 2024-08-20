@@ -90,9 +90,8 @@ namespace SS.Core.Map
 
         public int CompareTo(TileCoordinates other)
         {
-            // this is a guess of how tiles are ordered 
-            // i plan to hopefully use this for figuring out indexes of turf flags
-            // e.g. dump the coords of flags into a sorted list, resulting in the index when all flags are loaded
+            // NOTICE: This logic is used to determine the Ids of static, turf-style flags.
+
             int retVal = Y.CompareTo(other.Y);
             if (retVal != 0)
                 return retVal;
