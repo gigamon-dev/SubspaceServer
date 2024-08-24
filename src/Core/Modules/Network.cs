@@ -222,6 +222,7 @@ namespace SS.Core.Modules
         //private readonly ConcurrentBag<Memory<byte>> _sendBufferPool = 
 
         // Cached delegates
+        private readonly Action<BigPacketWork> _mainloopWork_CallBigPacketHandlers;
         private readonly Action<SubspaceBuffer> _mainloopWork_CallPacketHandlers;
         private readonly ReliableConnectionCallbackInvoker.ReliableConnectionCallback _sizedSendChunkCompleted;
         private readonly Func<bool> _isCancellationRequested;
@@ -259,6 +260,7 @@ namespace SS.Core.Modules
             _clientConnectionPool = new DefaultObjectPool<ClientConnection>(new ClientConnectionPooledObjectPolicy(_config.ClientConnectionReliableReceiveWindowSize), Constants.TargetClientConnectionCount);
 
             // Allocate callback delegates once rather than each time they're used.
+            _mainloopWork_CallBigPacketHandlers = MainloopWork_CallBigPacketHandlers;
             _mainloopWork_CallPacketHandlers = MainloopWork_CallPacketHandlers;
             _sizedSendChunkCompleted = SizedSendChunkCompleted;
             _isCancellationRequested = IsCancellationRequested;
@@ -1585,10 +1587,11 @@ namespace SS.Core.Modules
 
                 // Getting here means it was a 0x00 0x09 (end of "Big" data packet stream).
                 conn.BigReceive = null;
-                dispose = true;
 
                 if (bigReceive.IsOverflow)
                 {
+                    dispose = true;
+
                     if (conn is PlayerConnection playerConnection)
                         _logManager.LogP(LogLevel.Malicious, nameof(Network), playerConnection.Player!, $"Ignored {bigReceive.Length} bytes of big data (> {Constants.MaxBigPacket}).");
                     else if (conn is ClientConnection)
@@ -1596,14 +1599,41 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    // We have all of the data, process it.
-                    ProcessBuffer(conn, bigReceive.Buffer[..bigReceive.Length], flags);
+                    // We have all of the data. Process it on the mainloop thread
+                    // Ownership of the BigReceive object is transferred to the workitem. The workitem is responsible for disposing it.
+                    Interlocked.Increment(ref conn.ProcessingHolds);
+                    if (!_mainloop.QueueMainWorkItem(_mainloopWork_CallBigPacketHandlers, new BigPacketWork(conn, bigReceive)))
+                    {
+                        Interlocked.Decrement(ref conn.ProcessingHolds);
+                        dispose = true;
+                    }
                 }
             }
 
             if (dispose)
             {
                 bigReceive.Dispose();
+            }
+        }
+
+        private void MainloopWork_CallBigPacketHandlers(BigPacketWork work)
+        {
+            try
+            {
+                if (work.ConnData is null || work.BigReceive is null || work.BigReceive.Buffer.IsEmpty || work.BigReceive.Length < 1)
+                    return;
+
+                CallPacketHandlers(work.ConnData, work.BigReceive.Buffer[..work.BigReceive.Length], work.BigReceive.Flags);
+            }
+            finally
+            {
+                // Return the BigReceive object to its pool.
+                work.BigReceive?.Dispose();
+
+                if (work.ConnData is not null)
+                {
+                    Interlocked.Decrement(ref work.ConnData.ProcessingHolds);
+                }
             }
         }
 
@@ -3780,96 +3810,96 @@ namespace SS.Core.Modules
             if (buffer is null)
                 return;
 
-            try
+            using (buffer)
             {
-                if (buffer.NumBytes < 1)
-                    return;
-
                 ConnData? conn = buffer.Conn;
                 if (conn is null)
                     return;
 
-                Span<byte> data = buffer.Bytes.AsSpan(0, buffer.NumBytes);
-                byte packetType = data[0];
-
                 try
                 {
-                    if (conn is PlayerConnection playerConnection)
-                    {
-                        Player? player = playerConnection.Player;
-                        if (player is null)
-                            return;
+                    if (buffer.NumBytes < 1)
+                        return;
 
-                        // Check if the player is on the way out.
-                        _playerData.Lock();
-                        try
-                        {
-                            if (player.Status >= PlayerState.LeavingZone)
-                                return;
-                        }
-                        finally
-                        {
-                            _playerData.Unlock();
-                        }
-
-                        // Call the handler.
-                        PacketHandler? handler = null;
-
-                        if (packetType < _handlers.Length)
-                            handler = _handlers[packetType];
-
-                        if (handler is null)
-                        {
-                            _logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"No handler for packet type 0x{packetType:X2}.");
-                            return;
-                        }
-
-                        try
-                        {
-                            handler(player, data, buffer.ReceiveFlags);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logManager.LogP(LogLevel.Error, nameof(Network), player, $"Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
-                        }
-                    }
-                    else if (conn is ClientConnection clientConnection)
-                    {
-                        // Check if the client connection is on the way out.
-                        _clientConnectionsLock.EnterReadLock();
-                        try
-                        {
-                            if (clientConnection.Status >= ClientConnectionStatus.Disconnecting)
-                                return;
-                        }
-                        finally
-                        {
-                            _clientConnectionsLock.ExitReadLock();
-                        }
-
-                        // Call the handler.
-                        try
-                        {
-                            clientConnection.Handler.HandlePacket(data, buffer.ReceiveFlags);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logManager.LogM(LogLevel.Error, nameof(Network), $"(client connection) Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
-                        }
-                    }
-                    else
-                    {
-                        _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Unknown connection type, but got packet type [0x{packetType:X2}] of length {data.Length}.");
-                    }
+                    CallPacketHandlers(conn, buffer.Bytes.AsSpan(0, buffer.NumBytes), buffer.ReceiveFlags);
                 }
                 finally
                 {
                     Interlocked.Decrement(ref conn.ProcessingHolds);
                 }
             }
-            finally
+        }
+
+        private void CallPacketHandlers(ConnData conn, Span<byte> data, NetReceiveFlags flags)
+        {
+            byte packetType = data[0];
+
+            if (conn is PlayerConnection playerConnection)
             {
-                buffer.Dispose();
+                Player? player = playerConnection.Player;
+                if (player is null)
+                    return;
+
+                // Check if the player is on the way out.
+                _playerData.Lock();
+                try
+                {
+                    if (player.Status >= PlayerState.LeavingZone)
+                        return;
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                // Call the handler.
+                PacketHandler? handler = null;
+
+                if (packetType < _handlers.Length)
+                    handler = _handlers[packetType];
+
+                if (handler is null)
+                {
+                    _logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"No handler for packet type 0x{packetType:X2}.");
+                    return;
+                }
+
+                try
+                {
+                    handler(player, data, flags);
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogP(LogLevel.Error, nameof(Network), player, $"Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
+                }
+            }
+            else if (conn is ClientConnection clientConnection)
+            {
+                // Check if the client connection is on the way out.
+                _clientConnectionsLock.EnterReadLock();
+                try
+                {
+                    if (clientConnection.Status >= ClientConnectionStatus.Disconnecting)
+                        return;
+                }
+                finally
+                {
+                    _clientConnectionsLock.ExitReadLock();
+                }
+
+                // Call the handler.
+                try
+                {
+                    clientConnection.Handler.HandlePacket(data, flags);
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Network), $"(client connection) Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
+                }
+            }
+            else
+            {
+                _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Unknown connection type, but got packet type [0x{packetType:X2}] of length {data.Length}.");
             }
         }
 
@@ -6242,6 +6272,15 @@ namespace SS.Core.Modules
             public required readonly IReliableCallbackInvoker CallbackInvoker { get; init; }
             public required readonly ConnData ConnData { get; init; }
             public required readonly bool Success { get; init; }
+        }
+
+        /// <summary>
+        /// State for executing processing of big data (sent using the the 0x00 0x08 and 0x00 0x09 mechanism) on the mainloop thread.
+        /// </summary>
+        private readonly struct BigPacketWork(ConnData connData, BigReceive bigReceive)
+        {
+            public readonly ConnData ConnData = connData;
+            public readonly BigReceive BigReceive = bigReceive;
         }
 
         /// <summary>
