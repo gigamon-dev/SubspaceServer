@@ -25,16 +25,16 @@ namespace SS.Core
     /// 
     /// Dependencies are actually on the interfaces.  That is, a module doesn't directly depend on other specific modules.
     /// Many times, a module will have a single interface that represents the module.  But, that is not always so.  A
-    /// module can register itself, or an object that it manages, as being the implementor of an interface.
+    /// module can register itself, or an object that it manages, as being the implementer of an interface.
     /// A module can be loaded as long as the interfaces it requires to load have been registered.
     /// 
-    /// Callbacks are publisher / subscriber AKA Pub/Sub.  There can be any # of publishers and any # of subcribers to a single Callback.
+    /// Callbacks are publisher / subscriber AKA Pub/Sub.  There can be any # of publishers and any # of subscribers to a single Callback.
     /// A subscriber can subscribe even if there are no publishers yet.
     /// Each Callback is identified by a unique name.
     /// Therefore, Callbacks are not dependencies that affect whether a module can be loaded.
     /// 
     /// Interfaces and callbacks are usually registered when a module loads and unregistered when unloaded.
-    /// However, it is not limited to doing that.  For example, at any time, a module can check if there's an implementor of an interface,
+    /// However, it is not limited to doing that.  For example, at any time, a module can check if there's an implementer of an interface,
     /// and if so, get it, and use it.
     /// 
     /// An <see cref="Arena"/> is similar to a <see cref="ModuleManager"/> in that it also is a broker for Interfaces and Callbacks.
@@ -62,7 +62,7 @@ namespace SS.Core
         /// <para>
         /// When writing to module data, the <see cref="_moduleLock"/> still needs to be held, to prevent concurrent reading.
         /// However, as long as the semaphore is held, it's guaranteed that there are no other writers.
-        /// This means that as long as the semaphore is held, even if the <see cref="_moduleLock"/> is released, and then reaquired, 
+        /// This means that as long as the semaphore is held, even if the <see cref="_moduleLock"/> is released, and then required, 
         /// the data is guaranteed to not have been modified.
         /// </para>
         /// <para>
@@ -447,44 +447,44 @@ namespace SS.Core
                 }
             }
 
-            return await LoadModule(type, null).ConfigureAwait(false);
+            return await LoadModuleAsync(type, null).ConfigureAwait(false);
         }
 
         public async Task<bool> LoadModuleAsync<TModule>() where TModule : class
         {
             Type type = typeof(TModule);
-            return await LoadModule(type, null).ConfigureAwait(false);
+            return await LoadModuleAsync(type, null).ConfigureAwait(false);
         }
 
         public async Task<bool> LoadModuleAsync(Type moduleType)
         {
             ArgumentNullException.ThrowIfNull(moduleType);
 
-            return await LoadModule(moduleType, null).ConfigureAwait(false);
+            return await LoadModuleAsync(moduleType, null).ConfigureAwait(false);
         }
 
         public async Task<bool> LoadModuleAsync(IModule module)
         {
             ArgumentNullException.ThrowIfNull(module);
 
-            return await LoadModule(module.GetType(), module).ConfigureAwait(false);
+            return await LoadModuleAsync(module.GetType(), module).ConfigureAwait(false);
         }
 
         public async Task<bool> LoadModuleAsync(IAsyncModule module)
         {
             ArgumentNullException.ThrowIfNull(module);
 
-            return await LoadModule(module.GetType(), module).ConfigureAwait(false);
+            return await LoadModuleAsync(module.GetType(), module).ConfigureAwait(false);
         }
 
         public async Task<bool> LoadModuleAsync<TModule>(TModule module) where TModule : class
         {
             ArgumentNullException.ThrowIfNull(module);
 
-            return await LoadModule(typeof(TModule), module).ConfigureAwait(false);
+            return await LoadModuleAsync(typeof(TModule), module).ConfigureAwait(false);
         }
 
-        private async Task<bool> LoadModule(Type moduleType, object? instance)
+        private async Task<bool> LoadModuleAsync(Type moduleType, object? instance)
         {
             ArgumentNullException.ThrowIfNull(moduleType);
 
@@ -601,7 +601,7 @@ namespace SS.Core
                 {
                     // The startup sequence post load stage has already run.
                     // After that, any module that gets loaded should also immediately get post loaded too.
-                    await PostLoad(moduleData).ConfigureAwait(false);
+                    await PostLoadAsync(moduleData).ConfigureAwait(false);
                 }
 
                 return true;
@@ -781,7 +781,7 @@ namespace SS.Core
 
             try
             {
-                return await ProcessUnloadModule(type).ConfigureAwait(false);
+                return await ProcessUnloadModuleAsync(type).ConfigureAwait(false);
             }
             finally
             {
@@ -797,7 +797,7 @@ namespace SS.Core
         /// </remarks>
         /// <param name="type"></param>
         /// <returns></returns>
-        private async Task<bool> ProcessUnloadModule(Type type)
+        private async Task<bool> ProcessUnloadModuleAsync(Type type)
         {
             LinkedListNode<Type>? node;
             ModuleData? moduleData;
@@ -856,7 +856,7 @@ namespace SS.Core
             }
 
             // PreUnload
-            if (moduleData.IsPostLoaded && !await PreUnload(moduleData).ConfigureAwait(false))
+            if (moduleData.IsPostLoaded && !await PreUnloadAsync(moduleData).ConfigureAwait(false))
             {
                 WriteLogM(LogLevel.Error, $"Can't unload module [{moduleData.ModuleType.FullName}] because it failed to pre-unload.");
                 return false;
@@ -982,7 +982,7 @@ namespace SS.Core
                     if (type is null)
                         return;
 
-                    await ProcessUnloadModule(type).ConfigureAwait(false);
+                    await ProcessUnloadModuleAsync(type).ConfigureAwait(false);
                 }
             }
             finally
@@ -1063,7 +1063,7 @@ namespace SS.Core
         /// <summary>
         /// Goes through all loaded modules and has them perform the <see cref="IModuleLoaderAware.PostLoad(ComponentBroker)"/> stage of loading.
         /// </summary>
-        public async Task DoPostLoadStage()
+        public async Task DoPostLoadStageAsync()
         {
             await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
@@ -1098,7 +1098,7 @@ namespace SS.Core
                     if (moduleData is null)
                         break;
 
-                    await PostLoad(moduleData).ConfigureAwait(false);
+                    await PostLoadAsync(moduleData).ConfigureAwait(false);
                 }
             }
             finally
@@ -1107,7 +1107,7 @@ namespace SS.Core
             }
         }
 
-        private async Task<bool> PostLoad(ModuleData moduleData)
+        private async Task<bool> PostLoadAsync(ModuleData moduleData)
         {
             if (moduleData is null)
                 return false;
@@ -1116,9 +1116,9 @@ namespace SS.Core
             {
                 try
                 {
-                    if (moduleData.Module is IAsyncModuleLoaderAware asyncloaderAwareModule)
+                    if (moduleData.Module is IAsyncModuleLoaderAware asyncLoaderAwareModule)
                     {
-                        await asyncloaderAwareModule.PostLoadAsync(this, CancellationToken.None).ConfigureAwait(false);
+                        await asyncLoaderAwareModule.PostLoadAsync(this, CancellationToken.None).ConfigureAwait(false);
                         moduleData.IsPostLoaded = true;
                         return true;
                     }
@@ -1141,7 +1141,7 @@ namespace SS.Core
         /// <summary>
         /// Goes through all loaded modules and has them perform the <see cref="IModuleLoaderAware.PreUnload(ComponentBroker)"/> stage of loading.
         /// </summary>
-        public async Task DoPreUnloadStage()
+        public async Task DoPreUnloadStageAsync()
         {
             await _moduleSemaphore.WaitAsync().ConfigureAwait(false);
 
@@ -1177,7 +1177,7 @@ namespace SS.Core
                     if (moduleData is null)
                         break;
 
-                    await PreUnload(moduleData).ConfigureAwait(false);
+                    await PreUnloadAsync(moduleData).ConfigureAwait(false);
                 }
             }
             finally
@@ -1186,7 +1186,7 @@ namespace SS.Core
             }
         }
 
-        private async Task<bool> PreUnload(ModuleData moduleData)
+        private async Task<bool> PreUnloadAsync(ModuleData moduleData)
         {
             if (moduleData is null)
                 return false;

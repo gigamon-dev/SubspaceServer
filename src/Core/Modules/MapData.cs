@@ -84,7 +84,7 @@ namespace SS.Core.Modules
         #region IMapData Members
 
         [ConfigHelp("General", "Map", ConfigScope.Arena, Description = "The name of the level file for the arena.")]
-        string? IMapData.GetMapFilename(Arena arena, string? mapName)
+        Task<string?> IMapData.GetMapFilenameAsync(Arena arena, string? mapName)
         {
             ArgumentNullException.ThrowIfNull(arena);
 
@@ -92,7 +92,7 @@ namespace SS.Core.Modules
             {
                 string? filename = _configManager.GetStr(arena.Cfg!, "General", "Map");
                 if (string.IsNullOrWhiteSpace(filename))
-                    return null;
+                    return Task.FromResult((string?)null);
 
                 mapName = filename;
             }
@@ -100,7 +100,7 @@ namespace SS.Core.Modules
             bool isLvl = !string.IsNullOrWhiteSpace(mapName)
                 && string.Equals(Path.GetExtension(mapName), ".lvl", StringComparison.OrdinalIgnoreCase);
 
-            return PathUtil.FindFileOnPath(
+            return PathUtil.FindFileOnPathAsync(
                 isLvl ? Constants.LvlSearchPaths : Constants.LvzSearchPaths,
                 mapName,
                 arena.BaseName);
@@ -108,7 +108,7 @@ namespace SS.Core.Modules
 
         [ConfigHelp("General", "LevelFiles", ConfigScope.Arena,
             Description = "The list of lvz files for the arena. LevelFiles1 through LevelFiles15 are also supported.")]
-        IEnumerable<LvzFileInfo> IMapData.LvzFilenames(Arena arena)
+        async IAsyncEnumerable<LvzFileInfo> IMapData.LvzFilenamesAsync(Arena arena)
         {
             ArgumentNullException.ThrowIfNull(arena);
 
@@ -138,7 +138,7 @@ namespace SS.Core.Modules
                 foreach (string lvzName in lvzNameArray)
                 {
                     string real = lvzName[0] == '+' ? lvzName[1..] : lvzName;
-                    string? fname = ((IMapData)this).GetMapFilename(arena, real);
+                    string? fname = await ((IMapData)this).GetMapFilenameAsync(arena, real).ConfigureAwait(false);
                     if (string.IsNullOrWhiteSpace(fname))
                         continue;
 
@@ -293,7 +293,7 @@ namespace SS.Core.Modules
                 {
                     for (short x = (short)(saveKey % 31); x < 1024; x += 31)
                     {
-                        ad.Lvl.TryGetTile(new TileCoordinates(x, y), out MapTile tile); // if no tile, it will be zero'd out which is what we want
+                        ad.Lvl.TryGetTile(new TileCoordinates(x, y), out MapTile tile); // if no tile, it will be zeroed out which is what we want
                         if ((tile >= MapTile.TileStart && tile <= MapTile.TileEnd) || tile.IsSafe)
                             key += (uint)(saveKey ^ (byte)tile);
                     }
@@ -727,7 +727,7 @@ namespace SS.Core.Modules
         {
             ArgumentNullException.ThrowIfNull(arena);
 
-            string? path = ((IMapData)this).GetMapFilename(arena, null);
+            string? path = await ((IMapData)this).GetMapFilenameAsync(arena, null).ConfigureAwait(false);
 
             ExtendedLvl? lvl = null;
 
@@ -736,7 +736,7 @@ namespace SS.Core.Modules
                 try
                 {
                     // Open the file on a worker thread.
-                    using FileStream fileStream = await Task.Factory.StartNew(
+                    await using FileStream fileStream = await Task.Factory.StartNew(
                         static (obj) => new FileStream((string)obj!, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true),
                         path).ConfigureAwait(false);
 

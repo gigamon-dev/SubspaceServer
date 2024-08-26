@@ -1,10 +1,12 @@
 ﻿using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Hashing;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -15,13 +17,18 @@ namespace SS.Core.Modules
     /// Rather than how ASSS uses a config setting to store words, this implementation uses a separate 'obscene.txt' file, similar to subgame.
     /// </remarks>
     [CoreModuleInfo]
-    public sealed class Obscene : IModule, IObscene, IDisposable
+    public sealed class Obscene(
+        IComponentBroker broker,
+        ICommandManager commandManager,
+        ILogManager logManager,
+        IMainloop mainloop,
+        IObjectPoolManager objectPoolManager) : IAsyncModule, IObscene, IDisposable
     {
-        private readonly IComponentBroker _broker;
-        private readonly ICommandManager _commandManager;
-        private readonly ILogManager _logManager;
-        private readonly IMainloop _mainloop;
-        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
         private InterfaceRegistrationToken<IObscene>? _iObsceneRegistrationToken;
 
@@ -31,60 +38,44 @@ namespace SS.Core.Modules
         private ulong _replaceCount = 0;
         private FileSystemWatcher? _fileSystemWatcher;
 
-        private readonly ReaderWriterLockSlim _rwLock = new();
+        private readonly object _loadLock = new();
+        private bool _isLoadRequested = false;
+        private Task? _loadTask = null;
+
+        private readonly object _obsceneLock = new();
         private uint? _checksum = null;
         private List<string>? _obsceneList = null;
 
-        public Obscene(
-            IComponentBroker broker,
-            ICommandManager commandManager,
-            ILogManager logManager,
-            IMainloop mainloop,
-            IObjectPoolManager objectPoolManager)
-        {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-        }
-
         #region Module members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _fileSystemWatcher = new(".", ObsceneFileName);
             _fileSystemWatcher.NotifyFilter = NotifyFilters.LastWrite;
             _fileSystemWatcher.Changed += FileSystemWatcher_Changed;
             _fileSystemWatcher.EnableRaisingEvents = true;
 
-            _mainloop.QueueThreadPoolWorkItem(_ => LoadObscene(), (object?)null);
+            await QueueLoadObscene().ConfigureAwait(false);
 
             _commandManager.AddCommand("obscene", Command_obscene);
             _iObsceneRegistrationToken = broker.RegisterInterface<IObscene>(this);
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iObsceneRegistrationToken) != 0)
-                return false;
+                return Task.FromResult(false);
 
             _commandManager.RemoveCommand("obscene", Command_obscene);
 
-            _rwLock.EnterWriteLock();
-
-            try
+            lock (_obsceneLock)
             {
                 _checksum = null;
                 _obsceneList = null;
             }
-            finally
-            {
-                _rwLock.ExitWriteLock();
-            }
 
-            return true;
+            return Task.FromResult(true);
         }
 
         #endregion
@@ -95,15 +86,9 @@ namespace SS.Core.Modules
         {
             List<string>? obsceneList;
 
-            _rwLock.EnterReadLock();
-
-            try
+            lock (_obsceneLock)
             {
                 obsceneList = _obsceneList;
-            }
-            finally
-            {
-                _rwLock.ExitReadLock();
             }
 
             bool filtered = false;
@@ -122,7 +107,7 @@ namespace SS.Core.Modules
                         for (int charIndex = 0; charIndex < toReplace.Length; charIndex++)
                         {
                             ulong replaceCount = Interlocked.Increment(ref _replaceCount);
-                            toReplace[charIndex] = Replace[(int)replaceCount++ % Replace.Length];
+                            toReplace[charIndex] = Replace[(int)replaceCount % Replace.Length];
                         }
                     }
                 }
@@ -130,6 +115,8 @@ namespace SS.Core.Modules
 
             return filtered;
         }
+
+        ulong IObscene.ReplaceCount => Interlocked.Read(ref _replaceCount);
 
         #endregion
 
@@ -153,42 +140,60 @@ namespace SS.Core.Modules
 
         private void FileSystemWatcher_Changed(object sender, FileSystemEventArgs e)
         {
-            LoadObscene();
+            QueueLoadObscene();
         }
 
-        // NOTE: This is always run on a worker thread.
-        private void LoadObscene()
+        private Task QueueLoadObscene()
         {
-            _rwLock.EnterUpgradeableReadLock();
-
-            try
+            lock (_loadLock)
             {
+                _isLoadRequested = true;
+                return _loadTask ??= Task.Run(LoadObsceneAsync);
+            }
+        }
 
+        private async Task LoadObsceneAsync()
+        {
+            while (true)
+            {
+                lock (_loadLock)
+                {
+                    if (!_isLoadRequested)
+                    {
+                        _loadTask = null;
+                        break;
+                    }
+
+                    _isLoadRequested = false;
+                }
+
+                await ProcessObsceneAsync().ConfigureAwait(false);
+            }
+
+            async Task ProcessObsceneAsync()
+            {
                 uint checksum;
                 List<string> obsceneList;
 
                 try
                 {
-                    if (!File.Exists(ObsceneFileName))
-                        return;
-
                     //
                     // Open the file.
                     //
 
-                    FileStream? fs = null;
+                    FileStream? fileStream = null;
                     int tries = 0;
 
                     do
                     {
                         try
                         {
-                            fs = File.OpenRead(ObsceneFileName);
+                            fileStream = new FileStream(ObsceneFileName, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
                         }
-                        catch (IOException ex)
+                        catch (IOException ex) when (ex is not FileNotFoundException && ex is not DirectoryNotFoundException)
                         {
                             // Note: This retry logic is to workaround the "The process cannot access the file because it is being used by another process." race condition.
-                            if (++tries >= 5)
+                            if (++tries >= 10)
                             {
                                 _logManager.LogM(LogLevel.Error, nameof(Obscene), $"Error opening {ObsceneFileName} ({tries} tries). {ex.Message}");
                                 return;
@@ -196,7 +201,7 @@ namespace SS.Core.Modules
 
                             _logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Error opening {ObsceneFileName} ({tries} tries). {ex.Message}");
 
-                            Thread.Sleep(1000);
+                            await Task.Delay(1000).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
@@ -204,51 +209,67 @@ namespace SS.Core.Modules
                             return;
                         }
                     }
-                    while (fs == null);
-
-                    using StreamReader sr = new(fs, StringUtils.DefaultEncoding);
-
-                    //
-                    // Checksum
-                    //
-
-                    Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
+                    while (fileStream is null);
 
                     try
                     {
-                        crc32.Append(fs);
-                        checksum = crc32.GetCurrentHashAsUInt32();
+                        //
+                        // Checksum
+                        //
+
+                        Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
+
+                        try
+                        {
+                            await crc32.AppendAsync(fileStream).ConfigureAwait(false);
+                            checksum = crc32.GetCurrentHashAsUInt32();
+                        }
+                        finally
+                        {
+                            _objectPoolManager.Crc32Pool.Return(crc32);
+                        }
+
+                        bool isUnchanged;
+
+                        lock (_obsceneLock)
+                        {
+                            isUnchanged = _checksum is not null && _checksum == checksum;
+                        }
+
+                        if (isUnchanged)
+                        {
+                            _logManager.LogM(LogLevel.Drivel, nameof(Obscene), $"Checked {ObsceneFileName}, but there was no change (checksum {checksum:X})");
+                            return; // no change
+                        }
+
+                        fileStream.Position = 0;
+
+                        //
+                        // Allocate the list.
+                        //
+
+                        using StreamReader sr = new(fileStream, StringUtils.DefaultEncoding, true, -1, true);
+                        int lineCount = await GetLineCountAsync(sr).ConfigureAwait(false);
+                        obsceneList = new(lineCount);
+
+                        fileStream.Position = 0;
+
+                        //
+                        // Populate the list.
+                        //
+
+                        string? line;
+                        while ((line = await sr.ReadLineAsync(CancellationToken.None)) != null)
+                        {
+                            if (line.Length > 0 && !line.StartsWith('#'))
+                            {
+                                obsceneList.Add(line);
+                            }
+                        }
                     }
                     finally
                     {
-                        _objectPoolManager.Crc32Pool.Return(crc32);
-                    }
-
-                    if (_checksum != null && _checksum == checksum)
-                        return; // no change
-
-                    fs.Position = 0;
-
-                    //
-                    // Allocate the list.
-                    //
-
-                    int lineCount = GetLineCount(sr);
-                    obsceneList = new(lineCount);
-
-                    fs.Position = 0;
-
-                    //
-                    // Populate the list.
-                    //
-
-                    string? line;
-                    while ((line = sr.ReadLine()) != null)
-                    {
-                        if (line.Length > 0 && !line.StartsWith('#'))
-                        {
-                            obsceneList.Add(line);
-                        }
+                        await fileStream.DisposeAsync().ConfigureAwait(false);
                     }
                 }
                 catch (Exception ex)
@@ -257,53 +278,50 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                _rwLock.EnterWriteLock();
-
-                try
+                lock (_obsceneLock)
                 {
                     _checksum = checksum;
                     _obsceneList = obsceneList;
-                }
-                finally
-                {
-                    _rwLock.ExitWriteLock();
+                    //_obscenities = SearchValues.Create(CollectionsMarshal.AsSpan(obsceneList), StringComparison.OrdinalIgnoreCase); // TODO: .NET 9
                 }
 
                 _logManager.LogM(LogLevel.Info, nameof(Obscene), $"Loaded {ObsceneFileName} (words:{obsceneList.Count}, checksum:{_checksum:X}).");
             }
-            finally
-            {
-                _rwLock.ExitUpgradeableReadLock();
-            }
         }
 
-        private int GetLineCount(StreamReader reader)
+        private static async Task<int> GetLineCountAsync(StreamReader reader)
         {
-            if (reader == null)
-                throw new ArgumentNullException(nameof(reader));
+            ArgumentNullException.ThrowIfNull(reader);
 
-            int count = 0;
-            Span<char> buffer = stackalloc char[512];
-
-            int charsRead;
-            while ((charsRead = reader.Read(buffer)) > 0)
+            char[] buffer = ArrayPool<char>.Shared.Rent(512);
+            try
             {
-                for (int i = 0; i < charsRead; i++)
+                int count = 0;
+                int charsRead;
+                while ((charsRead = await reader.ReadAsync(buffer).ConfigureAwait(false)) > 0)
                 {
-                    if (buffer[i] == '\n')
+                    for (int i = 0; i < charsRead; i++)
                     {
-                        count++;
+                        if (buffer[i] == '\n')
+                        {
+                            count++;
+                        }
                     }
                 }
-            }
 
-            return count + 1;
+                return count + 1;
+            }
+            finally
+            {
+                ArrayPool<char>.Shared.Return(buffer);
+            }
         }
 
         public void Dispose()
         {
             if (_fileSystemWatcher != null)
             {
+                _fileSystemWatcher.EnableRaisingEvents = false;
                 _fileSystemWatcher.Changed -= FileSystemWatcher_Changed;
                 _fileSystemWatcher.Dispose();
                 _fileSystemWatcher = null;

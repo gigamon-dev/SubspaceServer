@@ -13,6 +13,6 @@ namespace SS.Core.Configuration
     /// </remarks>
     public interface IConfFileProvider
     {
-        Task<ConfFile?> GetFile(string? name);
+        Task<ConfFile?> GetFileAsync(string? name);
     }
 }

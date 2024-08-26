@@ -6,12 +6,16 @@ using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Hashing;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -26,13 +30,13 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class Core : IModule, IModuleLoaderAware, IAuth
+    public class Core : IAsyncModule, IModuleLoaderAware, IAuth
     {
         // required dependencies
         private readonly IComponentBroker _broker;
         private readonly IArenaManager _arenaManager;
         private readonly IArenaManagerInternal _arenaManagerInternal;
-        private readonly ICapabilityManager _capabiltyManager;
+        private readonly ICapabilityManager _capabilityManager;
         private readonly IConfigManager _configManager;
         private readonly ILogManager _logManager;
         private readonly IMainloop _mainloop;
@@ -84,13 +88,13 @@ namespace SS.Core.Modules
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _arenaManagerInternal = arenaManagerInternal ?? throw new ArgumentNullException(nameof(arenaManagerInternal));
-            _capabiltyManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _mapNewsDownload = mapNewsDownload ?? throw new ArgumentNullException(nameof(mapNewsDownload));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentException(nameof(objectPoolManager));
+            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _authDone = AuthDone;
@@ -99,7 +103,7 @@ namespace SS.Core.Modules
 
         #region Module Members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _network = broker.GetInterface<INetwork>();
             _chatNetwork = broker.GetInterface<IChatNetwork>();
@@ -110,8 +114,8 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            _continuumChecksum = GetChecksum(ContinuumExeFile);
-            _codeChecksum = GetUInt32(ContinuumChecksumFile, 4);
+            _continuumChecksum = await GetChecksumAsync(ContinuumExeFile).ConfigureAwait(false);
+            _codeChecksum = await GetUInt32Async(ContinuumChecksumFile, 4).ConfigureAwait(false);
 
             _pdkey = _playerData.AllocatePlayerData<PlayerData>();
 
@@ -156,10 +160,10 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iAuthToken) != 0)
-                return false;
+                return Task.FromResult(false);
 
             _mainloopTimer.ClearTimer(MainloopTimer_SendKeepAlive, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ProcessPlayerStates, null);
@@ -183,7 +187,7 @@ namespace SS.Core.Modules
                 broker.ReleaseInterface(ref _chatNetwork);
             }
 
-            return true;
+            return Task.FromResult(true);
         }
 
         #endregion
@@ -1025,7 +1029,7 @@ namespace SS.Core.Modules
                         lr.CodeChecksum = 0x281CC948;
                     }
 
-                    if (_capabiltyManager != null && _capabiltyManager.HasCapability(player, Constants.Capabilities.SeePrivFreq))
+                    if (_capabilityManager != null && _capabilityManager.HasCapability(player, Constants.Capabilities.SeePrivFreq))
                     {
                         // to make the client think it's a mod
                         lr.ExeChecksum = uint.MaxValue;
@@ -1164,19 +1168,22 @@ namespace SS.Core.Modules
             _ => "???",
         };
 
-        private uint GetChecksum(string path)
+        private async Task<uint> GetChecksumAsync(string path)
         {
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(path));
 
             try
             {
-                using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
+                await using FileStream fs = await Task.Factory.StartNew(
+                    static (obj) => new FileStream((string)obj!, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true),
+                    path).ConfigureAwait(false);
+
                 Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
 
                 try
                 {
-                    crc32.Append(fs);
+                    await crc32.AppendAsync(fs).ConfigureAwait(false);
                     return crc32.GetCurrentHashAsUInt32();
                 }
                 finally
@@ -1191,17 +1198,29 @@ namespace SS.Core.Modules
             }
         }
 
-        private uint GetUInt32(string path, int offset)
+        private async Task<uint> GetUInt32Async(string path, int offset)
         {
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Cannot be null or white-space.", nameof(path));
 
             try
             {
-                using FileStream fs = new(path, FileMode.Open, FileAccess.Read);
-                using BinaryReader br = new(fs);
+                await using FileStream fs = await Task.Factory.StartNew(
+                    static (obj) => new FileStream((string)obj!, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true),
+                    path).ConfigureAwait(false);
+
                 fs.Seek(offset, SeekOrigin.Begin);
-                return br.ReadUInt32();
+
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(4);
+                try
+                {
+                    await fs.ReadExactlyAsync(buffer, 0, 4).ConfigureAwait(false);
+                    return BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(0, 4));
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
             catch (Exception ex)
             {
@@ -1255,7 +1274,7 @@ namespace SS.Core.Modules
                 get
                 {
                     if (_loginLength < LoginPacket.VIELength)
-                        throw new InvalidOperationException($"The length of {nameof(LoginBytes)} is insufficent.");
+                        throw new InvalidOperationException($"The length of {nameof(LoginBytes)} is insufficient.");
 
                     return ref MemoryMarshal.AsRef<LoginPacket>(LoginBytes);
                 }
@@ -1278,7 +1297,7 @@ namespace SS.Core.Modules
                 Player = player ?? throw new ArgumentNullException(nameof(player));
 
                 if (loginBytes.Length > _loginBytes.Length)
-                    throw new ArgumentException($"Legnth is greater than {_loginBytes.Length}.", nameof(loginBytes));
+                    throw new ArgumentException($"Length is greater than {_loginBytes.Length}.", nameof(loginBytes));
 
                 loginBytes.CopyTo(_loginBytes);
                 _loginLength = loginBytes.Length;
@@ -1368,7 +1387,7 @@ namespace SS.Core.Modules
 
             #region CustomText
 
-            private char[] _customTextChars = new char[256];
+            private readonly char[] _customTextChars = new char[256];
             private int _customTextLength;
 
             public ReadOnlySpan<char> CustomText => new(_customTextChars, 0, _customTextLength);

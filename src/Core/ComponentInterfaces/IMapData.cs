@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -36,14 +37,14 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="mapname"><see langword="null"/> if you're looking for an lvl, or the name of an lvz file.</param>
         /// <returns>The path if the lvl or lvz file could be found; otherwise, <see langword="null"/>.</returns>
-        string? GetMapFilename(Arena arena, string? mapname);
+        Task<string?> GetMapFilenameAsync(Arena arena, string? mapname);
 
         /// <summary>
         /// Gets info about lvz files in use by an arena.
         /// </summary>
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <returns>A collection of lvz file info.</returns>
-        IEnumerable<LvzFileInfo> LvzFilenames(Arena arena);
+        IAsyncEnumerable<LvzFileInfo> LvzFilenamesAsync(Arena arena);
 
         #endregion
 

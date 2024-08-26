@@ -44,7 +44,7 @@ namespace SS.Matchmaking.Modules
             var provider = new DefaultObjectPoolProvider();
             s_damageInfoLinkedListNodePool = new DefaultObjectPool<LinkedListNode<DamageInfo>>(new LinkedListNodePooledObjectPolicy<DamageInfo>(), Constants.TargetPlayerCount * 256);
             s_weaponUseLinkedListNodePool = new DefaultObjectPool<LinkedListNode<WeaponUse>>(new LinkedListNodePooledObjectPolicy<WeaponUse>(), Constants.TargetPlayerCount * 256);
-            s_tickRangeCalculatorPool = provider.Create(new TickRangeCalcualtorPooledObjectPolicy());
+            s_tickRangeCalculatorPool = provider.Create(new TickRangeCalculatorPooledObjectPolicy());
             s_damageDictionaryPool = provider.Create(new DictionaryPooledObjectPolicy<PlayerTeamSlot, int>() { InitialCapacity = Constants.TargetPlayerCount });
             s_damageListPool = provider.Create(new ListPooledObjectPolicy<(string PlayerName, int Damage)>() { InitialCapacity = Constants.TargetPlayerCount });
             s_ratingChangeDictionaryPool = provider.Create(new DictionaryPooledObjectPolicy<string, float>() { InitialCapacity = Constants.TargetPlayerCount, EqualityComparer = StringComparer.OrdinalIgnoreCase });
@@ -1180,7 +1180,7 @@ namespace SS.Matchmaking.Modules
 
         #region Callbacks
 
-        private void Callback_ArenaAction(Arena arena, ArenaAction action)
+        private async void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
@@ -1208,7 +1208,7 @@ namespace SS.Matchmaking.Modules
                     };
                 }
 
-                string? mapPath = _mapData.GetMapFilename(arena, null);
+                string? mapPath = await _mapData.GetMapFilenameAsync(arena, null);
                 if (mapPath is not null)
                     mapPath = Path.GetFileName(mapPath);
 
@@ -2174,7 +2174,7 @@ namespace SS.Matchmaking.Modules
 
                         if (memberIndex == 0)
                         {
-                            // initial slot holder (no identation)
+                            // initial slot holder (no indentation)
                             if (name.Length >= 20)
                                 name = name[..20];
 
@@ -2323,8 +2323,7 @@ namespace SS.Matchmaking.Modules
 
         private short GetClientSetting(Player player, ClientSettingIdentifier clientSettingIdentifier, short defaultValue)
         {
-            if (player is null)
-                throw new ArgumentNullException(nameof(player));
+            ArgumentNullException.ThrowIfNull(player);
 
             if (_clientSettings.TryGetSettingOverride(player, clientSettingIdentifier, out int maximumRechargeInt))
                 return (short)maximumRechargeInt;
@@ -2500,7 +2499,7 @@ namespace SS.Matchmaking.Modules
             #region First Out
 
             /// <summary>
-            /// Whether the first knockout has occured.
+            /// Whether the first knockout has occurred.
             /// </summary>
             public bool FirstOutProcessed;
 
@@ -3051,7 +3050,7 @@ namespace SS.Matchmaking.Modules
             //public int RankingMMR;
 
             // Standard deviation in the player's current MMR rank.
-            //public int RankingReliablityDeviation;
+            //public int RankingReliabilityDeviation;
 
             // Volatility in the player's current MMR rank.
             //public int RankingVolatility;
@@ -3357,22 +3356,22 @@ namespace SS.Matchmaking.Modules
             public required ClientSettingIdentifier EmpBombId;
 
             /// <summary>
-            /// All:CloakEnergy - Amount of energy required to have 'Cloak' activated (thousanths per hundredth of a second).
+            /// All:CloakEnergy - Amount of energy required to have 'Cloak' activated (thousandths per hundredth of a second).
             /// </summary>
             public required ClientSettingIdentifier CloakEnergyId;
 
             /// <summary>
-            /// All:StealthEnergy - Amount of energy required to have 'Stealth' activated (thousanths per hundredth of a second).
+            /// All:StealthEnergy - Amount of energy required to have 'Stealth' activated (thousandths per hundredth of a second).
             /// </summary>
             public required ClientSettingIdentifier StealthEnergyId;
 
             /// <summary>
-            /// All:XRadarEnergy - Amount of energy required to have 'X-Radar' activated (thousanths per hundredth of a second).
+            /// All:XRadarEnergy - Amount of energy required to have 'X-Radar' activated (thousandths per hundredth of a second).
             /// </summary>
             public required ClientSettingIdentifier XRadarEnergyId;
 
             /// <summary>
-            /// All:AntiWarpEnergy - Amount of energy required to have 'Anti-Warp' activated (thousanths per hundredth of a second).
+            /// All:AntiWarpEnergy - Amount of energy required to have 'Anti-Warp' activated (thousandths per hundredth of a second).
             /// </summary>
             public required ClientSettingIdentifier AntiWarpEnergyId;
         }
@@ -3423,22 +3422,22 @@ namespace SS.Matchmaking.Modules
             public required bool HasEmpBomb;
 
             /// <summary>
-            /// All:CloakEnergy - Amount of energy required to have 'Cloak' activated (thousanths per hundredth of a second).
+            /// All:CloakEnergy - Amount of energy required to have 'Cloak' activated (thousandths per hundredth of a second).
             /// </summary>
             public required short CloakEnergy;
 
             /// <summary>
-            /// All:StealthEnergy - Amount of energy required to have 'Stealth' activated (thousanths per hundredth of a second).
+            /// All:StealthEnergy - Amount of energy required to have 'Stealth' activated (thousandths per hundredth of a second).
             /// </summary>
             public required short StealthEnergy;
 
             /// <summary>
-            /// All:XRadarEnergy - Amount of energy required to have 'X-Radar' activated (thousanths per hundredth of a second).
+            /// All:XRadarEnergy - Amount of energy required to have 'X-Radar' activated (thousandths per hundredth of a second).
             /// </summary>
             public required short XRadarEnergy;
 
             /// <summary>
-            /// All:AntiWarpEnergy - Amount of energy required to have 'Anti-Warp' activated (thousanths per hundredth of a second).
+            /// All:AntiWarpEnergy - Amount of energy required to have 'Anti-Warp' activated (thousandths per hundredth of a second).
             /// </summary>
             public required short AntiWarpEnergy;
         }
@@ -3447,7 +3446,7 @@ namespace SS.Matchmaking.Modules
 
         #region Pooled object policies
 
-        private class TickRangeCalcualtorPooledObjectPolicy : IPooledObjectPolicy<TickRangeCalculator>
+        private class TickRangeCalculatorPooledObjectPolicy : IPooledObjectPolicy<TickRangeCalculator>
         {
             public TickRangeCalculator Create()
             {

@@ -1,10 +1,11 @@
 ﻿using SS.Core.ComponentInterfaces;
+using SS.Utilities;
 
 namespace SS.Core.ComponentCallbacks
 {
     public static class SecuritySeedChangedCallback
     {
-        public delegate void SecuritySeedChangedDelegate(uint greenSeed, uint doorSeed, uint timestamp);
+        public delegate void SecuritySeedChangedDelegate(uint greenSeed, uint doorSeed, ServerTick timestamp);
 
         public static void Register(IComponentBroker broker, SecuritySeedChangedDelegate handler)
         {
@@ -16,7 +17,7 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(IComponentBroker broker, uint greenSeed, uint doorSeed, uint timestamp)
+        public static void Fire(IComponentBroker broker, uint greenSeed, uint doorSeed, ServerTick timestamp)
         {
             broker?.GetCallback<SecuritySeedChangedDelegate>()?.Invoke(greenSeed, doorSeed, timestamp);
 

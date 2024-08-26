@@ -11,6 +11,7 @@ using System.IO.Compression;
 using System.IO.Hashing;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -18,7 +19,7 @@ namespace SS.Core.Modules
     /// Module that provides functionality to download map files (lvl and lvz) and the news.txt file.
     /// </summary>
     [CoreModuleInfo]
-    public sealed class MapNewsDownload : IModule, IMapNewsDownload, IDisposable
+    public sealed class MapNewsDownload : IAsyncModule, IMapNewsDownload, IDisposable
     {
         private readonly IComponentBroker _broker;
         private readonly IPlayerData _playerData;
@@ -52,7 +53,6 @@ namespace SS.Core.Modules
         private NewsManager? _newsManager;
 
         // Cached delegates
-        private readonly Action<Arena> _threadPoolWork_InitializeArena;
         private readonly GetSizedSendDataDelegate<NewsDownloadContext> _getNewsData;
         private readonly GetSizedSendDataDelegate<MapDownloadContext> _getMapData;
 
@@ -77,7 +77,6 @@ namespace SS.Core.Modules
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
-            _threadPoolWork_InitializeArena = ThreadPoolWork_InitializeArena;
             _getNewsData = GetNewsData;
             _getMapData = GetMapData;
         }
@@ -86,7 +85,7 @@ namespace SS.Core.Modules
 
         [ConfigHelp("General", "NewsFile", ConfigScope.Global, Default = "news.txt",
             Description = "The filename of the news file.")]
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _dlKey = _arenaManager.AllocateArenaData(new ListPooledObjectPolicy<MapDownloadData>() { InitialCapacity = S2C_MapFilename.MaxFiles });
 
@@ -101,15 +100,16 @@ namespace SS.Core.Modules
                 newsFilename = ConfigHelp.Constants.Global.General.NewsFile.Default;
 
             _newsManager = new NewsManager(this, newsFilename);
+            await _newsManager.StartAsync().ConfigureAwait(false);
 
             _iMapNewsDownloadToken = broker.RegisterInterface<IMapNewsDownload>(this);
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iMapNewsDownloadToken) != 0)
-                return false;
+                return Task.FromResult(false);
 
             _newsManager?.Dispose();
 
@@ -121,7 +121,7 @@ namespace SS.Core.Modules
 
             _arenaManager.FreeArenaData(ref _dlKey);
 
-            return true;
+            return Task.FromResult(true);
         }
 
         #endregion
@@ -190,7 +190,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_ArenaAction(Arena arena, ArenaAction action)
+        private async void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (arena is null)
                 return;
@@ -199,7 +199,10 @@ namespace SS.Core.Modules
             {
                 // note: asss does this in reverse order, but i think it is a race condition
                 _arenaManager.HoldArena(arena);
-                _mainloop.QueueThreadPoolWorkItem(_threadPoolWork_InitializeArena, arena);
+
+                await InitializeArenaAsync(arena).ConfigureAwait(false);
+
+                _arenaManager.UnholdArena(arena);
             }
             else if (action == ArenaAction.Destroy)
             {
@@ -210,7 +213,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ThreadPoolWork_InitializeArena(Arena arena)
+        private async Task InitializeArenaAsync(Arena arena)
         {
             if (arena is null)
                 return;
@@ -225,10 +228,10 @@ namespace SS.Core.Modules
                 MapDownloadData? data = null;
 
                 // First, add the map itself
-                string? filePath = _mapData.GetMapFilename(arena, null);
+                string? filePath = await _mapData.GetMapFilenameAsync(arena, null).ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(filePath))
                 {
-                    data = CompressMap(filePath, true, false);
+                    data = await CompressMapAsync(filePath, true, false).ConfigureAwait(false);
                 }
 
                 if (data is null)
@@ -240,9 +243,9 @@ namespace SS.Core.Modules
                 downloadList.Add(data);
 
                 // Next, add lvz files
-                foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenames(arena))
+                await foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenamesAsync(arena).ConfigureAwait(false))
                 {
-                    data = CompressMap(lvzInfo.Filename, false, lvzInfo.IsOptional);
+                    data = await CompressMapAsync(lvzInfo.Filename, false, lvzInfo.IsOptional).ConfigureAwait(false);
 
                     if (data is not null)
                     {
@@ -256,7 +259,7 @@ namespace SS.Core.Modules
             }
 
 
-            MapDownloadData? CompressMap(string filePath, bool compress, bool isOptional)
+            async Task<MapDownloadData?> CompressMapAsync(string filePath, bool compress, bool isOptional)
             {
                 if (string.IsNullOrWhiteSpace(filePath))
                     throw new ArgumentException("Cannot be null or white-space.", nameof(filePath));
@@ -279,14 +282,14 @@ namespace SS.Core.Modules
                     uint checksum;
                     byte[] mapData;
 
-                    using (FileStream inputStream = File.OpenRead(filePath))
+                    await using(FileStream inputStream = new(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true))
                     {
                         // Calculate CRC
                         Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();
 
                         try
                         {
-                            crc32.Append(inputStream);
+                            await crc32.AppendAsync(inputStream).ConfigureAwait(false);
                             checksum = crc32.GetCurrentHashAsUInt32();
                         }
                         finally
@@ -299,8 +302,8 @@ namespace SS.Core.Modules
                         if (compress)
                         {
                             // Compress using zlib
-                            using MemoryStream compressedStream = new();
-                            using (ZLibStream zlibStream = new(compressedStream, CompressionLevel.Optimal, true))
+                            await using MemoryStream compressedStream = new();
+                            await using (ZLibStream zlibStream = new(compressedStream, CompressionLevel.Optimal, true))
                             {
                                 inputStream.CopyTo(zlibStream);
                             }
@@ -309,10 +312,10 @@ namespace SS.Core.Modules
 
                             // Create the map data packet and copy the compressed data into it.
                             mapData = new byte[17 + compressedStream.Length];
-                            Span<byte> dataSpan = mapData.AsSpan(17);
+                            Memory<byte> dataSpan = mapData.AsMemory(17);
                             while (dataSpan.Length > 0)
                             {
-                                int bytesRead = compressedStream.Read(dataSpan);
+                                int bytesRead = await compressedStream.ReadAsync(dataSpan).ConfigureAwait(false);
                                 if (bytesRead == 0)
                                     return null; // end of stream when we expected more data
 
@@ -323,10 +326,10 @@ namespace SS.Core.Modules
                         {
                             // Create the map data packet and copy the uncompressed data into it.
                             mapData = new byte[17 + inputStream.Length];
-                            Span<byte> dataSpan = mapData.AsSpan(17);
+                            Memory<byte> dataSpan = mapData.AsMemory(17);
                             while (dataSpan.Length > 0)
                             {
-                                int bytesRead = inputStream.Read(dataSpan);
+                                int bytesRead = await inputStream.ReadAsync(dataSpan).ConfigureAwait(false);
                                 if (bytesRead == 0)
                                     return null; // end of stream when we expected more data
 
@@ -556,10 +559,15 @@ namespace SS.Core.Modules
         {
             private readonly MapNewsDownload _parent;
             private readonly string _newsFilename;
+            private FileSystemWatcher? _fileWatcher;
+
+            private readonly object _newsLock = new();
             private byte[]? _compressedNewsData; // includes packet header
             private uint? _newsChecksum;
-            private FileSystemWatcher? _fileWatcher;
-            private readonly ReaderWriterLockSlim _rwLock = new();
+
+            private readonly object _refreshLock = new();
+            private Task? _refreshTask = null;
+            private bool _isRefreshRequested = false;
 
             public NewsManager(MapNewsDownload parent, string filename)
             {
@@ -569,25 +577,54 @@ namespace SS.Core.Modules
                     throw new ArgumentException("Cannot be null or white-space.", nameof(filename));
 
                 _newsFilename = filename;
+            }
 
-                _fileWatcher = new FileSystemWatcher(".", _newsFilename);
-                _fileWatcher.NotifyFilter = NotifyFilters.LastWrite;
-                _fileWatcher.Changed += FileWatcher_Changed;
-                _fileWatcher.EnableRaisingEvents = true;
+            public Task StartAsync()
+            {
+                if (_fileWatcher is null)
+                {
+                    _fileWatcher = new FileSystemWatcher(".", _newsFilename);
+                    _fileWatcher.Changed += FileWatcher_Changed;
+                    _fileWatcher.NotifyFilter = NotifyFilters.LastWrite;
+                    _fileWatcher.EnableRaisingEvents = true;
+                }
 
-                ProcessNewsFile();
+                return QueueRefreshAsync();
             }
 
             private void FileWatcher_Changed(object sender, FileSystemEventArgs e)
             {
-                ProcessNewsFile();
+                QueueRefreshAsync();
             }
 
-            private void ProcessNewsFile()
+            private Task QueueRefreshAsync()
             {
-                _rwLock.EnterUpgradeableReadLock();
+                lock (_refreshLock)
+                {
+                    _isRefreshRequested = true;
+                    return _refreshTask ??= Task.Run(RefreshNews);
+                }
+            }
 
-                try
+            private async Task RefreshNews()
+            {
+                while (true)
+                {
+                    lock (_refreshLock)
+                    {
+                        if (!_isRefreshRequested)
+                        {
+                            _refreshTask = null;
+                            break;
+                        }
+
+                        _isRefreshRequested = false;
+                    }
+
+                    await ProcessNewsAsync().ConfigureAwait(false);
+                }
+
+                async Task ProcessNewsAsync()
                 {
                     uint checksum;
                     byte[] fileData;
@@ -601,12 +638,12 @@ namespace SS.Core.Modules
                         {
                             try
                             {
-                                newsStream = File.OpenRead(_newsFilename);
+                                newsStream = new FileStream(_newsFilename, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
                             }
-                            catch (IOException ex)
+                            catch (IOException ex) when (ex is not FileNotFoundException && ex is not DirectoryNotFoundException)
                             {
                                 // Note: This retry logic is to workaround the "The process cannot access the file because it is being used by another process." race condition.
-                                if (++tries >= 30)
+                                if (++tries >= 10)
                                 {
                                     _parent._logManager.LogM(LogLevel.Error, nameof(MapNewsDownload), $"Error opening '{_newsFilename}' ({tries} tries). {ex.Message}");
                                     return;
@@ -614,7 +651,7 @@ namespace SS.Core.Modules
 
                                 _parent._logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Error opening '{_newsFilename}' ({tries} tries). {ex.Message}");
 
-                                Thread.Sleep(100);
+                                await Task.Delay(1000).ConfigureAwait(false);
                             }
                             catch (Exception ex)
                             {
@@ -631,7 +668,7 @@ namespace SS.Core.Modules
 
                             try
                             {
-                                crc32.Append(newsStream);
+                                await crc32.AppendAsync(newsStream).ConfigureAwait(false);
                                 checksum = crc32.GetCurrentHashAsUInt32();
                             }
                             finally
@@ -639,7 +676,14 @@ namespace SS.Core.Modules
                                 _parent._objectPoolManager.Crc32Pool.Return(crc32);
                             }
 
-                            if (_newsChecksum is not null && _newsChecksum.Value == checksum)
+                            bool isUnchanged;
+
+                            lock (_newsLock)
+                            {
+                                isUnchanged = _newsChecksum is not null && _newsChecksum.Value == checksum;
+                            }
+
+                            if (isUnchanged)
                             {
                                 _parent._logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Checked '{_newsFilename}', but there was no change (checksum {checksum:X}).");
                                 return; // same checksum, no change
@@ -648,10 +692,10 @@ namespace SS.Core.Modules
                             newsStream.Position = 0;
 
                             // compress using zlib
-                            using MemoryStream compressedStream = new();
-                            using (ZLibStream zlibStream = new(compressedStream, CompressionLevel.Optimal, true))
+                            await using MemoryStream compressedStream = new();
+                            await using (ZLibStream zlibStream = new(compressedStream, CompressionLevel.Optimal, true))
                             {
-                                newsStream.CopyTo(zlibStream);
+                                await newsStream.CopyToAsync(zlibStream).ConfigureAwait(false);
                             }
 
                             compressedStream.Position = 0;
@@ -659,10 +703,10 @@ namespace SS.Core.Modules
                             fileData = new byte[17 + compressedStream.Length]; // 17 is the size of the header
                             fileData[0] = (byte)S2CPacketType.IncomingFile;
                             // intentionally leaving 16 bytes of 0 for the name
-                            Span<byte> dataSpan = fileData.AsSpan(17);
-                            while (dataSpan.Length > 0)
+                            Memory<byte> data = fileData.AsMemory(17);
+                            while (data.Length > 0)
                             {
-                                int bytesRead = compressedStream.Read(dataSpan);
+                                int bytesRead = await compressedStream.ReadAsync(data).ConfigureAwait(false);
                                 if (bytesRead == 0)
                                 {
                                     // end of stream when we expected more data
@@ -670,12 +714,12 @@ namespace SS.Core.Modules
                                     return;
                                 }
 
-                                dataSpan = dataSpan[bytesRead..];
+                                data = data[bytesRead..];
                             }
                         }
                         finally
                         {
-                            newsStream.Dispose();
+                            await newsStream.DisposeAsync().ConfigureAwait(false);
                         }
                     }
                     catch (Exception ex)
@@ -685,31 +729,19 @@ namespace SS.Core.Modules
                     }
 
                     // update the data members
-                    _rwLock.EnterWriteLock();
-
-                    try
+                    lock (_newsLock)
                     {
                         _compressedNewsData = fileData;
                         _newsChecksum = checksum;
                     }
-                    finally
-                    {
-                        _rwLock.ExitWriteLock();
-                    }
 
                     _parent._logManager.LogM(LogLevel.Info, nameof(MapNewsDownload), $"Loaded news.txt (checksum {checksum:X}).");
-                }
-                finally
-                {
-                    _rwLock.ExitUpgradeableReadLock();
                 }
             }
 
             public bool TryGetNews(out ReadOnlyMemory<byte> data, out uint checksum)
             {
-                _rwLock.EnterReadLock();
-
-                try
+                lock (_newsLock)
                 {
                     if (_compressedNewsData is not null && _newsChecksum is not null)
                     {
@@ -717,10 +749,6 @@ namespace SS.Core.Modules
                         checksum = _newsChecksum.Value;
                         return true;
                     }
-                }
-                finally
-                {
-                    _rwLock.ExitReadLock();
                 }
 
                 data = null;
@@ -739,8 +767,6 @@ namespace SS.Core.Modules
                     _fileWatcher.Dispose();
                     _fileWatcher = null;
                 }
-
-                _rwLock.Dispose();
             }
 
             #endregion

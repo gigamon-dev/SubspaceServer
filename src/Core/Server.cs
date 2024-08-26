@@ -98,7 +98,7 @@ namespace SS.Core
                 return false;
             }
 
-            _mm.DoPostLoadStage().Wait();
+            _mm.DoPostLoadStageAsync().Wait();
 
             return true;
         }
@@ -196,7 +196,7 @@ namespace SS.Core
 
             // Pre-Unload
             Console.WriteLine($"I <{nameof(Server)}> Unloading modules.");
-            Task preUnloadTask = _mm.DoPreUnloadStage();
+            Task preUnloadTask = _mm.DoPreUnloadStageAsync();
             while (!preUnloadTask.Wait(10))
             {
                 mainloop = _mm!.GetInterface<IMainloop>();

@@ -275,7 +275,7 @@ namespace SS.Core.Configuration
                     else if (rawLine.LineType == ConfLineType.PreprocessorInclude)
                     {
                         RawPreprocessorInclude include = (RawPreprocessorInclude)rawLine;
-                        ConfFile? includeFile = await _fileProvider.GetFile(include.FilePath).ConfigureAwait(false);
+                        ConfFile? includeFile = await _fileProvider.GetFileAsync(include.FilePath).ConfigureAwait(false);
                         if (includeFile != null)
                         {
                             PushFile(includeFile);

@@ -4,10 +4,13 @@ using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -35,22 +38,36 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class Security : IModule, ISecuritySeedSync
+    public class Security(
+        IComponentBroker broker,
+        IArenaManager arenaManager,
+        ICapabilityManager capabilityManager,
+        IClientSettings clientSettings,
+        IConfigManager configManager,
+        ILagCollect lagCollect,
+        ILogManager logManager,
+        IMainloopTimer mainloopTimer,
+        IMapData mapData,
+        INetwork network,
+        IObjectPoolManager objectPoolManager,
+        IPlayerData playerData,
+        IPrng prng) : IAsyncModule, ISecuritySeedSync
     {
-        private readonly IComponentBroker _broker;
-        private readonly IArenaManager _arenaManager;
-        private readonly ICapabilityManager _capabilityManager;
-        private readonly IClientSettings _clientSettings;
-        private readonly IConfigManager _configManager;
-        private readonly ILagCollect _lagCollect;
-        private readonly ILogManager _logManager;
-        private readonly IMainloopTimer _mainloopTimer;
-        private readonly IMapData _mapData;
-        private readonly INetwork _network;
-        private readonly IPlayerData _playerData;
-        private readonly IPrng _prng;
+        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+        private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+        private readonly IClientSettings _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ILagCollect _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IMainloopTimer _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+        private readonly IMapData _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private readonly IPrng _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
-        private InterfaceRegistrationToken<ISecuritySeedSync>? _iSecuritySeedSyncRegisrationToken;
+        private InterfaceRegistrationToken<ISecuritySeedSync>? _iSecuritySeedSyncRegistrationToken;
 
         /// <summary>
         /// Arena data key for accessing <see cref="ArenaData"/>.
@@ -106,69 +123,36 @@ namespace SS.Core.Modules
             Description = "Whether to kick players off of the server for violating security checks.")]
         private bool _securityKickoff;
 
-        public Security(
-            IComponentBroker broker,
-            IArenaManager arenaManager,
-            ICapabilityManager capabilityManager,
-            IClientSettings clientSettings,
-            IConfigManager configManager,
-            ILagCollect lagCollect,
-            ILogManager logManager,
-            IMainloopTimer mainloopTimer,
-            IMapData mapData,
-            INetwork network,
-            IPlayerData playerData,
-            IPrng prng)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
-            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-            _prng = prng ?? throw new ArgumentNullException(nameof(prng));
-        }
-
-        bool IModule.Load(IComponentBroker broker)
-        {
+            _securityKickoff = _configManager.GetBool(_configManager.Global, "Security", "SecurityKickoff", ConfigHelp.Constants.Global.Security.SecurityKickoff.Default);
+            
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
-
-            LoadScrty();
-
-            _securityKickoff = _configManager.GetBool(_configManager.Global, "Security", "SecurityKickoff", ConfigHelp.Constants.Global.Security.SecurityKickoff.Default);
-
+            
+            await LoadScrtyAsync();
             SwitchChecksums();
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
-
-            _mainloopTimer.SetTimer(MainloopTimer_Send, 25000, 60000, new SendTimerData(), null);
-
+            _mainloopTimer.SetTimer(MainloopTimer_Send, 25000, 60000, null);
             _network.AddPacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
-
-            _iSecuritySeedSyncRegisrationToken = broker.RegisterInterface<ISecuritySeedSync>(this);
-
+            _iSecuritySeedSyncRegistrationToken = broker.RegisterInterface<ISecuritySeedSync>(this);
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            if (broker.UnregisterInterface(ref _iSecuritySeedSyncRegisrationToken) != 0)
-                return false;
+            if (broker.UnregisterInterface(ref _iSecuritySeedSyncRegistrationToken) != 0)
+                return Task.FromResult(false);
 
             _network.RemovePacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
-            _mainloopTimer.ClearTimer<SendTimerData>(MainloopTimer_Send, null);
+            _mainloopTimer.ClearTimer(MainloopTimer_Send, null);
             _mainloopTimer.ClearTimer(MainloopTimer_Check, null);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             _arenaManager.FreeArenaData(ref _adKey);
             _playerData.FreePlayerData(ref _pdKey);
 
-            return true;
+            return Task.FromResult(true);
         }
 
         #region ISecuritySeedSync
@@ -182,7 +166,7 @@ namespace SS.Core.Modules
 
         void ISecuritySeedSync.OverrideArenaSeedInfo(Arena arena, uint greenSeed, uint doorSeed, uint timestamp)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             S2C_Security overridePacket = new(greenSeed, doorSeed, timestamp, 0);
@@ -197,10 +181,10 @@ namespace SS.Core.Modules
 
         bool ISecuritySeedSync.RemoveArenaOverride(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
 
-            if (ad.OverridePacket == null)
+            if (ad.OverridePacket is null)
                 return false;
 
             ad.OverridePacket = null;
@@ -218,76 +202,101 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void LoadScrty()
+        private async Task<bool> LoadScrtyAsync()
         {
             try
             {
-                _scrty = new uint[ScrtyLength];
+                await using FileStream fs = await Task.Factory.StartNew(
+                    static (obj) => new FileStream((string)obj!, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true),
+                    "scrty").ConfigureAwait(false);
 
-                using FileStream fs = File.OpenRead("scrty");
-                using BinaryReader br = new(fs);
+                uint[] data = new uint[ScrtyLength];
+                byte[] buffer = ArrayPool<byte>.Shared.Rent(4);
 
-                for (int i = 0; i < ScrtyLength; i++)
+                try
                 {
-                    _scrty[i] = br.ReadUInt32(); // reads bytes as little-endian
+                    for (int i = 0; i < ScrtyLength; i++)
+                    {
+                        await fs.ReadExactlyAsync(buffer, 0, 4).ConfigureAwait(false);
+                        data[i] = BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(0, 4));
+                    }
                 }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+
+                lock (_lockObj)
+                {
+                    _scrty = data;
+                }
+
+                return true;
             }
             catch (Exception ex)
             {
                 _logManager.LogM(LogLevel.Info, nameof(Security), $"Unable to read scrty file. {ex.Message}");
-                _scrty = null;
+                return false;
             }
         }
 
         private void SwitchChecksums()
         {
-            _packet.GreenSeed = _prng.Get32();
-            _packet.DoorSeed = _prng.Get32();
-            _packet.Timestamp = ServerTick.Now;
+            uint greenSeed;
+            uint doorSeed;
+            ServerTick timestamp;
 
-            if (_scrty != null)
+            lock (_lockObj)
             {
-                int i = _prng.Number(1, _scrty.Length / 2 - 1) * 2;
-                _packet.Key = _scrty[i];
-                _continuumExeChecksum = _scrty[i + 1];
-            }
-            else
-            {
-                _packet.Key = _prng.Get32();
-                _continuumExeChecksum = 0;
-            }
+                _packet.GreenSeed = greenSeed = _prng.Get32();
+                _packet.DoorSeed = doorSeed = _prng.Get32();
+                _packet.Timestamp = timestamp = ServerTick.Now;
 
-            // calculate new checksums
-            _arenaManager.Lock();
-
-            try
-            {
-                foreach (Arena arena in _arenaManager.Arenas)
+                if (_scrty is not null)
                 {
-                    if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
-                        continue;
+                    int i = _prng.Number(1, _scrty.Length / 2 - 1) * 2;
+                    _packet.Key = _scrty[i];
+                    _continuumExeChecksum = _scrty[i + 1];
+                }
+                else
+                {
+                    _packet.Key = _prng.Get32();
+                    _continuumExeChecksum = 0;
+                }
 
-                    if (arena.Status == ArenaState.Running)
+                _vieExeChecksum = GetVieExeChecksum(_packet.Key);
+
+
+                // calculate new checksums
+                _arenaManager.Lock();
+
+                try
+                {
+                    foreach (Arena arena in _arenaManager.Arenas)
                     {
-                        ad.MapChecksum = _mapData.GetChecksum(arena, _packet.Key);
-                    }
-                    else
-                    {
-                        ad.MapChecksum = 0;
+                        if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                            continue;
+
+                        if (arena.Status == ArenaState.Running)
+                        {
+                            ad.MapChecksum = _mapData.GetChecksum(arena, _packet.Key);
+                        }
+                        else
+                        {
+                            ad.MapChecksum = 0;
+                        }
                     }
                 }
-            }
-            finally
-            {
-                _arenaManager.Unlock();
+                finally
+                {
+                    _arenaManager.Unlock();
+                }
             }
 
-            _vieExeChecksum = GetVieExeChecksum(_packet.Key);
-
-            SecuritySeedChangedCallback.Fire(_broker, _packet.GreenSeed, _packet.DoorSeed, _packet.Timestamp);
+            SecuritySeedChangedCallback.Fire(_broker, greenSeed, doorSeed, timestamp);
         }
 
-        // straight from ASSS, dont know what's going on with all the magic numbers
+        // straight from ASSS, don't know what's going on with all the magic numbers
         private static uint GetVieExeChecksum(uint key)
         {
             uint part, sum = 0;
@@ -426,64 +435,67 @@ namespace SS.Core.Modules
             }
         }
 
-        private bool MainloopTimer_Send(SendTimerData sendTimerData)
+        private bool MainloopTimer_Send()
         {
-            HashSet<Player> sendPlayerSet = sendTimerData.SendPlayerSet;
+            HashSet<Player> sendPlayerSet = _objectPoolManager.PlayerSetPool.Get();
 
-            SwitchChecksums();
-
-            sendPlayerSet.Clear();
-
-            lock (_lockObj)
+            try
             {
-                //
-                // Determine which players to check/sync
-                //
+                SwitchChecksums();
 
-                _playerData.Lock();
-
-                try
+                lock (_lockObj)
                 {
-                    foreach (Player p in _playerData.Players)
+                    //
+                    // Determine which players to check/sync
+                    //
+
+                    _playerData.Lock();
+
+                    try
                     {
-                        // TODO: could check, but would need to send the overriden seeds along with the key
-                        if (p.Arena == null || !p.Arena.TryGetExtraData(_adKey, out ArenaData? ad) || ad.OverridePacket != null) // don't do a check for arenas that have an override
-                            continue;
-
-                        if (!p.TryGetExtraData(_pdKey, out PlayerData? pd))
-                            continue;
-
-                        if (p.Status == PlayerState.Playing
-                            && p.IsStandard
-                            && p.Flags.SentPositionPacket) // having sent a position packet means the player has the map and settings
+                        foreach (Player player in _playerData.Players)
                         {
-                            sendPlayerSet.Add(p);
-                            pd.SettingsChecksum = _clientSettings.GetChecksum(p, _packet.Key);
-                            pd.Sent = true;
-                            pd.Cancelled = false;
-                        }
-                        else
-                        {
-                            pd.Sent = false;
+                            // TODO: could check, but would need to send the overridden seeds along with the key
+                            if (player.Arena is null || !player.Arena.TryGetExtraData(_adKey, out ArenaData? ad) || ad.OverridePacket is not null) // don't do a check for arenas that have an override
+                                continue;
+
+                            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
+                                continue;
+
+                            if (player.Status == PlayerState.Playing
+                                && player.IsStandard
+                                && player.Flags.SentPositionPacket) // having sent a position packet means the player has the map and settings
+                            {
+                                sendPlayerSet.Add(player);
+                                pd.SettingsChecksum = _clientSettings.GetChecksum(player, _packet.Key);
+                                pd.Sent = true;
+                                pd.Cancelled = false;
+                            }
+                            else
+                            {
+                                pd.Sent = false;
+                            }
                         }
                     }
-                }
-                finally
-                {
-                    _playerData.Unlock();
+                    finally
+                    {
+                        _playerData.Unlock();
+                    }
+
+                    //
+                    // Send the requests
+                    //
+
+                    _network.SendToSet(sendPlayerSet, ref _packet, NetSendFlags.Reliable);
                 }
 
-                //
-                // Send the requests
-                //
-
-                _network.SendToSet(sendPlayerSet, ref _packet, NetSendFlags.Reliable);
+                _logManager.LogM(LogLevel.Drivel, nameof(Security),
+                    $"Sent security packet to {sendPlayerSet.Count} players: green={_packet.GreenSeed:X}, door={_packet.DoorSeed:X}, timestamp={_packet.Timestamp:X}.");
             }
-
-            _logManager.LogM(LogLevel.Drivel, nameof(Security),
-                $"Sent security packet to {sendPlayerSet.Count} players: green={_packet.GreenSeed:X}, door={_packet.DoorSeed:X}, timestamp={_packet.Timestamp:X}.");
-
-            sendPlayerSet.Clear();
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(sendPlayerSet);
+            }
 
             // Set a timer to check in 15 seconds.
             _mainloopTimer.SetTimer(MainloopTimer_Check, 15000, Timeout.Infinite, null);
@@ -541,7 +553,7 @@ namespace SS.Core.Modules
 
         private void Packet_SecurityResponse(Player player, Span<byte> data, NetReceiveFlags flags)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (data.Length < C2S_Security.Length)
@@ -556,7 +568,7 @@ namespace SS.Core.Modules
 
             Arena? arena = player.Arena;
 
-            if (arena == null)
+            if (arena is null)
             {
                 if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                 {
@@ -733,15 +745,6 @@ namespace SS.Core.Modules
                 SettingsChecksum = 0;
                 return true;
             }
-        }
-
-        /// <summary>
-        /// Timer local data.
-        /// To reuse objects without having to reallocate on each iteration of the timer.
-        /// </summary>
-        private class SendTimerData
-        {
-            public readonly HashSet<Player> SendPlayerSet = new(256);
         }
     }
 }

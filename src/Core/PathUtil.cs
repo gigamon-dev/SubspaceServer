@@ -2,58 +2,59 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace SS.Core
 {
     public static class PathUtil
     {
         /// <summary>
-        /// Finds the first readable file that exists from of set of paths that are composite format string.
+        /// Finds the first readable file that exists from of set of <paramref name="searchPaths"/> 
+        /// which may contain placeholders in the form of composite format strings.
         /// </summary>
-        /// <param name="searchPaths">Search paths that are composite format strings.</param>
-        /// <param name="replacements">Replacements to use with the compsite format strings.</param>
+        /// <param name="searchPaths">The search paths, which may be composite format strings.</param>
+        /// <param name="replacements">Replacements to use with the composite format strings.</param>
         /// <returns>The path of the first readable file if one is found.  Otherwise, <see langword="null"/>.</returns>
-        public static string? FindFileOnPath(IEnumerable<string> searchPaths, params string?[] replacements)
+        public static async Task<string?> FindFileOnPathAsync(IEnumerable<string> searchPaths, params string?[] replacements)
         {
-            if (searchPaths == null)
-                throw new ArgumentNullException(nameof(searchPaths));
+            ArgumentNullException.ThrowIfNull(searchPaths);
 
             foreach (string path in searchPaths)
             {
-                string filePath = string.Format(CultureInfo.InvariantCulture, path, replacements);
+                string filePath = replacements is not null
+                    ? string.Format(CultureInfo.InvariantCulture, path, replacements)
+                    : path;
 
-                if (File.Exists(filePath))
+                // File.Exists and the FileStream constructor perform file I/O.
+                // We don't want to block, so do it on a worker thread.
+                if (await Task<bool>.Factory.StartNew(
+                    static (obj) =>
+                    {
+                        string checkPath = (string)obj!;
+
+                        // Check if the file exists.
+                        // This is done first so that we don't have to call the FileStream constructor and catch an exception if we don't need to.
+                        if (!File.Exists(checkPath))
+                            return false;
+
+                        // Check that we have read permissions.
+                        try
+                        {
+                            using FileStream stream = new(checkPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                            return true;
+                        }
+                        catch
+                        {
+                            return false;
+                        }
+                    },
+                    filePath).ConfigureAwait(false))
                 {
-                    // check if we have read permissions
-                    try
-                    {
-                        File.OpenRead(filePath).Close();
-                        return filePath;
-                    }
-                    catch
-                    {
-                    }
+                    return filePath;
                 }
             }
 
             return null;
         }
-
-        /*
-        /// <summary>
-        /// Checks if the given path is secure against trying to access files
-        /// outside of the server root.
-        /// Currently this checks for initial or trailing /, nonprintable chars,
-        /// colons, double dots, double slashes, and double backslashes.
-        /// Any of the above conditions makes it return failure.
-        /// </summary>
-        /// <param name="path">the path to check</param>
-        /// <returns>true if the given path is "safe", false otherwise</returns>
-        public static bool is_valid_path(string path)
-        {
-            // HACK: implement this
-            return true;
-        }
-        */
     }
 }

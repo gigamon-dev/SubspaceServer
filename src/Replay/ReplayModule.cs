@@ -349,7 +349,7 @@ namespace SS.Replay
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, CrownToggle.Length));
         }
 
-        private void Callback_SecuritySeedChanged(uint greenSeed, uint doorSeed, uint timestamp)
+        private void Callback_SecuritySeedChanged(uint greenSeed, uint doorSeed, ServerTick timestamp)
         {
             Debug.Assert(_mainloop.IsMainloop);
 

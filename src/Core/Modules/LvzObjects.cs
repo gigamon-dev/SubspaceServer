@@ -9,6 +9,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -16,60 +17,39 @@ namespace SS.Core.Modules
     /// Module for controlling LVZ objects.
     /// </summary>
     [CoreModuleInfo]
-    public class LvzObjects : IModule, ILvzObjects
+    public class LvzObjects(
+        IArenaManager arenaManager,
+        ICapabilityManager capabilityManager,
+        IChat chat,
+        ICommandManager commandManager,
+        IConfigManager configManager,
+        ILogManager logManager,
+        IMapData mapData,
+        IMainloop mainloop,
+        INetwork network,
+        IObjectPoolManager objectPoolManager,
+        IPlayerData playerData) : IModule, ILvzObjects
     {
         private const string CommonHelpText = "Object commands: ?objon ?objoff ?objset ?objmove ?objimage ?objlayer ?objtimer ?objmode ?objinfo ?objlist";
 
-        private readonly IArenaManager _arenaManager;
-        private readonly ICapabilityManager _capabilityManager;
-        private readonly IChat _chat;
-        private readonly ICommandManager _commandManager;
-        private readonly IConfigManager _configManager;
-        private readonly ILogManager _logManager;
-        private readonly IMapData _mapData;
-        private readonly IMainloop _mainloop;
-        private readonly INetwork _network;
-        private readonly IObjectPoolManager _objectPoolManager;
-        private readonly IPlayerData _playerData;
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+        private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IMapData _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+        private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
         private InterfaceRegistrationToken<ILvzObjects>? _interfaceRegistrationToken;
 
         private ArenaDataKey<ArenaData> _adKey;
         private PlayerDataKey<PlayerData> _pdKey;
 
-        private readonly DefaultObjectPool<LvzData> _lvzDataObjectPool = new(new DefaultPooledObjectPolicy<LvzData>(), Constants.TargetArenaCount * ushort.MaxValue);
-
-        private readonly Action<Arena> _threadPoolWork_InitializeArena;
-        private readonly LvzReader.ObjectDataReadDelegate<ArenaData> _objectDataRead;
-
-        public LvzObjects(
-            IArenaManager arenaManager,
-            ICapabilityManager capabilityManager,
-            IChat chat,
-            ICommandManager commandManager,
-            IConfigManager configManager,
-            ILogManager logManager,
-            IMapData mapData,
-            IMainloop mainloop,
-            INetwork network,
-            IObjectPoolManager objectPoolManager,
-            IPlayerData playerData)
-        {
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
-            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-
-            _threadPoolWork_InitializeArena = ThreadPoolWork_InitializeArena;
-            _objectDataRead = ObjectDataRead;
-        }
+        private static readonly DefaultObjectPool<LvzData> _lvzDataObjectPool = new(new DefaultPooledObjectPolicy<LvzData>(), Constants.TargetArenaCount * ushort.MaxValue);
 
         #region Module members
 
@@ -862,7 +842,7 @@ namespace SS.Core.Modules
 
         #region Callbacks
 
-        private void Callback_ArenaAction(Arena arena, ArenaAction action)
+        private async void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
@@ -872,11 +852,10 @@ namespace SS.Core.Modules
                 // NOTE: LVZ files are loaded on ArenaAction.PreCreate so that LVZ functionality will be ready to use on ArenaAction.Create.
 
                 _arenaManager.HoldArena(arena);
-                if (!_mainloop.QueueThreadPoolWorkItem(_threadPoolWork_InitializeArena, arena))
-                {
-                    _logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, "Error queueing up arena action work.");
-                    _arenaManager.UnholdArena(arena);
-                }
+
+                await InitializeArenaAsync(arena).ConfigureAwait(false);
+
+                _arenaManager.UnholdArena(arena);
             }
             else if (action == ArenaAction.Destroy)
             {
@@ -889,27 +868,25 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ThreadPoolWork_InitializeArena(Arena arena)
+        private async Task InitializeArenaAsync(Arena arena)
         {
             if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
-            foreach (LvzFileInfo fileInfo in _mapData.LvzFilenames(arena))
+            await foreach (LvzFileInfo fileInfo in _mapData.LvzFilenamesAsync(arena).ConfigureAwait(false))
             {
                 try
                 {
-                    LvzReader.ReadObjects(fileInfo.Filename, _objectDataRead, ad);
+                    LvzReader.ReadObjects(fileInfo.Filename, ObjectDataRead, ad);
                 }
                 catch (Exception ex)
                 {
                     _logManager.LogA(LogLevel.Error, nameof(LvzObjects), arena, $"Error reading objects from lvz file '{fileInfo.Filename}'. {ex.Message}");
                 }
             }
-
-            _arenaManager.UnholdArena(arena);
         }
 
-        private void ObjectDataRead(ReadOnlySpan<ObjectData> objectDataSpan, ArenaData ad)
+        private static void ObjectDataRead(ReadOnlySpan<ObjectData> objectDataSpan, ArenaData ad)
         {
             lock (ad.Lock)
             {
@@ -946,11 +923,8 @@ namespace SS.Core.Modules
 
         private void UpdateArenaToggleTracking(Arena arena, ArenaData ad, short id, bool isEnabled)
         {
-            if (arena is null)
-                throw new ArgumentNullException(nameof(arena));
-
-            if (ad is null)
-                throw new ArgumentNullException(nameof(ad));
+            ArgumentNullException.ThrowIfNull(arena);
+            ArgumentNullException.ThrowIfNull(ad);
 
             lock (ad.Lock)
             {
@@ -1034,7 +1008,7 @@ namespace SS.Core.Modules
             Bot,
 
             /// <summary>
-            /// Allows a player to broadcast arbritrary data to players in the same arena.
+            /// Allows a player to broadcast arbitrary data to players in the same arena.
             /// </summary>
             /// <remarks>
             /// This extends the C2S 0x0A (Broadcast) to have power beyond that of manipulating Lvz objects.

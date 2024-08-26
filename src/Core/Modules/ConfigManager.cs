@@ -250,7 +250,7 @@ namespace SS.Core.Modules
                             {
                                 // save the file
                                 // Note: Also updates file.LastModified so that it doesn't appear as being modified to us and get reloaded
-                                file.Save();
+                                file.SaveAsync().Wait();
                             }
                             catch (Exception ex)
                             {
@@ -484,7 +484,7 @@ namespace SS.Core.Modules
                 if (documentHandle.DocumentInfo is null)
                     throw new InvalidOperationException("Handle is closed.");
 
-                return await documentHandle.DocumentInfo.Document.SaveAsStandaloneConf(filePath).ConfigureAwait(false);
+                return await documentHandle.DocumentInfo.Document.SaveAsStandaloneConfAsync(filePath).ConfigureAwait(false);
             }
             finally
             {
@@ -538,11 +538,11 @@ namespace SS.Core.Modules
             }
         }
 
-        // This is called by the ConfigFileProvider which will only be used when a write lock is already held.
+        // This is called by the ConfigFileProvider which will only be used when the semaphore is already held.
         private async Task<ConfFile?> GetConfFileAsync(string? arena, string? name)
         {
             // determine the path of the file
-            string? path = LocateConfigFile(arena, name);
+            string? path = await LocateConfigFileAsync(arena, name).ConfigureAwait(false);
             if (path is null)
             {
                 Log(LogLevel.Warn, $"File not found for arena '{arena}', name '{name}'.");
@@ -575,7 +575,7 @@ namespace SS.Core.Modules
         {
             ArgumentNullException.ThrowIfNull(createHandle);
 
-            string? path = LocateConfigFile(arena, name);
+            string? path = await LocateConfigFileAsync(arena, name).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(path))
             {
                 Log(LogLevel.Warn, $"File not found in search paths (arena='{arena}', name='{name}').");
@@ -604,14 +604,14 @@ namespace SS.Core.Modules
             }
         }
 
-        private static string? LocateConfigFile(string? arena, string? name)
+        private static Task<string?> LocateConfigFileAsync(string? arena, string? name)
         {
             if (string.IsNullOrWhiteSpace(name))
             {
                 name = string.IsNullOrWhiteSpace(arena) ? "global.conf" : "arena.conf";
             }
 
-            return PathUtil.FindFileOnPath(Constants.ConfigSearchPaths, name, arena);
+            return PathUtil.FindFileOnPathAsync(Constants.ConfigSearchPaths, name, arena);
         }
 
         #region Helper types
@@ -620,18 +620,12 @@ namespace SS.Core.Modules
         /// Helper class that also keeps track of additional context, an optional arena,
         /// for which files are to be retrieved.
         /// </summary>
-        private class ConfFileProvider : IConfFileProvider
+        private class ConfFileProvider(ConfigManager manager, string? arena) : IConfFileProvider
         {
-            private readonly ConfigManager _manager;
-            private readonly string? _arena;
+            private readonly ConfigManager _manager = manager ?? throw new ArgumentNullException(nameof(manager));
+            private readonly string? _arena = arena;
 
-            public ConfFileProvider(ConfigManager manager, string? arena)
-            {
-                _manager = manager ?? throw new ArgumentNullException(nameof(manager));
-                _arena = arena;
-            }
-
-            public Task<ConfFile?> GetFile(string? name) => _manager.GetConfFileAsync(_arena, name);
+            public Task<ConfFile?> GetFileAsync(string? name) => _manager.GetConfFileAsync(_arena, name);
         }
 
         private interface IConfigChangedInvoker
@@ -639,14 +633,9 @@ namespace SS.Core.Modules
             void Invoke();
         }
 
-        private class ConfigChangedInvoker : IConfigChangedInvoker
+        private class ConfigChangedInvoker(ConfigChangedDelegate callback) : IConfigChangedInvoker
         {
-            private readonly ConfigChangedDelegate _callback;
-
-            public ConfigChangedInvoker(ConfigChangedDelegate callback)
-            {
-                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
-            }
+            private readonly ConfigChangedDelegate _callback = callback ?? throw new ArgumentNullException(nameof(callback));
 
             public void Invoke()
             {
@@ -654,16 +643,10 @@ namespace SS.Core.Modules
             }
         }
 
-        private class ConfigChangedInvoker<T> : IConfigChangedInvoker
+        private class ConfigChangedInvoker<T>(ConfigChangedDelegate<T> callback, T state) : IConfigChangedInvoker
         {
-            private readonly ConfigChangedDelegate<T> _callback;
-            private readonly T _state;
-
-            public ConfigChangedInvoker(ConfigChangedDelegate<T> callback, T state)
-            {
-                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
-                _state = state;
-            }
+            private readonly ConfigChangedDelegate<T> _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+            private readonly T _state = state;
 
             public void Invoke()
             {
@@ -689,9 +672,9 @@ namespace SS.Core.Modules
 
             public DocumentInfo? DocumentInfo { get; internal set; }
 
-            public ConfigScope Scope { get; private set; }
+            public ConfigScope Scope { get; }
 
-            public string? FileName { get; private set; }
+            public string? FileName { get; }
 
             public void NotifyConfigChanged()
             {

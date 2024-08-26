@@ -87,9 +87,14 @@ namespace SS.Core.Modules
         private readonly Trie _knownArenaNames = new(false);
         private readonly ReadOnlyTrie _readOnlyKnownArenaNames;
 
+        private bool _isRefreshKnownArenasRequested = false;
+        private Task? _refreshKnownArenasTask = null;
+        private readonly object _refreshLock = new();
+
         // cached delegates
         private readonly ConfigChangedDelegate<Arena> _arenaConfChanged;
         private readonly Action<Arena> _arenaSyncDone;
+        private readonly Action _refreshKnownArenas;
 
         public ArenaManager(
             IComponentBroker broker,
@@ -116,6 +121,7 @@ namespace SS.Core.Modules
 
             _arenaConfChanged = ArenaConfChanged;
             _arenaSyncDone = ArenaSyncDone;
+            _refreshKnownArenas = RefreshKnownArenas;
         }
 
         #region Module members
@@ -128,7 +134,6 @@ namespace SS.Core.Modules
             _mainloopTimer.SetTimer(MainloopTimer_ProcessArenaStates, 100, 100, null);
             _mainloopTimer.SetTimer(MainloopTimer_ReapArenas, 1700, 1700, null);
             _mainloopTimer.SetTimer(MainloopTimer_DoArenaMaintenance, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, (int)TimeSpan.FromMinutes(10).TotalMilliseconds, null);
-            _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, Timeout.Infinite, null);
 
             _knownArenaWatcher = new FileSystemWatcher(ArenasDirectoryName);
             _knownArenaWatcher.IncludeSubdirectories = true;
@@ -137,6 +142,8 @@ namespace SS.Core.Modules
             _knownArenaWatcher.Deleted += KnownArenaWatcher_Deleted;
             _knownArenaWatcher.Renamed += KnownArenaWatcher_Renamed;
             _knownArenaWatcher.EnableRaisingEvents = true;
+
+            QueueRefreshKnownArenas();
 
             _iArenaManagerToken = Broker.RegisterInterface<IArenaManager>(this);
             _iArenaManagerInternalToken = Broker.RegisterInterface<IArenaManagerInternal>(this);
@@ -226,7 +233,6 @@ namespace SS.Core.Modules
                 _knownArenaWatcher = null;
             }
 
-            _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ProcessArenaStates, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ReapArenas, null);
             _mainloopTimer.ClearTimer(MainloopTimer_DoArenaMaintenance, null);
@@ -803,7 +809,7 @@ namespace SS.Core.Modules
 
             if (go.ShipType > (byte)ShipType.Spec)
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, "Bad shiptype in arena request.");
+                _logManager.LogP(LogLevel.Malicious, nameof(ArenaManager), player, "Bad ship type in arena request.");
                 return;
             }
 
@@ -1180,7 +1186,7 @@ namespace SS.Core.Modules
                                     // make sure that any work associated with the arena that is to run on the mainloop is complete
                                     _mainloop.WaitForMainWorkItemDrain();
 
-                                    return true; // kinda hacky, but we can't enumerate again if we modify the dictionary
+                                    return true; // kind of hacky, but we can't enumerate again if we modify the dictionary
                                 }
                             }
                             else
@@ -1288,7 +1294,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void FireArenaActionCallback(Arena arena, ArenaAction action)
+        private static void FireArenaActionCallback(Arena arena, ArenaAction action)
         {
             ArenaActionCallback.Fire(arena, arena, action);
         }
@@ -1380,41 +1386,79 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private bool ServerTimer_UpdateKnownArenas()
+        private void QueueRefreshKnownArenas()
         {
-            WriteLock();
-
-            _logManager.LogM(LogLevel.Info, nameof(ArenaManager), "Refreshing known arenas.");
-
-            try
+            lock (_refreshLock)
             {
-                _knownArenaNames.Clear();
+                _isRefreshKnownArenasRequested = true;
 
-                foreach (string dirPath in Directory.GetDirectories(ArenasDirectoryName))
+                // Queue up a task if there isn't aready one.
+                _refreshKnownArenasTask ??= Task.Run(_refreshKnownArenas);
+            }
+        }
+
+        private void RefreshKnownArenas()
+        {
+            while (true)
+            {
+                lock (_refreshLock)
                 {
-                    ReadOnlySpan<char> arenaName = dirPath.AsSpan()[(ArenasDirectoryName.Length + 1)..];
-                    if (arenaName.Equals("(default)", StringComparison.OrdinalIgnoreCase))
-                        continue;
+                    if (!_isRefreshKnownArenasRequested)
+                    {
+                        _refreshKnownArenasTask = null;
+                        break;
+                    }
 
-                    if (arenaName.StartsWith(".", StringComparison.OrdinalIgnoreCase))
-                        continue;
+                    _isRefreshKnownArenasRequested = false;
+                }
 
-                    if (!File.Exists(Path.Join(dirPath, "arena.conf")))
-                        continue;
+                _logManager.LogM(LogLevel.Info, nameof(ArenaManager), "Refreshing known arenas.");
 
-                    _knownArenaNames.Add(arenaName);
+                HashSet<string> arenaNames = _objectPoolManager.NameHashSetPool.Get();
+                try
+                {
+                    try
+                    {
+                        foreach (string dirPath in Directory.GetDirectories(ArenasDirectoryName))
+                        {
+                            ReadOnlySpan<char> arenaName = dirPath.AsSpan()[(ArenasDirectoryName.Length + 1)..];
+                            if (arenaName.Equals("(default)", StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            if (arenaName.StartsWith(".", StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            if (!File.Exists(Path.Join(dirPath, "arena.conf")))
+                                continue;
+
+                            arenaNames.Add(arenaName.ToString());
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.LogM(LogLevel.Error, nameof(ArenaManager), $"Error refreshing known arenas. {ex.Message}");
+                    }
+
+                    WriteLock();
+                    try
+                    {
+                        _knownArenaNames.Clear();
+
+                        foreach (string arenaName in arenaNames)
+                        {
+                            _knownArenaNames.Add(arenaName);
+                        }
+                    }
+                    finally
+                    {
+                        WriteUnlock();
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.NameHashSetPool.Return(arenaNames);
                 }
             }
-            catch (Exception ex)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(ArenaManager), $"Error refreshing known arenas. {ex.Message}");
-            }
-            finally
-            {
-                WriteUnlock();
-            }
-
-            return false; // do not run again
         }
 
         #endregion
@@ -1762,8 +1806,7 @@ namespace SS.Core.Modules
                 || (MemoryExtensions.Equals(Path.GetFileName(e.FullPath.AsSpan()), "arena.conf", StringComparison.OrdinalIgnoreCase)
                     && MemoryExtensions.Equals(Path.GetDirectoryName(Path.GetDirectoryName(e.FullPath.AsSpan())), ArenasDirectoryName, StringComparison.OrdinalIgnoreCase)))
             {
-                _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
-                _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, Timeout.Infinite, null);
+                QueueRefreshKnownArenas();
             }
         }
 
@@ -1774,8 +1817,7 @@ namespace SS.Core.Modules
                 || (MemoryExtensions.Equals(Path.GetFileName(e.FullPath.AsSpan()), "arena.conf", StringComparison.OrdinalIgnoreCase)
                     && MemoryExtensions.Equals(Path.GetDirectoryName(Path.GetDirectoryName(e.FullPath.AsSpan())), ArenasDirectoryName, StringComparison.OrdinalIgnoreCase)))
             {
-                _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
-                _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, Timeout.Infinite, null);
+                QueueRefreshKnownArenas();
             }
         }
 
@@ -1788,8 +1830,7 @@ namespace SS.Core.Modules
                 || (MemoryExtensions.Equals(Path.GetFileName(e.OldFullPath.AsSpan()), "arena.conf", StringComparison.OrdinalIgnoreCase)
                     && MemoryExtensions.Equals(Path.GetDirectoryName(Path.GetDirectoryName(e.OldFullPath.AsSpan())), ArenasDirectoryName, StringComparison.OrdinalIgnoreCase)))
             {
-                _serverTimer.ClearTimer(ServerTimer_UpdateKnownArenas, null);
-                _serverTimer.SetTimer(ServerTimer_UpdateKnownArenas, 0, Timeout.Infinite, null);
+                QueueRefreshKnownArenas();
             }
         }
 

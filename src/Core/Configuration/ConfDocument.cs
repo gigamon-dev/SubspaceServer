@@ -108,7 +108,7 @@ namespace SS.Core.Configuration
             // read and pre-process
             //
 
-            _baseFile = await _fileProvider.GetFile(_name).ConfigureAwait(false);
+            _baseFile = await _fileProvider.GetFileAsync(_name).ConfigureAwait(false);
             if (_baseFile is null)
             {
                 _logger?.Log(ComponentInterfaces.LogLevel.Error, $"Failed to load base conf file '{_name}'.");
@@ -259,26 +259,26 @@ namespace SS.Core.Configuration
         /// <param name="filePath">The complete file path to save the resulting file to.</param>
         /// <returns><see langword="true"/> if the file was successfully saved; otherwise, <see langword="false"/>.</returns>
         /// <exception cref="ArgumentException"><paramref name="filePath"/> is null or white-space.</exception>
-        public async Task<bool> SaveAsStandaloneConf(string filePath)
+        public async Task<bool> SaveAsStandaloneConfAsync(string filePath)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
             if (_baseFile is null)
-                throw new InvalidOperationException("No loaded.");
-
-            if (File.Exists(filePath))
-                throw new Exception("A file already exists at the specified path.");
+                throw new InvalidOperationException("Not loaded.");
 
             try
             {
-                using StreamWriter writer = new(filePath, false, StringUtils.DefaultEncoding);
+                await using FileStream fileStream = await Task.Factory.StartNew(
+                    static (obj) => new FileStream((string)obj!, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 4096, true),
+                    filePath).ConfigureAwait(false);
+                await using StreamWriter writer = new(fileStream, StringUtils.DefaultEncoding);
                 using PreprocessorReader reader = new(_fileProvider, _baseFile, _logger);
 
                 LineReference? lineReference;
                 while ((lineReference = await reader.ReadLineAsync().ConfigureAwait(false)) is not null)
                 {
                     RawLine rawLine = lineReference.Line;
-                    rawLine.WriteTo(writer);
+                    await rawLine.WriteToAsync(writer).ConfigureAwait(false);
                 }
 
                 return true;

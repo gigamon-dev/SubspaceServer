@@ -13,5 +13,10 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="line">The line to filter.</param>
         /// <returns>True if replacements were made. Otherwise, false.</returns>
         bool Filter(Span<char> line);
+
+        /// <summary>
+        /// The # of words replaced because they were obscene.
+        /// </summary>
+        ulong ReplaceCount { get; }
     }
 }

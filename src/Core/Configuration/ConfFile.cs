@@ -111,10 +111,13 @@ namespace SS.Core.Configuration
             IsDirty = false;
             _lineNumber = 0;
 
-            using FileStream fileStream = new(Path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true);
-            using StreamReader reader = new(fileStream, StringUtils.DefaultEncoding, true);
+            await using FileStream fileStream = await Task.Factory.StartNew(
+                static (obj) => new FileStream((string)obj!, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true),
+                Path).ConfigureAwait(false);
 
-            RefreshLastModified();
+            using StreamReader reader = new(fileStream, StringUtils.DefaultEncoding, true, -1, true); // leave open so that the FileStream.DisposeAsync will take care of it
+
+            await Task.Run(RefreshLastModified, cancellationToken).ConfigureAwait(false);
 
             string? line;
             StringBuilder lineBuilder = s_stringBuilderPool.Get();
@@ -494,24 +497,24 @@ namespace SS.Core.Configuration
             OnChanged();
         }
 
-        public void Save()
+        public Task SaveAsync()
         {
             if (string.IsNullOrWhiteSpace(Path))
                 throw new InvalidOperationException("Path required.");
 
-            Save(Path);
+            return SaveAsync(Path);
         }
 
-        public void Save(string path)
+        public async Task SaveAsync(string path)
         {
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("A path is required.", nameof(path));
 
-            using (StreamWriter writer = new(path, false, StringUtils.DefaultEncoding))
+            await using (StreamWriter writer = new(path, false, StringUtils.DefaultEncoding))
             {
                 foreach (var line in Lines)
                 {
-                    line.WriteTo(writer);
+                    await line.WriteToAsync(writer).ConfigureAwait(false);
                 }
             }
 
@@ -519,7 +522,7 @@ namespace SS.Core.Configuration
                 Path = path;
 
             IsDirty = false;
-            RefreshLastModified();
+            await Task.Run(RefreshLastModified).ConfigureAwait(false);
         }
     }
 }

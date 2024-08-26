@@ -6,7 +6,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection.Metadata.Ecma335;
 using System.Threading;
+using System.Threading.Tasks;
 using PersistSettings = SS.Core.ConfigHelp.Constants.Global.Persist;
 
 namespace SS.Core.Modules
@@ -15,7 +17,7 @@ namespace SS.Core.Modules
     /// Module that provides functionality to persist information to a database.
     /// </summary>
     [CoreModuleInfo]
-    public sealed class Persist : IModule, IPersist, IPersistExecutor, IDisposable
+    public sealed class Persist : IAsyncModule, IPersist, IPersistExecutor, IDisposable
     {
         private readonly IComponentBroker _broker;
         private readonly IArenaManager _arenaManager;
@@ -83,9 +85,9 @@ namespace SS.Core.Modules
             Description = "The interval at which all persistent data is synced to the database.")]
         [ConfigHelp<int>("Persist", "MaxRecordLength", ConfigScope.Global, Default = 4096,
             Description = "The maximum # of bytes to store per record.")]
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            if (!_persistDatastore.Open())
+            if (!await Task.Run(_persistDatastore.Open))
                 return false;
 
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
@@ -99,7 +101,7 @@ namespace SS.Core.Modules
 
             _maxRecordLength = _configManager.GetInt(_configManager.Global, "Persist", "MaxRecordLength", DefaultMaxRecordLength);
 
-            _workerThread = new Thread(PeristWorkerThread);
+            _workerThread = new Thread(PersistWorkerThread);
             _workerThread.Name = nameof(Persist);
             _workerThread.Start();
 
@@ -109,7 +111,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        async Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iPersistToken) != 0)
                 return false;
@@ -123,7 +125,7 @@ namespace SS.Core.Modules
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             _arenaManager.FreeArenaData(ref _adKey);
 
-            _persistDatastore.Close();
+            await Task.Run(_persistDatastore.Close);
 
             return true;
         }
@@ -244,8 +246,7 @@ namespace SS.Core.Modules
 
         void IPersistExecutor.ResetGameInterval(Arena arena, Action<Arena> callback)
         {
-            if (arena == null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(arena);
 
             ResetGameIntervalWorkItem workItem = _resetGameIntervalWorkItemPool.Get();
             workItem.Command = PersistCommand.ResetGameInterval;
@@ -301,7 +302,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void PeristWorkerThread()
+        private void PersistWorkerThread()
         {
             while (true)
             {

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace SS.Core.Configuration
 {
@@ -45,20 +46,20 @@ namespace SS.Core.Configuration
         /// Writes the line to a <see cref="TextWriter"/>.
         /// </summary>
         /// <param name="writer">The <see cref="TextWriter"/> to write to.</param>
-        public abstract void WriteTo(TextWriter writer);
+        public abstract Task WriteToAsync(TextWriter writer);
 
         /// <summary>
         /// Writes the <see cref="Raw"/> text to a <see cref="TextWriter"/>, if there is any.
         /// </summary>
         /// <param name="writer">The <see cref="TextWriter"/> to write to.</param>
         /// <returns>True if there was <see cref="Raw"/> text to write. Otherwise, false.</returns>
-        protected bool TryWriteRaw(TextWriter writer)
+        protected async Task<bool> TryWriteRawAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
             if (Raw != null)
             {
-                writer.WriteLine(Raw);
+                await writer.WriteLineAsync(Raw).ConfigureAwait(false);
                 return true;
             }
             else
@@ -71,19 +72,15 @@ namespace SS.Core.Configuration
     /// <summary>
     /// For lines read from a file that could not be parsed.
     /// </summary>
-    public class RawParseError : RawLine
+    public class RawParseError(string raw) : RawLine(raw)
     {
-        public RawParseError(string raw) : base(raw)
-        {
-        }
-
         public override ConfLineType LineType => ConfLineType.ParseError;
 
-        public override void WriteTo(TextWriter writer)
+        public override Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            TryWriteRaw(writer); // guaranteed to write since Raw cannot be null
+            return TryWriteRawAsync(writer); // guaranteed to write since Raw cannot be null
         }
     }
 
@@ -104,12 +101,12 @@ namespace SS.Core.Configuration
 
         public override ConfLineType LineType => ConfLineType.Empty;
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (!TryWriteRaw(writer))
-                writer.WriteLine();
+            if (!await TryWriteRawAsync(writer).ConfigureAwait(false))
+                await writer.WriteLineAsync().ConfigureAwait(false);
         }
     }
 
@@ -120,7 +117,7 @@ namespace SS.Core.Configuration
     {
         public const char DefaultCommentChar = ';';
         public const char AltCommentChar = '/';
-        public static readonly char[] CommentChars = { DefaultCommentChar, AltCommentChar };
+        public static readonly char[] CommentChars = [DefaultCommentChar, AltCommentChar];
 
         public RawComment(char commentChar, string text)
         {
@@ -143,86 +140,83 @@ namespace SS.Core.Configuration
         /// </summary>
         public string Text { get; }
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (!TryWriteRaw(writer))
-                writer.WriteLine($"{CommentChar} {Text}");
+            if (!await TryWriteRawAsync(writer).ConfigureAwait(false))
+            {
+                await writer.WriteAsync(CommentChar).ConfigureAwait(false);
+                await writer.WriteAsync(' ').ConfigureAwait(false);
+                await writer.WriteLineAsync(Text).ConfigureAwait(false);
+            }
         }
     }
 
     /// <summary>
     /// A line representing the start of a section.
     /// </summary>
-    public class RawSection : RawLine
+    public class RawSection(string name) : RawLine
     {
         public const char StartChar = '[';
         public const char EndChar = ']';
 
-        public RawSection(string name)
-        {
-            Name = name ?? throw new ArgumentNullException(nameof(name));
-        }
-
         public override ConfLineType LineType => ConfLineType.Section;
 
-        public string Name { get; }
+        public string Name { get; } = name ?? throw new ArgumentNullException(nameof(name));
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (!TryWriteRaw(writer))
-                writer.WriteLine($"{StartChar}{Name}{EndChar}");
+            if (!await TryWriteRawAsync(writer).ConfigureAwait(false))
+            {
+                await writer.WriteAsync(StartChar).ConfigureAwait(false);
+                await writer.WriteAsync(Name).ConfigureAwait(false);
+                await writer.WriteLineAsync(EndChar).ConfigureAwait(false);
+            }
         }
     }
 
     /// <summary>
     /// A line with a key-value pair, where the value is optional.
     /// </summary>
-    public class RawProperty : RawLine
+    public class RawProperty(string? sectionOverride, string key, string value, bool hasDelimiter) : RawLine
     {
         public const char SectionOverrideDelimiter = ':';
         public const char KeyValueDelimiter = '=';
 
-        public RawProperty(string? sectionOverride, string key, string value, bool hasDelimiter)
-        {
-            SectionOverride = sectionOverride;
-            Key = key;
-            Value = value;
-            HasDelimiter = hasDelimiter || !string.IsNullOrWhiteSpace(value);
-        }
-
         public override ConfLineType LineType => ConfLineType.Property;
 
-        public string? SectionOverride { get; } // for <section>:<key>
-        public string Key { get; }
-        public string Value { get; }
-        public bool HasDelimiter { get; }
+        public string? SectionOverride { get; } = sectionOverride; // for <section>:<key>
+        public string Key { get; } = key;
+        public string Value { get; } = value;
+        public bool HasDelimiter { get; } = hasDelimiter || !string.IsNullOrWhiteSpace(value);
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (TryWriteRaw(writer))
+            if (await TryWriteRawAsync(writer).ConfigureAwait(false))
                 return;
 
             if (SectionOverride != null) // note: allowing empty string for no section
             {
-                writer.Write(SectionOverride);
-                writer.Write(SectionOverrideDelimiter);
+                await writer.WriteAsync(SectionOverride).ConfigureAwait(false);
+                await writer.WriteAsync(SectionOverrideDelimiter).ConfigureAwait(false);
             }
 
-            writer.Write(Key);
+            await writer.WriteAsync(Key).ConfigureAwait(false);
 
             if (HasDelimiter || !string.IsNullOrWhiteSpace(Value))
             {
-                writer.Write($" {KeyValueDelimiter} ");
-                writer.Write(Value);
+                await writer.WriteAsync(' ').ConfigureAwait(false);
+                await writer.WriteAsync(KeyValueDelimiter).ConfigureAwait(false);
+                await writer.WriteAsync(' ').ConfigureAwait(false);
+                await writer.WriteAsync(Value).ConfigureAwait(false);
             }
 
-            writer.WriteLine();
+            await writer.WriteLineAsync().ConfigureAwait(false);
         }
     }
 
@@ -258,16 +252,28 @@ namespace SS.Core.Configuration
 
         public string FilePath { get; }
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (!TryWriteRaw(writer))
+            if (!await TryWriteRawAsync(writer).ConfigureAwait(false))
             {
                 if (FilePath.Any(c => char.IsWhiteSpace(c)))
-                    writer.WriteLine($"{DirectiveChar}{Directive} \"{FilePath}\"");
+                {
+                    await writer.WriteAsync(DirectiveChar).ConfigureAwait(false);
+                    await writer.WriteAsync(Directive).ConfigureAwait(false);
+                    await writer.WriteAsync(' ').ConfigureAwait(false);
+                    await writer.WriteAsync('"').ConfigureAwait(false);
+                    await writer.WriteAsync(FilePath).ConfigureAwait(false);
+                    await writer.WriteLineAsync('"').ConfigureAwait(false);
+                }
                 else
-                    writer.WriteLine($"{DirectiveChar}{Directive} {FilePath}");
+                {
+                    await writer.WriteAsync(DirectiveChar).ConfigureAwait(false);
+                    await writer.WriteAsync(Directive).ConfigureAwait(false);
+                    await writer.WriteAsync(' ').ConfigureAwait(false);
+                    await writer.WriteLineAsync(FilePath).ConfigureAwait(false);
+                }
             }
         }
     }
@@ -297,16 +303,28 @@ namespace SS.Core.Configuration
         public string Name { get; }
         public string? Value { get; }
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (!TryWriteRaw(writer))
+            if (!await TryWriteRawAsync(writer).ConfigureAwait(false))
             {
                 if (string.IsNullOrWhiteSpace(Value))
-                    writer.WriteLine($"{DirectiveChar}{Directive} {Name}");
+                {
+                    await writer.WriteAsync(DirectiveChar).ConfigureAwait(false);
+                    await writer.WriteAsync(Directive).ConfigureAwait(false);
+                    await writer.WriteAsync(' ').ConfigureAwait(false);
+                    await writer.WriteLineAsync(Name).ConfigureAwait(false);
+                }
                 else
-                    writer.WriteLine($"{DirectiveChar}{Directive} {Name} {Value}");
+                {
+                    await writer.WriteAsync(DirectiveChar).ConfigureAwait(false);
+                    await writer.WriteAsync(Directive).ConfigureAwait(false);
+                    await writer.WriteAsync(' ').ConfigureAwait(false);
+                    await writer.WriteAsync(Name).ConfigureAwait(false);
+                    await writer.WriteAsync(' ').ConfigureAwait(false);
+                    await writer.WriteLineAsync(Value).ConfigureAwait(false);
+                }
             }
         }
     }
@@ -314,26 +332,24 @@ namespace SS.Core.Configuration
     /// <summary>
     /// A line representing the #undef preprocessor directive.
     /// </summary>
-    public class RawPreprocessorUndef : RawPreprocessor
+    public class RawPreprocessorUndef(string name) : RawPreprocessor
     {
         public const string Directive = "undef";
 
-        public RawPreprocessorUndef(string name)
-        {
-            Name = name;
-        }
-
         public override ConfLineType LineType => ConfLineType.PreprocessorUndef;
 
-        public string Name { get; }
+        public string Name { get; } = name;
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (!TryWriteRaw(writer))
+            if (!await TryWriteRawAsync(writer).ConfigureAwait(false))
             {
-                writer.WriteLine($"{DirectiveChar}{Directive} {Name}");
+                await writer.WriteAsync(DirectiveChar).ConfigureAwait(false);
+                await writer.WriteAsync(Directive).ConfigureAwait(false);
+                await writer.WriteAsync(' ').ConfigureAwait(false);
+                await writer.WriteLineAsync(Name).ConfigureAwait(false);
             }
         }
     }
@@ -341,26 +357,24 @@ namespace SS.Core.Configuration
     /// <summary>
     /// A line representing the #ifdef preprocessor directive.
     /// </summary>
-    public class RawPreprocessorIfdef : RawPreprocessor
+    public class RawPreprocessorIfdef(string name) : RawPreprocessor
     {
         public const string Directive = "ifdef";
 
-        public RawPreprocessorIfdef(string name)
-        {
-            Name = name;
-        }
-
         public override ConfLineType LineType => ConfLineType.PreprocessorIfdef;
 
-        public string Name { get; }
+        public string Name { get; } = name;
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (!TryWriteRaw(writer))
+            if (!await TryWriteRawAsync(writer).ConfigureAwait(false))
             {
-                writer.WriteLine($"{DirectiveChar}{Directive} {Name}");
+                await writer.WriteAsync(DirectiveChar).ConfigureAwait(false);
+                await writer.WriteAsync(Directive).ConfigureAwait(false);
+                await writer.WriteAsync(' ').ConfigureAwait(false);
+                await writer.WriteLineAsync(Name).ConfigureAwait(false);
             }
         }
     }
@@ -368,26 +382,24 @@ namespace SS.Core.Configuration
     /// <summary>
     /// A line representing the #ifndef preprocessor directive.
     /// </summary>
-    public class RawPreprocessorIfndef : RawPreprocessor
+    public class RawPreprocessorIfndef(string name) : RawPreprocessor
     {
         public const string Directive = "ifndef";
 
-        public RawPreprocessorIfndef(string name)
-        {
-            Name = name;
-        }
-
         public override ConfLineType LineType => ConfLineType.PreprocessorIfndef;
 
-        public string Name { get; }
+        public string Name { get; } = name;
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (!TryWriteRaw(writer))
+            if (!await TryWriteRawAsync(writer).ConfigureAwait(false))
             {
-                writer.WriteLine($"{DirectiveChar}{Directive} {Name}");
+                await writer.WriteAsync(DirectiveChar).ConfigureAwait(false);
+                await writer.WriteAsync(Directive).ConfigureAwait(false);
+                await writer.WriteAsync(' ').ConfigureAwait(false);
+                await writer.WriteLineAsync(Name).ConfigureAwait(false);
             }
         }
     }
@@ -401,13 +413,14 @@ namespace SS.Core.Configuration
 
         public override ConfLineType LineType => ConfLineType.PreprocessorElse;
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (!TryWriteRaw(writer))
+            if (!await TryWriteRawAsync(writer).ConfigureAwait(false))
             {
-                writer.WriteLine($"{DirectiveChar}{Directive}");
+                await writer.WriteAsync(DirectiveChar).ConfigureAwait(false);
+                await writer.WriteLineAsync(Directive).ConfigureAwait(false);
             }
         }
     }
@@ -421,13 +434,14 @@ namespace SS.Core.Configuration
 
         public override ConfLineType LineType => ConfLineType.PreprocessorEndif;
 
-        public override void WriteTo(TextWriter writer)
+        public override async Task WriteToAsync(TextWriter writer)
         {
             ArgumentNullException.ThrowIfNull(writer);
 
-            if (!TryWriteRaw(writer))
+            if (!await TryWriteRawAsync(writer).ConfigureAwait(false))
             {
-                writer.WriteLine($"{DirectiveChar}{Directive}");
+                await writer.WriteAsync(DirectiveChar).ConfigureAwait(false);
+                await writer.WriteLineAsync(Directive).ConfigureAwait(false);
             }
         }
     }
