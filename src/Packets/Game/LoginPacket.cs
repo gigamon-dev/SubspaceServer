@@ -28,7 +28,7 @@ namespace SS.Packets.Game
         public PasswordInlineArray Password;
         private uint macId;
         private byte blah;
-        private ushort timeZoneBias;
+        private short timeZoneBias;
         private ushort unk1;
         private ushort cVersion;
         private int field444;
@@ -46,7 +46,7 @@ namespace SS.Packets.Game
             set => macId = LittleEndianConverter.Convert(value);
         }
 
-        public ushort TimeZoneBias
+        public short TimeZoneBias
         {
             readonly get => LittleEndianConverter.Convert(timeZoneBias);
             set => timeZoneBias = LittleEndianConverter.Convert(value);
