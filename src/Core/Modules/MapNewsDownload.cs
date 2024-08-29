@@ -215,47 +215,37 @@ namespace SS.Core.Modules
 
         private async Task InitializeArenaAsync(Arena arena)
         {
-            if (arena is null)
+            if (arena is null || !arena.TryGetExtraData(_dlKey, out List<MapDownloadData>? downloadList))
                 return;
 
-            try
+            downloadList.Clear();
+
+            MapDownloadData? data = null;
+
+            // First, add the map itself
+            string? filePath = await _mapData.GetMapFilenameAsync(arena, null).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(filePath))
             {
-                if (!arena.TryGetExtraData(_dlKey, out List<MapDownloadData>? downloadList))
-                    return;
-
-                downloadList.Clear();
-
-                MapDownloadData? data = null;
-
-                // First, add the map itself
-                string? filePath = await _mapData.GetMapFilenameAsync(arena, null).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(filePath))
-                {
-                    data = await CompressMapAsync(filePath, true, false).ConfigureAwait(false);
-                }
-
-                if (data is null)
-                {
-                    _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Can't load level file, falling back to 'tinymap.lvl'.");
-                    data = new MapDownloadData("tinymap.lvl", false, 0x5643ef8a, _emergencyMap);
-                }
-
-                downloadList.Add(data);
-
-                // Next, add lvz files
-                await foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenamesAsync(arena).ConfigureAwait(false))
-                {
-                    data = await CompressMapAsync(lvzInfo.Filename, false, lvzInfo.IsOptional).ConfigureAwait(false);
-
-                    if (data is not null)
-                    {
-                        downloadList.Add(data);
-                    }
-                }
+                data = await CompressMapAsync(filePath, true, false).ConfigureAwait(false);
             }
-            finally
+
+            if (data is null)
             {
-                _arenaManager.UnholdArena(arena);
+                _logManager.LogA(LogLevel.Warn, nameof(MapNewsDownload), arena, "Can't load level file, falling back to 'tinymap.lvl'.");
+                data = new MapDownloadData("tinymap.lvl", false, 0x5643ef8a, _emergencyMap);
+            }
+
+            downloadList.Add(data);
+
+            // Next, add lvz files
+            await foreach (LvzFileInfo lvzInfo in _mapData.LvzFilenamesAsync(arena).ConfigureAwait(false))
+            {
+                data = await CompressMapAsync(lvzInfo.Filename, false, lvzInfo.IsOptional).ConfigureAwait(false);
+
+                if (data is not null)
+                {
+                    downloadList.Add(data);
+                }
             }
 
 
