@@ -58,6 +58,7 @@ namespace SS.Core.Modules
         private bool _cfgSavePublicPlayerScores;
         private TimeSpan _cfgRetryTimeSpan;
         private int _cfgMaxConcurrentBannerUpload;
+        private bool _cfgEnableIsometryCompatibility;
 
         private int _pendingAuths;
         private int _interruptedAuths;
@@ -118,6 +119,11 @@ namespace SS.Core.Modules
             Description = "Whether player scores (for the public arena) should be saved to the biller.")]
         [ConfigHelp<int>("Billing", "MaxConcurrentBannerUpload", ConfigScope.Global, Default = 1,
             Description = "The maximum # of banners to upload concurrently.")]
+        [ConfigHelp<bool>("Billing", "EnableIsometryCompatibility", ConfigScope.Global, Default = false,
+            Description = """
+                Toggles using logic specific to the Isometry billing server.
+                This should only be enabled when connecting to an Isometry 2.0+ billing server.
+                """)]
         bool IModule.Load(IComponentBroker broker)
         {
             _arenaPlayerStats = broker.GetInterface<IArenaPlayerStats>();
@@ -131,6 +137,7 @@ namespace SS.Core.Modules
             _cfgSavePublicPlayerScores = _configManager.GetBool(_configManager.Global, "Billing", "SavePublicPlayerScores", BillingSettings.SavePublicPlayerScores.Default);
             _cfgRetryTimeSpan = TimeSpan.FromSeconds(_configManager.GetInt(_configManager.Global, "Billing", "RetryInterval", BillingSettings.RetryInterval.Default));
             _cfgMaxConcurrentBannerUpload = _configManager.GetInt(_configManager.Global, "Billing", "MaxConcurrentBannerUpload", BillingSettings.MaxConcurrentBannerUpload.Default);
+            _cfgEnableIsometryCompatibility = _configManager.GetBool(_configManager.Global, "Billing", "EnableIsometryCompatibility", BillingSettings.EnableIsometryCompatibility.Default);
 
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
@@ -1241,7 +1248,7 @@ namespace SS.Core.Modules
                 }
                 else if (fallbackResult == BillingFallbackResult.NotFound)
                 {
-                    // Add ^ in front of name and accept as unathenticated.
+                    // Add ^ in front of name and accept as unauthenticated.
                     result.Code = AuthCode.OK;
                     result.Authenticated = false;
 
@@ -1678,7 +1685,15 @@ namespace SS.Core.Modules
 
             int numChars = StringUtils.DefaultEncoding.GetCharCount(textBytes);
             Span<char> messageBuffer = stackalloc char[3 + 1 + numChars]; // enough for channel + ':' + text
-            if (!packet.Channel.TryFormat(messageBuffer, out int charsWritten))
+
+            byte channel = packet.Channel;
+            if (_cfgEnableIsometryCompatibility && channel > 100)
+            {
+                // Isometry distinguishes its own chat channels from a linked biller's chat channels by offsetting the linked channels by 100.
+                channel -= 100;
+            }
+
+            if (!channel.TryFormat(messageBuffer, out int charsWritten))
                 return;
 
             messageBuffer[charsWritten++] = ':';
@@ -1863,7 +1878,6 @@ namespace SS.Core.Modules
 
             try
             {
-                Span<char> messageBuffer = stackalloc char[ChatPacket.MaxMessageChars];
                 for (int i = 0; i < recipients.Length; i++)
                 {
                     ref readonly MulticastChannelChatRecipient recipient = ref recipients[i];
@@ -1875,18 +1889,17 @@ namespace SS.Core.Modules
                     set.Clear();
                     set.Add(player);
 
+                    byte channel = recipient.Channel;
+                    if (_cfgEnableIsometryCompatibility && channel > 100)
+                    {
+                        // Isometry distinguishes its own chat channels from a linked biller's chat channels by offsetting the linked channels by 100.
+                        channel -= 100;
+                    }
+
                     sb.Clear();
-                    sb.Append(recipient.Channel);
-                    sb.Append(':');
-                    sb.Append(text);
+                    sb.Append($"{channel}:{text}");
 
-                    int numCharacters = sb.Length;
-                    if (numCharacters > messageBuffer.Length)
-                        numCharacters = messageBuffer.Length;
-
-                    sb.CopyTo(0, messageBuffer, numCharacters);
-
-                    _chat.SendAnyMessage(set, ChatMessageType.Chat, ChatSound.None, null, messageBuffer[..numCharacters]);
+                    _chat.SendAnyMessage(set, ChatMessageType.Chat, ChatSound.None, null, sb);
                 }
             }
             finally
