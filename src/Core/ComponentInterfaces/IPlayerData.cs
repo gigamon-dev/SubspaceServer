@@ -142,5 +142,26 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="key">The key from <see cref="AllocatePlayerData{T}"/>.</param>
         /// <returns><see langword="true"/> if the slot for given <paramref name="key"/> was freed. <see langword="false"/> if the <paramref name="key"/> was invalid.</returns>
         bool FreePlayerData<T>(ref PlayerDataKey<T> key) where T : class;
+
+        /// <summary>
+        /// Adds a "hold" on a player, preventing it from proceeding to the next stage in the player life-cycle, until the hold is removed.
+        /// </summary>
+        /// <remarks>
+        /// This can be used to do time-consuming work asynchronously during certain steps in the player life-cycle.
+        /// It may only be used in <see cref="ComponentCallbacks.PlayerActionCallback"/> handlers,
+        /// only for <see cref="PlayerAction.Disconnect"/>.
+        /// </remarks>
+        /// <param name="player">The player to add a hold on.</param>
+        void AddHold(Player player);
+
+        /// <summary>
+        /// Removes a "hold" on a player.
+        /// </summary>
+        /// <remarks>
+        /// This must be called exactly once for each time <see cref="AddHold(Player)"/> is called.
+        /// It may be called from any thread.
+        /// </remarks>
+        /// <param name="player">The player to remove a hold from.</param>
+        void RemoveHold(Player player);
     }
 }

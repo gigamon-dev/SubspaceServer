@@ -8,92 +8,148 @@ using System.Globalization;
 
 namespace SS.Core
 {
+    /// <summary>
+    /// Actions that represent important events in an <see cref="Arena"/>'s life-cycle.
+    /// </summary>
+    /// <remarks>
+    /// These actions are hooked into by using the <see cref="ComponentCallbacks.ArenaActionCallback"/>.
+    /// </remarks>
+    public enum ArenaAction
+    {
+        /// <summary>
+        /// When an arena is created.
+        /// </summary>
+        /// <remarks>
+        /// If the work cannot be completed synchronously, a "hold" can be placed on the arena by using <see cref="IArenaManager.AddHold(Arena)"/> and when done, released with <see cref="IArenaManager.RemoveHold(Arena)"/>.
+        /// Holding an arena, prevents the arena from moving onto further steps in the life-cycle, until all holds are cleared.
+        /// </remarks>
+        Create,
+
+        /// <summary>
+        /// When an arena.conf file changes.
+        /// </summary>
+        ConfChanged,
+
+        /// <summary>
+        /// When an arena is being destroyed.
+        /// </summary>
+        /// <remarks>
+        /// If the work cannot be completed synchronously, a "hold" can be placed on the arena by using <see cref="IArenaManager.AddHold(Arena)"/> and when done, released with <see cref="IArenaManager.RemoveHold(Arena)"/>.
+        /// Holding an arena, prevents the arena from moving onto further steps in the life-cycle, until all holds are cleared.
+        /// </remarks>
+        Destroy,
+
+        /// <summary>
+        /// A really early step in the arena creation process. The arena is being initialized and is not yet fully created. This happens before modules are attached to the arena.
+        /// </summary>
+        /// <remarks>
+        /// If the work cannot be completed synchronously, a "hold" can be placed on the arena by using <see cref="IArenaManager.AddHold(Arena)"/> and when done, released with <see cref="IArenaManager.RemoveHold(Arena)"/>.
+        /// Holding an arena, prevents the arena from moving onto further steps in the life-cycle, until all holds are cleared.
+        /// </remarks>
+        PreCreate,
+
+        /// <summary>
+        /// After an arena has been destroyed.
+        /// </summary>
+        PostDestroy
+    };
+
+    /// <summary>
+    /// States of an <see cref="Arena"/>'s life-cycle.
+    /// </summary>
+    /// <remarks>
+    /// In general, most modules should NOT need to use this.
+    /// Instead, use the <see cref="ComponentCallbacks.ArenaActionCallback"/> to hook into the events of an <see cref="Arena"/>'s life-cycle.
+    /// </remarks>
     public enum ArenaState
     {
         /// <summary>
-        /// someone wants to enter the arena. first, the config file must be loaded, callbacks called
+        /// The arena was just created. Either someone wants to enter the arena or it's a permanent arena.
+        /// The arena.conf file is loaded and made available on the arena, <see cref="Arena.Cfg"/>.
+        /// When the arena.conf loading is complete, it transitions to <see cref="WaitHolds0"/>
+        /// and the <see cref="ComponentCallbacks.ArenaActionCallback"/> (<see cref="ArenaAction.PreCreate"/>) is called.
         /// </summary>
         DoInit0,
 
         /// <summary>
-        /// waiting for first round of callbacks
+        /// Waits for modules to complete the work they started when <see cref="ComponentCallbacks.ArenaActionCallback"/> (<see cref="ArenaAction.PreCreate"/>) was called.
+        /// When there are no more holds on the arena, it transitions to <see cref="DoInit1"/>.
         /// </summary>
         WaitHolds0,
 
         /// <summary>
-        /// attaching and more callbacks
+        /// Modules are attached to the arena (Modules:AttachModules setting in arena.conf).
+        /// When module attaching is complete, it transitions to <see cref="WaitHolds1"/>
+        /// and the <see cref="ComponentCallbacks.ArenaActionCallback"/> (<see cref="ArenaAction.Create"/>) is called. 
         /// </summary>
         DoInit1,
 
         /// <summary>
-        /// waiting on modules to do init work.
+        /// Waits for modules to complete the work they started when <see cref="ComponentCallbacks.ArenaActionCallback"/> (<see cref="ArenaAction.Create"/>) was called.
+        /// When there are no more holds on the arena, it transitions to <see cref="DoInit2"/>.
         /// </summary>
         WaitHolds1,
 
         /// <summary>
-        /// load persistent data.
+        /// If persist module is loaded (<see cref="IPersist"/> available), it transitions to <see cref="WaitSync1"/> and tells the persist module to load persistent data for the arena.
+        /// Otherwise, it transitions to <see cref="Running"/>.
         /// </summary>
         DoInit2,
 
         /// <summary>
-        /// waiting on the database
+        /// Waits for the persist module to complete loading persistent data for the arena.
+        /// When complete, it transitions to <see cref="Running"/>.
         /// </summary>
         WaitSync1,
 
         /// <summary>
-        /// now the arena is fully created. core can now send the arena 
-        /// responses to players waiting to enter this arena
+        /// The arena is fully created.
+        /// The <see cref="Modules.Core"/> module can now send the arena responses to players waiting to enter this arena.
+        /// This is the state that an arena should be in for most of its life.
+        /// When the arena is to be recycled, it transitions to <see cref="Closing"/>.
+        /// When the arena no longer has any players in it, and it's not a permanent arena, it transitions to <see cref="DoWriteData"/>.
         /// </summary>
         Running,
 
         /// <summary>
-        /// the arena is running for a little while, but isn't accepting new players
+        /// The arena is closing because it's being recycled.
+        /// It isn't accepting new players. It's waiting for the <see cref="Modules.Core"/> module to remove players from the arena.
+        /// When there are no more players in the arena, it transitions to <see cref="DoWriteData"/>.
         /// </summary>
         Closing,
 
         /// <summary>
-        /// the arena is being reaped, first put info in database
+        /// The arena is being reaped (torn down).
+        /// If persist module is loaded (<see cref="IPersist"/> available), it transitions to <see cref="WaitSync2"/> and tell the persist module to save persistent data for the arena.
+        /// Otherwise, it transitions to <see cref="DoDestroy1"/>.
         /// </summary>
         DoWriteData,
 
         /// <summary>
-        /// waiting on the database to finish before we can unregister modules...
+        /// Waits for the persist module to complete saving persistent data for the arena.
+        /// When complete, it transitions to <see cref="DoDestroy1"/>.
         /// </summary>
         WaitSync2,
 
         /// <summary>
-        /// arena destroy callbacks.
+        /// Transitions to <see cref="WaitHolds2"/> and the <see cref="ComponentCallbacks.ArenaActionCallback"/> (<see cref="ArenaAction.Destroy"/>) is called.
         /// </summary>
         DoDestroy1,
 
         /// <summary>
-        /// waiting for modules to do destroy work.
+        /// Waits for modules to complete the work they started when <see cref="ComponentCallbacks.ArenaActionCallback"/> (<see cref="ArenaAction.Destroy"/>) was called.
+        /// When there are no more holds on the arena, it transitions to <see cref="DoDestroy2"/>.
         /// </summary>
         WaitHolds2,
 
         /// <summary>
-        /// finish destroy process.
+        /// Detaches modules that were attached to the arena.
+        /// When detaching of modules is complete, the <see cref="ComponentCallbacks.ArenaActionCallback"/> (<see cref="ArenaAction.PostDestroy"/>) is called.
+        /// If the arena was being recycled, it will transition back to <see cref="DoInit0"/>.
+        /// Otherwise, the arena is finally removed.
         /// </summary>
         DoDestroy2
     }
-
-    public enum ArenaAction
-    {
-        /// <summary>when arena is created</summary>
-        Create,
-
-        /// <summary>when config file changes</summary>
-        ConfChanged,
-
-        /// <summary>when the arena is destroyed</summary>
-        Destroy,
-
-        /// <summary>really really early</summary>
-        PreCreate,
-
-        /// <summary>really really late</summary>
-        PostDestroy
-    };
 
     /// <summary>
     /// A key for accessing "extra data" per-arena.
@@ -441,7 +497,7 @@ namespace SS.Core
         /// <param name="arenaName">The arena name to parse.</param>
         /// <param name="baseName">When this method returns, the base arena name, if parsing succeeded. <see cref="ReadOnlySpan{char}.Empty"/> if parsing failed.</param>
         /// <param name="number">When this method returns, the arena number, if parsing succeeded. Zero if parsing failed.</param>
-        /// <returns><see langword="true"/> if <paramref name="arenaName"/> parsed sucessfully; otherwise <see langword="false"/>.</returns>
+        /// <returns><see langword="true"/> if <paramref name="arenaName"/> parsed successfully; otherwise <see langword="false"/>.</returns>
         public static bool TryParseArenaName(ReadOnlySpan<char> arenaName, out ReadOnlySpan<char> baseName, out int number)
         {
             arenaName = arenaName.Trim();

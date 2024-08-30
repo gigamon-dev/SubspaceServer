@@ -198,11 +198,11 @@ namespace SS.Core.Modules
             if (action == ArenaAction.Create)
             {
                 // note: asss does this in reverse order, but i think it is a race condition
-                _arenaManager.HoldArena(arena);
+                _arenaManager.AddHold(arena);
 
                 await InitializeArenaAsync(arena).ConfigureAwait(false);
 
-                _arenaManager.UnholdArena(arena);
+                _arenaManager.RemoveHold(arena);
             }
             else if (action == ArenaAction.Destroy)
             {
@@ -355,19 +355,24 @@ namespace SS.Core.Modules
                 return;
             }
 
-            IFileTransfer? fileTransfer = _broker.GetInterface<IFileTransfer>();
-            if (fileTransfer is not null)
+            SendUpdateExecutable(player);
+
+            async void SendUpdateExecutable(Player player)
             {
-                try
+                IFileTransfer? fileTransfer = _broker.GetInterface<IFileTransfer>();
+                if (fileTransfer is not null)
                 {
-                    if (!fileTransfer.SendFile(player, "clients/update.exe", string.Empty, false))
+                    try
                     {
-                        _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), "Update request, but error setting up to be sent.");
+                        if (!await fileTransfer.SendFileAsync(player, "clients/update.exe", string.Empty.AsMemory(), false).ConfigureAwait(false))
+                        {
+                            _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), "Update request, but error setting up to be sent.");
+                        }
                     }
-                }
-                finally
-                {
-                    _broker.ReleaseInterface(ref fileTransfer);
+                    finally
+                    {
+                        _broker.ReleaseInterface(ref fileTransfer);
+                    }
                 }
             }
         }

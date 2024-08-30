@@ -1,6 +1,7 @@
 ﻿using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
+using System.Buffers;
 using System.IO;
 using System.IO.Compression;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ namespace SS.Core.Modules
     /// </summary>
     [CoreModuleInfo]
     public class AdminCommand(
+        IArenaManager arenaManager,
         ICapabilityManager capabilityManager,
         IChat chat,
         IConfigManager configManager,
@@ -24,6 +26,7 @@ namespace SS.Core.Modules
     {
         private const string MapUploadDirectory = "maps/upload";
 
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
         private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
         private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
         private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
@@ -139,33 +142,30 @@ namespace SS.Core.Modules
             else
             {
                 string relativePath = Path.GetRelativePath(currentDir, fullPath);
-                Send(player.Name!, relativePath);
+                SendFileAsync(player, relativePath);
             }
 
-            void Send(string playerName, string path)
+            // async local helper since the command handler cannot be made async
+            async void SendFileAsync(Player player, string path)
             {
-                // Use a worker thread to queue the file to be sent since we don't want to do file I/O on the mainloop thread.
-                // Purposely passing the player's name instead of the Player object since the Player object's state could change (e.g. player disconnects).
-                _ = Task.Run(() =>
+                // Save the player before the await, so that we can check if the player object after the await.
+                string playerName = player.Name!;
+
+                bool queued = await _fileTransfer.SendFileAsync(player, path, Path.GetFileName(path).AsMemory(), false).ConfigureAwait(true);
+
+                // The player's state could have changed (e.g. disconnect) by the time the await continuation executes.
+                // Check that the player is still valid.
+                if (player != _playerData.FindPlayer(playerName))
+                    return;
+
+                if (queued)
                 {
-                    _playerData.Lock();
-
-                    try
-                    {
-                        Player? player = _playerData.FindPlayer(playerName);
-                        if (player is null)
-                            return;
-
-                        if (!_fileTransfer.SendFile(player, path, Path.GetFileName(path.AsSpan()), false))
-                        {
-                            _chat.SendMessage(player, $"Error sending '{path}'.");
-                        }
-                    }
-                    finally
-                    {
-                        _playerData.Unlock();
-                    }
-                });
+                    _chat.SendMessage(player, $"Sending '{path}'.");
+                }
+                else
+                {
+                    _chat.SendMessage(player, $"Error sending '{path}'.");
+                }
             }
         }
 
@@ -215,7 +215,7 @@ namespace SS.Core.Modules
             bool isZip = command.Equals("putzip", StringComparison.OrdinalIgnoreCase);
             if (isZip && !Path.GetExtension(clientFileName).Equals(".zip", StringComparison.OrdinalIgnoreCase))
             {
-                _chat.SendMessage(player, "Invalid input. File name must end with '.zip'.");
+                _chat.SendMessage(player, "Invalid input. File name extension must be '.zip'.");
                 return;
             }
 
@@ -237,16 +237,42 @@ namespace SS.Core.Modules
 
             string serverRelativePath = Path.GetRelativePath(currentDir, serverFullPath);
 
-            if (!_fileTransfer.RequestFile(
-                player,
-                clientPath,
-                FileUploaded,
-                new UploadContext(
-                    player,
-                    serverRelativePath,
-                    isZip)))
+            char[] clientPathArray = ArrayPool<char>.Shared.Rent(clientPath.Length);
+            clientPath.CopyTo(clientPathArray);
+
+            PutFileAsync(player, clientPathArray, clientPath.Length, serverRelativePath, isZip);
+
+            async void PutFileAsync(Player player, char[] clientFileName, int clientFileNameLength, string serverRelativePath, bool isZip)
             {
-                _chat.SendMessage(player, "Error requesting file to be sent.");
+                try
+                {
+                    string playerName = player.Name!;
+                    Memory<char> clientFileNameMemory = clientFileName.AsMemory(0, clientFileNameLength);
+
+                    string? tempFileName = await _fileTransfer.RequestFileAsync(player, clientFileNameMemory).ConfigureAwait(true);
+
+                    if (tempFileName is null)
+                    {
+                        if (player == _playerData.FindPlayer(playerName))
+                        {
+                            _chat.SendMessage(player, $"Error requesting file '{clientFileNameMemory.Span}' to be sent.");
+                            return;
+                        }
+
+                        return;
+                    }
+
+                    await ProcessUploadedFileAsync(
+                        tempFileName,
+                        new UploadContext(
+                            playerName,
+                            serverRelativePath,
+                            isZip)).ConfigureAwait(false);
+                }
+                finally
+                {
+                    ArrayPool<char>.Shared.Return(clientFileName);
+                }
             }
         }
 
@@ -306,20 +332,36 @@ namespace SS.Core.Modules
                 }
             }
 
-            string serverPath = Path.Join(MapUploadDirectory, Path.ChangeExtension(arena.BaseName, ".lvl"));
+            char[] clientFileName = ArrayPool<char>.Shared.Rent(parameters.Length);
+            parameters.CopyTo(clientFileName);
 
-            if (!_fileTransfer.RequestFile(
-                player,
-                parameters,
-                FileUploaded,
-                new UploadContext(
-                    player,
-                    serverPath,
-                    false,
-                    "General:Map",
-                    player.Arena)))
+            PutMapAsync(player, arena, clientFileName, parameters.Length);
+
+            async void PutMapAsync(Player player, Arena arena, char[] clientFileName, int clientFileNameLength)
             {
-                _chat.SendMessage(player, "Error requesting file to be sent.");
+                try
+                {
+                    string serverPath = Path.Join(MapUploadDirectory, Path.ChangeExtension(arena.BaseName, ".lvl"));
+
+                    string playerName = player.Name!;
+
+                    string? tempFileName = await _fileTransfer.RequestFileAsync(player, clientFileName.AsMemory(0, clientFileNameLength)).ConfigureAwait(true);
+                    if (tempFileName is null)
+                        return;
+
+                    await ProcessUploadedFileAsync(
+                        tempFileName,
+                        new UploadContext(
+                            playerName,
+                            serverPath,
+                            false,
+                            "General:Map",
+                            arena.Name)).ConfigureAwait(false);
+                }
+                finally
+                {
+                    ArrayPool<char>.Shared.Return(clientFileName);
+                }
             }
         }
 
@@ -360,48 +402,82 @@ namespace SS.Core.Modules
                 arenaName[i] = char.ToLower(parameters[i]);
             }
 
-            string directoryPath = Path.Join("arenas", arenaName);
-
-            if (!Directory.Exists(directoryPath))
+            if (char.IsAsciiDigit(arenaName[^1]))
             {
-                try
-                {
-                    Directory.CreateDirectory(directoryPath);
-                }
-                catch (Exception ex)
-                {
-                    _chat.SendMessage(player, $"Error creating directory '{directoryPath}'. {ex.Message}");
-                    _logManager.LogP(LogLevel.Warn, nameof(AdminCommand), player, $"Error creating directory '{directoryPath}'. {ex.Message}");
-                    return;
-                }
-            }
-
-            string arenaConfPath = Path.Join(directoryPath, "arena.conf");
-
-            if (File.Exists(arenaConfPath))
-            {
-                _chat.SendMessage(player, $"Arena '{arenaName}' already exists.");
+                _chat.SendMessage(player, "Invalid arena name. Do not include arena number.");
                 return;
             }
 
-            CopyArenaConf(player.Name!, arena.Cfg!, arenaConfPath);
+            MakeArenaAsync(player, arena, arenaName.ToString());
 
             // async local function since the command handler can't be made async
-            async void CopyArenaConf(string playerName, ConfigHandle arenaConfigHandle, string path)
+            async void MakeArenaAsync(Player? player, Arena arena, string arenaName)
             {
-                bool success = await _configManager.SaveStandaloneCopy(arenaConfigHandle, path);
+                ArgumentNullException.ThrowIfNull(player);
 
-                Player? player = _playerData.FindPlayer(playerName);
-                if (player is null)
+                // Save the player name before any await, so that we can check the player object after the await.
+                string playerName = player.Name!;
+
+                //
+                // Create the directory if necessary.
+                //
+
+                string directoryPath = Path.Join("arenas", arenaName);
+
+                if (!await Task.Factory.StartNew(static (p) => Directory.Exists((string)p!), directoryPath).ConfigureAwait(true))
+                {
+                    try
+                    {
+                        await Task.Factory.StartNew(static (p) => Directory.CreateDirectory((string)p!), directoryPath).ConfigureAwait(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        if ((player = _playerData.FindPlayer(playerName)) is null)
+                            return;
+
+                        _chat.SendMessage(player, $"Error creating directory '{directoryPath}'. {ex.Message}");
+                        _logManager.LogP(LogLevel.Warn, nameof(AdminCommand), player, $"Error creating directory '{directoryPath}'. {ex.Message}");
+                        return;
+                    }
+                }
+
+                //
+                // Make sure the arena.conf doesn't already exist.
+                //
+
+                string arenaConfPath = Path.Join(directoryPath, "arena.conf");
+
+                if (await Task.Factory.StartNew((p) => File.Exists((string)p!), arenaConfPath).ConfigureAwait(true))
+                {
+                    if ((player = _playerData.FindPlayer(playerName)) is null)
+                        return;
+
+                    _chat.SendMessage(player, $"Arena '{arenaName}' already exists.");
+                    return;
+                }
+
+                if ((player = _playerData.FindPlayer(playerName)) is null)
+                    return;
+
+                if (arena != player.Arena)
+                    return; // The player changed arenas since issuing the command.
+
+                //
+                // Create the arena.conf by creating a standalone copy from the existing arena.
+                //
+
+                bool success = await _configManager.SaveStandaloneCopy(arena.Cfg!, arenaConfPath).ConfigureAwait(true);
+
+                if ((player = _playerData.FindPlayer(playerName)) is null)
                     return;
 
                 if (success)
                 {
-                    _chat.SendMessage(player, $"Successfuly created arena.conf '{path}'.");
+                    _chat.SendMessage(player, $"Successfully created arena.conf '{arenaConfPath}'.");
                 }
                 else
                 {
-                    _chat.SendMessage(player, $"Error creating arena.conf '{path}'.");
+                    _chat.SendMessage(player, $"Error creating arena.conf '{arenaConfPath}'.");
                 }
             }
         }
@@ -459,15 +535,22 @@ namespace SS.Core.Modules
             if (!IsWithinBasePath(fullPath, currentDir))
             {
                 _chat.SendMessage(player, "Invalid path.");
+                return;
             }
-            else if (!Directory.Exists(parametersStr))
+
+            ChangeDirectoryAsync(player, parametersStr);
+
+            async void ChangeDirectoryAsync(Player player, string path)
             {
-                _chat.SendMessage(player, "The specified path doesn't exist.");
-            }
-            else
-            {
-                _fileTransfer.SetWorkingDirectory(player, Path.GetRelativePath(currentDir, fullPath));
-                _chat.SendMessage(player, "Changed working directory.");
+                if (!await Task.Factory.StartNew((obj) => Directory.Exists((string)obj!), parametersStr).ConfigureAwait(true))
+                {
+                    _chat.SendMessage(player, "The specified path doesn't exist.");
+                }
+                else
+                {
+                    _fileTransfer.SetWorkingDirectory(player, Path.GetRelativePath(currentDir, fullPath));
+                    _chat.SendMessage(player, "Changed working directory.");
+                }
             }
         }
 
@@ -503,24 +586,47 @@ namespace SS.Core.Modules
                 return;
             }
 
-            // File.Delete() doesn't throw an exception if the file doesn't exist. So, check ahead of time.
-            if (!File.Exists(fullPath))
-            {
-                _chat.SendMessage(player, $"File '{path}' not found.");
-                return;
-            }
+            DeleteFileAsync(player, path, fullPath);
 
-            try
+            // async local function since the command handler can't be made async
+            async void DeleteFileAsync(Player? player, string path, string fullPath)
             {
-                File.Delete(fullPath);
-            }
-            catch (Exception ex)
-            {
-                _chat.SendMessage(player, $"Error deleting '{path}'. {ex.Message}");
-                return;
-            }
+                ArgumentNullException.ThrowIfNull(player);
 
-            _chat.SendMessage(player, "Deleted.");
+                // Save the player name before any await, so that we can check the player object after the await.
+                string playerName = player.Name!;
+
+                // File.Delete() doesn't throw an exception if the file doesn't exist. So, check ahead of time.
+                if (!await Task.Factory.StartNew((p) => File.Exists((string)p!), fullPath).ConfigureAwait(true))
+                {
+                    // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                    if ((player = _playerData.FindPlayer(playerName)) is null)
+                        return;
+
+                    _chat.SendMessage(player, $"File '{path}' not found.");
+                    return;
+                }
+
+                try
+                {
+                    await Task.Factory.StartNew((p) => File.Delete((string)p!), fullPath).ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                    if ((player = _playerData.FindPlayer(playerName)) is null)
+                        return;
+
+                    _chat.SendMessage(player, $"Error deleting '{path}'. {ex.Message}");
+                    return;
+                }
+
+                // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                if ((player = _playerData.FindPlayer(playerName)) is null)
+                    return;
+
+                _chat.SendMessage(player, "Deleted.");
+            }
         }
 
         [CommandHelp(
@@ -559,25 +665,48 @@ namespace SS.Core.Modules
                 return;
             }
 
-            try
-            {
-                File.Move(oldFullPath, newFullPath, true);
-            }
-            catch (Exception ex)
-            {
-                _chat.SendMessage(player, $"Error renaming \"{oldPath}\" to \"{newPath}\". {ex.Message}");
-                return;
-            }
+            RenameFileAsync(player, oldPath, oldFullPath, newPath, newFullPath);
 
-            _chat.SendMessage(player, "Renamed.");
+            // async local function since the command handler can't be made async
+            async void RenameFileAsync(Player? player, string oldPath, string oldFullPath, string newPath, string newFullPath)
+            {
+                ArgumentNullException.ThrowIfNull(player);
+
+                // Save the player name before any await, so that we can check the player object after the await.
+                string playerName = player.Name!;
+
+                try
+                {
+                    await Task.Run(() => File.Move(oldFullPath, newFullPath, true)).ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                    if ((player = _playerData.FindPlayer(playerName)) is null)
+                        return;
+
+                    _chat.SendMessage(player, $"Error renaming \"{oldPath}\" to \"{newPath}\". {ex.Message}");
+                    return;
+                }
+
+                // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                if ((player = _playerData.FindPlayer(playerName)) is null)
+                    return;
+
+                _chat.SendMessage(player, "Renamed.");
+            }
         }
 
         #endregion
 
-        private void FileUploaded(string? filename, UploadContext context)
+        // This executes on the mainloop thread.
+        private async Task ProcessUploadedFileAsync(string? filename, UploadContext context)
         {
             if (string.IsNullOrWhiteSpace(filename))
+            {
+                // Upload failed or cancelled. There's no file to process so we're done.
                 return;
+            }
 
             if (context.Unzip)
             {
@@ -585,25 +714,30 @@ namespace SS.Core.Modules
                 // This complicates matters in that we have to pass info to the thread.
                 // We don't want to pass the Player object since the Player could could leave before it's used,
                 // and object/id possibly even have been reused by the time we access it, though extremely unlikely.
-                _mainloop.QueueThreadPoolWorkItem(ExtractZip, new ExtractZipContext(filename, context.ServerPath, context.Player.Name!));
+                _mainloop.QueueThreadPoolWorkItem(ExtractZip, new ExtractZipContext(filename, context.ServerPath, context.PlayerName));
             }
             else
             {
+                Player? player;
+
                 try
                 {
-                    // TODO: this should be done on a worker thread
-                    File.Move(filename, context.ServerPath, true);
+                    await Task.Run(() => File.Move(filename, context.ServerPath, true)).ConfigureAwait(true);
                 }
                 catch (Exception ex)
                 {
-                    _logManager.LogP(LogLevel.Warn, nameof(AdminCommand), context.Player,
+                    _logManager.LogM(LogLevel.Warn, nameof(AdminCommand),
                         $"Couldn't move file '{filename}' to '{context.ServerPath}'. {ex.Message}");
 
-                    _chat.SendMessage(context.Player, $"Couldn't upload file to '{context.ServerPath}'.");
+                    player = _playerData.FindPlayer(context.PlayerName);
+                    if (player is not null)
+                    {
+                        _chat.SendMessage(player, $"Couldn't upload file to '{context.ServerPath}'.");
+                    }
 
                     try
                     {
-                        File.Delete(filename);
+                        await Task.Factory.StartNew(static (p) => File.Delete((string)p!), filename).ConfigureAwait(true);
                     }
                     catch
                     {
@@ -613,26 +747,13 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                _chat.SendMessage(context.Player, $"File received: {context.ServerPath}");
-
-                ReadOnlySpan<char> setting = context.Setting;
-                if (!setting.IsWhiteSpace())
+                player = _playerData.FindPlayer(context.PlayerName);
+                if (player is not null)
                 {
-                    if (context.Arena is null || context.Player.Arena != context.Arena)
-                    {
-                        _chat.SendMessage(context.Player, "Map upload aborted (changed arenas).");
-                        return;
-                    }
-
-                    ReadOnlySpan<char> section = setting.GetToken(':', out ReadOnlySpan<char> key);
-                    if (section.IsEmpty
-                        || (key = key.TrimStart(':')).IsEmpty)
-                    {
-                        return;
-                    }
-
-                    _configManager.SetStr(context.Arena.Cfg!, section.ToString(), key.ToString(), context.ServerPath, $"Set by {context.Player.Name} on {DateTime.UtcNow}", true);
+                    _chat.SendMessage(player, $"File received: {context.ServerPath}");
                 }
+
+                ChangeConfigSetting(context);
             }
 
             void ExtractZip(ExtractZipContext extractZipContext)
@@ -693,6 +814,41 @@ namespace SS.Core.Modules
                     _playerData.Unlock();
                 }
             }
+
+            void ChangeConfigSetting(UploadContext context)
+            {
+                ReadOnlySpan<char> setting = context.Setting;
+                if (setting.IsWhiteSpace())
+                    return;
+
+                _arenaManager.Lock();
+
+                try
+                {
+                    Arena? arena = _arenaManager.FindArena(context.ArenaName);
+                    if (arena is null)
+                        return;
+
+                    ConfigHandle? ch = arena.Cfg;
+                    if (ch is null)
+                        return;
+
+                    Span<Range> ranges = stackalloc Range[2];
+                    if (setting.Split(ranges, ':', StringSplitOptions.TrimEntries) != 2)
+                        return;
+
+                    ReadOnlySpan<char> section = setting[ranges[0]];
+                    ReadOnlySpan<char> key = setting[ranges[1]];
+                    if (section.IsEmpty || key.IsEmpty)
+                        return;
+
+                    _configManager.SetStr(ch, section.ToString(), key.ToString(), context.ServerPath, $"Set by {context.PlayerName} on {DateTime.UtcNow}", true);
+                }
+                finally
+                {
+                    _arenaManager.Unlock();
+                }
+            }
         }
 
         /// <summary>
@@ -733,36 +889,30 @@ namespace SS.Core.Modules
 
         private readonly struct UploadContext
         {
-            public UploadContext(Player player, string serverPath, bool unzip) : this(player, serverPath, unzip, null, null)
+            public UploadContext(string playerName, string serverPath, bool unzip) : this(playerName, serverPath, unzip, null, null)
             {
-                if (string.IsNullOrWhiteSpace(serverPath))
-                    throw new ArgumentException("Cannot be null or white-space.", nameof(serverPath));
-
-                Player = player ?? throw new ArgumentNullException(nameof(player));
-                ServerPath = serverPath;
-                Unzip = unzip;
             }
 
-            public UploadContext(Player player, string serverPath, bool unzip, string? setting, Arena? arena)
+            public UploadContext(string playerName, string serverPath, bool unzip, string? setting, string? arenaName)
             {
-                if (string.IsNullOrWhiteSpace(serverPath))
-                    throw new ArgumentException("Cannot be null or white-space.", nameof(serverPath));
+                ArgumentException.ThrowIfNullOrWhiteSpace(playerName);
+                ArgumentException.ThrowIfNullOrWhiteSpace(serverPath);
 
-                if (!string.IsNullOrWhiteSpace(setting) && arena is null)
-                    throw new ArgumentException("An arena is required when a setting is to be changed.");
+                if (!string.IsNullOrWhiteSpace(setting) && string.IsNullOrWhiteSpace(arenaName))
+                    throw new ArgumentException("An arena is required when a setting is to be changed.", nameof(arenaName));
 
-                Player = player ?? throw new ArgumentNullException(nameof(player));
+                PlayerName = playerName;
                 ServerPath = serverPath;
                 Unzip = unzip;
                 Setting = setting;
-                Arena = arena;
+                ArenaName = arenaName;
             }
 
-            public Player Player { get; }
+            public string PlayerName { get; }
             public string ServerPath { get; }
             public bool Unzip { get; }
             public string? Setting { get; }
-            public Arena? Arena { get; }
+            public string? ArenaName { get; }
         }
 
         private readonly record struct ExtractZipContext(string FileName, string ServerPath, string PlayerName);

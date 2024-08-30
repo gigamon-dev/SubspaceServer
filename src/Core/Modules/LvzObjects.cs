@@ -851,11 +851,11 @@ namespace SS.Core.Modules
             {
                 // NOTE: LVZ files are loaded on ArenaAction.PreCreate so that LVZ functionality will be ready to use on ArenaAction.Create.
 
-                _arenaManager.HoldArena(arena);
+                _arenaManager.AddHold(arena);
 
                 await InitializeArenaAsync(arena).ConfigureAwait(false);
 
-                _arenaManager.UnholdArena(arena);
+                _arenaManager.RemoveHold(arena);
             }
             else if (action == ArenaAction.Destroy)
             {

@@ -49,7 +49,7 @@ namespace SS.Utilities.Collections
         /// <remarks>
         /// An item can only be in the queue once. Attempting to queue an item multiple times has no effect; the item retains its original position.
         /// <para>
-        /// O(1) as long as the Dictionary doesn't have to resize, which shoudl be the case if a proper initial capacity was provided.
+        /// O(1) as long as the Dictionary doesn't have to resize, which should be the case if a proper initial capacity was provided.
         /// Otherwise O(n) if the Dictionary had to resize.
         /// </para>
         /// </remarks>

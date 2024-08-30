@@ -12,44 +12,52 @@ using System.Net;
 namespace SS.Core
 {
     /// <summary>
-    /// playeraction event codes
+    /// Actions that represent important events in a <see cref="Player"/>'s life-cycle.
     /// </summary>
+    /// <remarks>
+    /// These actions are hooked into by using the <see cref="ComponentCallbacks.PlayerActionCallback"/>.
+    /// </remarks>
     public enum PlayerAction
     {
         /// <summary>
-        /// the player is connecting to the server. not arena-specific
+        /// The player has connected to the server (logged in).
         /// </summary>
+        /// <remarks>
+        /// Not arena-specific.
+        /// </remarks>
         Connect,
 
         /// <summary>
-        /// the player is disconnecting from the server. not arena-specific.
+        /// The player is disconnecting from the server.
         /// </summary>
+        /// <remarks>
+        /// Not arena-specific.
+        /// </remarks>
         Disconnect,
 
         /// <summary>
-        /// this is called at the earliest point after a player indicates an
-        /// intention to enter an arena.
-        /// you can use this for some questionable stuff, like redirecting
-        /// the player to a different arena. but in general it's better to
-        /// use EnterArena for general stuff that should happen on
-        /// entering arenas.
+        /// This is occurs at the earliest point after a player indicates their intention to enter an arena.
         /// </summary>
+        /// <remarks>
+        /// In general it's better to use <see cref="EnterArena"/> for logic that should happen on entering arenas.
+        /// However, is useful in cases where a module needs to do processing prior to <see cref="EnterArena"/>, 
+        /// so that it's ready for another module to call it during <see cref="EnterArena"/>.
+        /// </remarks>
         PreEnterArena,
 
         /// <summary>
-        /// the player is entering an arena.
+        /// The player is entering an arena.
         /// </summary>
         EnterArena,
 
         /// <summary>
-        /// the player is leaving an arena.
+        /// The player is leaving an arena.
         /// </summary>
         LeaveArena,
 
         /// <summary>
-        /// this is called at some point after the player has sent his first
-        /// position packet (indicating that he's joined the game, as
-        /// opposed to still downloading a map).
+        /// This is called at some point after <see cref="EnterArena"/>, when the player has sent their first position packet.
+        /// This indicates that the player has joined the game, as opposed to still downloading map or lvz files.
         /// </summary>
         EnterGame,
     }
@@ -83,56 +91,79 @@ namespace SS.Core
     }
 
     /// <summary>
-    /// Player status codes
+    /// States of a <see cref="Player"/>'s life-cycle.
     /// </summary>
+    /// <remarks>
+    /// In general, most modules should NOT need to use this.
+    /// Instead, use the <see cref="ComponentCallbacks.PlayerActionCallback"/> to hook into the events of a <see cref="Player"/>'s life-cycle.
+    /// </remarks>
     public enum PlayerState
     {
         /// <summary>
         /// The player was just created, and isn't ready to do anything yet.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="Connected"/>.</remarks>
+        /// <remarks>
+        /// Transitions to: <see cref="Connected"/>.
+        /// </remarks>
         Uninitialized = 0,
 
         /// <summary>
         /// The player is connected (key exchange completed) but has not logged in yet.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="NeedAuth"/> or <see cref="LeavingZone"/>.</remarks>
+        /// <remarks>
+        /// Transitions to: <see cref="NeedAuth"/> or <see cref="LeavingZone"/>.
+        /// </remarks>
         Connected,
 
         /// <summary>
-        /// The player sent login, auth request will be sent.
+        /// The player sent login information. An authentication request will be sent.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="WaitAuth"/>.</remarks>
+        /// <remarks>
+        /// Transitions to: <see cref="WaitAuth"/>.
+        /// </remarks>
         NeedAuth,
 
         /// <summary>
-        /// Waiting for auth response.
+        /// Waiting for an authentication response.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="Connected"/> or <see cref="NeedGlobalSync"/>.</remarks>
+        /// <remarks>
+        /// Transitions to: <see cref="Connected"/> or <see cref="NeedGlobalSync"/>.
+        /// </remarks>
         WaitAuth,
 
         /// <summary>
-        /// Auth done, will request global sync.
+        /// Authentication was successful. Will request global persistent data for the player to be loaded.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="WaitGlobalSync1"/>.</remarks>
+        /// <remarks>
+        /// Transitions to: <see cref="WaitGlobalSync1"/>.
+        /// </remarks>
         NeedGlobalSync,
 
         /// <summary>
-        /// Waiting for sync global persistent data to complete.
+        /// Waiting for global persistent data to be loaded.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="DoGlobalCallbacks"/>.</remarks>
+        /// <remarks>
+        /// Transitions to: <see cref="DoGlobalCallbacks"/>.
+        /// </remarks>
         WaitGlobalSync1,
 
         /// <summary>
-        /// Global sync done, will call global player connecting callbacks.
+        /// The player's global persistent data has been loaded.
+        /// Will call global player connecting callbacks.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="SendLoginResponse"/>.</remarks>
+        /// <remarks>
+        /// Transitions to: <see cref="SendLoginResponse"/>.
+        /// </remarks>
         DoGlobalCallbacks,
+
+        // TODO: add WaitConnectHolds
 
         /// <summary>
         /// Callbacks done, will send arena response.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="LoggedIn"/>.</remarks>
+        /// <remarks>
+        /// Transitions to: <see cref="LoggedIn"/>.
+        /// </remarks>
         SendLoginResponse,
 
         /// <summary>
@@ -145,23 +176,28 @@ namespace SS.Core
         // Player.Arena is valid starting here
 
         /// <summary>
-        /// The player has requested entering an arena, needs to be assigned a freq and have arena data synced.
+        /// The player has requested to enter an arena, needs to be assigned a freq and have arena data synced.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="WaitArenaSync1"/> (or <see cref="LoggedIn"/>).</remarks>
+        /// <remarks>
+        /// Transitions to: <see cref="WaitArenaSync1"/> (or <see cref="LoggedIn"/>).
+        /// </remarks>
         DoFreqAndArenaSync,
 
         /// <summary>
         /// Waiting for scores sync.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="ArenaRespAndCBS"/> (or <see cref="DoArenaSync2"/>).</remarks>
+        /// <remarks>
+        /// Transitions to: <see cref="ArenaRespAndCBS"/> (or <see cref="DoArenaSync2"/>).
+        /// </remarks>
         WaitArenaSync1,
 
         /// <summary>
-        /// Done with scores, needs to send arena response and run arena.
-        /// entering callbacks
+        /// Done with scores, needs to send arena response and run arena entering callbacks.
         /// </summary>
         /// <remarks>Transitions to: <see cref="Playing"/> (or <see cref="DoArenaSync2"/>).</remarks>
         ArenaRespAndCBS,
+
+        // TODO: add WaitEnterArenaHolds
 
         /// <summary>
         /// The player is playing in an arena. This is typically the longest state.
@@ -174,6 +210,8 @@ namespace SS.Core
         /// </summary>
         /// <remarks>Transitions to: <see cref="DoArenaSync2"/>.</remarks>
         LeavingArena,
+        
+        // TODO: add WaitLeaveArenaHolds
 
         /// <summary>
         /// Need to sync in the other direction.
@@ -192,8 +230,15 @@ namespace SS.Core
         /// <summary>
         /// The player is leaving the zone, call disconnecting callbacks and start global sync.
         /// </summary>
-        /// <remarks>Transitions to: <see cref="WaitGlobalSync2"/>.</remarks>
+        /// <remarks>Transitions to: <see cref="WaitDisconnectHolds"/>.</remarks>
         LeavingZone,
+
+        /// <summary>
+        /// Waits for holds that were placed when <see cref="ComponentCallbacks.PlayerActionCallback"/> (<see cref="PlayerAction.Disconnect"/>) was called.
+        /// When there are no holds remaining, start global sync (tell the persist module to save global data for the player).
+        /// </summary>
+        /// <remarks>Transitions to: <see cref="WaitGlobalSync2"/></remarks>
+        WaitDisconnectHolds,
 
         /// <summary>
         /// Waiting for global sync, other direction.
@@ -236,7 +281,14 @@ namespace SS.Core
         }
     }
 
-    // TODO: Investigate thread safety. Possibly the attempt is at locking all player data in the PlayerData module? Though there are places that dont?
+    /// <summary>
+    /// Represents a player.
+    /// </summary>
+    /// <remarks>
+    /// A player normally is a person connected to the server using a game client or chat client.
+    /// However, it can also be a 'fake' player. There are many possible uses of fake players, 
+    /// such as when playing back a replay, bots, or AI player bots.
+    /// </remarks>
     [DebuggerDisplay("[{Name}] [pid={Id}] ({Type})")]
     public class Player : IPlayerTarget
     {
@@ -523,7 +575,7 @@ namespace SS.Core
             }
 
             /// <summary>
-            /// set when the player has changed freqs or ships, but before he has acknowleged it
+            /// This is set when the player has changed freqs or ships, but before he has acknowledged it.
             /// </summary>
             public bool DuringChange
             {
@@ -640,6 +692,14 @@ namespace SS.Core
         /// Extra flags that don't have a better place to go.
         /// </summary>
         public readonly PlayerFlags Flags = new();
+
+        /// <summary>
+        /// The number of "holds" on the player, which prevent the player from proceeding to the next stage in the player life-cycle.
+        /// </summary>
+        /// <remarks>
+        /// This should only be modified using <see cref="IPlayerData.AddHold(Player)"/> and <see cref="IPlayerData.RemoveHold(Player)"/>.
+        /// </remarks>
+        internal int Holds = 0;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Player"/> class with a specified PlayerID.

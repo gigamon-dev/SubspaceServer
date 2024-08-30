@@ -3,8 +3,14 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.Collections;
+using SS.Utilities.ObjectPool;
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
@@ -12,26 +18,55 @@ namespace SS.Core.Modules
     /// Module that provides functionality to transfer files to and from game clients.
     /// </summary>
     [CoreModuleInfo]
-    public class FileTransfer(
-        IComponentBroker broker,
-        INetwork network,
-        ILogManager logManager,
-        ICapabilityManager capabilityManager,
-        IPlayerData playerData) : IModule, IFileTransfer
+    public class FileTransfer : IModule, IFileTransfer
     {
-        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
-        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-        private InterfaceRegistrationToken<IFileTransfer>? _iFileTransferToken;
+        /// <summary>
+        /// The # of expected concurrent uploads.
+        /// </summary>
+        /// <remarks>
+        /// Most likely there is a single sysop that's uploading, but we'll be generous and be ready to handle more.
+        /// </remarks>
+        private const int TargetConcurrentUploads = 8;
 
         private static readonly DefaultObjectPool<DownloadDataContext> s_downloadDataContextPool = new(new DefaultPooledObjectPolicy<DownloadDataContext>(), Constants.TargetPlayerCount);
+        private static readonly DefaultObjectPool<LinkedListNode<UploadDataChunk>> s_uploadDataChunkNodePool = new(new LinkedListNodePooledObjectPolicy<UploadDataChunk>(), TargetConcurrentUploads + 64);
+        private static readonly DefaultObjectPool<LinkedListNode<Player>> s_playerNodePool = new(new LinkedListNodePooledObjectPolicy<Player>(), TargetConcurrentUploads);
+
+        private readonly IComponentBroker _broker;
+        private readonly INetwork _network;
+        private readonly ILogManager _logManager;
+        private readonly ICapabilityManager _capabilityManager;
+        private readonly IMainloop _mainloop;
+        private readonly IPlayerData _playerData;
+        private InterfaceRegistrationToken<IFileTransfer>? _iFileTransferToken;
+
+        private readonly HybridEventQueue<Player> _uploadQueue = new(TargetConcurrentUploads, s_playerNodePool);
+        private readonly CancellationTokenSource _stopCancellationTokenSource = new();
+        private readonly CancellationToken _stopToken;
+        private Thread? _thread;
 
         /// <summary>
         /// Per Player Data key to <see cref="UploadDataContext"/>.
         /// </summary>
         private PlayerDataKey<UploadDataContext> _udKey;
+
+        public FileTransfer(
+            IComponentBroker broker,
+            INetwork network,
+            ILogManager logManager,
+            ICapabilityManager capabilityManager,
+            IMainloop mainloop,
+            IPlayerData playerData)
+        {
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _network = network ?? throw new ArgumentNullException(nameof(network));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+            _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+
+            _stopToken = _stopCancellationTokenSource.Token;
+        }
 
         #region Module Members
 
@@ -43,6 +78,9 @@ namespace SS.Core.Modules
             _network.AddPacket(C2SPacketType.UploadFile, Packet_UploadFile);
             _network.AddSizedPacket(C2SPacketType.UploadFile, SizedPacket_UploadFile);
 
+            _thread = new(UploadThread) { Name = $"{nameof(FileTransfer)}-upload" };
+            _thread.Start();
+
             _iFileTransferToken = _broker.RegisterInterface<IFileTransfer>(this);
             return true;
         }
@@ -51,6 +89,9 @@ namespace SS.Core.Modules
         {
             if (broker.UnregisterInterface(ref _iFileTransferToken) != 0)
                 return false;
+
+            _stopCancellationTokenSource.Cancel();
+            _thread?.Join();
 
             _network.RemovePacket(C2SPacketType.UploadFile, Packet_UploadFile);
             _network.RemoveSizedPacket(C2SPacketType.UploadFile, SizedPacket_UploadFile);
@@ -65,38 +106,109 @@ namespace SS.Core.Modules
 
         #region IFileTransfer Members
 
-        bool IFileTransfer.SendFile(Player player, string path, ReadOnlySpan<char> filename, bool deleteAfter)
+        async Task<bool> IFileTransfer.SendFileAsync(Player player, string path, ReadOnlyMemory<char> filename, bool deleteAfter)
         {
-            if (player is null)
+            ArgumentNullException.ThrowIfNull(player);
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+            if (MemoryExtensions.IsWhiteSpace(filename.Span))
+                throw new ArgumentException("Cannot be white-space.", nameof(filename));
+
+            if (!_mainloop.IsMainloop)
                 return false;
 
-            if (string.IsNullOrWhiteSpace(path))
+            // Save the player name before any await, so that we can check the player object after the await.
+            string? playerName = player.Name;
+            if (playerName is null)
                 return false;
 
-            int fileLength;
             FileStream fileStream;
 
             try
             {
-                FileInfo fileInfo = new(path);
-                if (!fileInfo.Exists)
-                {
-                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). File does not exist.");
-                    return false;
-                }
-
-                if (fileInfo.Length > (int.MaxValue - 17))
-                {
-                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). File is too large.");
-                    return false;
-                }
-
-                fileLength = (int)fileInfo.Length;
-                fileStream = fileInfo.OpenRead();
+                fileStream = await Task.Factory.StartNew(
+                    static (p) => new FileStream((string)p!, FileMode.Open, FileAccess.Read, FileShare.Read),
+                    path).ConfigureAwait(true);
             }
             catch (Exception ex)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error opening file. {ex.Message}");
+                // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                if (player == _playerData.FindPlayer(playerName))
+                {
+                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error opening file. {ex.Message}");
+                }
+
+                return false;
+            }
+
+            // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+            if (player != _playerData.FindPlayer(playerName))
+            {
+                await fileStream.DisposeAsync().ConfigureAwait(true);
+                return false;
+            }
+
+            return await SendFileAsync(player, fileStream, filename, path, deleteAfter).ConfigureAwait(true);
+        }
+
+        Task<bool> IFileTransfer.SendFileAsync(Player player, Stream stream, ReadOnlyMemory<char> filename)
+        {
+            return SendFileAsync(player, stream, filename, null, false);
+        }
+
+        async Task<bool> SendFileAsync(Player player, Stream stream, ReadOnlyMemory<char> filename, string? path, bool deletePath)
+        {
+            ArgumentNullException.ThrowIfNull(player);
+            ArgumentNullException.ThrowIfNull(stream);
+
+            if (MemoryExtensions.IsWhiteSpace(filename.Span))
+                throw new ArgumentException("Cannot be white-space.", nameof(filename));
+
+            if (!_mainloop.IsMainloop)
+                return false;
+
+            string? playerName = player.Name;
+            if (playerName is null)
+                return false;
+
+            int fileLength;
+
+            try
+            {
+                long length = await Task.Factory.StartNew(static (s) => ((Stream)s!).Length, stream).ConfigureAwait(true); // Resume execution on the mainloop thread.
+                length -= stream.Position;
+
+                if (length > (int.MaxValue - 17))
+                {
+                    await stream.DisposeAsync().ConfigureAwait(true);
+
+                    // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                    if (player == _playerData.FindPlayer(playerName))
+                    {
+                        if (!string.IsNullOrWhiteSpace(path))
+                            _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). The file is too large.");
+                        else
+                            _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send data stream as file ({filename}). The file is too large.");
+                    }
+
+                    return false;
+                }
+
+                fileLength = (int)length;
+            }
+            catch (Exception ex)
+            {
+                await stream.DisposeAsync().ConfigureAwait(true);
+
+                // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                if (player == _playerData.FindPlayer(playerName))
+                {
+                    if (!string.IsNullOrWhiteSpace(path))
+                        _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error accessing file info. {ex.Message}");
+                    else
+                        _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send data stream as file ({filename}). Error accessing stream info. {ex.Message}");
+                }
+
                 return false;
             }
 
@@ -104,30 +216,46 @@ namespace SS.Core.Modules
 
             try
             {
-                context.Set(player, fileStream, filename, deleteAfter ? path : null);
+                context.Set(player, stream, filename.Span, deletePath ? path : null);
             }
             catch (Exception ex)
             {
                 s_downloadDataContextPool.Return(context);
-                fileStream.Dispose();
+                await stream.DisposeAsync().ConfigureAwait(true);
 
-                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error initializing sized send. {ex.Message}");
+                // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                if (player == _playerData.FindPlayer(playerName))
+                {
+                    if (!string.IsNullOrWhiteSpace(path))
+                        _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error initializing sized send. {ex.Message}");
+                    else
+                        _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send data stream as file ({filename}). Error initializing sized send. {ex.Message}");
+                }
+
                 return false;
             }
 
             if (!_network.SendSized(player, fileLength + 17, GetSizedSendData, context))
             {
                 s_downloadDataContextPool.Return(context);
-                fileStream.Dispose();
+                await stream.DisposeAsync().ConfigureAwait(true);
 
-                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error queuing up a sized send.");
+                // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                if (player == _playerData.FindPlayer(playerName))
+                {
+                    if (!string.IsNullOrWhiteSpace(path))
+                        _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error queuing up a sized send.");
+                    else
+                        _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send data stream as file ({filename}). Error queuing up a sized send.");
+                } 
+
                 return false;
             }
 
             return true;
         }
 
-        bool IFileTransfer.SendFile(Player player, Stream stream, ReadOnlySpan<char> filename)
+        bool IFileTransfer.SendFile(Player player, MemoryStream stream, ReadOnlySpan<char> filename)
         {
             if (player is null)
             {
@@ -185,34 +313,66 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IFileTransfer.RequestFile<T>(Player player, ReadOnlySpan<char> clientPath, FileUploadedDelegate<T> uploaded, T arg)
+        Task<string?> IFileTransfer.RequestFileAsync(Player player, ReadOnlyMemory<char> clientPath)
         {
-            if (player is null)
-                return false;
+            if (player is null || !player.IsStandard)
+                return Task.FromResult((string?)null);
 
-            if (Path.GetFileName(clientPath).IsEmpty)
-                return false;
+            if (Path.GetFileName(clientPath.Span).IsEmpty)
+                return Task.FromResult((string?)null);
 
-            if (StringUtils.DefaultEncoding.GetByteCount(clientPath) > S2C_RequestFile.PathInlineArray.Length)
-                return false;
+            if (StringUtils.DefaultEncoding.GetByteCount(clientPath.Span) > S2C_RequestFile.PathInlineArray.Length)
+                return Task.FromResult((string?)null);
 
             if (!player.TryGetExtraData(_udKey, out UploadDataContext? ud))
-                return false;
+                return Task.FromResult((string?)null);
 
-            if (ud.Stream is not null || !string.IsNullOrWhiteSpace(ud.FileName) || !player.IsStandard)
-                return false;
+            Task<string?> task;
 
-            ud.UploadedInvoker = new FileUploadedDelegateInvoker<T>(uploaded, arg); // TODO: consider object pooling
+            // Try to enter the semaphore, but do not wait if it already is held.
+            if (!ud.StreamSemaphore.Wait(0))
+            {
+                // Another thread is holding the semaphore already. This means there's already a transfer in progress.
+                return Task.FromResult((string?)null);
+            }
 
-            S2C_RequestFile packet = new(clientPath, "unused-field");
+            try
+            {
+                if (ud.Stream is not null)
+                {
+                    // There is another transfer in progress.
+                    return Task.FromResult((string?)null);
+                }
+
+                lock (ud.Lock)
+                {
+                    if (ud.UploadTaskCompletionSource is not null)
+                    {
+                        // There was already another request (but no data received yet). Complete the previous request as a failure.
+                        // This handles the case where the previous request was for a file that did not exist.
+                        ud.UploadTaskCompletionSource.SetResult(null);
+                        ud.UploadTaskCompletionSource = null;
+                    }
+
+                    // Create a new task completion source and task.
+                    ud.UploadTaskCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    task = ud.UploadTaskCompletionSource.Task;
+                }
+            }
+            finally
+            {
+                ud.StreamSemaphore.Release();
+            }
+
+            S2C_RequestFile packet = new(clientPath.Span, "unused-field");
             _network.SendToOne(player, ref packet, NetSendFlags.Reliable);
 
             _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, $"Requesting file '{clientPath}'.");
 
-            if (clientPath.Contains("..", StringComparison.Ordinal))
+            if (clientPath.Span.Contains("..", StringComparison.Ordinal))
                 _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, "Sent file request with '..' in the path.");
 
-            return true;
+            return task;
         }
 
         void IFileTransfer.SetWorkingDirectory(Player player, string path)
@@ -238,7 +398,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
+        private async void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (player is null)
                 return;
@@ -252,10 +412,19 @@ namespace SS.Core.Modules
             }
             else if (action == PlayerAction.Disconnect)
             {
-                ud.Cleanup(false);
+                _playerData.AddHold(player);
+
+                _uploadQueue.Remove(player);
+                await ud.CleanupAsync(false, false).ConfigureAwait(false);
+
+                _playerData.RemoveHold(player);
             }
         }
 
+        #region Packet handlers
+
+        // The data either fit into a regular sized packet OR it was sent to us using big data packets (0x00 0x08 and 0x00 0x09).
+        // Regular packet handlers such as this one are executed on the mainloop thread.
         private void Packet_UploadFile(Player player, Span<byte> data, NetReceiveFlags flags)
         {
             if (player is null || !player.TryGetExtraData(_udKey, out UploadDataContext? ud))
@@ -263,80 +432,312 @@ namespace SS.Core.Modules
 
             if (!_capabilityManager.HasCapability(player, Constants.Capabilities.UploadFile))
             {
-                _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, "Denied file upload");
+                _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, "Not authorized to upload file.");
                 return;
             }
 
-            bool success = false;
+            byte[] dataArray = ArrayPool<byte>.Shared.Rent(data.Length);
+            data.CopyTo(dataArray);
 
-            try
+            bool queued = false;
+
+            lock (ud.Lock)
             {
-                ud.Stream = File.Create($"tmp/FileTransfer-{Guid.NewGuid():N}");
-                ud.FileName = ud.Stream.Name;
-                ud.Stream.Write(data[17..]);
-                success = true;
-            }
-            catch (Exception ex)
-            {
-                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Can't create temp file for upload. {ex.Message}");
+                if (ud.UploadTaskCompletionSource is not null)
+                {
+                    // Add a node with the data.
+                    LinkedListNode<UploadDataChunk> node = s_uploadDataChunkNodePool.Get();
+                    node.ValueRef = new UploadDataChunk(dataArray, data.Length, 0, data.Length);
+                    ud.ChunksToWrite.AddLast(node);
+
+                    // Add a node indicating the data is complete.
+                    node = s_uploadDataChunkNodePool.Get();
+                    node.ValueRef = new UploadDataChunk(null, 0, data.Length, data.Length);
+                    ud.ChunksToWrite.AddLast(node);
+
+                    // Queue the player up to be processed.
+                    _uploadQueue.TryEnqueue(player);
+
+                    queued = true;
+                }
             }
 
-            ud.Cleanup(success);
+            if (!queued)
+            {
+                // There's no upload task. It may have been cancelled.
+                ArrayPool<byte>.Shared.Return(dataArray);
+            }
         }
 
+        // This gets executed on the reliable thread since sized data packets must be sent reliably.
         private void SizedPacket_UploadFile(Player player, ReadOnlySpan<byte> data, int offset, int totalLength)
         {
-            if (player is null)
+            if (player is null || !player.TryGetExtraData(_udKey, out UploadDataContext? ud))
                 return;
 
-            if (!player.TryGetExtraData(_udKey, out UploadDataContext? ud))
-                return;
-
-            if (offset == -1)
+            if (!_capabilityManager.HasCapability(player, Constants.Capabilities.UploadFile))
             {
-                // cancelled
-                ud.Cleanup(false);
+                _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, "Not authorized to upload file.");
                 return;
             }
 
-            if (offset == 0 && data.Length > 17 && ud.Stream is null)
+            byte[] dataArray = ArrayPool<byte>.Shared.Rent(data.Length);
+            data.CopyTo(dataArray);
+
+            bool queued = false;
+
+            lock (ud.Lock)
             {
-                if (!_capabilityManager.HasCapability(player, Constants.Capabilities.UploadFile))
+                if (ud.UploadTaskCompletionSource is not null)
                 {
-                    _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, "Denied file upload");
+                    LinkedListNode<UploadDataChunk> node = s_uploadDataChunkNodePool.Get();
+                    node.ValueRef = new UploadDataChunk(dataArray, data.Length, offset, totalLength);
+                    ud.ChunksToWrite.AddLast(node);
+
+                    // Queue the player up to be processed.
+                    _uploadQueue.TryEnqueue(player);
+
+                    queued = true;
+                }
+            }
+
+            if (!queued)
+            {
+                // There's no upload task. It may have been cancelled.
+                ArrayPool<byte>.Shared.Return(dataArray);
+            }
+        }
+
+        #endregion
+
+        private void UploadThread()
+        {
+            WaitHandle[] waitHandles = [_uploadQueue.ReadyEvent, _stopToken.WaitHandle];
+
+            while (!_stopToken.IsCancellationRequested)
+            {
+                switch (WaitHandle.WaitAny(waitHandles))
+                {
+                    case 0:
+                        ProcessUploadQueue();
+                        break;
+
+                    case 1:
+                        // We've been told to stop.
+                        return;
+                }
+            }
+
+            void ProcessUploadQueue()
+            {
+                while (!_stopToken.IsCancellationRequested)
+                {
+                    // Get the next player that has data to process.
+                    if (!_uploadQueue.TryDequeue(out Player? player))
+                    {
+                        // No pending work.
+                        break;
+                    }
+
+                    ProcessPlayerUploadData(player);
+                }
+            }
+
+            void ProcessPlayerUploadData(Player player)
+            {
+                if (!player.TryGetExtraData(_udKey, out UploadDataContext? ud))
+                    return;
+
+                while (true)
+                {
+                    byte[]? dataArray;
+                    int dataLength;
+                    int offset;
+                    int totalLength;
+
+                    lock (ud.Lock)
+                    {
+                        if (ud.UploadTaskCompletionSource is null)
+                            return;
+
+                        LinkedListNode<UploadDataChunk>? node = ud.ChunksToWrite.First;
+                        if (node is null)
+                            break;
+
+                        ref UploadDataChunk chunk = ref node.ValueRef;
+                        dataArray = chunk.DataArray;
+                        dataLength = chunk.DataLength;
+                        offset = chunk.Offset;
+                        totalLength = chunk.TotalLength;
+
+                        ud.ChunksToWrite.Remove(node);
+                        s_uploadDataChunkNodePool.Return(node);
+                    }
+
+                    try
+                    {
+                        ProcessUploadDataChunk(
+                            player,
+                            ud,
+                            dataArray is not null ? dataArray.AsSpan(0, dataLength) : [],
+                            offset,
+                            totalLength);
+                    }
+                    finally
+                    {
+                        if (dataArray is not null)
+                        {
+                            ArrayPool<byte>.Shared.Return(dataArray);
+                        }
+                    }
+                }
+            }
+
+            void ProcessUploadDataChunk(Player player, UploadDataContext ud, ReadOnlySpan<byte> data, int offset, int totalLength)
+            {
+                if (offset == -1)
+                {
+                    // cancelled
+                    ud.CleanupAsync(false, false).Wait();
                     return;
                 }
+
+                ud.StreamSemaphore.Wait();
 
                 try
                 {
-                    ud.Stream = File.Create($"tmp/FileTransfer-{Guid.NewGuid():N}");
-                }
-                catch (Exception ex)
-                {
-                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Can't create temp file for upload. {ex.Message}");
-                    return;
-                }
+                    lock (ud.Lock)
+                    {
+                        if (ud.UploadTaskCompletionSource is null)
+                        {
+                            // The player disconnected.
+                            return;
+                        }
+                    }
 
-                ud.FileName = ud.Stream.Name;
-                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Accepted file for upload (to '{ud.FileName}').");
+                    FileStream? fileStream = ud.Stream;
 
-                ud.Stream.Write(data[17..]);
-            }
-            else if (offset > 0 && ud.Stream is not null)
-            {
-                if (offset < totalLength)
-                {
-                    ud.Stream.Write(data);
+                    if (fileStream is null)
+                    {
+                        // The first 17 bytes are the file upload packet header (1 byte for type which is 0x16, followed by 16 bytes for file name).
+                        // The file name is not needed. The command that requested the transfer already knows the name (and may have a name it wants to use that's not limited to 16 bytes).
+                        // We only want the actual file data which comes after the header.
+
+                        // Check that we have at least the very first byte of actual file data.
+                        if (offset <= 17 && offset + data.Length > 17)
+                        {
+                            // Skip the file upload packet header.
+                            data = data[(17 - offset)..];
+
+                            string tempFilePath = $"tmp/FileTransfer-{Guid.NewGuid():N}";
+
+                            try
+                            {
+                                fileStream = File.Create(tempFilePath);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Error creating a temp file for upload. {ex.Message}");
+                                return;
+                            }
+
+                            try
+                            {
+                                fileStream.Write(data);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Error writing to file for upload. {ex.Message}");
+
+                                // Close the stream.
+                                fileStream.Dispose();
+
+                                // Delete the temp file.
+                                try
+                                {
+                                    File.Delete(tempFilePath);
+                                }
+                                catch (Exception deleteException)
+                                {
+                                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Error deleting temp file. {deleteException.Message}");
+                                }
+
+                                return;
+                            }
+
+                            // Set the stream in the player's UploadDataContext.
+                            // However, keep in mind we were purposely not holding any locks while creating and writing to the file.
+                            // It's possible that the UploadDataContext is no longer valid (player disconnected)
+
+                            bool success = false;
+
+                            lock (ud.Lock)
+                            {
+                                if (ud.UploadTaskCompletionSource is not null)
+                                {
+                                    ud.Stream = fileStream;
+                                    ud.FilePath = tempFilePath;
+
+                                    success = true;
+                                }
+                            }
+
+                            if (success)
+                            {
+                                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Accepted file for upload (to '{tempFilePath}').");
+                            }
+                            else
+                            {
+                                // The UploadDataContext was no longer valid.
+
+                                // Close the stream.
+                                fileStream.Dispose();
+
+                                // Delete the temp file.
+                                try
+                                {
+                                    File.Delete(tempFilePath);
+                                }
+                                catch (Exception deleteException)
+                                {
+                                    _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Error deleting temp file. {deleteException.Message}");
+                                }
+                            }
+                        }
+                        else if (offset >= totalLength)
+                        {
+                            // There's no file stream, but this is the last piece of data for the file.
+                            // This means there was an issue creating or writing to the file.
+                            // Set it as having completed unsuccessfully.
+                            ud.CleanupAsync(false, true).Wait();
+                        }
+                    }
+                    else
+                    {
+                        if (offset < totalLength)
+                        {
+                            try
+                            {
+                                fileStream.Write(data);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Error writing to file for upload. {ex.Message}");
+                                // TODO: figure out what to do, flag it as bad? get rid of the stream?
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, "Completed upload.");
+                            ud.CleanupAsync(true, true).Wait();
+                        }
+                    }
                 }
-                else
+                finally
                 {
-                    _logManager.LogP(LogLevel.Info, nameof(FileTransfer), player, "Completed upload.");
-                    ud.Cleanup(true);
+                    ud.StreamSemaphore.Release();
                 }
-            }
-            else
-            {
-                _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, "UploadFile with unexpected parameters.");
             }
         }
 
@@ -419,7 +820,7 @@ namespace SS.Core.Modules
         private class DownloadDataContext : IResettable
         {
             // 0x10 followed by the filename (16 bytes, null terminator required)
-            private readonly byte[] _header = new byte[17] { (byte)S2CPacketType.IncomingFile, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+            private readonly byte[] _header = [(byte)S2CPacketType.IncomingFile, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
             public void Set(Player player, Stream stream, ReadOnlySpan<char> filename, string? deletePath)
             {
@@ -467,113 +868,134 @@ namespace SS.Core.Modules
             }
         }
 
+        /// <summary>
+        /// A chunk of data for a file being uploaded.
+        /// </summary>
+        /// <param name="DataArray">The array containing the data to write. This is rented from the <see cref="ArrayPool{T}"/>.</param>
+        /// <param name="DataLength">The # of bytes in <paramref name="dataArray"/> to write.</param>
+        /// <param name="Offset">The offset of the file transfer.</param>
+        /// <param name="TotalLength">The total # of bytes of the transfer.</param>
+        private readonly record struct UploadDataChunk(byte[]? DataArray, int DataLength, int Offset, int TotalLength);
+
         private class UploadDataContext : IResettable, IDisposable
         {
+            /// <summary>
+            /// For synchronizing access to everything except the <see cref="Stream"/>.
+            /// </summary>
+            public readonly object Lock = new();
+
+            /// <summary>
+            /// The current upload task producer. This provides the actual task and allows us to set its result.
+            /// </summary>
+            /// <remarks>
+            /// Synchronized with <see cref="Lock"/>.
+            /// </remarks>
+            public TaskCompletionSource<string?>? UploadTaskCompletionSource;
+
+            /// <summary>
+            /// Queue of data to write to the <see cref="Stream"/>.
+            /// </summary>
+            /// <remarks>
+            /// Synchronized with <see cref="Lock"/>.
+            /// </remarks>
+            public readonly LinkedList<UploadDataChunk> ChunksToWrite = new();
+
+            /// <summary>
+            /// Used to synchronize access to the <see cref="Stream"/>.
+            /// </summary>
+            public readonly SemaphoreSlim StreamSemaphore = new(1, 1);
+
+            /// <summary>
+            /// Stream to the temporary file that the data is being written to.
+            /// </summary>
+            /// <remarks>
+            /// Synchronized with <see cref="StreamSemaphore"/>.
+            /// </remarks>
             public FileStream? Stream;
 
-            public string? FileName
-            {
-                get;
-                set;
-            }
+            /// <summary>
+            /// The file path of the temporary file.
+            /// </summary>
+            /// <remarks>
+            /// Synchronized with <see cref="Lock"/>.
+            /// </remarks>
+            public string? FilePath;
 
-            public IFileUploadedInvoker? UploadedInvoker
-            {
-                get;
-                set;
-            }
+            
+            public string? WorkingDirectory;
 
-            public string? WorkingDirectory
+            public async Task CleanupAsync(bool success, bool isSemaphoreHeld)
             {
-                get;
-                set;
-            }
+                if (!isSemaphoreHeld)
+                    await StreamSemaphore.WaitAsync();
 
-            public void Cleanup(bool success)
-            {
-                if (Stream is not null)
+                try
                 {
-                    Stream.Dispose();
-                    Stream = null;
-                }
+                    // If there's a stream, close/dispose it.
+                    if (Stream is not null)
+                    {
+                        await Stream.DisposeAsync();
+                        Stream = null;
+                    }
 
-                if (success)
+                    lock (Lock)
+                    {
+                        // Remove any remaining data in the queue.
+                        LinkedListNode<UploadDataChunk>? node;
+                        while ((node = ChunksToWrite.First) is not null)
+                        {
+                            ArrayPool<byte>.Shared.Return(node.ValueRef.DataArray!);
+                            ChunksToWrite.Remove(node);
+                            s_uploadDataChunkNodePool.Return(node);
+                        }
+
+                        bool deleteTempFile = true;
+
+                        if (UploadTaskCompletionSource is not null)
+                        {
+                            UploadTaskCompletionSource.SetResult(success ? FilePath : null);
+                            UploadTaskCompletionSource = null;
+
+                            if (success)
+                            {
+                                // The awaiter of the task that we just set the result on is responsible for cleaning up the file.
+                                deleteTempFile = false;
+                            }
+                        }
+
+                        if (deleteTempFile && !string.IsNullOrWhiteSpace(FilePath))
+                        {
+                            try
+                            {
+                                File.Delete(FilePath);
+                            }
+                            catch
+                            {
+                            }
+                        }
+
+                        FilePath = null;
+                    }
+                }
+                finally
                 {
-                    if (UploadedInvoker is not null)
-                    {
-                        // Invoke the callback, it will handle cleaning up the file
-                        UploadedInvoker.Invoke(FileName!);
-                    }
-                    else if (!string.IsNullOrWhiteSpace(FileName))
-                    {
-                        // Nothing to invoke, get rid of the file as there's no use for it.
-                        try
-                        {
-                            File.Delete(FileName);
-                        }
-                        catch
-                        {
-                        }
-                    }
+                    if (!isSemaphoreHeld)
+                        StreamSemaphore.Release();
                 }
-                else
-                {
-                    UploadedInvoker?.Invoke(null);
-
-                    if (!string.IsNullOrWhiteSpace(FileName))
-                    {
-                        try
-                        {
-                            File.Delete(FileName);
-                        }
-                        catch
-                        {
-                        }
-                    }
-                }
-
-                FileName = null;
-                UploadedInvoker = null;
             }
 
             public bool TryReset()
             {
-                if (UploadedInvoker is not null)
-                {
-                    // We do not want to invoke callbacks when we call Cleanup(...).
-                    UploadedInvoker = null;
-                }
+                // When this is called. The player should already be past the disconnect stage.
+                // This means there should be no stream, and this should actually execute synchronously.
 
-                Cleanup(false);
-
+                CleanupAsync(false, false).Wait();
                 return true;
             }
 
             public void Dispose()
             {
                 TryReset();
-            }
-        }
-
-        private interface IFileUploadedInvoker
-        {
-            void Invoke(string? filename);
-        }
-
-        private class FileUploadedDelegateInvoker<T> : IFileUploadedInvoker
-        {
-            private readonly FileUploadedDelegate<T> callback;
-            private readonly T state;
-
-            public FileUploadedDelegateInvoker(FileUploadedDelegate<T> callback, T state)
-            {
-                this.callback = callback ?? throw new ArgumentNullException(nameof(callback));
-                this.state = state;
-            }
-
-            public void Invoke(string? filename)
-            {
-                callback(filename, state);
             }
         }
     }

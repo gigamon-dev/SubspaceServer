@@ -232,17 +232,23 @@ namespace SS.Core.Modules
 
         #region Timers
 
-        private struct PlayerStateChange
+        private readonly struct PlayerStateChange(Player player, PlayerState oldStatus)
         {
-            public Player Player;
-            public PlayerState OldStatus;
+            public readonly Player Player = player;
+            public readonly PlayerState OldStatus = oldStatus;
+
+            public void Deconstruct(out Player player, out PlayerState oldStatus)
+            {
+                player = Player;
+                oldStatus = OldStatus;
+            }
         }
 
         /// <summary>
         /// For <see cref="MainloopTimer_ProcessPlayerStates"/> ONLY.
         /// This list holds pending actions while processing the player list.
         /// </summary>
-        private readonly List<PlayerStateChange> _actionsList = new();
+        private readonly List<PlayerStateChange> _actionsList = new(Constants.TargetPlayerCount);
 
         private bool MainloopTimer_ProcessPlayerStates()
         {
@@ -255,10 +261,10 @@ namespace SS.Core.Modules
                 PlayerState ns;
                 foreach (Player player in _playerData.Players)
                 {
-                    PlayerState oldstatus = player.Status;
-                    switch (oldstatus)
+                    PlayerState oldStatus = player.Status;
+                    switch (oldStatus)
                     {
-                        // for all of these states, there's nothing to do in this loop
+                        // For all of these states, there's nothing to do in this loop.
                         case PlayerState.Uninitialized:
                         case PlayerState.WaitAuth:
                         case PlayerState.WaitGlobalSync1:
@@ -269,10 +275,8 @@ namespace SS.Core.Modules
                         case PlayerState.TimeWait:
                             continue;
 
-                        // this is an interesting state: this function is
-                        // responsible for some transitions away from loggedin. we
-                        // also do the whenloggedin transition if the player is just
-                        // connected and not logged in yet.
+                        // This is an interesting state: this function is responsible for some transitions away from PlayerState.LoggedIn.
+                        // We also do the Player.WhenLoggedIn transition if the player is just connected and not logged in yet.
                         case PlayerState.Connected:
                         case PlayerState.LoggedIn:
                             // at this point, the player can't have an arena
@@ -359,8 +363,8 @@ namespace SS.Core.Modules
                                 }
                             }
 
-                            // check whenloggedin. this is used to move players to
-                            // the leaving_zone status once various things are completed
+                            // Check Player.WhenLoggedIn.
+                            // This is used to move players to PlayerState.LeavingZone once various things are completed.
                             if (player.WhenLoggedIn != PlayerState.Uninitialized)
                             {
                                 player.Status = player.WhenLoggedIn;
@@ -378,20 +382,26 @@ namespace SS.Core.Modules
                         case PlayerState.ArenaRespAndCBS: ns = PlayerState.Playing; break;
                         case PlayerState.LeavingArena: ns = PlayerState.DoArenaSync2; break;
                         case PlayerState.DoArenaSync2: ns = PlayerState.WaitArenaSync2; break;
-                        case PlayerState.LeavingZone: ns = PlayerState.WaitGlobalSync2; break;
+                        case PlayerState.LeavingZone: ns = PlayerState.WaitDisconnectHolds; break;
+
+                        case PlayerState.WaitDisconnectHolds:
+                            if (player.Holds == 0)
+                            {
+                                ns = PlayerState.WaitGlobalSync2;
+                                break;
+                            }
+
+                            continue;
 
                         default: // catch any other state
-                            _logManager.LogM(LogLevel.Error, nameof(Core), $"[pid={player.Id}] Internal error: Unknown player status {oldstatus}.");
+                            _logManager.LogM(LogLevel.Error, nameof(Core), $"[pid={player.Id}] Internal error: Unknown player status {oldStatus}.");
                             continue;
                     }
 
                     player.Status = ns;
 
                     // add this player to the pending actions list, to be run when we release the status lock.
-                    PlayerStateChange action = new();
-                    action.Player = player;
-                    action.OldStatus = oldstatus;
-                    _actionsList.Add(action);
+                    _actionsList.Add(new PlayerStateChange(player, oldStatus));
                 }
             }
             finally
@@ -402,11 +412,8 @@ namespace SS.Core.Modules
             if (_actionsList.Count == 0)
                 return true;
 
-            foreach (PlayerStateChange action in _actionsList)
+            foreach ((Player player, PlayerState oldStatus) in _actionsList)
             {
-                Player player = action.Player;
-                PlayerState oldStatus = action.OldStatus;
-
                 if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                     continue;
 
@@ -552,6 +559,9 @@ namespace SS.Core.Modules
                         if (playerData.HasDoneGlobalCallbacks)
                             FirePlayerActionEvent(player, PlayerAction.Disconnect, null);
 
+                        break;
+
+                    case PlayerState.WaitDisconnectHolds:
                         if (_persistExecutor != null && playerData.HasDoneGlobalSync)
                             _persistExecutor.PutPlayer(player, null, _playerSyncDone);
                         else

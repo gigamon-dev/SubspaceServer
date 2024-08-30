@@ -502,6 +502,58 @@ namespace SS.Core.Modules
             return true;
         }
 
+        void IPlayerData.AddHold(Player player)
+        {
+            WriteLock();
+            try
+            {
+                switch (player.Status)
+                {
+                    case PlayerState.WaitDisconnectHolds:
+                        player.Holds++;
+                        break;
+
+                    default:
+                        _logManager.LogP(LogLevel.Error, nameof(PlayerData), player, $"{nameof(IPlayerData.AddHold)} called from invalid state {player.Status}.");
+                        break;
+                }
+            }
+            finally
+            {
+                WriteUnlock();
+            }
+        }
+
+        void IPlayerData.RemoveHold(Player player)
+        {
+            WriteLock();
+            try
+            {
+                switch (player.Status)
+                {
+                    case PlayerState.WaitDisconnectHolds:
+                        if (player.Holds > 0)
+                        {
+                            player.Holds--;
+                        }
+                        else
+                        {
+                            _logManager.LogP(LogLevel.Error, nameof(PlayerData), player, $"{nameof(IPlayerData.RemoveHold)} called too many times when in status {player.Status}. This is indicates a programming bug and needs to be investigated.");
+                        }
+
+                        break;
+
+                    default:
+                        _logManager.LogP(LogLevel.Error, nameof(PlayerData), player, $"{nameof(IPlayerData.RemoveHold)} called from invalid state {player.Status}.");
+                        break;
+                }
+            }
+            finally
+            {
+                WriteUnlock();
+            }
+        }
+
         #endregion
 
         #region Helper Types

@@ -27,7 +27,7 @@ using NetSettings = SS.Core.ConfigHelp.Constants.Global.Net;
 namespace SS.Core.Modules
 {
     /// <summary>
-    /// Module that provides functionality to communicate using UDP and the Subspace 'core' procotol.
+    /// Module that provides functionality to communicate using UDP and the Subspace 'core' protocol.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -45,7 +45,7 @@ namespace SS.Core.Modules
     public sealed class Network : IModule, IModuleLoaderAware, INetwork, INetworkClient, IRawNetwork, IDisposable
     {
         private readonly IComponentBroker _broker;
-        private readonly IBandwidthLimiterProvider _bandwithLimiterProvider;
+        private readonly IBandwidthLimiterProvider _bandwidthLimiterProvider;
         private readonly IConfigManager _configManager;
         private readonly ILagCollect _lagCollect;
         private readonly ILogManager _logManager;
@@ -240,7 +240,7 @@ namespace SS.Core.Modules
             IPrng prng)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _bandwithLimiterProvider = bandwidthLimiterProvider ?? throw new ArgumentNullException(nameof(bandwidthLimiterProvider));
+            _bandwidthLimiterProvider = bandwidthLimiterProvider ?? throw new ArgumentNullException(nameof(bandwidthLimiterProvider));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -792,7 +792,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            conn.Initalize(encryptor, encryptorName, _bandwithLimiterProvider.New());
+            conn.Initialize(encryptor, encryptorName, _bandwidthLimiterProvider.New());
             conn.Player = player;
 
             // copy data from ListenData
@@ -2890,7 +2890,7 @@ namespace SS.Core.Modules
 
             if (conn.BandwidthLimiter is not null)
             {
-                (conn.BandwidthLimiterProvider ?? _bandwithLimiterProvider).Free(conn.BandwidthLimiter);
+                (conn.BandwidthLimiterProvider ?? _bandwidthLimiterProvider).Free(conn.BandwidthLimiter);
                 conn.BandwidthLimiter = null;
             }
 
@@ -3175,7 +3175,7 @@ namespace SS.Core.Modules
                     else
                         checkBytes += 1; // Will be appended into a grouped packet (though, not the first in it). So, only include the overhead of the grouped packet item header.
 
-                    // Note for the above checkBytes calcuation:
+                    // Note for the above checkBytes calculation:
                     // There is still a chance that at the end, there's only 1 packet remaining to be sent in the packetGrouper.
                     // In which case, when it gets flushed, it will send the individual packet, not grouped.
                     // This means we'd have told the bandwidth limiter 3 bytes more than we actually send, but that's negligible.
@@ -3440,7 +3440,7 @@ namespace SS.Core.Modules
                 //
                 // In ISizedSendData, only the cancellation flags (IsCancellationRequested and IsCancellationRequestedByConnection) are changed by other threads.
                 // Everything else in ISizedSendData is solely accessed by this thread.
-                // Therefore, ConnData.SizedSendLock is held when accesing the ConnData.SizedSend collection or an ISizedSendData object's cancellation flag.
+                // Therefore, ConnData.SizedSendLock is held when accessing the ConnData.SizedSend collection or an ISizedSendData object's cancellation flag.
                 //
                 // The global player data read lock is taken to access the Player.Status and held to prevent the status from changing while processing.
 
@@ -3538,7 +3538,7 @@ namespace SS.Core.Modules
                                 {
                                     lock (conn.SizedSendLock)
                                     {
-                                        // Now that we reaquired the lock, the sized send should still be the current one since only this thread removes items.
+                                        // Now that we reacquired the lock, the sized send should still be the current one since only this thread removes items.
                                         Debug.Assert(sizedSend == conn.SizedSends.First?.Value);
 
                                         // Cancel out if the sized send was cancelled while we were requesting data OR if the connection is being disconnected.
@@ -3928,7 +3928,7 @@ namespace SS.Core.Modules
              * at the same time could likely result in a deadlock.
              * 
              * Here are a few approaches I could think of (each with their pros + and cons -):
-             * 1. foreach player, lock the player's outgoing lock, then while spliting the data into 08/09 packets, buffer into the player's outgoing queue
+             * 1. foreach player, lock the player's outgoing lock, then while splitting the data into 08/09 packets, buffer into the player's outgoing queue
              *    - less efficient: data splitting is repeated once for each player
              * 2. Split the data into 08/09 packets and store them in a collection. foreach player, lock the player's outgoing lock, buffer the 08/09 packets in the collection
              *    + more efficient: data splitting done once
@@ -4507,10 +4507,10 @@ namespace SS.Core.Modules
                 int type = conn.SizedRecv.Type;
                 int arg = success ? conn.SizedRecv.TotalLength : -1;
 
-                // tell listeners that they're cancelled
+                // Tell the handlers that the transfer completed (successfully or cancelled).
                 if (type < _sizedhandlers.Length)
                 {
-                    _sizedhandlers[type]?.Invoke(player, Span<byte>.Empty, arg, arg);
+                    _sizedhandlers[type]?.Invoke(player, [], arg, arg);
                 }
 
                 conn.SizedRecv.Type = 0;
@@ -4705,7 +4705,7 @@ namespace SS.Core.Modules
             /// </summary>
             /// <remarks>
             /// More specifically, this value is the # of reliable packet received, and placed into the incoming reliable queue to be processed.
-            /// Receiving duplicate reliable packets does not affect this count. No matter how many dupicates received, it only counts once.
+            /// Receiving duplicate reliable packets does not affect this count. No matter how many duplicates received, it only counts once.
             /// <para>
             /// This is *roughly* equivalent to <see cref="ReliableBuffer"/>.CurrentSequenceNum.
             /// This count is about reliable packets received, and not necessarily processed yet.
@@ -4859,12 +4859,12 @@ namespace SS.Core.Modules
             public int AverageRoundTripDeviation;
 
             /// <summary>
-            /// The bandwidth limiter provider to use for the connection. <see langword="null"/> if using the default (<see cref="_bandwithLimiterProvider"/>).
+            /// The bandwidth limiter provider to use for the connection. <see langword="null"/> if using the default (<see cref="_bandwidthLimiterProvider"/>).
             /// </summary>
             public IBandwidthLimiterProvider? BandwidthLimiterProvider;
 
             /// <summary>
-            /// The name of the <see cref="IBandwidthLimiterProvider"/> interface. <see langword="null"/> if using the default (<see cref="_bandwithLimiterProvider"/>).
+            /// The name of the <see cref="IBandwidthLimiterProvider"/> interface. <see langword="null"/> if using the default (<see cref="_bandwidthLimiterProvider"/>).
             /// </summary>
             public string? BandwidthLimiterProviderName;
 
@@ -4877,7 +4877,7 @@ namespace SS.Core.Modules
             public IBandwidthLimiter? BandwidthLimiter;
 
             /// <summary>
-            /// Array of outgoing lists that acts like a type of priorty queue.  Indexed by <see cref="BandwidthPriority"/>.
+            /// Array of outgoing lists that acts like a type of priority queue.  Indexed by <see cref="BandwidthPriority"/>.
             /// </summary>
             /// <remarks>
             /// Synchronized with <see cref="OutLock"/>.
@@ -4930,7 +4930,7 @@ namespace SS.Core.Modules
             public readonly object BigLock = new();
 
             /// <summary>
-            /// A count of ongoing processing occuring, including any asynchronous work queued.
+            /// A count of ongoing processing occurring, including any asynchronous work queued.
             /// </summary>
             /// <remarks>
             /// This is synchronized using <see cref="Interlocked"/> in combination with locking to prevent state changes
@@ -5089,7 +5089,7 @@ namespace SS.Core.Modules
             /// </summary>
             public IEncrypt? Encryptor;
 
-            public void Initalize(IEncrypt? encryptor, string? encryptorName, IBandwidthLimiter bandwidthLimiter)
+            public void Initialize(IEncrypt? encryptor, string? encryptorName, IBandwidthLimiter bandwidthLimiter)
             {
                 Initialize();
 
@@ -5107,9 +5107,9 @@ namespace SS.Core.Modules
             }
         }
 
-        private class PlayerConnectionPooledObjectPolicy(int reliableBufferLengthj) : IPooledObjectPolicy<PlayerConnection>
+        private class PlayerConnectionPooledObjectPolicy(int reliableBufferLength) : IPooledObjectPolicy<PlayerConnection>
         {
-            private readonly int _reliableBufferLength = reliableBufferLengthj;
+            private readonly int _reliableBufferLength = reliableBufferLength;
 
             public PlayerConnection Create()
             {
@@ -5242,9 +5242,9 @@ namespace SS.Core.Modules
             Disconnected,
         }
 
-        private class ClientConnectionPooledObjectPolicy(int reliableBufferLengthj) : IPooledObjectPolicy<ClientConnection>
+        private class ClientConnectionPooledObjectPolicy(int reliableBufferLength) : IPooledObjectPolicy<ClientConnection>
         {
-            private readonly int _reliableBufferLength = reliableBufferLengthj;
+            private readonly int _reliableBufferLength = reliableBufferLength;
 
             public ClientConnection Create()
             {
@@ -5360,7 +5360,7 @@ namespace SS.Core.Modules
         }
 
         /// <summary>
-        /// Interface for an object that represents a callback for when a request to send reliable data has completed (sucessfully or not).
+        /// Interface for an object that represents a callback for when a request to send reliable data has completed (successfully or not).
         /// </summary>
         /// <remarks>
         /// A successful send occurs when an an ACK (0x00 0x04) is received.
@@ -5372,7 +5372,7 @@ namespace SS.Core.Modules
             /// Invokes the reliable callback.
             /// </summary>
             /// <param name="connData">Data about the connection.</param>
-            /// <param name="success">True if the reliable packet was sucessfully sent and acknowledged. False if it was cancelled.</param>
+            /// <param name="success">True if the reliable packet was successfully sent and acknowledged. False if it was cancelled.</param>
             void Invoke(ConnData connData, bool success);
 
             /// <summary>
@@ -5599,7 +5599,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// Requests the sender to provide data.
             /// </summary>
-            /// <param name="dataSpan">The buffer to fill. An empty buffer indicates that the send is finishd (completed or cancelled).</param>
+            /// <param name="dataSpan">The buffer to fill. An empty buffer indicates that the send is finished (completed or cancelled).</param>
             void RequestData(Span<byte> dataSpan);
 
             bool IsCancellationRequested { get; }
@@ -5764,7 +5764,7 @@ namespace SS.Core.Modules
                     {
                         // This is the first piece of data.
                         // We can safely assume there will be more. Otherwise, there would be no reason it's being sent as big data.
-                        // Start with extra capacity, to reduce the likelyhood that it will need to be reallocated and copied.
+                        // Start with extra capacity, to reduce the likelihood that it will need to be reallocated and copied.
                         const int MinStartingSize = Constants.MaxPacket * 8;
                         _buffer = ArrayPool<byte>.Shared.Rent(int.Max(newLength, MinStartingSize));
                     }
@@ -6034,7 +6034,7 @@ namespace SS.Core.Modules
         /// <remarks>
         /// <para>
         /// The <see cref="ConnectAsPopulationStats"/> dictionary is accessed by multiple threads.
-        /// Though only the mainloop thread mutates the dictionary (duing Load and Unload), 
+        /// Though only the mainloop thread mutates the dictionary (during Load and Unload), 
         /// and at those times nothing else should be accessing it.
         /// Therefore, no need to do synchronization (locks or change to ConcurrentDictionary).
         /// Also, the PopulationStats class itself handles synchronization of its own data.

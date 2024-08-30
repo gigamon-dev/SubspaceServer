@@ -328,7 +328,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IArenaManager.SendToArena(Player player, ReadOnlySpan<char> arenaName, int spawnx, int spawny)
+        void IArenaManager.SendToArena(Player player, ReadOnlySpan<char> arenaName, int spawnX, int spawnY)
         {
             switch (player.Type)
             {
@@ -343,8 +343,8 @@ namespace SS.Core.Modules
                         player.Flags.WantAllLvz,
                         player.Packet.AcceptAudio != 0,
                         player.Flags.ObscenityFilter,
-                        spawnx,
-                        spawny);
+                        spawnX,
+                        spawnY);
                     break;
 
                 case ClientType.Chat:
@@ -552,7 +552,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        void IArenaManager.HoldArena(Arena arena)
+        void IArenaManager.AddHold(Arena arena)
         {
             WriteLock();
             try
@@ -569,7 +569,7 @@ namespace SS.Core.Modules
                         break;
 
                     default:
-                        _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, $"Hold called from invalid state ({arena.Status}).");
+                        _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, $"{nameof(IArenaManager.AddHold)} called from invalid state ({arena.Status}).");
                         break;
                 }
             }
@@ -579,7 +579,7 @@ namespace SS.Core.Modules
             }
         }
 
-        void IArenaManager.UnholdArena(Arena arena)
+        void IArenaManager.RemoveHold(Arena arena)
         {
             WriteLock();
             try
@@ -596,10 +596,14 @@ namespace SS.Core.Modules
                         {
                             arenaData.Holds--;
                         }
+                        else
+                        {
+                            _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, $"{nameof(IArenaManager.RemoveHold)} called too many times when in state ({arena.Status}). This is indicates a programming bug and needs to be investigated.");
+                        }
                         break;
 
                     default:
-                        _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, $"Unhold called from invalid state ({arena.Status}).");
+                        _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, $"{nameof(IArenaManager.RemoveHold)} called from invalid state ({arena.Status}).");
                         break;
                 }
             }
@@ -1044,7 +1048,7 @@ namespace SS.Core.Modules
                             if (arena.Cfg is null)
                             {
                                 // Open the arena's config file.
-                                // This operation will most likely do blocking I/O (unless the file was previously opened, e.g. default arena's config).
+                                // This operation will most likely do blocking I/O (unless the file was already open/loaded).
                                 arenaData.LoadConfigTask ??= _configManager.OpenConfigFile(arena.BaseName, null, _arenaConfChanged, arena);
 
                                 if (!arenaData.LoadConfigTask.IsCompleted)
@@ -1151,6 +1155,7 @@ namespace SS.Core.Modules
                                     _configManager.CloseConfigFile(arena.Cfg);
                                     arena.Cfg = null;
                                 }
+
                                 FireArenaActionCallback(arena, ArenaAction.PostDestroy);
 
                                 if (arenaData.Resurrect)
@@ -1392,7 +1397,7 @@ namespace SS.Core.Modules
             {
                 _isRefreshKnownArenasRequested = true;
 
-                // Queue up a task if there isn't aready one.
+                // Queue up a task if there isn't already one.
                 _refreshKnownArenasTask ??= Task.Run(_refreshKnownArenas);
             }
         }
@@ -1708,34 +1713,34 @@ namespace SS.Core.Modules
         {
             bool notify = false;
 
-            /* this messy logic attempts to deal with players who haven't fully
-             * entered an arena yet. it will try to insert them at the proper
-             * stage of the arena leaving process so things that have been done
-             * get undone, and things that haven't been done _don't_ get undone. */
+            // This messy logic attempts to deal with players who haven't fully
+            // entered an arena yet. It will try to insert them at the proper
+            // stage of the arena leaving process so things that have been done
+            // get undone, and things that haven't been done _don't_ get undone.
             switch (player.Status)
             {
                 case PlayerState.LoggedIn:
                 case PlayerState.DoFreqAndArenaSync:
-                    //for these 2, nothing much has been done. just go back to loggedin.
+                    // For these 2, nothing much has been done. Just go back to PlayerState.LoggedIn.
                     player.Status = PlayerState.LoggedIn;
                     break;
 
                 case PlayerState.WaitArenaSync1:
-                    /* this is slightly tricky: we want to wait until persist is
-                     * done loading the scores before changing the state, or
-                     * things will get screwed up. so mark it here and let core
-                     * take care of it. this is really messy and it would be
-                     * nice to find a better way to handle it. */
+                    // This is slightly tricky: we want to wait until persist is
+                    // done loading the scores before changing the state, or
+                    // things will get screwed up. So, mark it here and let core
+                    // take care of it. This is really messy and it would be
+                    // nice to find a better way to handle it. 
                     player.Flags.LeaveArenaWhenDoneWaiting = true;
                     break;
 
                 case PlayerState.ArenaRespAndCBS:
-                    // in these, stuff has come out of the database. put it back in
+                    // In these, stuff has come out of the database. Put it back in.
                     player.Status = PlayerState.DoArenaSync2;
                     break;
 
                 case PlayerState.Playing:
-                    // do all of the above, plus call leaving callbacks.
+                    // Do all of the above, plus call leaving callbacks.
                     player.Status = PlayerState.LeavingArena;
                     notify = true;
                     break;
@@ -1745,11 +1750,11 @@ namespace SS.Core.Modules
                 case PlayerState.WaitArenaSync2:
                 case PlayerState.LeavingZone:
                 case PlayerState.WaitGlobalSync2:
-                    //no problem, player is already on the way out
+                    // No problem, player is already on the way out.
                     break;
 
                 default:
-                    // something's wrong here
+                    // Something's wrong here.
                     _logManager.LogP(LogLevel.Error, nameof(ArenaManager), player, $"Player has an arena, but is in a bad state ({player.Status}).");
                     notify = true;
                     break;
@@ -1855,7 +1860,6 @@ namespace SS.Core.Modules
 
         private class ArenaData : IResettable
         {
-
             /// <summary>
             /// counter for the # of holds on the arena
             /// </summary>

@@ -42,9 +42,9 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="player">The player to move.</param>
         /// <param name="arenaName">The arena to send the <paramref name="player"/> to.</param>
-        /// <param name="spawnx">The x-coordinate the <paramref name="player"/> should spawn at, or 0 for default.</param>
-        /// <param name="spawny">The y-coordinate the <paramref name="player"/> should spawn at, or 0 for default.</param>
-        void SendToArena(Player player, ReadOnlySpan<char> arenaName, int spawnx, int spawny);
+        /// <param name="spawnX">The x-coordinate the <paramref name="player"/> should spawn at, or 0 for default.</param>
+        /// <param name="spawnY">The y-coordinate the <paramref name="player"/> should spawn at, or 0 for default.</param>
+        void SendToArena(Player player, ReadOnlySpan<char> arenaName, int spawnX, int spawnY);
 
         /// <summary>
         /// Tries to find an arena.
@@ -115,23 +115,25 @@ namespace SS.Core.ComponentInterfaces
         bool FreeArenaData<T>(ref ArenaDataKey<T> key);
 
         /// <summary>
-        /// Puts a "hold" on an arena, preventing it from proceeding to the
-        /// next stage in initialization until the hold is removed.
-        /// This can be used to do some time-consuming work during arena
-        /// creation asynchronously, e.g. in another thread. It may only be
-        /// used in ArenaAction callbacks, only for ArenaAction.PreCreate,
-        /// ArenaAction.Create and ArenaAction.Destroy actions.
+        /// Adds a "hold" on an arena, preventing it from proceeding to the next stage in the arena life-cycle, until the hold is removed.
         /// </summary>
-        /// <param name="arena"></param>
-        void HoldArena(Arena arena);
+        /// <remarks>
+        /// This can be used to do time-consuming work asynchronously during certain steps in the arena life-cycle.
+        /// It may only be used in <see cref="ComponentCallbacks.ArenaActionCallback"/> handlers, and
+        /// only for <see cref="ArenaAction.PreCreate"/>, <see cref="ArenaAction.Create"/>, and <see cref="ArenaAction.Destroy"/>.
+        /// </remarks>
+        /// <param name="arena">The arena to add a hold on.</param>
+        void AddHold(Arena arena);
 
         /// <summary>
         /// Removes a "hold" on an arena.
-        /// This must be called exactly once for each time Hold is called. It
-        /// may be called from any thread.
         /// </summary>
-        /// <param name="arena"></param>
-        void UnholdArena(Arena arena);
+        /// <remarks>
+        /// This must be called exactly once for each time <see cref="AddHold(Arena)"/> is called. 
+        /// It may be called from any thread.
+        /// </remarks>
+        /// <param name="arena">The arena to remove a hold from.</param>
+        void RemoveHold(Arena arena);
 
         /// <summary>
         /// Collection of arena names that are present in the arenas directory.
@@ -140,7 +142,7 @@ namespace SS.Core.ComponentInterfaces
         /// Only directories that contain a file named "arena.conf" will be included. For example if the
         /// file "arenas/foo/arena.conf" is found, this list will contain a "foo" entry.
         /// "(default)" and any directory beginning with a dot are not included. "(public)" IS included.
-        /// <para>Rember to use <see cref="Lock"/> and <see cref="Unlock"/>.</para>
+        /// <para>Remember to use <see cref="Lock"/> and <see cref="Unlock"/>.</para>
         /// </remarks>
         ReadOnlyTrie KnownArenaNames { get; }
     }

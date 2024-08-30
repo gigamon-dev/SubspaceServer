@@ -663,7 +663,7 @@ namespace SS.Core.Modules
 
             if (action == ArenaAction.PreCreate)
             {
-                _arenaManager.HoldArena(arena);
+                _arenaManager.AddHold(arena);
 
                 try
                 {
@@ -686,7 +686,7 @@ namespace SS.Core.Modules
                 }
                 finally
                 {
-                    _arenaManager.UnholdArena(arena);
+                    _arenaManager.RemoveHold(arena);
                 }
             }
             else if (action == ArenaAction.Destroy)

@@ -34,6 +34,8 @@ cmd_getg
 cmd_seta
 cmd_geta
 
+cmd_cd
+cmd_pwd
 cmd_getfile
 cmd_putfile
 cmd_delfile
