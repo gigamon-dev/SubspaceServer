@@ -1966,7 +1966,7 @@ namespace SS.Core.Modules
                 if (includeSensitive)
                 {
                     _chat.SendMessage(player, $"{prefix}: ip: {stats.IPEndPoint.Address}  port: {stats.IPEndPoint.Port}  " +
-                        $"encName: {stats.EncryptorName}  macId: {targetPlayer.MacId}  permId: {targetPlayer.PermId}");
+                        $"encName: {stats.EncryptorName}  macId: {targetPlayer.MacId:X}  permId: {targetPlayer.PermId}");
                 }
 
                 int ignoringwpns = _game != null ? (int)(100f * _game.GetIgnoreWeapons(targetPlayer)) : 0;
