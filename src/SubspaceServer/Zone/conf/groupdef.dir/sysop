@@ -62,3 +62,7 @@ cmd_py
 privcmd_py
 
 rprivcmd_send
+
+; Matchmaking (TeamVersusMatch)
+cmd_loadmatchtype
+cmd_unloadmatchtype

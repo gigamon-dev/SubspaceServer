@@ -33,6 +33,14 @@ namespace SS.Matchmaking.TeamVersus
         Player? Player { get; }
 
         /// <summary>
+        /// Identifies whether the initial player assigned to the slot was in a premade group, and if so, which teammates were in the same group.
+        /// </summary>
+        /// <remarks>
+        /// This may be useful for stats. Such that when stats get saved to a database, it can track a player's group play stats separately from their solo play stats.
+        /// </remarks>
+        int? PremadeGroupId { get; }
+
+        /// <summary>
         /// The number of times the player has left play (switched to spec or left the arena).
         /// </summary>
         int LagOuts { get; }

@@ -159,7 +159,7 @@
             object? key);
 
         /// <summary>
-        /// Stops and removes a timer.
+        /// Stops and removes timers.
         /// </summary>
         /// <typeparam name="TState">The type of parameter the <paramref name="callback"/> accepts.</typeparam>
         /// <param name="callback">The delegate to clear timer(s) for.</param>
@@ -172,7 +172,7 @@
             object? key);
 
         /// <summary>
-        /// Stops and removes a timer.
+        /// Stops and removes timers, with a <paramref name="cleanupCallback"/> to be invoked for each timer that is stopped.
         /// </summary>
         /// <typeparam name="TState">The type of parameter the <paramref name="callback"/> accepts.</typeparam>
         /// <param name="callback">The delegate to clear timer(s) for.</param>
@@ -189,7 +189,7 @@
             TimerCleanupDelegate cleanupCallback);
 
         /// <summary>
-        /// Stops and removes a timer.
+        /// Stops and removes timers.
         /// </summary>
         /// <typeparam name="TState">The type of parameter the <paramref name="callback"/> accepts.</typeparam>
         /// <param name="callback">The delegate to clear timer(s) for.</param>
@@ -202,7 +202,7 @@
             object? key);
 
         /// <summary>
-        /// Stops and removes a timer, with a <paramref name="cleanupCallback"/> to be invoked for each timer that is stopped.
+        /// Stops and removes timers, with a <paramref name="cleanupCallback"/> to be invoked for each timer that is stopped.
         /// </summary>
         /// <typeparam name="TState">The type of parameter the <paramref name="callback"/> accepts.</typeparam>
         /// <param name="callback">The delegate to clear timer(s) for.</param>
@@ -212,7 +212,7 @@
         /// </param>
         /// <param name="cleanupCallback">
         /// A <see cref="TimerCleanupDelegate{TState}"/> to call once for each timer that is stopped.
-        /// It will be called with the <c>parameter</c> that was provided when the timer was started.
+        /// It will be called with the <typeparamref name="TState"/> that was provided when the timer was started.
         /// </param>
         void ClearTimer<TState>(
             TimerDelegate<TState> callback,

@@ -294,7 +294,7 @@ namespace SS.Matchmaking.Modules
 
             foreach (TeamLineup teamLineup in teamList)
             {
-                foreach (string playerName in teamLineup.Players)
+                foreach ((string playerName, _) in teamLineup.Players)
                 {
                     playerRatingDictionary[playerName] = DefaultRating;
                 }
@@ -324,7 +324,7 @@ namespace SS.Matchmaking.Modules
             int teamIndex = 0;
             while (playerIndex < playerRatingList.Count)
             {
-                teamList[teamIndex].Players.Add(playerRatingList[playerIndex++].PlayerName);
+                teamList[teamIndex].Players.Add(playerRatingList[playerIndex++].PlayerName, null);
 
                 if (ascending)
                 {
@@ -393,7 +393,7 @@ namespace SS.Matchmaking.Modules
                     //if (!string.IsNullOrWhiteSpace(slot.PlayerName))
                     //{
                         MemberStats memberStats = new(); // TODO: get from a pool
-                        memberStats.Initialize(slotStats, slot.PlayerName!);
+                        memberStats.Initialize(slotStats, slot.PlayerName!, true);
                         slotStats.Members.Add(memberStats);
                         slotStats.Current = memberStats;
 
@@ -905,30 +905,33 @@ namespace SS.Matchmaking.Modules
 
             Arena? arena = matchData.Arena; // null if the arena doesn't exist
 
-            // Refresh stats that are affected by the match ending: wasted energy, play time, and ship usage.
-            foreach (TeamStats teamStats in matchStats.Teams.Values)
+            if (reason != MatchEndReason.Cancelled)
             {
-                foreach (SlotStats slotStats in teamStats.Slots)
+                // Refresh stats that are affected by the match ending: wasted energy, play time, and ship usage.
+                foreach (TeamStats teamStats in matchStats.Teams.Values)
                 {
-                    foreach (MemberStats memberStats in slotStats.Members)
+                    foreach (SlotStats slotStats in teamStats.Slots)
                     {
-                        if (memberStats.IsCurrent)
+                        foreach (MemberStats memberStats in slotStats.Members)
                         {
-                            // Play time
-                            ProcessPlayTime(memberStats, matchStats.EndTimestamp.Value);
-
-                            // Ship usage
-                            ProcessShipUsage(memberStats, matchStats.EndTimestamp.Value, null);
-
-                            // Wasted energy
-                            if (arena is not null)
+                            if (memberStats.IsCurrent)
                             {
-                                Player? player = _playerData.FindPlayer(memberStats.PlayerName);
-                                if (player is not null
-                                    && player.Ship != ShipType.Spec
-                                    && player.Arena == arena)
+                                // Play time
+                                ProcessPlayTime(memberStats, matchStats.EndTimestamp.Value);
+
+                                // Ship usage
+                                ProcessShipUsage(memberStats, matchStats.EndTimestamp.Value, null);
+
+                                // Wasted energy
+                                if (arena is not null)
                                 {
-                                    ProcessWastedEnergy(player, memberStats, player.Ship, endTick);
+                                    Player? player = _playerData.FindPlayer(memberStats.PlayerName);
+                                    if (player is not null
+                                        && player.Ship != ShipType.Spec
+                                        && player.Arena == arena)
+                                    {
+                                        ProcessWastedEnergy(player, memberStats, player.Ship, endTick);
+                                    }
                                 }
                             }
                         }
@@ -956,19 +959,19 @@ namespace SS.Matchmaking.Modules
             if (reason != MatchEndReason.Cancelled)
             {
                 await SaveGameToDatabase(matchData, winnerTeam, matchStats);
-            }
 
-            // Send game stat as chat notifications.
-            HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
+                // Send game stat as chat notifications.
+                HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
 
-            try
-            {
-                GetPlayersToNotify(matchStats, notifySet);
-                PrintMatchStats(notifySet, matchStats, reason, winnerTeam);
-            }
-            finally
-            {
-                _objectPoolManager.PlayerSetPool.Return(notifySet);
+                try
+                {
+                    GetPlayersToNotify(matchStats, notifySet);
+                    PrintMatchStats(notifySet, matchStats, reason, winnerTeam);
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(notifySet);
+                }
             }
 
             ResetMatchStats(matchStats);
@@ -1025,7 +1028,7 @@ namespace SS.Matchmaking.Modules
                 {
                     writer.WriteStartObject(); // team object
                     writer.WriteNumber("freq"u8, teamStats.Team!.Freq);
-                    writer.WriteBoolean("is_premade"u8, teamStats.Team.IsPremade);
+                    writer.WriteBoolean("is_premade"u8, teamStats.Team.IsPremade); // TODO: change the database to use premade_group on a member instead
                     writer.WriteBoolean("is_winner"u8, teamStats.Team == winnerTeam);
                     writer.WriteNumber("score"u8, teamStats.Team.Score);
                     writer.WriteStartArray("player_slots"u8); // player_slots array
@@ -1039,6 +1042,10 @@ namespace SS.Matchmaking.Modules
                         {
                             writer.WriteStartObject(); // team member object
                             writer.WriteString("player"u8, memberStats.PlayerName);
+
+                            if (memberStats.PremadeGroupId is not null)
+                                writer.WriteNumber("premade_group", memberStats.PremadeGroupId.Value); // TODO: change the database to use this and track stats separately for solo vs grouped play
+
                             writer.TryWriteTimeSpanAsISO8601("play_duration"u8, memberStats.PlayTime);
                             writer.WriteNumber("lag_outs"u8, memberStats.LagOuts);
                             writer.WriteNumber("kills"u8, memberStats.Kills);
@@ -1293,7 +1300,7 @@ namespace SS.Matchmaking.Modules
                 if (memberStats is null)
                 {
                     memberStats = new(); // TODO: get from a pool
-                    memberStats.Initialize(slotStats, subInPlayerName);
+                    memberStats.Initialize(slotStats, subInPlayerName, false);
                     slotStats.Members.Add(memberStats);
                 }
 
@@ -1832,7 +1839,7 @@ namespace SS.Matchmaking.Modules
             MatchStats? matchStats = playerData.MemberStats?.MatchStats;
             if (matchStats is null)
             {
-                // TODO: check if the player is spectating a player in a match
+                // TODO: Check if the player is spectating a player in a match
                 return;
             }
 
@@ -2542,16 +2549,16 @@ namespace SS.Matchmaking.Modules
                 FirstOut = null;
                 FirstOutCritical = false;
 
-                if (_eventsJsonStream is not null)
-                {
-                    _eventsJsonStream.Dispose();
-                    _eventsJsonStream = null;
-                }
-
                 if (_eventsJsonWriter is not null)
                 {
                     _eventsJsonWriter.Dispose();
                     _eventsJsonWriter = null;
+                }
+
+                if (_eventsJsonStream is not null)
+                {
+                    _eventsJsonStream.Dispose();
+                    _eventsJsonStream = null;
                 }
             }
 
@@ -2705,10 +2712,7 @@ namespace SS.Matchmaking.Modules
 
                 if (_eventsJsonStream is RecyclableMemoryStream rms)
                 {
-                    foreach (var memory in rms.GetReadOnlySequence())
-                    {
-                        writer.WriteRawValue(memory.Span, true);
-                    }
+                    writer.WriteRawValue(rms.GetReadOnlySequence());
                 }
                 else
                 {
@@ -2822,6 +2826,8 @@ namespace SS.Matchmaking.Modules
             public string? PlayerName { get; private set; }
 
             //public Player Player; // TODO: keep track of player so that we can send notifications to even those that are no longer the current slot holder?
+
+            public int? PremadeGroupId;
 
             #region Ship Usage
 
@@ -3057,12 +3063,14 @@ namespace SS.Matchmaking.Modules
 
             #endregion
 
-            public void Initialize(SlotStats slotStats, string playerName)
+            public void Initialize(SlotStats slotStats, string playerName, bool isInitial)
             {
                 ArgumentException.ThrowIfNullOrEmpty(playerName);
 
                 SlotStats = slotStats ?? throw new ArgumentNullException(nameof(slotStats));
                 PlayerName = playerName;
+
+                PremadeGroupId = isInitial ? slotStats.Slot!.PremadeGroupId : null;
 
                 for (int shipIndex = 0; shipIndex < ShipUsage.Length; shipIndex++)
                 {

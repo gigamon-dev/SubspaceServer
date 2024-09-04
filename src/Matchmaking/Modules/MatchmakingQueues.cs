@@ -59,10 +59,17 @@ namespace SS.Matchmaking.Modules
         private readonly HashSet<string> _playersPlaying = new(256, StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// Pending play holds on players.
-        /// These players disconnected before the hold was placed.
+        /// Pending play holds on players that have disconnected.
         /// </summary>
-        private readonly Dictionary<string, TimeSpan> _pendingPlayerHoldDurations = new(StringComparer.OrdinalIgnoreCase); // TODO: better if this was in the database, it could potentially grow large
+        /// <remarks>
+        /// Key: player name
+        /// </remarks>
+        private readonly Dictionary<string, TimeSpan> _pendingPlayHolds = new(StringComparer.OrdinalIgnoreCase); // TODO: better if this was in the database, it could potentially grow large
+
+        /// <summary>
+        /// Changes to matchmaking queues that need the <see cref="MatchmakingQueueChangedCallback"/> invoked.
+        /// </summary>
+        private readonly Queue<QueueChangeRecord> _changesQueue = new(64);
 
         private readonly DefaultObjectPool<UsageData> _usageDataPool = new(new DefaultPooledObjectPolicy<UsageData>(), Constants.TargetPlayerCount * 2);
         private readonly DefaultObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new(new ListPooledObjectPolicy<IMatchmakingQueue>() { InitialCapacity = 32 });
@@ -363,10 +370,10 @@ namespace SS.Matchmaking.Modules
             {
                 // The player is not logged on.
                 // However, we still want to remember that the player should have a play hold if they reconnect.
-                if (!_pendingPlayerHoldDurations.TryGetValue(playerName, out TimeSpan duration)
+                if (!_pendingPlayHolds.TryGetValue(playerName, out TimeSpan duration)
                     || duration < delay)
                 {
-                    _pendingPlayerHoldDurations[playerName] = delay;
+                    _pendingPlayHolds[playerName] = delay;
                 }
             }
         }
@@ -396,7 +403,7 @@ namespace SS.Matchmaking.Modules
                     UnsetPlaying(player, allowRequeue, isDueToCancel, allAddedQueues);
                 }
 
-                InvokeQueueChangedCallbacks(allAddedQueues, QueueAction.Add);
+                ScheduleQueueChangedCallbacks(allAddedQueues, QueueAction.Add);
             }
             finally
             {
@@ -414,7 +421,7 @@ namespace SS.Matchmaking.Modules
             try
             {
                 UnsetPlaying(player, allowRequeue, isDueToCancel, allAddedQueues);
-                InvokeQueueChangedCallbacks(allAddedQueues, QueueAction.Add);
+                ScheduleQueueChangedCallbacks(allAddedQueues, QueueAction.Add);
             }
             finally
             {
@@ -677,7 +684,7 @@ namespace SS.Matchmaking.Modules
                         usageData.SetPlaying(false);
                     }
 
-                    if (_pendingPlayerHoldDurations.Remove(player.Name!, out TimeSpan duration))
+                    if (_pendingPlayHolds.Remove(player.Name!, out TimeSpan duration))
                     {
                         // The player has returned and has a pending play hold.
                         // This is not from the persist module since the player disconnected before the hold was placed.
@@ -696,6 +703,18 @@ namespace SS.Matchmaking.Modules
                 {
                     // The player is searching for a match, stop the search.
                     RemoveFromAllQueues(player, null, usageData, false);
+                }
+
+                DateTime? expiration = GetRefreshedPlayHold(player);
+                if (expiration is not null)
+                {
+                    TimeSpan remainingDuration = expiration.Value - DateTime.UtcNow;
+                    if (remainingDuration > TimeSpan.Zero)
+                    {
+                        // The player disconnecting has a play hold.
+                        // Store it, so that we have it if the player returns.
+                        _pendingPlayHolds[player.Name!] = remainingDuration;
+                    }
                 }
             }
         }
@@ -891,7 +910,7 @@ namespace SS.Matchmaking.Modules
             }
             else if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-l", StringComparison.OrdinalIgnoreCase))
             {
-                // TOOD: include stats of how many players and groups are in each queeue
+                // TOOD: include stats of how many players and groups are in each queue
                 foreach (var queue in _queues.Values)
                 {
                     if (!string.IsNullOrWhiteSpace(queue.Description))
@@ -1247,41 +1266,44 @@ namespace SS.Matchmaking.Modules
             {
                 // Fire the callbacks in the order that the queues were added.
                 // This will cause matchmaking modules to attempt matches in that order.
-                InvokeQueueChangedCallbacks(addedQueues, QueueAction.Add);
+                ScheduleQueueChangedCallbacks(addedQueues, QueueAction.Add);
             }
         }
 
-        private void InvokeQueueChangedCallbacks(List<IMatchmakingQueue> queueList, QueueAction action)
+        private void ScheduleQueueChangedCallbacks(List<IMatchmakingQueue> queueList, QueueAction action)
         {
             if (queueList is null)
                 return;
 
             foreach (IMatchmakingQueue queue in queueList)
             {
-                InvokeQueueChangedCallbacks(queue, action);
+                ScheduleQueueChangedCallbacks(queue, action);
             }
         }
 
-        private void InvokeQueueChangedCallbacks(IMatchmakingQueue queue, QueueAction action)
+        private void ScheduleQueueChangedCallbacks(IMatchmakingQueue queue, QueueAction action)
         {
             if (queue is null)
                 return;
 
-            if (action == QueueAction.Add)
-                _mainloop.QueueMainWorkItem(InvokeAdd, queue);
-            else if (action == QueueAction.Remove)
-                _mainloop.QueueMainWorkItem(InvokeRemove, queue);
-
-
-            void InvokeAdd(IMatchmakingQueue queue)
+            foreach (QueueChangeRecord record in _changesQueue)
             {
-                MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Add);
+                if (record.Queue == queue && record.Action == action)
+                    return; // already queued
             }
 
-            void InvokeRemove(IMatchmakingQueue queue)
-            {
-                MatchmakingQueueChangedCallback.Fire(_broker, queue, QueueAction.Remove);
-            }
+            _changesQueue.Enqueue(new QueueChangeRecord(queue, action));
+
+            // Schedule it to be processed asynchronously.
+            _mainloop.QueueMainWorkItem(MainloopWork_InvokeQueueChangeCallback, (object?)null);
+        }
+
+        private void MainloopWork_InvokeQueueChangeCallback(object? dummy)
+        {
+            if (!_changesQueue.TryDequeue(out QueueChangeRecord record))
+                return;
+
+            MatchmakingQueueChangedCallback.Fire(_broker, record.Queue, record.Action);
         }
 
         [CommandHelp(
@@ -1403,7 +1425,7 @@ namespace SS.Matchmaking.Modules
                         _chat.SendMessage(player, $"{CancelCommandName}: Search stopped on queue: {queue.Name}.");
                     }
 
-                    InvokeQueueChangedCallbacks(queue, QueueAction.Remove);
+                    ScheduleQueueChangedCallbacks(queue, QueueAction.Remove);
                 }
             }
         }
@@ -1512,7 +1534,7 @@ namespace SS.Matchmaking.Modules
                 }
 
                 // Fire the callback.
-                InvokeQueueChangedCallbacks(removedFrom, QueueAction.Remove);
+                ScheduleQueueChangedCallbacks(removedFrom, QueueAction.Remove);
             }
             finally
             {
@@ -1539,14 +1561,14 @@ namespace SS.Matchmaking.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return null;
 
-            DateTime? duration = playerData.GetRefreshedPlayHold(out bool removed);
+            DateTime? expiration = playerData.GetRefreshedPlayHold(out bool removed);
 
             if (removed && player.TryGetExtraData(_puKey, out UsageData? usageData))
             {
                 usageData.UnsetPlaying(out _);
             }
 
-            return duration;
+            return expiration;
         }
 
         #region Helper types
@@ -1569,7 +1591,7 @@ namespace SS.Matchmaking.Modules
         private class PlayerData : IResettable
         {
             /// <summary>
-            /// The timestamp that the player will be held in 'Playing' state due to being penalized (e.g. for leaving a game wihout a sub).
+            /// The timestamp that the player will be held in 'Playing' state due to being penalized (e.g. for leaving a game without a sub).
             /// </summary>
             private DateTime? _playHoldExpireTimestamp;
 
@@ -1603,15 +1625,13 @@ namespace SS.Matchmaking.Modules
 
                 lock (_lock)
                 {
-                    DateTime? duration = _playHoldExpireTimestamp;
-
-                    if (duration is not null && duration.Value <= DateTime.UtcNow)
+                    if (_playHoldExpireTimestamp is not null && _playHoldExpireTimestamp.Value <= DateTime.UtcNow)
                     {
-                        duration = _playHoldExpireTimestamp = null;
+                        _playHoldExpireTimestamp = null;
                         removed = true;
                     }
 
-                    return duration;
+                    return _playHoldExpireTimestamp;
                 }
             }
 
@@ -1791,6 +1811,12 @@ namespace SS.Matchmaking.Modules
                 PreviousQueued.Clear();
                 return true;
             }
+        }
+
+        private readonly record struct QueueChangeRecord(IMatchmakingQueue Queue, QueueAction Action)
+        {
+            public readonly IMatchmakingQueue Queue = Queue ?? throw new ArgumentNullException(nameof(Queue));
+            public readonly QueueAction Action = Action;
         }
 
         #endregion
