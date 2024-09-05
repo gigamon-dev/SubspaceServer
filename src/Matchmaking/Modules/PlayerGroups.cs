@@ -123,8 +123,11 @@ namespace SS.Matchmaking.Modules
                 // Remove any pending groups invites.
                 while (pd.PendingGroups.Count > 0)
                 {
-                    PlayerGroup group = pd.PendingGroups.First(); // TODO: Do this without using LINQ, possible allocation here.
-                    RemovePending(group, player, PlayerGroupPendingRemovedReason.Disconnect);
+                    using var e = pd.PendingGroups.GetEnumerator();
+                    if (e.MoveNext())
+                    {
+                        RemovePending(e.Current, player, PlayerGroupPendingRemovedReason.Disconnect);
+                    }
                 }
             }
         }
@@ -133,12 +136,12 @@ namespace SS.Matchmaking.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
-            Args = "<none> | [invite <player> | deinvite <player> | accept <player> | decline <player> | leave | kick <player> | leader <player> | disband]",
+            Args = "<none> | [invite <player> | uninvite <player> | accept <player> | decline <player> | leave | kick <player> | leader <player> | disband]",
             Description = """
                 Commands for managing player groups.
                   no sub-command (e.g. ?group or /?group) - prints group information.
                   invite - invites a player to your group ^
-                  deinvite - cancels a pending invite ^
+                  uninvite - cancels a pending invite ^
                   accept - accepts an invite
                   decline - declines an invite
                   leave - leaves the current group

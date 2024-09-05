@@ -188,8 +188,6 @@ namespace SS.Matchmaking.Modules
             if (queue is null)
                 return false;
 
-            // TODO: if any player was queued, dequeue. If it was their last queue, change their status.
-
             if (!_queues.Remove(queue.Name, out IMatchmakingQueue? removedQueue))
                 return false;
 
@@ -204,7 +202,7 @@ namespace SS.Matchmaking.Modules
             //
 
             HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
-            HashSet<IPlayerGroup> groups = new(); // TODO: pooling
+            HashSet<IPlayerGroup> groups = _playerGroupSetPool.Get();
 
             try
             {
@@ -233,6 +231,7 @@ namespace SS.Matchmaking.Modules
             finally
             {
                 _objectPoolManager.PlayerSetPool.Return(players);
+                _playerGroupSetPool.Return(groups);
             }
 
             return true;
@@ -1730,10 +1729,8 @@ namespace SS.Matchmaking.Modules
             public bool AutoRequeue = false;
             public bool IsPlayingAsSub = false;
 
-            // TODO: Maybe better to use LinkedList<QueuedInfo> but then have to deal with pooling of LinkedListNode<QueuedInfo> objects.
-
-            public readonly List<QueuedInfo> Queued = new();
-            public readonly List<QueuedInfo> PreviousQueued = new();
+            public readonly List<QueuedInfo> Queued = new(8);
+            public readonly List<QueuedInfo> PreviousQueued = new(8);
 
             public bool AddQueue(IMatchmakingQueue queue, DateTime timestamp)
             {
