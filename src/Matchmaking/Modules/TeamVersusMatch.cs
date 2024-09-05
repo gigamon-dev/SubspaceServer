@@ -2195,7 +2195,7 @@ namespace SS.Matchmaking.Modules
                         }
 
                         _matchmakingQueues.SetPlaying(players);
-                        _chat.SendSetMessage(players, $"{_matchmakingQueues.NextCommandName}: Placing you into a {matchData.MatchIdentifier.MatchType} match.");
+                        _chat.SendAnyMessage(players, ChatMessageType.RemotePrivate, ChatSound.None, null, $"{_matchmakingQueues.NextCommandName}: Placing you into a {matchData.MatchIdentifier.MatchType} match.");
                     }
                     finally
                     {
