@@ -74,6 +74,7 @@ namespace SS.Matchmaking.Modules
         private readonly DefaultObjectPool<UsageData> _usageDataPool = new(new DefaultPooledObjectPolicy<UsageData>(), Constants.TargetPlayerCount * 2);
         private readonly DefaultObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new(new ListPooledObjectPolicy<IMatchmakingQueue>() { InitialCapacity = 32 });
         private readonly DefaultObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new(new ListPooledObjectPolicy<PlayerOrGroup>() { InitialCapacity = Constants.TargetPlayerCount });
+        private readonly DefaultObjectPool<HashSet<IPlayerGroup>> _playerGroupSetPool = new(new HashSetPooledObjectPolicy<IPlayerGroup>() { InitialCapacity = 64 });
 
         private const string NextCommandName = "next";
         private const string CancelCommandName = "cancelnext";
@@ -776,7 +777,7 @@ namespace SS.Matchmaking.Modules
                 
                 Use -status (or -s) to print your current matchmaking status.
                 Use -list (or -l) to list all available matchmaking queues.
-                Use -auto (or -a) to toggle automatic re-queuing (automatically begin searching for another game after one ends).
+                Use -auto (or -a) to toggle automatic re-queuing (automatically search again after completing a match).
                 """)]
         private void Command_next(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -910,13 +911,44 @@ namespace SS.Matchmaking.Modules
             }
             else if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-l", StringComparison.OrdinalIgnoreCase))
             {
-                // TOOD: include stats of how many players and groups are in each queue
-                foreach (var queue in _queues.Values)
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                HashSet<Player> soloPlayers = _objectPoolManager.PlayerSetPool.Get();
+                HashSet<IPlayerGroup> groups = _playerGroupSetPool.Get();
+
+                try
                 {
-                    if (!string.IsNullOrWhiteSpace(queue.Description))
-                        _chat.SendMessage(player, $"{NextCommandName}: {queue.Name} - {queue.Description}");
-                    else
-                        _chat.SendMessage(player, $"{NextCommandName}: {queue.Name}");
+                    foreach (IMatchmakingQueue queue in _queues.Values)
+                    {
+                        sb.Clear();
+                        soloPlayers.Clear();
+                        groups.Clear();
+
+                        queue.GetQueued(soloPlayers, groups);
+
+                        int totalPlayersQueued = soloPlayers.Count;
+                        foreach (IPlayerGroup playerGroup in groups)
+                        {
+                            totalPlayersQueued += playerGroup.Members.Count;
+                        }
+
+                        sb.Append($"{NextCommandName}: {queue.Name,8} - {totalPlayersQueued,2} player{(totalPlayersQueued == 1 ? " " : "s")}");
+
+                        if (groups.Count > 0)
+                        {
+                            sb.Append($" ({groups.Count} group{(groups.Count == 1 ? "" : "s")})");
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(queue.Description))
+                            sb.Append($" - {queue.Description}");
+
+                        _chat.SendMessage(player, sb);
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                    _objectPoolManager.PlayerSetPool.Return(soloPlayers);
+                    _playerGroupSetPool.Return(groups);
                 }
 
                 return;
