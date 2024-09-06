@@ -1049,7 +1049,7 @@ namespace SS.Core.Modules
                             {
                                 // Open the arena's config file.
                                 // This operation will most likely do blocking I/O (unless the file was already open/loaded).
-                                arenaData.LoadConfigTask ??= _configManager.OpenConfigFile(arena.BaseName, null, _arenaConfChanged, arena);
+                                arenaData.LoadConfigTask ??= _configManager.OpenConfigFileAsync(arena.BaseName, null, _arenaConfChanged, arena);
 
                                 if (!arenaData.LoadConfigTask.IsCompleted)
                                     break;

@@ -65,14 +65,14 @@ namespace SS.Core.Modules
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
             NewPlayerCallback.Register(_broker, Callback_NewPlayer);
 
-            _groupDefConfHandle = await _configManager.OpenConfigFile(null, "groupdef.conf").ConfigureAwait(false);
+            _groupDefConfHandle = await _configManager.OpenConfigFileAsync(null, "groupdef.conf").ConfigureAwait(false);
             if (_groupDefConfHandle is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(CapabilityManager), "Error opening groupdef.conf");
                 return false;
             }
 
-            _staffConfHandle = await _configManager.OpenConfigFile(null, "staff.conf").ConfigureAwait(false);
+            _staffConfHandle = await _configManager.OpenConfigFileAsync(null, "staff.conf").ConfigureAwait(false);
             if (_staffConfHandle is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(CapabilityManager), "Error opening staff.conf");

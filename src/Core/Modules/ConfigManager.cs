@@ -65,7 +65,7 @@ namespace SS.Core.Modules
 
         async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            _globalConfigHandle = await ((IConfigManager)this).OpenConfigFile(null, null, GlobalChanged).ConfigureAwait(false);
+            _globalConfigHandle = await ((IConfigManager)this).OpenConfigFileAsync(null, null, GlobalChanged).ConfigureAwait(false);
             if (_globalConfigHandle is null)
             {
                 Log(LogLevel.Error, "Failed to open global.conf.");
@@ -293,7 +293,7 @@ namespace SS.Core.Modules
             }
         }
 
-        async Task<ConfigHandle?> IConfigManager.OpenConfigFile(string? arena, string? name)
+        async Task<ConfigHandle?> IConfigManager.OpenConfigFileAsync(string? arena, string? name)
         {
             return await OpenConfigFileAsync(
                 arena,
@@ -303,7 +303,7 @@ namespace SS.Core.Modules
                     name)).ConfigureAwait(false);
         }
 
-        async Task<ConfigHandle?> IConfigManager.OpenConfigFile(string? arena, string? name, ConfigChangedDelegate changedCallback)
+        async Task<ConfigHandle?> IConfigManager.OpenConfigFileAsync(string? arena, string? name, ConfigChangedDelegate changedCallback)
         {
             return await OpenConfigFileAsync(
                 arena,
@@ -314,7 +314,7 @@ namespace SS.Core.Modules
                     changedCallback)).ConfigureAwait(false);
         }
 
-        async Task<ConfigHandle?> IConfigManager.OpenConfigFile<TState>(string? arena, string? name, ConfigChangedDelegate<TState> changedCallback, TState state)
+        async Task<ConfigHandle?> IConfigManager.OpenConfigFileAsync<TState>(string? arena, string? name, ConfigChangedDelegate<TState> changedCallback, TState state)
         {
             return await OpenConfigFileAsync(
                 arena,
@@ -470,7 +470,7 @@ namespace SS.Core.Modules
             ((IConfigManager)this).SetStr(handle, section, key, value.ToString("G"), comment, permanent, options);
         }
 
-        async Task<bool> IConfigManager.SaveStandaloneCopy(ConfigHandle handle, string filePath)
+        async Task<bool> IConfigManager.SaveStandaloneCopyAsync(ConfigHandle handle, string filePath)
         {
             ArgumentNullException.ThrowIfNull(handle);
 

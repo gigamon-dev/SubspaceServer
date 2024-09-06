@@ -52,7 +52,7 @@ namespace SS.Core.Modules
             Description = "Determines whether to allow players not listed in the password file.")]
         async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
-            _pwdFile = await configManager.OpenConfigFile(null, ConfigFileName).ConfigureAwait(false);
+            _pwdFile = await configManager.OpenConfigFileAsync(null, ConfigFileName).ConfigureAwait(false);
             if (_pwdFile == null)
             {
                 logManager.LogM(LogLevel.Error, nameof(AuthFile), "Module could not load due to being unable to open passwd.conf.");

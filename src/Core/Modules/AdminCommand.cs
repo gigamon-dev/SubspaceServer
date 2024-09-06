@@ -466,7 +466,7 @@ namespace SS.Core.Modules
                 // Create the arena.conf by creating a standalone copy from the existing arena.
                 //
 
-                bool success = await _configManager.SaveStandaloneCopy(arena.Cfg!, arenaConfPath).ConfigureAwait(true);
+                bool success = await _configManager.SaveStandaloneCopyAsync(arena.Cfg!, arenaConfPath).ConfigureAwait(true);
 
                 if ((player = _playerData.FindPlayer(playerName)) is null)
                     return;

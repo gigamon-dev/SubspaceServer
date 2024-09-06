@@ -66,7 +66,7 @@ namespace SS.Core.ComponentInterfaces
         /// <see langword="null"/> to open the default file ("arena.conf" if an <paramref name="arena"/> is specified, or "global.conf" if no arena is specified).
         /// </param>
         /// <returns>A handle for the file, or <see langword="null"/> if an error occured.</returns>
-        Task<ConfigHandle?> OpenConfigFile(string? arena, string? name);
+        Task<ConfigHandle?> OpenConfigFileAsync(string? arena, string? name);
 
         /// <summary>
         /// Opens a config file, with a callback to receive change notifications.
@@ -100,7 +100,7 @@ namespace SS.Core.ComponentInterfaces
         /// </para>
         /// </param>
         /// <returns>A handle for the file, or <see langword="null"/> if an error occured.</returns>
-        Task<ConfigHandle?> OpenConfigFile(string? arena, string? name, ConfigChangedDelegate changedCallback);
+        Task<ConfigHandle?> OpenConfigFileAsync(string? arena, string? name, ConfigChangedDelegate changedCallback);
 
         /// <summary>
         /// Opens a config file, with a callback to receive change notifications.
@@ -135,7 +135,7 @@ namespace SS.Core.ComponentInterfaces
         /// </param>
         /// <param name="state">An object to be passed when <paramref name="changedCallback"/> is called.</param>
         /// <returns>A handle for the file, or <see langword="null"/> if an error occured.</returns>
-        Task<ConfigHandle?> OpenConfigFile<TState>(string? arena, string? name, ConfigChangedDelegate<TState> changedCallback, TState state);
+        Task<ConfigHandle?> OpenConfigFileAsync<TState>(string? arena, string? name, ConfigChangedDelegate<TState> changedCallback, TState state);
 
         /// <summary>
         /// Closes a previously opened file.
@@ -243,6 +243,6 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="filePath">The complete path and filename to save the copy to.</param>
         /// <returns><see langword="true"/> if the file was sucessfully saved; otherwise, <see langword="false"/>.</returns>
         /// <exception cref="Exception">Error creating file.</exception>
-        Task<bool> SaveStandaloneCopy(ConfigHandle handle, string filePath);
+        Task<bool> SaveStandaloneCopyAsync(ConfigHandle handle, string filePath);
     }
 }

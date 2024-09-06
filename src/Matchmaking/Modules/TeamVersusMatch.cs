@@ -1028,7 +1028,7 @@ namespace SS.Matchmaking.Modules
             // async local function since the command handler can't be made async
             async void LoadMatchTypeAsync(string matchType, string playerName)
             {
-                ConfigHandle? ch = await _configManager.OpenConfigFile(null, ConfigurationFileName).ConfigureAwait(true); // resume on the mainloop thread
+                ConfigHandle? ch = await _configManager.OpenConfigFileAsync(null, ConfigurationFileName).ConfigureAwait(true); // resume on the mainloop thread
 
                 Player? player = _playerData.FindPlayer(playerName);
                 if (player is null)
@@ -1773,7 +1773,7 @@ namespace SS.Matchmaking.Modules
 
         private async Task<bool> LoadConfigurationAsync()
         {
-            ConfigHandle? ch = await _configManager.OpenConfigFile(null, ConfigurationFileName).ConfigureAwait(false);
+            ConfigHandle? ch = await _configManager.OpenConfigFileAsync(null, ConfigurationFileName).ConfigureAwait(false);
             if (ch is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error opening {ConfigurationFileName}.");

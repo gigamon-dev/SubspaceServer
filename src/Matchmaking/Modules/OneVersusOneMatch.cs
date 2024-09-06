@@ -407,7 +407,7 @@ namespace SS.Matchmaking.Modules
 
         private async Task<bool> LoadConfigurationAsync()
         {
-            ConfigHandle? ch = await _configManager.OpenConfigFile(null, ConfigurationFileName).ConfigureAwait(false);
+            ConfigHandle? ch = await _configManager.OpenConfigFileAsync(null, ConfigurationFileName).ConfigureAwait(false);
             if (ch is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(OneVersusOneMatch), $"Error opening {ConfigurationFileName}.");
