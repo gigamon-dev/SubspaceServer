@@ -7,6 +7,7 @@ using SS.Core.Map;
 using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
+using SS.Matchmaking.Queues;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
 using SS.Utilities;

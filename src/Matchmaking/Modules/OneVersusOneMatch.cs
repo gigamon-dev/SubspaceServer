@@ -6,7 +6,7 @@ using SS.Core.Map;
 using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
-using System.Collections.ObjectModel;
+using SS.Matchmaking.Queues;
 using System.Diagnostics.CodeAnalysis;
 
 namespace SS.Matchmaking.Modules
@@ -49,7 +49,12 @@ namespace SS.Matchmaking.Modules
         /// <summary>
         /// Dictionary of queues (key = queue name).
         /// </summary>
-        private readonly Dictionary<string, OneVersusOneQueue> _queueDictionary = new(32);
+        private readonly Dictionary<string, OneVersusOneMatchmakingQueue> _queueDictionary = new(32);
+
+        /// <summary>
+        /// Dictionary of boxes for each queue. (key = queue name)
+        /// </summary>
+        private readonly Dictionary<string, List<int>> _queueBoxes = new(32);
 
         /// <summary>
         /// Configuration for each box.
@@ -306,7 +311,7 @@ namespace SS.Matchmaking.Modules
         private void Callback_MatchmakingQueueChanged(IMatchmakingQueue queue, QueueAction action)
         {
             if (action != QueueAction.Add
-                || !_queueDictionary.TryGetValue(queue.Name, out OneVersusOneQueue? found)
+                || !_queueDictionary.TryGetValue(queue.Name, out OneVersusOneMatchmakingQueue? found)
                 || found != queue)
             {
                 return;
@@ -444,12 +449,12 @@ namespace SS.Matchmaking.Modules
                         return false;
                     }
 
-                    if (!_queueDictionary.TryGetValue(queueName, out OneVersusOneQueue? queue))
+                    if (!_queueDictionary.TryGetValue(queueName, out OneVersusOneMatchmakingQueue? queue))
                     {
                         string? description = _configManager.GetStr(ch, $"Queue-{queueName}", "Description");
                         bool allowAutoRequeue = _configManager.GetInt(ch, $"Queue-{queueName}", "AllowAutoRequeue", 0) != 0;
 
-                        queue = new OneVersusOneQueue(
+                        queue = new OneVersusOneMatchmakingQueue(
                             queueName,
                             new QueueOptions
                             {
@@ -468,7 +473,14 @@ namespace SS.Matchmaking.Modules
                         _queueDictionary.Add(queueName, queue);
                     }
 
-                    queue.AddBox(i);
+                    if (!_queueBoxes.TryGetValue(queueName, out List<int>? boxList))
+                    {
+                        boxList = new List<int>(1);
+                        _queueBoxes.Add(queueName, boxList);
+                    }
+
+                    boxList.Add(i);
+
                     _boxConfigs[i] = new BoxConfiguration(queue, startLocation1, startLocation2);
                 }
             }
@@ -480,7 +492,7 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        private bool DoMatching(OneVersusOneQueue queue)
+        private bool DoMatching(OneVersusOneMatchmakingQueue queue)
         {
             if (queue is null)
                 return false;
@@ -498,13 +510,15 @@ namespace SS.Matchmaking.Modules
             arenaName = arenaName[..charsWritten];
 
             // Check if there are 2 players available.
-            if (!queue.GetNext(out Player? player1, out Player? player2))
+            if (!queue.GetParticipants(out Player? player1, out Player? player2))
                 return false;
 
             if (!player1.TryGetExtraData(_pdKey, out PlayerData? player1Data)
                 || !player2.TryGetExtraData(_pdKey, out PlayerData? player2Data))
             {
-                queue.UndoNext(player1, player2);
+                // This should never happen.
+                queue.Add(player1, DateTime.MinValue);
+                queue.Add(player2, DateTime.MinValue);
                 return false;
             }
 
@@ -555,7 +569,7 @@ namespace SS.Matchmaking.Modules
             QueueMatchInitialization(boxState.MatchIdentifier);
             return true;
 
-            bool TryGetAvailableArenaAndBox(OneVersusOneQueue queue, out int arenaNumber, out int boxId, [MaybeNullWhen(false)] out ArenaData arenaData)
+            bool TryGetAvailableArenaAndBox(OneVersusOneMatchmakingQueue queue, out int arenaNumber, out int boxId, [MaybeNullWhen(false)] out ArenaData arenaData)
             {
                 arenaNumber = 0;
 
@@ -585,14 +599,17 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
-            static bool TryGetAvailableBox(ArenaData arenaData, OneVersusOneQueue queue, out int boxId)
+            bool TryGetAvailableBox(ArenaData arenaData, OneVersusOneMatchmakingQueue queue, out int boxId)
             {
-                foreach (int id in queue.BoxIds)
+                if (_queueBoxes.TryGetValue(queue.Name, out List<int>? boxList))
                 {
-                    if (arenaData.Boxes[id].Status == BoxStatus.None)
+                    foreach (int id in boxList)
                     {
-                        boxId = id;
-                        return true;
+                        if (arenaData.Boxes[id].Status == BoxStatus.None)
+                        {
+                            boxId = id;
+                            return true;
+                        }
                     }
                 }
 
@@ -798,143 +815,16 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private class OneVersusOneQueue : IMatchmakingQueue
-        {
-            // The idea is to work like a ski lift queue with 1 group line and 1 solo line.
-            // Try to take from the group line, and then fill in remaining slots using the solo line.
-            public readonly LinkedList<Player> SoloQueue; // TODO: pooling of LinkListNode<Player> objects
-                                                          //public readonly LinkedList<IPlayerGroup> GroupQueue; // insert in order of group size
-
-            private readonly List<int> _boxIds = new();
-
-            public OneVersusOneQueue(
-                string queueName,
-                QueueOptions options,
-                string? description)
-            {
-                if (string.IsNullOrWhiteSpace(queueName))
-                    throw new ArgumentException("Cannot be null or white-space.", nameof(queueName));
-
-                if (!options.AllowSolo)
-                    throw new ArgumentException("1v1 must allow solo.", nameof(options));
-
-                if (options.AllowGroups)
-                    throw new ArgumentException("1v1 can't allow groups.", nameof(options));
-
-                Name = queueName;
-                Options = options;
-                Description = description;
-
-                BoxIds = _boxIds.AsReadOnly();
-
-                SoloQueue = new LinkedList<Player>();
-            }
-
-            public string Name { get; }
-            public QueueOptions Options { get; }
-            public string? Description { get; }
-
-            public void AddBox(int boxId)
-            {
-                _boxIds.Add(boxId);
-            }
-
-            public ReadOnlyCollection<int> BoxIds { get; }
-
-            public bool Add(Player player, DateTime timestamp) // TODO: handle adding to the proper spot based on timestamp
-            {
-                if (SoloQueue is null)
-                    return false;
-
-                SoloQueue.AddLast(player);
-                return true;
-            }
-
-            public bool Add(IPlayerGroup group, DateTime timestamp)
-            {
-                //if (GroupQueue is null)
-                return false;
-
-                // TODO: find the correct spot in the queue (ordered by # of players? or by time added only
-                //return true;
-            }
-
-            public bool Remove(Player player)
-            {
-                return SoloQueue.Remove(player);
-            }
-
-            public bool Remove(IPlayerGroup group)
-            {
-                return false; // TODO:
-            }
-
-            public void GetQueued(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups)
-            {
-                if (soloPlayers is not null)
-                {
-                    soloPlayers.UnionWith(SoloQueue);
-                }
-
-                if (groups is not null)
-                {
-                    // groups purposely not supported in this queue
-                }
-            }
-
-            public bool GetNext([MaybeNullWhen(false)] out Player player1, [MaybeNullWhen(false)] out Player player2)
-            {
-                if (SoloQueue.Count < 2)
-                {
-                    player1 = null;
-                    player2 = null;
-                    return false;
-                }
-
-                // player 1
-                var node = SoloQueue.First;
-                player1 = node!.Value;
-                SoloQueue.Remove(node);
-
-                // player 2
-                node = SoloQueue.First;
-                player2 = node!.Value;
-                SoloQueue.Remove(node);
-
-                return true;
-            }
-
-            public void UndoNext(Player player1, Player player2)
-            {
-                if (player2 is not null)
-                    SoloQueue.AddFirst(player2);
-
-                if (player1 is not null)
-                    SoloQueue.AddFirst(player1);
-            }
-
-            //public bool GetNext(int count, HashSet<Player> soloPlayers, HashSet<IPlayerGroup> playerGroups)
-            //{
-            //    // TODO: 
-            //    return false;
-            //}
-
-            //bool GetMatch(string queueName, List<HashSet<Player>> teams);
-            //bool GetNext(string queueName, out Player player);
-            //bool GetNext(string queueName, int count, HashSet<Player> players);
-            //bool SetMatchComplete(HashSet<Player> players);
-        }
-
         private struct BoxConfiguration
         {
-            public BoxConfiguration(OneVersusOneQueue queue, TileCoordinates startLocation1, TileCoordinates startLocation2)
+            public BoxConfiguration(OneVersusOneMatchmakingQueue queue, TileCoordinates startLocation1, TileCoordinates startLocation2)
             {
                 Queue = queue ?? throw new ArgumentNullException(nameof(queue));
                 StartLocation1 = startLocation1;
                 StartLocation2 = startLocation2;
             }
 
-            public OneVersusOneQueue Queue { get; }
+            public OneVersusOneMatchmakingQueue Queue { get; }
             public TileCoordinates StartLocation1 { get; }
             public TileCoordinates StartLocation2 { get; }
         }

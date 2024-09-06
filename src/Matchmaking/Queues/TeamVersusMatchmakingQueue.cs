@@ -1,34 +1,11 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core;
+using SS.Matchmaking.TeamVersus;
 using SS.Utilities.ObjectPool;
 using System.Diagnostics;
 
-namespace SS.Matchmaking.TeamVersus
+namespace SS.Matchmaking.Queues
 {
-    /// <summary>
-    /// Represents either a single <see cref="Core.Player"/> or a <see cref="IPlayerGroup"/> of players.
-    /// </summary>
-    public readonly record struct QueuedPlayerOrGroup
-    {
-        public QueuedPlayerOrGroup(Player player, DateTime timestamp)
-        {
-            Player = player ?? throw new ArgumentNullException(nameof(player));
-            Group = null;
-            Timestamp = timestamp;
-        }
-
-        public QueuedPlayerOrGroup(IPlayerGroup group, DateTime timestamp)
-        {
-            Player = null;
-            Group = group ?? throw new ArgumentNullException(nameof(group));
-            Timestamp = timestamp;
-        }
-
-        public Player? Player { get; }
-        public IPlayerGroup? Group { get; }
-        public DateTime Timestamp { get; }
-    }
-
     /// <summary>
     /// A matchmaking queue for team games that can supports queuing up as a solo player or as a group of players (<see cref="IPlayerGroup"/>).
     /// </summary>
@@ -43,7 +20,7 @@ namespace SS.Matchmaking.TeamVersus
     /// where you need to find a combination that fills every team fully.
     /// </para>
     /// </remarks>
-    public class TeamVersusMatchmakingQueue : IMatchmakingQueue 
+    public class TeamVersusMatchmakingQueue : IMatchmakingQueue
     {
         private static readonly DefaultObjectPool<LinkedListNode<QueuedPlayerOrGroup>> s_nodePool = new(new LinkedListNodePooledObjectPolicy<QueuedPlayerOrGroup>(), Constants.TargetPlayerCount);
         private static readonly DefaultObjectPool<List<LinkedListNode<QueuedPlayerOrGroup>>> s_listPool = new(new ListPooledObjectPolicy<LinkedListNode<QueuedPlayerOrGroup>>() { InitialCapacity = Constants.TargetPlayerCount });
@@ -390,6 +367,30 @@ namespace SS.Matchmaking.TeamVersus
                 s_listPool.Return(pending);
                 s_listPool.Return(pendingSolo);
             }
+        }
+
+        /// <summary>
+        /// Represents either a single <see cref="Core.Player"/> or a <see cref="IPlayerGroup"/> of players.
+        /// </summary>
+        private readonly record struct QueuedPlayerOrGroup
+        {
+            public QueuedPlayerOrGroup(Player player, DateTime timestamp)
+            {
+                Player = player ?? throw new ArgumentNullException(nameof(player));
+                Group = null;
+                Timestamp = timestamp;
+            }
+
+            public QueuedPlayerOrGroup(IPlayerGroup group, DateTime timestamp)
+            {
+                Player = null;
+                Group = group ?? throw new ArgumentNullException(nameof(group));
+                Timestamp = timestamp;
+            }
+
+            public Player? Player { get; }
+            public IPlayerGroup? Group { get; }
+            public DateTime Timestamp { get; }
         }
     }
 }

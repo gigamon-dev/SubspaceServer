@@ -3,9 +3,11 @@ using SS.Core;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Callbacks;
+using SS.Matchmaking.Interfaces;
 using SS.Packets.Game;
 using SS.Utilities;
 using System.Text;
+using System.Text.Json;
 
 namespace SS.Matchmaking.Modules
 {
@@ -19,21 +21,36 @@ namespace SS.Matchmaking.Modules
     public class OneVersusOneStats : IModule, IArenaAttachableModule
     {
         private readonly IChat _chat;
+        private readonly IConfigManager _configManager;
+        private readonly ILogManager _logManager;
+        private readonly IMapData _mapData;
         private readonly IObjectPoolManager _objectPoolManager;
         private readonly IPlayerData _playerData;
         private readonly IWatchDamage _watchDamage;
 
+        // optional
+        private IGameStatsRepository? _gameStatsRepository;
+
         private PlayerDataKey<PlayerData> _pdKey;
-        private readonly Dictionary<MatchIdentifier, MatchStats> _matchStats = new();
+
+        private string? _zoneServerName;
+        private readonly Dictionary<string, (string LvlFilename, uint Checksum)> _arenaMapInfo = [];
+        private readonly Dictionary<MatchIdentifier, MatchStats> _matchStats = new(32);
         private readonly DefaultObjectPool<MatchStats> _matchStatsObjectPool = new(new DefaultPooledObjectPolicy<MatchStats>(), Constants.TargetPlayerCount);
 
         public OneVersusOneStats(
             IChat chat,
+            IConfigManager configManager,
+            ILogManager logManager,
+            IMapData mapData,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             IWatchDamage watchDamage)
         {
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _watchDamage = watchDamage ?? throw new ArgumentNullException(nameof(watchDamage));
@@ -43,6 +60,22 @@ namespace SS.Matchmaking.Modules
 
         bool IModule.Load(IComponentBroker broker)
         {
+            _gameStatsRepository = broker.GetInterface<IGameStatsRepository>();
+
+            if (_gameStatsRepository is not null)
+            {
+                // We got the optional service. To use it, we'll need the server name.
+                _zoneServerName = _configManager.GetStr(_configManager.Global, "Billing", "ServerName");
+
+                if (string.IsNullOrWhiteSpace(_zoneServerName))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusStats), "Missing setting, global.conf: Billing.ServerName");
+
+                    broker.ReleaseInterface(ref _gameStatsRepository);
+                    return false;
+                }
+            }
+
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             return true;
@@ -52,6 +85,10 @@ namespace SS.Matchmaking.Modules
         {
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             _playerData.FreePlayerData(ref _pdKey);
+
+            if (_gameStatsRepository is not null)
+                broker.ReleaseInterface(ref _gameStatsRepository);
+
             return true;
         }
 
@@ -59,9 +96,11 @@ namespace SS.Matchmaking.Modules
         {
             OneVersusOneMatchStartedCallback.Register(arena, Callback_OneVersusOneMatchStarted);
             OneVersusOneMatchEndedCallback.Register(arena, Callback_OneVersusOneMatchEnded);
+            ArenaActionCallback.Register(arena, Callback_ArenaAction);
             PlayerDamageCallback.Register(arena, Callback_PlayerDamage);
             PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
             KillCallback.Register(arena, Callback_Kill);
+            ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
             return true;
         }
 
@@ -69,15 +108,29 @@ namespace SS.Matchmaking.Modules
         {
             OneVersusOneMatchStartedCallback.Unregister(arena, Callback_OneVersusOneMatchStarted);
             OneVersusOneMatchEndedCallback.Unregister(arena, Callback_OneVersusOneMatchEnded);
+            ArenaActionCallback.Unregister(arena, Callback_ArenaAction);
             PlayerDamageCallback.Unregister(arena, Callback_PlayerDamage);
             PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
             KillCallback.Unregister(arena, Callback_Kill);
+            ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
             return true;
         }
 
         #endregion
 
         #region Callbacks
+
+        private async void Callback_ArenaAction(Arena arena, ArenaAction action)
+        {
+            if (action == ArenaAction.Create)
+            {
+                string? mapPath = await _mapData.GetMapFilenameAsync(arena, null);
+                if (mapPath is not null)
+                    mapPath = Path.GetFileName(mapPath);
+
+                _arenaMapInfo[arena.Name] = (mapPath!, _mapData.GetChecksum(arena, 0));
+            }
+        }
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
@@ -137,9 +190,10 @@ namespace SS.Matchmaking.Modules
             player2Data.IsWatchingDamage = true;
         }
 
-        private void Callback_OneVersusOneMatchEnded(Arena arena, int boxId, OneVersusOneMatchEndReason reason, string? winnerPlayerName)
+        private async void Callback_OneVersusOneMatchEnded(Arena arena, int boxId, OneVersusOneMatchEndReason reason, string? winnerPlayerName)
         {
-            if (!_matchStats.Remove(new MatchIdentifier(arena, boxId), out MatchStats? matchStats))
+            MatchIdentifier matchIdentifier = new(arena, boxId);
+            if (!_matchStats.Remove(matchIdentifier, out MatchStats? matchStats))
                 return;
 
             try
@@ -162,12 +216,12 @@ namespace SS.Matchmaking.Modules
                     RemoveDamageWatching(matchStats.PlayerStats2.Player, player2Data);
                 }
 
-                //
-                // Output stats
-                //
-
                 if (reason != OneVersusOneMatchEndReason.Aborted)
                 {
+                    //
+                    // Output stats
+                    //
+
                     if (reason == OneVersusOneMatchEndReason.Decided)
                     {
                         PlayerStats? winnerStats = null;
@@ -275,9 +329,13 @@ namespace SS.Matchmaking.Modules
                     {
                         _objectPoolManager.PlayerSetPool.Return(set);
                     }
-                }
 
-                // TODO: Save stats to a database?
+                    //
+                    // Save game stats to database
+                    //
+
+                    await SaveGameToDatabase(matchIdentifier, matchStats, winnerPlayerName);
+                }
 
                 //
                 // Clear current match
@@ -296,6 +354,107 @@ namespace SS.Matchmaking.Modules
             finally
             {
                 _matchStatsObjectPool.Return(matchStats);
+            }
+
+            async Task SaveGameToDatabase(MatchIdentifier matchIdentifier, MatchStats matchStats, string? winnerPlayerName)
+            {
+                if (_gameStatsRepository is null)
+                    return;
+
+                if (matchStats.StartTimestamp is null || matchStats.EndTimestamp is null)
+                    return;
+
+                // TODO: pool the MemoryStream and Utf8JsonWriter combination
+                using MemoryStream gameJsonStream = new();
+                using Utf8JsonWriter writer = new(gameJsonStream, default);
+
+                writer.WriteStartObject(); // game object
+                writer.WriteNumber("game_type_id"u8, 1); // TODO: configuration
+                writer.WriteString("zone_server_name"u8, _zoneServerName);
+                writer.WriteString("arena"u8, matchIdentifier.Arena.Name);
+                writer.WriteNumber("box_number"u8, matchIdentifier.BoxId);
+
+                // Map info
+                if (_arenaMapInfo.TryGetValue(matchIdentifier.Arena.Name, out var mapInfo))
+                {
+                    writer.WriteString("lvl_file_name"u8, mapInfo.LvlFilename);
+                    writer.WriteNumber("lvl_checksum"u8, mapInfo.Checksum);
+                }
+                else
+                {
+                    writer.WriteString("lvl_file_name"u8, "");
+                    writer.WriteNumber("lvl_checksum"u8, 0);
+                }
+
+                writer.WriteString("start_timestamp"u8, matchStats.StartTimestamp.Value);
+                writer.WriteString("end_timestamp"u8, matchStats.EndTimestamp.Value);
+                writer.WriteString("replay_path"u8, (string?)null); // TODO: add the ability automatically record games
+
+                // Player info
+                writer.WriteStartObject("players");
+                WritePlayerInfo(matchStats.PlayerStats1);
+                WritePlayerInfo(matchStats.PlayerStats2);
+                writer.WriteEndObject(); // players object
+
+                // Stats
+                writer.WriteStartArray("solo_stats"u8);
+                WriteMemberStats(matchStats.PlayerStats1, matchStats.PlayerStats2, string.Equals(matchStats.PlayerStats1.PlayerName, winnerPlayerName, StringComparison.OrdinalIgnoreCase));
+                WriteMemberStats(matchStats.PlayerStats2, matchStats.PlayerStats1, string.Equals(matchStats.PlayerStats2.PlayerName, winnerPlayerName, StringComparison.OrdinalIgnoreCase));
+                writer.WriteEndArray(); // solo_stats
+
+                writer.WriteEndObject(); // game object
+
+                writer.Flush();
+                gameJsonStream.Position = 0;
+
+                // DEBUG - REMOVE ME ***************************************************
+                //StreamReader reader = new(gameJsonStream, Encoding.UTF8);
+                //string data = reader.ReadToEnd();
+                //Console.WriteLine(data);
+                //gameJsonStream.Position = 0;
+                // DEBUG - REMOVE ME ***************************************************
+
+                matchStats.GameId = await _gameStatsRepository.SaveGameAsync(gameJsonStream);
+
+                void WritePlayerInfo(PlayerStats playerStats)
+                {
+                    writer.WriteStartObject(playerStats.PlayerName!);
+
+                    writer.WriteString("squad"u8, playerStats.Squad);
+
+                    if (playerStats.XRes is not null && playerStats.YRes is not null)
+                    {
+                        writer.WriteNumber("x_res"u8, playerStats.XRes.Value);
+                        writer.WriteNumber("y_res"u8, playerStats.YRes.Value);
+                    }
+
+                    writer.WriteEndObject();
+                }
+
+                void WriteMemberStats(PlayerStats playerStats, PlayerStats otherPlayerStats, bool isWinner)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("player"u8, playerStats.PlayerName);
+                    writer.WriteNumber("score"u8, isWinner ? 1 : 0);
+                    writer.WriteBoolean("is_winner"u8, isWinner);
+                    writer.WriteNumber("ship_type"u8, (short)playerStats.ShipType!.Value);
+
+                    if (playerStats.EndEnergy is not null)
+                        writer.WriteNumber("end_energy"u8, playerStats.EndEnergy.Value);
+
+                    writer.WriteNumber("gun_damage_dealt"u8, playerStats.GunDamageDealt);
+                    writer.WriteNumber("bomb_damage_dealt"u8, playerStats.BombDamageDealt);
+                    writer.WriteNumber("gun_damage_taken"u8, otherPlayerStats.GunDamageDealt);
+                    writer.WriteNumber("bomb_damage_taken"u8, otherPlayerStats.BombDamageDealt);
+                    writer.WriteNumber("self_damage"u8, playerStats.DamageSelf);
+                    writer.WriteNumber("gun_fire_count"u8, playerStats.GunFireCount);
+                    writer.WriteNumber("bomb_fire_count"u8, playerStats.BombFireCount);
+                    writer.WriteNumber("mine_fire_count"u8, playerStats.MineFireCount);
+                    writer.WriteNumber("gun_hit_count"u8, playerStats.GunHitCount);
+                    writer.WriteNumber("bomb_hit_count"u8, playerStats.BombHitCount);
+                    writer.WriteNumber("mine_hit_count"u8, playerStats.MineHitCount);
+                    writer.WriteEndObject();
+                }
             }
 
             void ClearCurrentMatchFromPlayerData(Player player)
@@ -416,8 +575,21 @@ namespace SS.Matchmaking.Modules
             if (killer == null || !killer.TryGetExtraData(_pdKey, out PlayerData? killerPlayerData))
                 return;
 
-            if (killerPlayerData.CurrentPlayerStats != null)
-                killerPlayerData.CurrentPlayerStats.EndEnergy = killer.Position.Energy;
+            if (killerPlayerData.CurrentPlayerStats is null)
+                return;
+
+            killerPlayerData.CurrentPlayerStats.EndEnergy = killer.Position.Energy;
+        }
+
+        private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            if (playerData.CurrentPlayerStats is null)
+                return;
+
+            playerData.CurrentPlayerStats.ShipType = newShip;
         }
 
         #endregion
@@ -444,21 +616,28 @@ namespace SS.Matchmaking.Modules
             public DateTime? StartTimestamp;
             public DateTime? EndTimestamp;
 
+            public long? GameId;
+
             public void SetStart(Player player1, Player player2)
             {
-                if (player1 == null)
-                    throw new ArgumentNullException(nameof(player1));
-
-                if (player2 == null)
-                    throw new ArgumentNullException(nameof(player2));
+                ArgumentNullException.ThrowIfNull(player1);
+                ArgumentNullException.ThrowIfNull(player2);
 
                 PlayerStats1.Reset();
                 PlayerStats1.PlayerName = player1.Name;
                 PlayerStats1.Player = player1;
+                PlayerStats1.Squad = player1.Squad;
+                PlayerStats1.XRes = player1.Xres;
+                PlayerStats1.YRes = player1.Yres;
+                PlayerStats1.ShipType = player1.Ship;
 
                 PlayerStats2.Reset();
                 PlayerStats2.PlayerName = player2.Name;
                 PlayerStats2.Player = player2;
+                PlayerStats2.Squad = player2.Squad;
+                PlayerStats2.XRes = player2.Xres;
+                PlayerStats2.YRes = player2.Yres;
+                PlayerStats2.ShipType = player2.Ship;
 
                 StartTimestamp = DateTime.UtcNow;
                 EndTimestamp = null;
@@ -476,6 +655,8 @@ namespace SS.Matchmaking.Modules
 
                 StartTimestamp = null;
                 EndTimestamp = null;
+
+                GameId = null;
 
                 return true;
             }
@@ -496,6 +677,26 @@ namespace SS.Matchmaking.Modules
             /// So, <see cref="PlayerName"/> is the main player identifier.
             /// </remarks>
             public Player? Player;
+
+            /// <summary>
+            /// The player's squad.
+            /// </summary>
+            public string? Squad;
+
+            /// <summary>
+            /// The player's x resolution.
+            /// </summary>
+            public short? XRes;
+
+            /// <summary>
+            /// The player's y resoluation.
+            /// </summary>
+            public short? YRes;
+
+            /// <summary>
+            /// The ship the player is using.
+            /// </summary>
+            public ShipType? ShipType;
 
             /// <summary>
             /// Amount of damage dealt to enemies with bullets.
@@ -551,6 +752,10 @@ namespace SS.Matchmaking.Modules
             {
                 PlayerName = null;
                 Player = null;
+                Squad = null;
+                XRes = null;
+                YRes = null;
+                ShipType = null;
                 GunDamageDealt = 0;
                 BombDamageDealt = 0;
                 DamageSelf = 0;
