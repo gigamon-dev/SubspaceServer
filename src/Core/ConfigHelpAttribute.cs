@@ -155,7 +155,7 @@ namespace SS.Core
         public string? Description { get; set; }
 
         Type IConfigHelpAttribute.Type => typeof(string);
-        
+
         string? IConfigHelpAttribute.DefaultValue => Default;
 
         string? IConfigHelpAttribute.Min => null;

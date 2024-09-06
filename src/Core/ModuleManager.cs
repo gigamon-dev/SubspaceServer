@@ -801,7 +801,7 @@ namespace SS.Core
         {
             LinkedListNode<Type>? node;
             ModuleData? moduleData;
-            
+
             lock (_moduleLock)
             {
                 node = _loadedModules.FindLast(type);
@@ -903,7 +903,7 @@ namespace SS.Core
             }
 
             ReleaseDependencies(moduleData);
-            
+
             lock (_moduleLock)
             {
                 moduleData.IsLoaded = false;
@@ -1070,7 +1070,6 @@ namespace SS.Core
             try
             {
                 ModuleData[] moduleTypes;
-                
 
                 lock (_moduleLock)
                 {

@@ -247,7 +247,7 @@ namespace SS.Core.Modules
                         _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send '{path}' ({filename}). Error queuing up a sized send.");
                     else
                         _logManager.LogP(LogLevel.Warn, nameof(FileTransfer), player, $"Unable to send data stream as file ({filename}). Error queuing up a sized send.");
-                } 
+                }
 
                 return false;
             }
@@ -921,7 +921,7 @@ namespace SS.Core.Modules
             /// </remarks>
             public string? FilePath;
 
-            
+
             public string? WorkingDirectory;
 
             public async Task CleanupAsync(bool success, bool isSemaphoreHeld)

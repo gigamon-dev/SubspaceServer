@@ -272,7 +272,7 @@ namespace SS.Core.Modules
                     uint checksum;
                     byte[] mapData;
 
-                    await using(FileStream inputStream = new(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true))
+                    await using (FileStream inputStream = new(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true))
                     {
                         // Calculate CRC
                         Crc32 crc32 = _objectPoolManager.Crc32Pool.Get();

@@ -282,7 +282,7 @@ namespace SS.Core.Modules
         {
             if (player is not null && player.TryGetExtraData(_pdKey, out PlayerData? playerData))
             {
-                lock(_lockObj)
+                lock (_lockObj)
                 {
                     if (playerData.IsKnownToBiller)
                     {
@@ -606,7 +606,7 @@ namespace SS.Core.Modules
                         DropConnection(BillingState.Disabled);
                         return true;
                     }
-                    
+
                     try
                     {
                         _cc = _networkClient.MakeClientConnection(billerEndpoint, this, encryptorName, bandwidthLimiterProviderName);
@@ -667,7 +667,7 @@ namespace SS.Core.Modules
                     }
 
                     // Banner upload
-                    while (_bannerUploadDictionary.Count > 0 
+                    while (_bannerUploadDictionary.Count > 0
                         && Interlocked.CompareExchange(ref _bannerUploadPendingCount, 0, 0) < _cfgMaxConcurrentBannerUpload)
                     {
                         // Send one, doesn't matter which.
@@ -1060,7 +1060,7 @@ namespace SS.Core.Modules
                             finally
                             {
                                 _objectPoolManager.StringBuilderPool.Return(sb);
-                            }                            
+                            }
                         }
                     }
                     finally
@@ -1107,7 +1107,7 @@ namespace SS.Core.Modules
 
                 _networkClient.SendPacket(_cc!, packetBytes[..length], NetSendFlags.Reliable);
             }
-            
+
 
             [ConfigHelp("Billing", "StaffChats", ConfigScope.Global, Description = "Comma separated staff chat list.")]
             [ConfigHelp("Billing", "StaffChatPrefix", ConfigScope.Global, Description = "Secret prefix to prepend to staff chats.")]
@@ -1744,7 +1744,7 @@ namespace SS.Core.Modules
                     {
                         string? arenaGroups = _configManager.GetStr(_configManager.Global, "Billing", "ScoreResetArenaGroups");
                         arenaGroups ??= BillingSettings.ScoreResetArenaGroups.Default; // null only, white-space means none
-                        
+
                         ReadOnlySpan<char> remaining = arenaGroups;
                         ReadOnlySpan<char> token;
                         while ((token = remaining.GetToken(", \t", out remaining)).Length > 0)

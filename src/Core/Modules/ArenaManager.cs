@@ -151,7 +151,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        [ConfigHelp("Arenas", "PermanentArenas", ConfigScope.Global, 
+        [ConfigHelp("Arenas", "PermanentArenas", ConfigScope.Global,
             Description = """
                 Names of arenas to permanently keep running.
                 These arenas will be created when the server is started
@@ -1228,7 +1228,7 @@ namespace SS.Core.Modules
             return true;
 
 
-            [ConfigHelp("Modules", "AttachModules", ConfigScope.Arena, 
+            [ConfigHelp("Modules", "AttachModules", ConfigScope.Arena,
             Description = """
                 This is a list of modules that you want to take effect in this arena. 
                 Not all modules need to be attached to arenas to function, but some do.

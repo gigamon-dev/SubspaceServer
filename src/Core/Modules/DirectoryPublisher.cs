@@ -219,7 +219,6 @@ namespace SS.Core.Modules
 
                 int defaultPort = _configManager.GetInt(_configManager.Global, "Directory", "Port", DirectorySettings.Port.Default);
 
-                
                 for (index = 1; index <= 99; index++)
                 {
                     string? server = GetServerSetting(index);

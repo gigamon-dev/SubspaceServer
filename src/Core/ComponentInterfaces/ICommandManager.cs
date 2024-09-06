@@ -168,7 +168,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="commandName"></param>
         /// <param name="arena"></param>
         /// <returns></returns>
-        string? GetHelpText(ReadOnlySpan<char> commandName, Arena?arena);
+        string? GetHelpText(ReadOnlySpan<char> commandName, Arena? arena);
 
         /// <summary>
         /// Adds a command from the collection of commands that should not have its parameters be included in logs.

@@ -917,9 +917,9 @@ namespace SS.Core.Modules
                     }
 
                     ProcessTiles(
-                        key, 
-                        start, 
-                        end, 
+                        key,
+                        start,
+                        end,
                         static (k, c, s) => s.SetTile(k, c),
                         this);
 
@@ -951,7 +951,6 @@ namespace SS.Core.Modules
             public bool TryRemoveBrick(int brickId)
             {
                 return TryRemove(new TemporaryTileKey(brickId, MapTile.Brick));
-                
             }
 
             public bool TryRemoveFlag(short flagId)
@@ -1005,7 +1004,7 @@ namespace SS.Core.Modules
 
                 if (key.Id != id)
                     return false;
-                
+
                 return _tiles.Remove(coordinates);
             }
 

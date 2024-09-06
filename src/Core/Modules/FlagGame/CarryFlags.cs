@@ -836,7 +836,7 @@ namespace SS.Core.Modules.FlagGame
 
             [ConfigHelp<bool>("Flag", "AutoStart", ConfigScope.Arena, Default = true,
                 Description = "Whether a flag game will automatically start.")]
-            [ConfigHelp<int>("Flag", "ResetDelay", ConfigScope.Arena, Default = 0, 
+            [ConfigHelp<int>("Flag", "ResetDelay", ConfigScope.Arena, Default = 0,
                 Description = "The length of the delay between flag games.")]
             [ConfigHelp<int>("Flag", "SpawnX", ConfigScope.Arena, Default = 512,
                 Description = "The X coordinate that new flags spawn at (in tiles).")]

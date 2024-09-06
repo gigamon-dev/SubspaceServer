@@ -21,7 +21,6 @@ namespace SS.Core.Modules
 
         bool IModule.Load(IComponentBroker broker)
         {
-            
             LogCallback.Register(broker, LogToConsole);
             return true;
         }

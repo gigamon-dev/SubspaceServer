@@ -52,7 +52,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("pwd", Command_pwd);
             _commandManager.AddCommand("delfile", Command_delfile);
             _commandManager.AddCommand("renfile", Command_renfile);
-            
+
             return true;
         }
 

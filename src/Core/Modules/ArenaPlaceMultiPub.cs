@@ -147,7 +147,7 @@ namespace SS.Core.Modules
             LoadPubNames();
         }
 
-        [ConfigHelp("General", "PublicArenas", ConfigScope.Global, 
+        [ConfigHelp("General", "PublicArenas", ConfigScope.Global,
             Description = """
                 A list of public arenas (base arena names) that the server should place players in when a specific arena is not requested.
                 Allowed delimiters include: ' ' (space), ',', ':', and ';'.

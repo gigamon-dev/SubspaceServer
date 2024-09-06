@@ -202,7 +202,7 @@ namespace SS.Core.Modules
                         Module = nameof(LogFile),
                         LogText = sb,
                     };
-                    
+
                     Callback_Log(ref logEntry);
                 }
                 finally

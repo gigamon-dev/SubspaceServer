@@ -201,7 +201,7 @@ namespace SS.Core.Modules
                     _playerData.Unlock();
                 }
 
-                _chat.SendAnyMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null, 
+                _chat.SendAnyMessage(set, ChatMessageType.SysopWarning, ChatSound.None, null,
                     $"A log was dropped (total: {totalDropped}). This indicates the logging infrastructure can't keep up. You should investigate.");
             }
             finally

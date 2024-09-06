@@ -126,10 +126,10 @@ namespace SS.Core.Modules
         async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _securityKickoff = _configManager.GetBool(_configManager.Global, "Security", "SecurityKickoff", ConfigHelp.Constants.Global.Security.SecurityKickoff.Default);
-            
+
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
-            
+
             await LoadScrtyAsync();
             SwitchChecksums();
 

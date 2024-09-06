@@ -210,7 +210,7 @@ namespace SS.Core
         /// </summary>
         /// <remarks>Transitions to: <see cref="DoArenaSync2"/>.</remarks>
         LeavingArena,
-        
+
         // TODO: add WaitLeaveArenaHolds
 
         /// <summary>

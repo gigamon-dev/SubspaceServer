@@ -170,7 +170,7 @@ namespace SS.Core.Modules
 
         bool IBalls.TrySpawnBall(Arena arena, int ballId) => TrySpawnBall(arena, ballId);
 
-        [ConfigHelp<int>("Soccer", "NewGameDelay", ConfigScope.Arena, Default = -3000, 
+        [ConfigHelp<int>("Soccer", "NewGameDelay", ConfigScope.Arena, Default = -3000,
             Description = "How long to wait between games (in ticks). If this is negative, the actual delay is random, between zero and the absolute value.")]
         void IBalls.EndGame(Arena arena)
         {
@@ -879,7 +879,7 @@ namespace SS.Core.Modules
                 for (int i = 1; i < MaxBalls; i++)
                 {
                     xName[^1] = yName[^1] = rName[^1] = (char)('0' + i);
-                    
+
                     spawns[i].X = _configManager.GetInt(ch, "Soccer", xName, -1);
                     spawns[i].Y = _configManager.GetInt(ch, "Soccer", yName, -1);
 

@@ -180,7 +180,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private bool TryGetHelpText(string commandName, Delegate handler, [MaybeNullWhen(false)]out string helpText)
+        private bool TryGetHelpText(string commandName, Delegate handler, [MaybeNullWhen(false)] out string helpText)
         {
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));

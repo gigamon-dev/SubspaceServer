@@ -138,7 +138,7 @@ namespace SS.Core.Map
         public ExtendedLvl(FileStream fileStream)
         {
             ArgumentNullException.ThrowIfNull(fileStream);
-            
+
             using MemoryMappedFile file = MemoryMappedFile.CreateFromFile(fileStream, null, 0, MemoryMappedFileAccess.Read, HandleInheritability.None, true);
             Load(file, fileStream.Length);
         }

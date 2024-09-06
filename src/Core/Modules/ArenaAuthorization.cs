@@ -35,7 +35,7 @@ namespace SS.Core.Modules
 
         #region IArenaAuthorizationAdvisor
 
-        [ConfigHelp("General", "NeedCap", ConfigScope.Arena, 
+        [ConfigHelp("General", "NeedCap", ConfigScope.Arena,
             Description = """
             If this setting is present for an arena, any player entering
             the arena must have the capability specified this setting.

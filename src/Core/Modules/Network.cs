@@ -336,7 +336,7 @@ namespace SS.Core.Modules
             return true;
 
 
-            [ConfigHelp<int>("Net", "InternalClientPort", ConfigScope.Global, Default = 0, 
+            [ConfigHelp<int>("Net", "InternalClientPort", ConfigScope.Global, Default = 0,
                 Description = "The bind port for the internal client socket (used to communicate with biller and dirserver).")]
             bool InitializeSockets()
             {
@@ -379,7 +379,7 @@ namespace SS.Core.Modules
 
                 return true;
 
-                [ConfigHelp<int>("Listen", "Port", ConfigScope.Global, 
+                [ConfigHelp<int>("Listen", "Port", ConfigScope.Global,
                     Description = """
                         The port that the game protocol listens on. Sections named
                         Listen1, Listen2, ... are also supported. All Listen
@@ -2388,7 +2388,7 @@ namespace SS.Core.Modules
                     {
                         if (clientConnection!.Status >= ClientConnectionStatus.Disconnecting)
                             return;
-                        
+
                         Interlocked.Increment(ref clientConnection.ProcessingHolds);
                     }
                 }
@@ -2504,7 +2504,7 @@ namespace SS.Core.Modules
 
                             if (ProcessLagout(player, conn, now))
                                 toKick.Add(player);
-                            
+
                             if (ProcessDisconnect(player, conn, false))
                                 toFree.Add(player);
                         }
@@ -2553,7 +2553,7 @@ namespace SS.Core.Modules
                         bool hitMaxOutlist = false;
 
                         // Send outgoing.
-                        if (clientConnection.Status >= ClientConnectionStatus.Connected 
+                        if (clientConnection.Status >= ClientConnectionStatus.Connected
                             && clientConnection.Status < ClientConnectionStatus.Disconnecting)
                         {
                             lock (clientConnection.OutLock)
@@ -3544,7 +3544,7 @@ namespace SS.Core.Modules
                                         Debug.Assert(sizedSend == conn.SizedSends.First?.Value);
 
                                         // Cancel out if the sized send was cancelled while we were requesting data OR if the connection is being disconnected.
-                                        cancelled = sizedSend.IsCancellationRequested 
+                                        cancelled = sizedSend.IsCancellationRequested
                                             || (player is not null && player.Status == PlayerState.TimeWait)
                                             || (clientConnection is not null && clientConnection.Status >= ClientConnectionStatus.Disconnecting);
 
@@ -3582,7 +3582,7 @@ namespace SS.Core.Modules
                                     {
                                         _playerData.Unlock();
                                     }
-                                    else if(clientConnection is not null)
+                                    else if (clientConnection is not null)
                                     {
                                         _clientConnectionsLock.ExitReadLock();
                                     }
@@ -3736,7 +3736,7 @@ namespace SS.Core.Modules
             _sizedSendQueue.TryEnqueue(connData);
         }
 
-#endregion
+        #endregion
 
         /// <summary>
         /// Processes a data received from a known connection.

@@ -2318,7 +2318,7 @@ namespace SS.Core.Modules
                             {
                                 _objectPoolManager.StringBuilderPool.Return(sb);
                             }
-                            
+
                             errorBuilder.Clear();
                         }
                     }
@@ -2411,7 +2411,7 @@ namespace SS.Core.Modules
                             {
                                 _objectPoolManager.StringBuilderPool.Return(sb);
                             }
-                            
+
                             errorBuilder.Clear();
                         }
                     }
@@ -2572,7 +2572,7 @@ namespace SS.Core.Modules
                 string? name = moduleInfo.Type.FullName;
                 if (string.IsNullOrWhiteSpace(name))
                     continue;
-                
+
                 if (substr is null || name.Contains(substr, StringComparison.OrdinalIgnoreCase))
                     modulesList.Add(name);
             }
@@ -2627,7 +2627,7 @@ namespace SS.Core.Modules
                 if (!string.IsNullOrWhiteSpace(info.Type.AssemblyQualifiedName))
                     _chat.SendMessage(player, $"  Type: {info.Type.AssemblyQualifiedName}");
 
-                if(!string.IsNullOrWhiteSpace(info.Type.Assembly.Location))
+                if (!string.IsNullOrWhiteSpace(info.Type.Assembly.Location))
                     _chat.SendMessage(player, $"  Assembly Path: {info.Type.Assembly.Location}");
 
                 AssemblyInformationalVersionAttribute? attr = info.Type.Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
@@ -3534,7 +3534,7 @@ namespace SS.Core.Modules
                 }
 
                 // Create image file name.
-                if(!TryGetImageFileName(mapPath, extension.Span, out char[]? imageFileName, out int imageFileNameLength))
+                if (!TryGetImageFileName(mapPath, extension.Span, out char[]? imageFileName, out int imageFileNameLength))
                     return;
 
                 // TODO: C# 13 allows ref in async methods (not crossing an await boundary). It eliminates the need for the char[] renting.

@@ -93,7 +93,7 @@ namespace SS.Core.Modules
             return true;
 
 
-            [ConfigHelp("Net", "ChatListen", ConfigScope.Global, 
+            [ConfigHelp("Net", "ChatListen", ConfigScope.Global,
                 Description = """
                     The TCP endpoint to listen on for the 'simple chat protocol' (SS.Core.Modules.ChatNetwork module).
                     The setting can be either a port or IP:port.

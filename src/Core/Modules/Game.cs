@@ -13,8 +13,8 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-using SSProto = SS.Core.Persist.Protobuf;
 using ArenaSettings = SS.Core.ConfigHelp.Constants.Arena;
+using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules
 {
