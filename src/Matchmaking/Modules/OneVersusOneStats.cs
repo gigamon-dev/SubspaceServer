@@ -6,6 +6,7 @@ using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
 using SS.Packets.Game;
 using SS.Utilities;
+using SS.Utilities.Json;
 using System.Text;
 using System.Text.Json;
 
@@ -398,8 +399,8 @@ namespace SS.Matchmaking.Modules
 
                 // Stats
                 writer.WriteStartArray("solo_stats"u8);
-                WriteMemberStats(matchStats.PlayerStats1, matchStats.PlayerStats2, string.Equals(matchStats.PlayerStats1.PlayerName, winnerPlayerName, StringComparison.OrdinalIgnoreCase));
-                WriteMemberStats(matchStats.PlayerStats2, matchStats.PlayerStats1, string.Equals(matchStats.PlayerStats2.PlayerName, winnerPlayerName, StringComparison.OrdinalIgnoreCase));
+                WriteMemberStats(matchStats, matchStats.PlayerStats1, matchStats.PlayerStats2, winnerPlayerName);
+                WriteMemberStats(matchStats, matchStats.PlayerStats2, matchStats.PlayerStats1, winnerPlayerName);
                 writer.WriteEndArray(); // solo_stats
 
                 writer.WriteEndObject(); // game object
@@ -431,13 +432,40 @@ namespace SS.Matchmaking.Modules
                     writer.WriteEndObject();
                 }
 
-                void WriteMemberStats(PlayerStats playerStats, PlayerStats otherPlayerStats, bool isWinner)
+                void WriteMemberStats(MatchStats matchStats, PlayerStats playerStats, PlayerStats otherPlayerStats, string? winnerPlayerName)
                 {
                     writer.WriteStartObject();
                     writer.WriteString("player"u8, playerStats.PlayerName);
-                    writer.WriteNumber("score"u8, isWinner ? 1 : 0);
+                    writer.TryWriteTimeSpanAsISO8601("play_duration"u8, matchStats.EndTimestamp!.Value - matchStats.StartTimestamp!.Value);
+
+                    string? shipTypeStr = playerStats.ShipType!.Value switch
+                    {
+                        ShipType.Warbird => "warbird",
+                        ShipType.Javelin => "javelin",
+                        ShipType.Spider => "spider",
+                        ShipType.Leviathan => "leviathan",
+                        ShipType.Terrier => "terrier",
+                        ShipType.Weasel => "weasel",
+                        ShipType.Lancaster => "lancaster",
+                        ShipType.Shark => "shark",
+                        _ => null
+                    };
+
+                    if (shipTypeStr is not null)
+                    {
+                        writer.WriteStartObject("ship_usage"u8);
+                        writer.TryWriteTimeSpanAsISO8601(shipTypeStr, matchStats.EndTimestamp.Value - matchStats.StartTimestamp.Value);
+                        writer.WriteEndObject(); // ship_usage
+                    }
+
+                    // It's possible to be a draw. Neither a winner or loser.
+                    bool isWinner = string.Equals(playerStats.PlayerName, winnerPlayerName, StringComparison.OrdinalIgnoreCase);
+                    bool isLoser = string.Equals(otherPlayerStats.PlayerName, winnerPlayerName, StringComparison.OrdinalIgnoreCase);
+
                     writer.WriteBoolean("is_winner"u8, isWinner);
-                    writer.WriteNumber("ship_type"u8, (short)playerStats.ShipType!.Value);
+                    writer.WriteNumber("score"u8, isWinner ? 1 : 0);
+                    writer.WriteNumber("kills"u8, isWinner ? 1 : 0);
+                    writer.WriteNumber("deaths"u8, isLoser ? 1 : 0);
 
                     if (playerStats.EndEnergy is not null)
                         writer.WriteNumber("end_energy"u8, playerStats.EndEnergy.Value);
