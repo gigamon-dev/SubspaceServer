@@ -1358,9 +1358,10 @@ namespace SS.Core.Modules
                 if (canProcess)
                 {
                     // It's ready to be processed. Queue it to be processed by the RelThread.
-                    if (_relQueue.TryEnqueue(conn))
+                    Interlocked.Increment(ref conn.ProcessingHolds);
+                    if (!_relQueue.TryEnqueue(conn))
                     {
-                        Interlocked.Increment(ref conn.ProcessingHolds);
+                        Interlocked.Decrement(ref conn.ProcessingHolds);
                     }
                 }
             }
@@ -3348,9 +3349,10 @@ namespace SS.Core.Modules
 
                         if (requeue)
                         {
-                            if (_relQueue.TryEnqueue(conn))
+                            Interlocked.Increment(ref conn.ProcessingHolds);
+                            if (!_relQueue.TryEnqueue(conn))
                             {
-                                Interlocked.Increment(ref conn.ProcessingHolds);
+                                Interlocked.Decrement(ref conn.ProcessingHolds);
                             }
                         }
                     }
