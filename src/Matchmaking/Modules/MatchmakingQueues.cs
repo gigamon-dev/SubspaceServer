@@ -71,6 +71,9 @@ namespace SS.Matchmaking.Modules
         /// </summary>
         private readonly Queue<QueueChangeRecord> _changesQueue = new(64);
 
+        // Cached delegate
+        private readonly Action<object?> _mainloopWork_InvokeQueueChangeCallback;
+
         private readonly DefaultObjectPool<UsageData> _usageDataPool = new(new DefaultPooledObjectPolicy<UsageData>(), Constants.TargetPlayerCount * 2);
         private readonly DefaultObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new(new ListPooledObjectPolicy<IMatchmakingQueue>() { InitialCapacity = 32 });
         private readonly DefaultObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new(new ListPooledObjectPolicy<PlayerOrGroup>() { InitialCapacity = Constants.TargetPlayerCount });
@@ -101,6 +104,8 @@ namespace SS.Matchmaking.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _playerGroups = playerGroups ?? throw new ArgumentNullException(nameof(playerGroups));
+
+            _mainloopWork_InvokeQueueChangeCallback = MainloopWork_InvokeQueueChangeCallback;
         }
 
         #region Module members
@@ -1326,7 +1331,7 @@ namespace SS.Matchmaking.Modules
             _changesQueue.Enqueue(new QueueChangeRecord(queue, action));
 
             // Schedule it to be processed asynchronously.
-            _mainloop.QueueMainWorkItem(MainloopWork_InvokeQueueChangeCallback, (object?)null);
+            _mainloop.QueueMainWorkItem(_mainloopWork_InvokeQueueChangeCallback, (object?)null);
         }
 
         private void MainloopWork_InvokeQueueChangeCallback(object? dummy)
