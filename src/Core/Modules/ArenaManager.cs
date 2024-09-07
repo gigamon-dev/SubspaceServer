@@ -1563,42 +1563,28 @@ namespace SS.Core.Modules
             if (player.Arena is not null)
                 LeaveArena(player);
 
-            // try to locate an existing arena
             WriteLock();
             try
             {
+                // Try to locate an existing arena.
                 Arena? arena = FindArena(name, ArenaState.DoInit0, ArenaState.DoDestroy2);
+
                 if (arena is null)
                 {
-                    // create a non-permanent arena
+                    // Create a non-permanent arena.
                     arena = CreateArena(name, false);
-                    if (arena is null)
-                    {
-                        // if it fails, dump in first available
-                        foreach (Arena otherArena in _arenaDictionary.Values)
-                        {
-                            arena = otherArena;
-                            break;
-                        }
+                }
+                else if (arena.Status > ArenaState.Running)
+                {
+                    // The arena is on it's way out.
+                    // This isn't a problem, just make sure that it will come back.
+                    if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
+                        return;
 
-                        if (arena is null)
-                        {
-                            _logManager.LogM(LogLevel.Error, nameof(ArenaManager), "Internal error: No running arenas but cannot create new one.");
-                            return;
-                        }
-                    }
-                    else if (arena.Status > ArenaState.Running)
-                    {
-                        // arena is on it's way out
-                        // this isn't a problem, just make sure that it will come back
-                        if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
-                            return;
-
-                        arenaData.Resurrect = true;
-                    }
+                    arenaData.Resurrect = true;
                 }
 
-                // set up player info
+                // Set up player info.
                 _playerData.WriteLock();
                 try
                 {
@@ -1608,6 +1594,7 @@ namespace SS.Core.Modules
                 {
                     _playerData.WriteUnlock();
                 }
+
                 player.Ship = ship;
                 player.Xres = (short)xRes;
                 player.Yres = (short)yRes;
@@ -1626,8 +1613,8 @@ namespace SS.Core.Modules
                 WriteUnlock();
             }
 
-            // don't mess with player status yet, let him stay in S_LOGGEDIN.
-            // it will be incremented when the arena is ready.
+            // Don't mess with player status yet, let him stay in PlayerState.LoggedIn. 
+            // It will be transitioned when the arena is ready.
         }
 
         private Arena? FindArena(ReadOnlySpan<char> name, ArenaState? minState, ArenaState? maxState)
