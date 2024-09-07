@@ -152,11 +152,15 @@ namespace SS.Core
         /// Will call global player connecting callbacks.
         /// </summary>
         /// <remarks>
-        /// Transitions to: <see cref="SendLoginResponse"/>.
+        /// Transitions to: <see cref="WaitConnectHolds"/>.
         /// </remarks>
         DoGlobalCallbacks,
 
-        // TODO: add WaitConnectHolds
+        /// <summary>
+        /// Waits for holds that were placed when <see cref="ComponentCallbacks.PlayerActionCallback"/> (<see cref="PlayerAction.Connect"/>) was called.
+        /// </summary>
+        /// <remarks>Transitions to: <see cref="SendLoginResponse"/></remarks>
+        WaitConnectHolds,
 
         /// <summary>
         /// Callbacks done, will send arena response.

@@ -376,7 +376,17 @@ namespace SS.Core.Modules
                         // the new status first, then take the appropriate action below
                         case PlayerState.NeedAuth: ns = PlayerState.WaitAuth; break;
                         case PlayerState.NeedGlobalSync: ns = PlayerState.WaitGlobalSync1; break;
-                        case PlayerState.DoGlobalCallbacks: ns = PlayerState.SendLoginResponse; break;
+                        case PlayerState.DoGlobalCallbacks: ns = PlayerState.WaitConnectHolds; break;
+
+                        case PlayerState.WaitConnectHolds:
+                            if (player.Holds == 0)
+                            {
+                                ns = PlayerState.SendLoginResponse;
+                                break;
+                            }
+
+                            continue;
+
                         case PlayerState.SendLoginResponse: ns = PlayerState.LoggedIn; break;
                         case PlayerState.DoFreqAndArenaSync: ns = PlayerState.WaitArenaSync1; break;
                         case PlayerState.ArenaRespAndCBS: ns = PlayerState.Playing; break;

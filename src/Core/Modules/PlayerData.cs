@@ -509,6 +509,7 @@ namespace SS.Core.Modules
             {
                 switch (player.Status)
                 {
+                    case PlayerState.WaitConnectHolds:
                     case PlayerState.WaitDisconnectHolds:
                         player.Holds++;
                         break;
@@ -531,6 +532,7 @@ namespace SS.Core.Modules
             {
                 switch (player.Status)
                 {
+                    case PlayerState.WaitConnectHolds:
                     case PlayerState.WaitDisconnectHolds:
                         if (player.Holds > 0)
                         {

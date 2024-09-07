@@ -149,7 +149,7 @@ namespace SS.Core.ComponentInterfaces
         /// <remarks>
         /// This can be used to do time-consuming work asynchronously during certain steps in the player life-cycle.
         /// It may only be used in <see cref="ComponentCallbacks.PlayerActionCallback"/> handlers,
-        /// only for <see cref="PlayerAction.Disconnect"/>.
+        /// only for <see cref="PlayerAction.Connect"/> and <see cref="PlayerAction.Disconnect"/>.
         /// </remarks>
         /// <param name="player">The player to add a hold on.</param>
         void AddHold(Player player);
