@@ -235,10 +235,12 @@ namespace SS.Core.Modules
 
         void ILvzObjects.SetPosition(ITarget target, short id, short x, short y, ScreenOffset offsetX, ScreenOffset offsetY)
         {
-            ChangeObject(target, id, SetPosition);
+            ChangeObject(target, id, SetPosition, (x, y, offsetX, offsetY));
 
-            void SetPosition(ref LvzObjectChange objectChange)
+            static void SetPosition(ref LvzObjectChange objectChange, (short x, short y, ScreenOffset offsetX, ScreenOffset offsetY) position)
             {
+                (short x, short y, ScreenOffset offsetX, ScreenOffset offsetY) = position;
+
                 objectChange.Change.Position = true;
 
                 if (objectChange.Data.IsMapObject)
@@ -265,9 +267,9 @@ namespace SS.Core.Modules
 
         void ILvzObjects.SetImage(ITarget target, short id, byte imageId)
         {
-            ChangeObject(target, id, SetImage);
+            ChangeObject(target, id, SetImage, imageId);
 
-            void SetImage(ref LvzObjectChange objectChange)
+            static void SetImage(ref LvzObjectChange objectChange, byte imageId)
             {
                 objectChange.Change.Image = true;
                 objectChange.Data.ImageId = imageId;
@@ -276,9 +278,9 @@ namespace SS.Core.Modules
 
         void ILvzObjects.SetLayer(ITarget target, short id, DisplayLayer layer)
         {
-            ChangeObject(target, id, SetLayer);
+            ChangeObject(target, id, SetLayer, layer);
 
-            void SetLayer(ref LvzObjectChange objectChange)
+            static void SetLayer(ref LvzObjectChange objectChange, DisplayLayer layer)
             {
                 objectChange.Change.Layer = true;
                 objectChange.Data.Layer = layer;
@@ -287,9 +289,9 @@ namespace SS.Core.Modules
 
         void ILvzObjects.SetTimer(ITarget target, short id, ushort time)
         {
-            ChangeObject(target, id, SetTimer);
+            ChangeObject(target, id, SetTimer, time);
 
-            void SetTimer(ref LvzObjectChange objectChange)
+            static void SetTimer(ref LvzObjectChange objectChange, ushort time)
             {
                 objectChange.Change.Time = true;
                 objectChange.Data.Time = time;
@@ -298,9 +300,9 @@ namespace SS.Core.Modules
 
         void ILvzObjects.SetMode(ITarget target, short id, DisplayMode mode)
         {
-            ChangeObject(target, id, SetMode);
+            ChangeObject(target, id, SetMode, mode);
 
-            void SetMode(ref LvzObjectChange objectChange)
+            static void SetMode(ref LvzObjectChange objectChange, DisplayMode mode)
             {
                 objectChange.Change.Mode = true;
                 objectChange.Data.Mode = mode;
@@ -942,7 +944,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void ChangeObject(ITarget target, short id, ChangeObjectDelegate changeCallback)
+        private void ChangeObject<TState>(ITarget target, short id, ChangeObjectDelegate<TState> changeCallback, TState state)
         {
             if (!target.TryGetArenaTarget(out Arena? arena))
             {
@@ -965,7 +967,7 @@ namespace SS.Core.Modules
 
                 objectChange.Data = lvzData.Current;
 
-                changeCallback(ref objectChange);
+                changeCallback(ref objectChange, state);
 
                 if (target.Type == TargetType.Arena)
                 {
@@ -990,7 +992,7 @@ namespace SS.Core.Modules
 
         #region Helper types
 
-        private delegate void ChangeObjectDelegate(ref LvzObjectChange objectChange);
+        private delegate void ChangeObjectDelegate<TState>(ref LvzObjectChange objectChange, TState state);
 
         private enum BroadcastAuthorization
         {
