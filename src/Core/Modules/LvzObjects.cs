@@ -143,7 +143,7 @@ namespace SS.Core.Modules
                             index = 0;
                         }
 
-                        toggleSpan[index++] = new LvzObjectToggle(lvzData.Default.Id, false);
+                        toggleSpan[index++] = new LvzObjectToggle(lvzData.Default.Id, true);
                     }
                 }
 
