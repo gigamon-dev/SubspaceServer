@@ -187,7 +187,7 @@ namespace SS.Core.Modules
             if (target is null)
                 return;
 
-            ReadOnlySpan<LvzObjectToggle> toggleSpan = stackalloc LvzObjectToggle[1] { new LvzObjectToggle(id, isEnabled) };
+            ReadOnlySpan<LvzObjectToggle> toggleSpan = [new LvzObjectToggle(id, isEnabled)];
             ((ILvzObjects)this).ToggleSet(target, toggleSpan);
         }
 
@@ -971,14 +971,21 @@ namespace SS.Core.Modules
 
                 if (target.Type == TargetType.Arena)
                 {
-                    if (lvzData.Default != objectChange.Data
-                        && lvzData.Default == lvzData.Current)
+                    if (objectChange.Data != lvzData.Default)
                     {
-                        arenaData.ExtraDifferences++;
+                        if (lvzData.Current == lvzData.Default)
+                        {
+                            // Currently using the default value and changing it to a non-default value.
+                            arenaData.ExtraDifferences++;
+                        }
                     }
-                    else if (lvzData.Default != lvzData.Current)
+                    else
                     {
-                        arenaData.ExtraDifferences--;
+                        if (lvzData.Current != lvzData.Default)
+                        {
+                            // Currently using a non-default value and changing it back to the default value.
+                            arenaData.ExtraDifferences--;
+                        }
                     }
 
                     lvzData.Current = objectChange.Data;
