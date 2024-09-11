@@ -18,8 +18,16 @@ namespace SS.Core.ComponentInterfaces
     public interface ILvzObjects : IComponentInterface
     {
         /// <summary>
-        /// Sends the full, current state of lvz objects to a player for the arena the player is in.
+        /// Sends the full, current state of lvz objects to a <paramref name="player"/> for the arena the player is in.
         /// </summary>
+        /// <remarks>
+        /// When objects are toggled or changed with an <see cref="Arena"/> as the <see cref="ITarget"/>, the changes are recorded for the arena.
+        /// This method will send all the recorded changes for the arena to the <paramref name="player"/>.
+        /// <para>
+        /// This method is automatically called when a player fully enters an arena (<see cref="PlayerAction.EnterGame"/>).
+        /// It is unlikely that other modules will need to call this method. It is available just in case.
+        /// </para>
+        /// </remarks>
         /// <param name="player">The player to send the lvz data to.</param>
         void SendState(Player player);
 
@@ -29,24 +37,28 @@ namespace SS.Core.ComponentInterfaces
         /// Toggles a single lvz object.
         /// </summary>
         /// <remarks>
-        /// When toggling multiple objects, it's recommended to call <see cref="ToggleSet(ITarget, ReadOnlySpan{LvzObjectToggle})"/>
-        /// to reduce the amount of data being send over the network.
-        /// <see cref="ToggleSet(ITarget, ReadOnlySpan{LvzObjectToggle})"/> can group multiple toggles into a single packet.
+        /// When toggling multiple objects, it's recommended to use <see cref="Toggle(ITarget, ReadOnlySpan{LvzObjectToggle})"/> instead, to reduce the amount of network bandwidth used.
         /// </remarks>
-        /// <param name="target">The target representing which player(s) to send the change to.</param>
+        /// <param name="target">
+        /// The target representing which player(s) to send the change to.
+        /// When an <see cref="Arena"/> is the target, the changes are additionally recorded for the arena and automatically sent to players that fully enter the arena (<see cref="PlayerAction.EnterGame"/>).
+        /// </param>
         /// <param name="id">The Id of the lvz object to toggle.</param>
         /// <param name="isEnabled"><see langword="true"/> to enable the object. <see langword="false"/> to disable the object.</param>
         void Toggle(ITarget target, short id, bool isEnabled);
 
         /// <summary>
-        /// Toggles a set of lvz objects.
+        /// Toggles one or more lvz objects.
         /// </summary>
         /// <remarks>
-        /// The lvz object changes are sent together.
+        /// When toggling multiple objects, using this method is preferred since it can combine multiple toggles into the same packet, reducing the amount of network bandwidth used.
         /// </remarks>
-        /// <param name="target">The target representing which player(s) to send the change to.</param>
-        /// <param name="set">The collection of changes to make.</param>
-        void ToggleSet(ITarget target, ReadOnlySpan<LvzObjectToggle> set);
+        /// <param name="target">
+        /// The target representing which player(s) to send the change to.
+        /// When an <see cref="Arena"/> is the target, the changes are additionally recorded for the arena and automatically sent to players that fully enter the arena (<see cref="PlayerAction.EnterGame"/>).
+        /// </param>
+        /// <param name="toggles">The toggles to apply.</param>
+        void Toggle(ITarget target, ReadOnlySpan<LvzObjectToggle> toggles);
 
         #endregion
 
@@ -55,7 +67,16 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Sets the position a lvz object.
         /// </summary>
-        /// <param name="target">The target representing which player(s) to send the change to.</param>
+        /// <remarks>
+        /// This method performs a single change to a single lvz object.
+        /// When making multiple changes to a single lvz object or when changing multiple lvz objects, 
+        /// it's recommended to use <see cref="Set(ITarget, ReadOnlySpan{LvzObjectChange})"/> instead, 
+        /// to reduce the amount of network bandwidth used.
+        /// </remarks>
+        /// <param name="target">
+        /// The target representing which player(s) to send the change to.
+        /// When an <see cref="Arena"/> is the target, the changes are additionally recorded for the arena and automatically sent to players that fully enter the arena (<see cref="PlayerAction.EnterGame"/>).
+        /// </param>
         /// <param name="id">The Id of the lvz object to change.</param>
         /// <param name="x">The x-coordinate to set.</param>
         /// <param name="y">The y-coordinate to set.</param>
@@ -66,7 +87,16 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Sets the image of a lvz object.
         /// </summary>
-        /// <param name="target">The target representing which player(s) to send the change to.</param>
+        /// <remarks>
+        /// This method performs a single change to a single lvz object.
+        /// When making multiple changes to a single lvz object or when changing multiple lvz objects, 
+        /// it's recommended to use <see cref="Set(ITarget, ReadOnlySpan{LvzObjectChange})"/> instead, 
+        /// to reduce the amount of network bandwidth used.
+        /// </remarks>
+        /// <param name="target">
+        /// The target representing which player(s) to send the change to.
+        /// When an <see cref="Arena"/> is the target, the changes are additionally recorded for the arena and automatically sent to players that fully enter the arena (<see cref="PlayerAction.EnterGame"/>).
+        /// </param>
         /// <param name="id">The Id of the lvz object to change.</param>
         /// <param name="imageId">The Id of the image to set.</param>
         void SetImage(ITarget target, short id, byte imageId);
@@ -74,7 +104,16 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Sets the display layer of a lvz object.
         /// </summary>
-        /// <param name="target">The target representing which player(s) to send the change to.</param>
+        /// <remarks>
+        /// This method performs a single change to a single lvz object.
+        /// When making multiple changes to a single lvz object or when changing multiple lvz objects, 
+        /// it's recommended to use <see cref="Set(ITarget, ReadOnlySpan{LvzObjectChange})"/> instead, 
+        /// to reduce the amount of network bandwidth used.
+        /// </remarks>
+        /// <param name="target">
+        /// The target representing which player(s) to send the change to.
+        /// When an <see cref="Arena"/> is the target, the changes are additionally recorded for the arena and automatically sent to players that fully enter the arena (<see cref="PlayerAction.EnterGame"/>).
+        /// </param>
         /// <param name="id">The Id of the lvz object to change.</param>
         /// <param name="layer">The display layer to set.</param>
         void SetLayer(ITarget target, short id, DisplayLayer layer);
@@ -82,7 +121,16 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Sets the timer of a lvz object.
         /// </summary>
-        /// <param name="target">The target representing which player(s) to send the change to.</param>
+        /// <remarks>
+        /// This method performs a single change to a single lvz object.
+        /// When making multiple changes to a single lvz object or when changing multiple lvz objects, 
+        /// it's recommended to use <see cref="Set(ITarget, ReadOnlySpan{LvzObjectChange})"/> instead, 
+        /// to reduce the amount of network bandwidth used.
+        /// </remarks>
+        /// <param name="target">
+        /// The target representing which player(s) to send the change to.
+        /// When an <see cref="Arena"/> is the target, the changes are additionally recorded for the arena and automatically sent to players that fully enter the arena (<see cref="PlayerAction.EnterGame"/>).
+        /// </param>
         /// <param name="id">The Id of the lvz object to change.</param>
         /// <param name="time">The time to set.</param>
         void SetTimer(ITarget target, short id, ushort time);
@@ -90,23 +138,80 @@ namespace SS.Core.ComponentInterfaces
         /// <summary>
         /// Sets the display mode of a lvz object.
         /// </summary>
-        /// <param name="target">The target representing which player(s) to send the change to.</param>
+        /// <remarks>
+        /// This method performs a single change to a single lvz object.
+        /// When making multiple changes to a single lvz object or when changing multiple lvz objects, 
+        /// it's recommended to use <see cref="Set(ITarget, ReadOnlySpan{LvzObjectChange})"/> instead, 
+        /// to reduce the amount of network bandwidth used.
+        /// </remarks>
+        /// <param name="target">
+        /// The target representing which player(s) to send the change to.
+        /// When an <see cref="Arena"/> is the target, the changes are additionally recorded for the arena and automatically sent to players that fully enter the arena (<see cref="PlayerAction.EnterGame"/>).
+        /// </param>
         /// <param name="id">The Id of the lvz object to change.</param>
         /// <param name="mode">The display mode to set.</param>
         void SetMode(ITarget target, short id, DisplayMode mode);
 
+        /// <summary>
+        /// Changes one or more lvz objects.
+        /// </summary>
+        /// <remarks>
+        /// This allows changing multiple aspects (position, image, layer, timer, mode) of an object at once.
+        /// <para>
+        /// Use <see cref="TryGetDefaultInfo(Arena, short, out bool, out ObjectData)"/> to get a copy of the original object(s).
+        /// </para>
+        /// <para>
+        /// Using this method has the benefit of consolidating the data to send into as few packets as possible.
+        /// </para>
+        /// </remarks>
+        /// <param name="target">
+        /// The target representing which player(s) to send the change to.
+        /// When an <see cref="Arena"/> is the target, the changes are additionally recorded for the arena and automatically sent to players that fully enter the arena (<see cref="PlayerAction.EnterGame"/>).
+        /// </param>
+        /// <param name="changes">The changes to apply.</param>
+        void Set(ITarget target, ReadOnlySpan<LvzObjectChange> changes);
+
         #endregion
 
         /// <summary>
-        /// Resets a lvz object back to it's default state.
+        /// Changes and/or toggles one or more lvz objects.
         /// </summary>
         /// <remarks>
-        /// If the object was modified, this does not send the change to the players.
-        /// However, it does send the toggle object off.
+        /// This is a convenience method to call both <see cref="Toggle(ITarget, ReadOnlySpan{LvzObjectToggle})"/> and <see cref="Set(ITarget, ReadOnlySpan{LvzObjectChange})"/>.
+        /// It's useful since when making changes to lvz objects, it is highly likely the objects need to be toggled as well.
         /// </remarks>
+        /// <param name="target">
+        /// The target representing which player(s) to send the change to.
+        /// When an <see cref="Arena"/> is the target, the changes are additionally recorded for the arena and automatically sent to players that fully enter the arena (<see cref="PlayerAction.EnterGame"/>).
+        /// </param>
+        /// <param name="changes">The changes to apply.</param>
+        /// <param name="toggles">The toggles to apply.</param>
+        void SetAndToggle(ITarget target, ReadOnlySpan<LvzObjectChange> changes, ReadOnlySpan<LvzObjectToggle> toggles);
+
+        #region Reset
+
+        /// <summary>
+        /// Resets an lvz object's arena-level state back to it's default state.
+        /// </summary>
         /// <param name="arena">The arena to reset the lvz object in.</param>
         /// <param name="id">The Id of the lvz object to reset.</param>
-        void Reset(Arena arena, short id);
+        /// <param name="sendChanges">
+        /// <see langword="true"/> to send lvz change packets and lvz toggle packets.
+        /// <see langword="false"/> to only send lvz toggle packets (recommended to reduce network bandwidth use).
+        /// </param>
+        void Reset(Arena arena, short id, bool sendChanges = false);
+
+        /// <summary>
+        /// Resets all lvz objects' arena-level state back to their default state.
+        /// </summary>
+        /// <param name="arena">The arena to reset the lvz objects in.</param>
+        /// <param name="sendChanges">
+        /// <see langword="true"/> to send lvz change packets and lvz toggle packets.
+        /// <see langword="false"/> to only send lvz toggle packets (recommended to reduce network bandwidth use).
+        /// </param>
+        void Reset(Arena arena, bool sendChanges = false);
+
+        #endregion
 
         #region Info methods
 

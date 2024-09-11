@@ -412,6 +412,8 @@ namespace SS.Packets.Game
             get => (bitField & ModeMask) == ModeMask;
         }
 
+        public bool HasChange => Value != 0;
+
         #endregion
     }
 

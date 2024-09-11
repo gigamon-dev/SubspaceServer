@@ -51,6 +51,16 @@ namespace SS.Core.Modules
 
         private static readonly DefaultObjectPool<LvzData> _lvzDataObjectPool = new(new DefaultPooledObjectPolicy<LvzData>(), Constants.TargetArenaCount * ushort.MaxValue);
 
+        /// <summary>
+        /// Continuum supports 0x35 (Toggle LVZ) packets up to a maximum of 2048 bytes.
+        /// </summary>
+        private const int MaxTogglePacketLength = 2048;
+
+        /// <summary>
+        /// Continuum supports 0x36 (Change LVZ) packets up to a maximum of 2048 bytes.
+        /// </summary>
+        private const int MaxChangePacketLength = 2048;
+
         #region Module members
 
         bool IModule.Load(IComponentBroker broker)
@@ -122,52 +132,26 @@ namespace SS.Core.Modules
 
             lock (arenaData.Lock)
             {
-                // Continuum supports 0x35 (Toggle object) packets and 0x36 (Move object) packets up to a maximum of 2048 bytes.
-                Span<byte> packetBytes = stackalloc byte[2048];
+                // Sending changes first, so that if there is a change, the old state won't be shown (toggled on) before it's changed.
+                SendArenaChanges(player, arenaData);
+                SendArenaToggles(player, arenaData);
+            }
 
-                //
-                // Toggles
-                //
-
-                packetBytes[0] = (byte)S2CPacketType.ToggleLVZ;
-                Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(packetBytes[1..]);
+            void SendArenaChanges(Player player, ArenaData arenaData)
+            {
+                Span<byte> changeBytes = stackalloc byte[MaxChangePacketLength];
+                changeBytes[0] = (byte)S2CPacketType.ChangeLVZ;
+                Span<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(changeBytes[1..]);
                 int index = 0;
 
                 foreach (LvzData lvzData in arenaData.List)
                 {
-                    if (!lvzData.Off)
-                    {
-                        if (index >= toggleSpan.Length)
-                        {
-                            _network.SendToOne(player, packetBytes[..(1 + index * LvzObjectToggle.Length)], NetSendFlags.Reliable);
-                            index = 0;
-                        }
-
-                        toggleSpan[index++] = new LvzObjectToggle(lvzData.Default.Id, true);
-                    }
-                }
-
-                if (index > 0)
-                {
-                    _network.SendToOne(player, packetBytes[..(1 + index * LvzObjectToggle.Length)], NetSendFlags.Reliable);
-                }
-
-                //
-                // Changes
-                //
-
-                packetBytes[0] = (byte)S2CPacketType.ChangeLVZ;
-                Span<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(packetBytes[1..]);
-                index = 0;
-
-                foreach (LvzData lvzData in arenaData.List)
-                {
                     ObjectChange change = ObjectData.CalculateChange(ref lvzData.Default, ref lvzData.Current);
-                    if (change.Value != 0)
+                    if (change.HasChange)
                     {
                         if (index >= changeSpan.Length)
                         {
-                            _network.SendToOne(player, packetBytes[..(1 + index * LvzObjectChange.Length)], NetSendFlags.Reliable);
+                            _network.SendToOne(player, changeBytes[..(1 + index * LvzObjectChange.Length)], NetSendFlags.Reliable);
                             index = 0;
                         }
 
@@ -177,7 +161,34 @@ namespace SS.Core.Modules
 
                 if (index > 0)
                 {
-                    _network.SendToOne(player, packetBytes[..(1 + index * LvzObjectChange.Length)], NetSendFlags.Reliable);
+                    _network.SendToOne(player, changeBytes[..(1 + index * LvzObjectChange.Length)], NetSendFlags.Reliable);
+                }
+            }
+
+            void SendArenaToggles(Player player, ArenaData arenaData)
+            {
+                Span<byte> toggleBytes = stackalloc byte[MaxTogglePacketLength];
+                toggleBytes[0] = (byte)S2CPacketType.ToggleLVZ;
+                Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(toggleBytes[1..]);
+                int index = 0;
+
+                foreach (LvzData lvzData in arenaData.List)
+                {
+                    if (!lvzData.Off)
+                    {
+                        if (index >= toggleSpan.Length)
+                        {
+                            _network.SendToOne(player, toggleBytes[..(1 + index * LvzObjectToggle.Length)], NetSendFlags.Reliable);
+                            index = 0;
+                        }
+
+                        toggleSpan[index++] = new LvzObjectToggle(lvzData.Default.Id, true);
+                    }
+                }
+
+                if (index > 0)
+                {
+                    _network.SendToOne(player, toggleBytes[..(1 + index * LvzObjectToggle.Length)], NetSendFlags.Reliable);
                 }
             }
         }
@@ -188,10 +199,10 @@ namespace SS.Core.Modules
                 return;
 
             ReadOnlySpan<LvzObjectToggle> toggleSpan = [new LvzObjectToggle(id, isEnabled)];
-            ((ILvzObjects)this).ToggleSet(target, toggleSpan);
+            ((ILvzObjects)this).Toggle(target, toggleSpan);
         }
 
-        void ILvzObjects.ToggleSet(ITarget target, ReadOnlySpan<LvzObjectToggle> set)
+        void ILvzObjects.Toggle(ITarget target, ReadOnlySpan<LvzObjectToggle> set)
         {
             if (target is null)
                 return;
@@ -205,8 +216,7 @@ namespace SS.Core.Modules
                 arena.TryGetExtraData(_adKey, out arenaData);
             }
 
-            // Continuum supports 0x35 (Toggle LVZ) packets up to a maximum of 2048 bytes.
-            Span<byte> packetBytes = stackalloc byte[int.Clamp(1 + 2 * set.Length, 3, 2048)];
+            Span<byte> packetBytes = stackalloc byte[int.Clamp(1 + 2 * set.Length, 3, MaxTogglePacketLength)];
             packetBytes[0] = (byte)S2CPacketType.ToggleLVZ;
             Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(packetBytes[1..]);
             int index = 0;
@@ -309,7 +319,88 @@ namespace SS.Core.Modules
             }
         }
 
-        void ILvzObjects.Reset(Arena arena, short id)
+        void ILvzObjects.Set(ITarget target, ReadOnlySpan<LvzObjectChange> changes)
+        {
+            if (target is null)
+                return;
+
+            if (changes.IsEmpty)
+                return;
+
+            if (!target.TryGetArenaTarget(out Arena? arena))
+            {
+                if (target.TryGetPlayerTarget(out Player? player))
+                    arena = player.Arena;
+            }
+
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
+                return;
+
+            Span<byte> changeBytes = stackalloc byte[int.Clamp(1 + (changes.Length * LvzObjectChange.Length), 1 + (1 * LvzObjectChange.Length), MaxChangePacketLength)];
+            changeBytes[0] = (byte)S2CPacketType.ChangeLVZ;
+            Span<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(changeBytes[1..]);
+
+            int index = 0;
+            foreach (ref readonly LvzObjectChange change in changes)
+            {
+                if (index >= changeSpan.Length)
+                {
+                    _network.SendToTarget(target, changeBytes[..(1 + (index * LvzObjectChange.Length))], NetSendFlags.Reliable);
+                    index = 0;
+                }
+
+                changeSpan[index++] = change;
+            }
+
+            if (index >= 0)
+            {
+                _network.SendToTarget(target, changeBytes[..(1 + (index * LvzObjectChange.Length))], NetSendFlags.Reliable);
+                index = 0;
+            }
+
+            if (target.Type == TargetType.Arena)
+            {
+                lock (arenaData.Lock)
+                {
+                    foreach (ref readonly LvzObjectChange change in changes)
+                    {
+                        ref readonly ObjectData changedObject = ref change.Data;
+                        LvzData? lvzData = arenaData.GetObjectData(changedObject.Id);
+                        if (lvzData is null)
+                            return;
+
+                        if (changedObject != lvzData.Default)
+                        {
+                            if (lvzData.Current == lvzData.Default)
+                            {
+                                // Currently using the default value and changing it to a non-default value.
+                                arenaData.ExtraDifferences++;
+                            }
+                        }
+                        else
+                        {
+                            if (lvzData.Current != lvzData.Default)
+                            {
+                                // Currently using a non-default value and changing it back to the default value.
+                                arenaData.ExtraDifferences--;
+                            }
+                        }
+
+                        lvzData.Current = changedObject;
+
+                        _logManager.LogA(LogLevel.Drivel, nameof(LvzObjects), arena, $"Changed object {changedObject.Id}. Tracking {arenaData.ExtraDifferences} changed objects.");
+                    }
+                }
+            }
+        }
+
+        void ILvzObjects.SetAndToggle(ITarget target, ReadOnlySpan<LvzObjectChange> changes, ReadOnlySpan<LvzObjectToggle> toggles)
+        {
+            ((ILvzObjects)this).Set(target, changes);
+            ((ILvzObjects)this).Toggle(target, toggles);
+        }
+
+        void ILvzObjects.Reset(Arena arena, short id, bool sendChanges)
         {
             if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                 return;
@@ -320,10 +411,93 @@ namespace SS.Core.Modules
                 if (lvzData is null)
                     return;
 
-                lvzData.Current = lvzData.Default;
-            }
+                if (!lvzData.Off)
+                {
+                    ((ILvzObjects)this).Toggle(arena, id, false);
+                }
 
-            ((ILvzObjects)this).Toggle(arena, id, false);
+                ObjectChange change = ObjectData.CalculateChange(ref lvzData.Default, ref lvzData.Current);
+                if (change.HasChange)
+                {
+                    if (sendChanges)
+                    {
+                        Span<LvzObjectChange> changeSpan = [new LvzObjectChange(change, lvzData.Default)];
+                        ((ILvzObjects)this).Set(arena, changeSpan);
+                    }
+                    else
+                    {
+                        lvzData.Current = lvzData.Default;
+                        arenaData.ExtraDifferences--;
+                    }
+                }
+            }
+        }
+
+        void ILvzObjects.Reset(Arena arena, bool sendChanges)
+        {
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
+                return;
+
+            lock (arenaData.Lock)
+            {
+                Span<byte> toggleBytes = stackalloc byte[MaxTogglePacketLength];
+                toggleBytes[0] = (byte)S2CPacketType.ToggleLVZ;
+                Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(toggleBytes[1..]);
+
+                Span<byte> changeBytes = sendChanges ? stackalloc byte[MaxChangePacketLength] : stackalloc byte[1];
+                changeBytes[0] = (byte)S2CPacketType.ChangeLVZ;
+                Span<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(changeBytes[1..]);
+
+                int toggleIndex = 0;
+                int changeIndex = 0;
+
+                foreach (LvzData lvzData in arenaData.List)
+                {
+                    // Check if the object needs to be toggled off.
+                    if (!lvzData.Off)
+                    {
+                        if (toggleIndex >= toggleSpan.Length)
+                        {
+                            _network.SendToArena(arena, null, toggleBytes[..(1 + toggleIndex * LvzObjectToggle.Length)], NetSendFlags.Reliable);
+                            toggleIndex = 0;
+                        }
+
+                        lvzData.Off = true;
+                        arenaData.ToggleDifferences--;
+
+                        toggleSpan[toggleIndex++] = new LvzObjectToggle(lvzData.Default.Id, true);
+                    }
+
+                    // Check for object changes.
+                    ObjectChange change = ObjectData.CalculateChange(ref lvzData.Default, ref lvzData.Current);
+                    if (change.HasChange)
+                    {
+                        if (changeIndex >= changeSpan.Length)
+                        {
+                            _network.SendToArena(arena, null, changeBytes[..(1 + (changeIndex * LvzObjectChange.Length))], NetSendFlags.Reliable);
+                            changeIndex = 0;
+                        }
+
+                        lvzData.Current = lvzData.Default;
+                        arenaData.ExtraDifferences--;
+
+                        if (sendChanges)
+                            changeSpan[changeIndex++] = new LvzObjectChange(change, lvzData.Default);
+                    }
+                }
+
+                if (toggleIndex >= 0)
+                {
+                    _network.SendToArena(arena, null, toggleBytes[..(1 + toggleIndex * LvzObjectToggle.Length)], NetSendFlags.Reliable);
+                    toggleIndex = 0;
+                }
+
+                if (changeIndex >= 0)
+                {
+                    _network.SendToArena(arena, null, changeBytes[..(1 + (changeIndex * LvzObjectChange.Length))], NetSendFlags.Reliable);
+                    changeIndex = 0;
+                }
+            }
         }
 
         bool ILvzObjects.TryGetDefaultInfo(Arena arena, short id, out bool isEnabled, out ObjectData objectData)
@@ -447,7 +621,7 @@ namespace SS.Core.Modules
 
             if (i > 0)
             {
-                ((ILvzObjects)this).ToggleSet(target, set[..i]);
+                ((ILvzObjects)this).Toggle(target, set[..i]);
             }
         }
 
