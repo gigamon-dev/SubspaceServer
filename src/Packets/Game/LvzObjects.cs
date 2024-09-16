@@ -283,7 +283,7 @@ namespace SS.Packets.Game
         public short ScreenX
         {
             get => (short)(((BitFieldX & CoordinateMask) << 16) >> 20);
-            set => BitFieldX = (ushort)((BitFieldX & ~CoordinateMask) | ((value << 4) & ScreenOffsetMask));
+            set => BitFieldX = (ushort)((BitFieldX & ~CoordinateMask) | ((value << 4) & CoordinateMask));
         }
 
         public ScreenOffset ScreenYOffset
@@ -295,7 +295,7 @@ namespace SS.Packets.Game
         public short ScreenY
         {
             get => (short)(((BitFieldY & CoordinateMask) << 16) >> 20);
-            set => BitFieldY = (ushort)((BitFieldY & ~CoordinateMask) | ((value << 4) & ScreenOffsetMask));
+            set => BitFieldY = (ushort)((BitFieldY & ~CoordinateMask) | ((value << 4) & CoordinateMask));
         }
 
         #endregion
@@ -366,6 +366,12 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct ObjectChange
     {
+        #region Static members
+
+        public static readonly ObjectChange None = new();
+
+        #endregion
+
         private byte bitField;
 
         #region Helper properties
