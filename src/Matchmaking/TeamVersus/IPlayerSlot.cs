@@ -46,7 +46,7 @@ namespace SS.Matchmaking.TeamVersus
         int LagOuts { get; }
 
         /// <summary>
-        /// The number of lives remaining. This includes the currently life.
+        /// The number of lives remaining. This includes the current life.
         /// </summary>
         int Lives { get; }
 

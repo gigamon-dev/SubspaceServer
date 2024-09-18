@@ -635,6 +635,8 @@ namespace SS.Matchmaking.Modules
             // Schedule the win condition check to get executed later.
             ScheduleWinConditionCheckForMatchCompletion(matchData);
 
+            TeamVersusMatchPlayerKilledCallback.Fire(arena, killedPlayerSlot, killerPlayerSlot, isKnockout);
+
             // Allow the stats module to send chat message notifications about the kill.
             // The stats module can calculate assists and solo kills based on damage stats, and write a more detailed chat message than we can in here.
             bool isNotificationHandled = false;
@@ -860,13 +862,54 @@ namespace SS.Matchmaking.Modules
             if (hasExtraPositionData)
             {
                 // Keep track of the items for the slot.
-                slot.Bursts = extra.Bursts;
-                slot.Repels = extra.Repels;
-                slot.Thors = extra.Thors;
-                slot.Bricks = extra.Bricks;
-                slot.Decoys = extra.Decoys;
-                slot.Rockets = extra.Rockets;
-                slot.Portals = extra.Portals;
+                ItemChanges changes = ItemChanges.None;
+
+                if (slot.Bursts != extra.Bursts)
+                {
+                    slot.Bursts = extra.Bursts;
+                    changes |= ItemChanges.Bursts;
+                }
+
+                if (slot.Repels != extra.Repels)
+                {
+                    slot.Repels = extra.Repels;
+                    changes |= ItemChanges.Repels;
+                }
+
+                if (slot.Thors != extra.Thors)
+                {
+                    slot.Thors = extra.Thors;
+                    changes |= ItemChanges.Thors;
+                }
+
+                if (slot.Bricks != extra.Bricks)
+                {
+                    slot.Bricks = extra.Bricks;
+                    changes |= ItemChanges.Bricks;
+                }
+
+                if (slot.Decoys != extra.Decoys)
+                {
+                    slot.Decoys = extra.Decoys; 
+                    changes |= ItemChanges.Decoys;
+                }
+
+                if (slot.Rockets != extra.Rockets)
+                {
+                    slot.Rockets = extra.Rockets; 
+                    changes |= ItemChanges.Rockets;
+                }
+
+                if (slot.Portals != extra.Portals)
+                {
+                    slot.Portals = extra.Portals;
+                    changes |= ItemChanges.Portals;
+                }
+
+                if (changes != ItemChanges.None)
+                {
+                    TeamVersusMatchPlayerItemsChangedCallback.Fire(arena, slot, changes);
+                }
             }
 
             if (positionPacket.Weapon.Type != WeaponCodes.Null // Note: bricks are not position packet weapons, therefore handled separately with Callback_BricksPlaced
@@ -3369,7 +3412,7 @@ namespace SS.Matchmaking.Modules
                         {
                             if (matchData.StartCountdown <= 3)
                             {
-                                _chat.SendSetMessage(notifyCountdownPlayers, $"- {matchData.StartCountdown} -");
+                                _chat.SendSetMessage(notifyCountdownPlayers, $"-{matchData.StartCountdown}-");
                             }
 
                             matchData.StartCountdown--;
@@ -3731,9 +3774,9 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                TeamVersusMatchEndedCallback.Fire(_broker, matchData, reason, winnerTeam);
-
                 Arena? arena = _arenaManager.FindArena(matchData.ArenaName); // Note: this can be null (the arena can be destroyed before the match ends)
+
+                TeamVersusMatchEndedCallback.Fire(arena ?? _broker, matchData, reason, winnerTeam);
 
                 foreach (Team team in matchData.Teams)
                 {

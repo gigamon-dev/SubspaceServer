@@ -2812,7 +2812,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private class MemberStats
+        private class MemberStats : IMemberStats
         {
             public MatchStats? MatchStats => TeamStats?.MatchStats;
             public TeamStats? TeamStats => SlotStats?.TeamStats;
@@ -2983,7 +2983,7 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// Kills of enemy players.
             /// </summary>
-            public short Kills;
+            public short Kills { get; set; }
 
             /// <summary>
             /// Knockout kills of enemy players.
@@ -3003,7 +3003,7 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// Deaths.
             /// </summary>
-            public short Deaths;
+            public short Deaths { get; set; }
 
             /// <summary>
             /// Kills assisted.

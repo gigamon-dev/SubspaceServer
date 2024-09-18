@@ -102,3 +102,4 @@ privcmd_setcm
 
 ; Matchmaking (PlayerGroups module)
 seeplayergroupdetails
+cmd_nexthold
