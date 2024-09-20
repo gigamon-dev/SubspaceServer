@@ -14,7 +14,8 @@ namespace SS.Matchmaking.Modules
     /// </summary>
     public class MatchLvz(
         IConfigManager configManager,
-        ILvzObjects lvzObjects) : IModule, IArenaAttachableModule
+        ILvzObjects lvzObjects,
+        IMainloopTimer mainloopTimer) : IModule, IArenaAttachableModule
     {
         #region Constants
 
@@ -78,13 +79,25 @@ namespace SS.Matchmaking.Modules
         /// </summary>
         private const int StatBoxObjectsPerNumericValue = 2; // 2 digits each
 
-        private const int StatBox_Initialize_MaxChanges = (StatBoxNumLines * (StatBox_NameChange_MaxChanges + StatBox_SetLives_MaxChanges + StatBox_SetRepels_MaxChanges + StatBox_SetRockets_MaxChanges));
-        private const int StatBox_Initialize_MaxToggles = StatBox_RefreshHeaderAndFrame_MaxToggles + (StatBoxNumLines * (StatBox_NameChange_MaxToggles + StatBox_SetLives_MaxToggles + StatBox_SetRepels_MaxToggles + StatBox_SetRockets_MaxToggles));
+        private const int Initialize_MaxChanges = InitializeStatBox_MaxChanges;
+        private const int Initialize_MaxToggles = 1 + Scoreboard_Timer_MaxToggles + Scoreboard_Freqs_MaxToggles + Scoreboard_Score_MaxToggles + InitializeStatBox_MaxToggles;
 
-        private const int StatBox_Clear_MaxToggles = StatBox_RefreshHeaderAndFrame_MaxToggles + StatBoxCharacterObjectCount + StatBoxStrikethroughObjectsCount;
+        private const int Scoreboard_Timer_MaxToggles = 8; // 4 digits, toggle off and on
+
+        private const int Scoreboard_Freqs_MaxToggles = 16; // each freq is 4 digits, toggle off and on
+
+        private const int Scoreboard_Score_MaxToggles = 8; // 4 digits, toggle off and on
+
+        private const int InitializeStatBox_MaxChanges = (StatBoxNumLines * (StatBox_NameChange_MaxChanges + StatBox_SetLives_MaxChanges + StatBox_SetRepels_MaxChanges + StatBox_SetRockets_MaxChanges));
+        private const int InitializeStatBox_MaxToggles = StatBox_RefreshHeaderAndFrame_MaxToggles + (StatBoxNumLines * (StatBox_NameChange_MaxToggles + StatBox_SetLives_MaxToggles + StatBox_SetRepels_MaxToggles + StatBox_SetRockets_MaxToggles));
+
+        private const int Clear_MaxToggles = 1 + Scoreboard_Timer_MaxToggles + Scoreboard_Freqs_MaxToggles + Scoreboard_Score_MaxToggles + StatBox_RefreshHeaderAndFrame_MaxToggles + StatBoxCharacterObjectCount + StatBoxStrikethroughObjectsCount;
 
         private const int StatBox_RefreshForSub_MaxChanges = StatBox_NameChange_MaxChanges;
         private const int StatBox_RefreshForSub_MaxToggles = StatBox_RefreshHeaderAndFrame_MaxToggles + StatBox_NameChange_MaxToggles + StatBoxStrikethroughObjectsCount;
+
+        private const int RefreshForKill_MaxChanges = StatBox_RefreshForKill_MaxChanges;
+        private const int RefreshForKill_MaxToggles = Scoreboard_Score_MaxToggles + StatBox_RefreshForKill_MaxToggles;
 
         private const int StatBox_RefreshForKill_MaxChanges = StatBoxObjectsPerNumericValue; // remaining lives
         private const int StatBox_RefreshForKill_MaxToggles = StatBoxObjectsPerNumericValue + StatBoxStrikethroughObjectsPerLine; // remaining lives + strikethrough (for knockout)
@@ -110,6 +123,7 @@ namespace SS.Matchmaking.Modules
 
         private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
         private readonly ILvzObjects _lvzObjects = lvzObjects ?? throw new ArgumentNullException(nameof(lvzObjects));
+        private readonly IMainloopTimer _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
 
         private readonly Dictionary<Arena, ArenaLvzData> _arenaDataDictionary = new(Constants.TargetArenaCount);
 
@@ -228,16 +242,41 @@ namespace SS.Matchmaking.Modules
 
             var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier.BoxIdx);
 
-            Span<LvzObjectChange> changes = stackalloc LvzObjectChange[StatBox_Initialize_MaxChanges];
-            Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[StatBox_Initialize_MaxToggles];
+            Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
+            Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[Initialize_MaxToggles];
 
             // Display statbox
-            matchLvzState.InitializeStatBox(matchData, changes, out int changesWritten, toggles, out int togglesWritten);
+            matchLvzState.Initialize(matchData, changes, out int changesWritten, toggles, out int togglesWritten);
             changes = changes[..changesWritten];
             toggles = toggles[..togglesWritten];
 
             // TODO: target players participating and anyone spectating them instead of the whole arena
             _lvzObjects.SetAndToggle(arena, changes, toggles);
+
+            // Start a timer to refresh the game timer every 10 seconds
+            _mainloopTimer.SetTimer(MainloopTimer_RefreshGameTimer, 10000, 10000, matchData, matchData);
+        }
+
+        private bool MainloopTimer_RefreshGameTimer(IMatchData matchData)
+        {
+            Arena? arena = matchData.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
+                return false;
+
+            var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier.BoxIdx);
+
+            Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[Scoreboard_Timer_MaxToggles];
+            Span<LvzObjectToggle> remainingToggles = toggles;
+            int togglesWritten = 0;
+
+            matchLvzState.RefreshScoreboardTimer(matchData, ref remainingToggles, ref togglesWritten);
+
+            toggles = toggles[..togglesWritten];
+
+            // TODO: target players participating and anyone spectating them instead of the whole arena
+            _lvzObjects.Toggle(arena, toggles);
+
+            return true;
         }
 
         private void Callback_TeamVersusMatchEnded(IMatchData matchData, MatchEndReason reason, ITeam? winnerTeam)
@@ -248,15 +287,17 @@ namespace SS.Matchmaking.Modules
 
             var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier.BoxIdx);
 
-            Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[StatBox_Clear_MaxToggles];
+            Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[Clear_MaxToggles];
 
             // Hide statbox
-            matchLvzState.ClearStatBox(toggles, out int togglesWritten);
+            matchLvzState.Clear(toggles, out int togglesWritten);
 
             toggles = toggles[..togglesWritten];
 
             // TODO: target players participating and anyone spectating them instead of the whole arena
             _lvzObjects.Toggle(arena, toggles);
+
+            _mainloopTimer.ClearTimer<IMatchData>(MainloopTimer_RefreshGameTimer, matchData);
         }
 
         private void Callback_TeamVersusMatchPlayerSubbed(IPlayerSlot slot, string? subOutPlayerName)
@@ -291,10 +332,10 @@ namespace SS.Matchmaking.Modules
 
             var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier.BoxIdx);
 
-            Span<LvzObjectChange> changes = stackalloc LvzObjectChange[StatBox_RefreshForKill_MaxChanges];
-            Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[StatBox_RefreshForKill_MaxToggles];
+            Span<LvzObjectChange> changes = stackalloc LvzObjectChange[RefreshForKill_MaxChanges];
+            Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[RefreshForKill_MaxToggles];
 
-            matchLvzState.RefreshStatBoxForKill(killedSlot, changes, out int changesWritten, toggles, out int togglesWritten);
+            matchLvzState.RefreshForKill(killedSlot, changes, out int changesWritten, toggles, out int togglesWritten);
 
             changes = changes[..changesWritten];
             toggles = toggles[..togglesWritten];
@@ -428,9 +469,29 @@ namespace SS.Matchmaking.Modules
         {
             //private readonly ArenaLvzData _arenaLvzData;
 
-            // TODO: Timer
+            #region Scoreboard data members
 
-            // TODO: Scoreboard
+            private const short ScoreboardObjectId = 4040;
+
+            // Timer
+            private const short TimerMinutesTens0 = 4080;
+            private const short TimerMinutesOnes0 = 4070;
+            private const short TimerSecondsTens0 = 4060;
+            private const short TimerSecondsOnes0 = 4058;
+            private const short TimerSecondsOnesCountdownObjectId = 4059;
+            private TimerState _timerState;
+
+            // Freqs
+            private static readonly (short Thousands0, short Hundreds0, short Tens0, short Ones0)[] _freqObjectIds = [(4100, 4110, 4120, 4130), (4140, 4150, 4160, 4170)];
+            private readonly FreqState[] _freqStates = new FreqState[2];
+
+            // Scores
+            private static readonly (short Tens0, short Ones0)[] _scoreObjectIds = [(4010, 4000), (4030, 4020)];
+            private readonly ScoreState[] _scoreStates = new ScoreState[2];
+
+            #endregion
+
+            #region Statbox data members
 
             // Statbox header and frame
             private static readonly int[] _headerObjectIds = [0, 1, 2, 3];
@@ -445,8 +506,9 @@ namespace SS.Matchmaking.Modules
 
             private int _nameDisplayLength = 4;
 
+            #endregion
+
             private IMatchData? _matchData;
-            private int _playersPerTeam;
 
             public MatchLvzState(ArenaLvzData arenaLvzData)
             {
@@ -463,12 +525,12 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            public void InitializeStatBox(IMatchData matchData, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
+            public void Initialize(IMatchData matchData, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
-                if (changes.Length < (StatBox_Initialize_MaxChanges))
+                if (changes.Length < (Initialize_MaxChanges))
                     throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
 
-                if (toggles.Length < (StatBox_Initialize_MaxToggles))
+                if (toggles.Length < (Initialize_MaxToggles))
                     throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
 
                 changesWritten = 0;
@@ -483,24 +545,141 @@ namespace SS.Matchmaking.Modules
 
                 _matchData = matchData;
 
-                _playersPerTeam = matchData.Configuration.PlayersPerTeam;
+                // Show the scoreboard
+                toggles[0] = new LvzObjectToggle(ScoreboardObjectId, true);
+                toggles = toggles[1..];
+                togglesWritten++;
 
-                SetHeaderAndFrame(matchData, ref toggles, ref togglesWritten);
+                RefreshScoreboardTimer(matchData, ref toggles, ref togglesWritten);
+                InitializeScoreboardFreqs(ref toggles, ref togglesWritten);
+                InitializeScoreboardScores(ref toggles, ref togglesWritten);
+                InitializeStatBox(matchData, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
 
-                for (int teamIdx = 0; teamIdx < matchData.Teams.Count; teamIdx++)
+                void InitializeScoreboardFreqs(ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
                 {
-                    ITeam team = matchData.Teams[teamIdx];
+                    if (toggles.Length < Scoreboard_Freqs_MaxToggles)
+                        throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
 
-                    for (int slotIdx = 0; slotIdx < team.Slots.Count; slotIdx++)
+                    for (int teamIdx = 0; teamIdx < _matchData.Teams.Count; teamIdx++)
                     {
-                        IPlayerSlot slot = team.Slots[slotIdx];
-
-                        SetName(slot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
-                        SetLives(slot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
-                        SetRepels(slot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
-                        SetRockets(slot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
-                        //SetStrikethrough(slot, ref toggles, ref togglesWritten);
+                        RefreshFreq(_matchData.Teams[teamIdx].Freq, ref _freqStates[teamIdx], ref _freqObjectIds[teamIdx], ref toggles, ref togglesWritten);
                     }
+
+                    void RefreshFreq(short freq, ref FreqState freqState, ref (short Thousands0, short Hundreds0, short Tens0, short Ones0) digitsObjectIds, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
+                    {
+                        // TODO: change this logic to not show leading zeros and align left/right depending on team?
+
+                        int thousands = (freq / 1000) % 10;
+                        int hundreds = (freq / 100) % 10;
+                        int tens = (freq / 10) % 10;
+                        int ones = freq % 10;
+
+                        short thousandsObjectId = (short)(digitsObjectIds.Thousands0 + thousands);
+                        short hundredsObjectId = (short)(digitsObjectIds.Hundreds0 + hundreds);
+                        short tensObjectId = (short)(digitsObjectIds.Tens0 + tens);
+                        short onesObjectId = (short)(digitsObjectIds.Ones0 + ones);
+
+                        ToggleDigit(ref freqState.Thousands, thousandsObjectId, ref toggles, ref togglesWritten);
+                        ToggleDigit(ref freqState.Hundreds, hundredsObjectId, ref toggles, ref togglesWritten);
+                        ToggleDigit(ref freqState.Tens, tensObjectId, ref toggles, ref togglesWritten);
+                        ToggleDigit(ref freqState.Ones, onesObjectId, ref toggles, ref togglesWritten);
+                    }
+                }
+
+                void InitializeScoreboardScores(ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
+                {
+                    if (toggles.Length < (Scoreboard_Score_MaxToggles))
+                        throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
+
+                    for (int teamIdx = 0; teamIdx < _matchData.Teams.Count; teamIdx++)
+                    {
+                        RefreshScore(_matchData.Teams[teamIdx], ref _scoreStates[teamIdx], _scoreObjectIds[teamIdx].Tens0, _scoreObjectIds[teamIdx].Ones0, ref toggles, ref togglesWritten);
+                    }
+                }
+
+                void InitializeStatBox(IMatchData matchData, ref Span<LvzObjectChange> changes, ref int changesWritten, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
+                {
+                    if (changes.Length < (InitializeStatBox_MaxChanges))
+                        throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+
+                    if (toggles.Length < (InitializeStatBox_MaxToggles))
+                        throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
+
+                    SetHeaderAndFrame(matchData, ref toggles, ref togglesWritten);
+
+                    for (int teamIdx = 0; teamIdx < matchData.Teams.Count; teamIdx++)
+                    {
+                        ITeam team = matchData.Teams[teamIdx];
+
+                        for (int slotIdx = 0; slotIdx < team.Slots.Count; slotIdx++)
+                        {
+                            IPlayerSlot slot = team.Slots[slotIdx];
+
+                            SetName(slot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
+                            SetLives(slot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
+                            SetRepels(slot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
+                            SetRockets(slot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
+                            //SetStrikethrough(slot, ref toggles, ref togglesWritten);
+                        }
+                    }
+                }
+            }
+
+            public void RefreshScoreboardTimer(IMatchData matchData, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
+            {
+                if (toggles.Length < Scoreboard_Timer_MaxToggles)
+                    throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
+
+                if (matchData.Started is null || matchData.Configuration.TimeLimit is null)
+                    return;
+
+                DateTime now = DateTime.UtcNow;
+                TimeSpan remaining = (matchData.Started.Value + matchData.Configuration.TimeLimit.Value) - now;
+                if (remaining < TimeSpan.Zero && matchData.Configuration.OverTimeLimit is not null)
+                    remaining = (matchData.Started.Value + matchData.Configuration.TimeLimit.Value + matchData.Configuration.OverTimeLimit.Value) - now;
+
+                if (remaining < TimeSpan.Zero)
+                    remaining = TimeSpan.Zero;
+
+                if (remaining == TimeSpan.Zero)
+                {
+                    ToggleDigit(ref _timerState.MinutesTens, TimerMinutesTens0, ref toggles, ref togglesWritten);
+                    ToggleDigit(ref _timerState.MinutesOnes, TimerMinutesOnes0, ref toggles, ref togglesWritten);
+                    ToggleDigit(ref _timerState.SecondsTens, TimerSecondsTens0, ref toggles, ref togglesWritten);
+                    ToggleDigit(ref _timerState.SecondsOnes, TimerSecondsOnes0, ref toggles, ref togglesWritten);
+                }
+                else
+                {
+                    int remainingSeconds = (int)remaining.TotalSeconds;
+
+                    int minutes = (remainingSeconds / 60) % 100;
+                    int seconds = (remainingSeconds % 60);
+
+                    int minutesTens = (minutes / 10) % 10;
+                    int minutesOnes = (minutes % 10);
+                    int secondsTens = (seconds / 10);
+                    // The ones position of seconds will count
+
+                    short minutesTensObjectId = (short)(TimerMinutesTens0 + minutesTens);
+                    short minutesOnesObjectId = (short)(TimerMinutesOnes0 + minutesOnes);
+                    short secondsTensObjectId = (short)(TimerSecondsTens0 + secondsTens);
+
+                    ToggleDigit(ref _timerState.MinutesTens, minutesTensObjectId, ref toggles, ref togglesWritten);
+                    ToggleDigit(ref _timerState.MinutesOnes, minutesOnesObjectId, ref toggles, ref togglesWritten);
+                    ToggleDigit(ref _timerState.SecondsTens, secondsTensObjectId, ref toggles, ref togglesWritten);
+
+                    if (_timerState.SecondsOnes is not null && _timerState.SecondsOnes != TimerSecondsOnesCountdownObjectId)
+                    {
+                        toggles[0] = new(_timerState.SecondsOnes.Value, false);
+                        toggles = toggles[1..];
+                        togglesWritten++;
+                    }
+
+                    // Always send the toggle on of the countdown so that it starts from 9 again.
+                    _timerState.SecondsOnes = TimerSecondsOnesCountdownObjectId;
+                    toggles[0] = new(TimerSecondsOnesCountdownObjectId, true);
+                    toggles = toggles[1..];
+                    togglesWritten++;
                 }
             }
 
@@ -543,23 +722,48 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            public void RefreshStatBoxForKill(IPlayerSlot killedSlot, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
+            public void RefreshForKill(IPlayerSlot killedSlot, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
-                if (changes.Length < StatBox_RefreshForKill_MaxChanges)
+                if (changes.Length < RefreshForKill_MaxChanges)
                     throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
 
-                if (toggles.Length < StatBox_RefreshForKill_MaxToggles)
+                if (toggles.Length < RefreshForKill_MaxToggles)
                     throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
 
                 changesWritten = 0;
                 togglesWritten = 0;
 
-                IMatchData matchData = killedSlot.MatchData;
-                if (_matchData != matchData)
-                    return;
+                RefreshScoreboardForKill(killedSlot, ref toggles, ref togglesWritten);
+                RefreshStatBoxForKill(killedSlot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
 
-                SetLives(killedSlot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
-                SetStrikethrough(killedSlot, ref toggles, ref togglesWritten);
+                void RefreshScoreboardForKill(IPlayerSlot killedSlot, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
+                {
+                    if (toggles.Length < Scoreboard_Score_MaxToggles)
+                        throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+
+                    IMatchData matchData = killedSlot.MatchData;
+
+                    for (int teamIdx = 0; teamIdx < matchData.Teams.Count; teamIdx++)
+                    {
+                        RefreshScore(matchData.Teams[teamIdx], ref _scoreStates[teamIdx], _scoreObjectIds[teamIdx].Tens0, _scoreObjectIds[teamIdx].Ones0, ref toggles, ref togglesWritten);
+                    }
+                }
+
+                void RefreshStatBoxForKill(IPlayerSlot killedSlot, ref Span<LvzObjectChange> changes, ref int changesWritten, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
+                {
+                    if (changes.Length < StatBox_RefreshForKill_MaxChanges)
+                        throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+
+                    if (toggles.Length < StatBox_RefreshForKill_MaxToggles)
+                        throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+
+                    IMatchData matchData = killedSlot.MatchData;
+                    if (_matchData != matchData)
+                        return;
+
+                    SetLives(killedSlot, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
+                    SetStrikethrough(killedSlot, ref toggles, ref togglesWritten);
+                }
             }
 
             public void RefreshStatBoxItems(IPlayerSlot slot, ItemChanges itemChanges, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
@@ -589,16 +793,113 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            public void ClearStatBox(Span<LvzObjectToggle> toggles, out int togglesWritten)
+            public void Clear(Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
-                if (toggles.Length < StatBox_Clear_MaxToggles)
+                if (toggles.Length < Clear_MaxToggles)
                     throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
 
                 _matchData = null;
 
                 togglesWritten = 0;
 
-                // header and frame
+                toggles[0] = new LvzObjectToggle(ScoreboardObjectId, false);
+                toggles = toggles[1..];
+                togglesWritten++;
+
+                // scoreboard timer
+                if (_timerState.MinutesTens is not null)
+                {
+                    toggles[0] = new LvzObjectToggle(_timerState.MinutesTens.Value, false);
+                    toggles = toggles[1..];
+                    togglesWritten++;
+                    _timerState.MinutesTens = null;
+                }
+
+                if (_timerState.MinutesOnes is not null)
+                {
+                    toggles[0] = new LvzObjectToggle(_timerState.MinutesOnes.Value, false);
+                    toggles = toggles[1..];
+                    togglesWritten++;
+                    _timerState.MinutesOnes = null;
+                }
+
+                if (_timerState.SecondsTens is not null)
+                {
+                    toggles[0] = new LvzObjectToggle(_timerState.SecondsTens.Value, false);
+                    toggles = toggles[1..];
+                    togglesWritten++;
+                    _timerState.SecondsTens = null;
+                }
+
+                if (_timerState.SecondsOnes is not null)
+                {
+                    toggles[0] = new LvzObjectToggle(_timerState.SecondsOnes.Value, false);
+                    toggles = toggles[1..];
+                    togglesWritten++;
+                    _timerState.SecondsOnes = null;
+                }
+
+                // scoreboard freqs
+                for (int i = 0; i < _freqStates.Length; i++)
+                {
+                    ref FreqState freqState = ref _freqStates[i];
+
+                    if (freqState.Thousands is not null)
+                    {
+                        toggles[0] = new LvzObjectToggle(freqState.Thousands.Value, false);
+                        toggles = toggles[1..];
+                        togglesWritten++;
+                        freqState.Thousands = null;
+                    }
+
+                    if (freqState.Hundreds is not null)
+                    {
+                        toggles[0] = new LvzObjectToggle(freqState.Hundreds.Value, false);
+                        toggles = toggles[1..];
+                        togglesWritten++;
+                        freqState.Hundreds = null;
+                    }
+
+                    if (freqState.Tens is not null)
+                    {
+                        toggles[0] = new LvzObjectToggle(freqState.Tens.Value, false);
+                        toggles = toggles[1..];
+                        togglesWritten++;
+                        freqState.Tens = null;
+                    }
+
+                    if (freqState.Ones is not null)
+                    {
+                        toggles[0] = new LvzObjectToggle(freqState.Ones.Value, false);
+                        toggles = toggles[1..];
+                        togglesWritten++;
+                        freqState.Ones = null;
+                    }
+                }
+
+                // scoreboard scores
+                for (int i = 0; i < _scoreStates.Length; i++)
+                {
+                    ref ScoreState scoreState = ref _scoreStates[i];
+
+                    if (scoreState.Tens is not null)
+                    {
+                        toggles[0] = new LvzObjectToggle(scoreState.Tens.Value, false);
+                        toggles = toggles[1..];
+                        togglesWritten++;
+                        scoreState.Tens = null;
+                    }
+
+                    if (scoreState.Ones is not null)
+                    {
+                        toggles[0] = new LvzObjectToggle(scoreState.Ones.Value, false);
+                        toggles = toggles[1..];
+                        togglesWritten++;
+                        scoreState.Ones = null;
+                    }
+                }
+
+                // statbox header and frame
                 foreach (short objectId in _headerAndFrameEnabledObjects)
                 {
                     toggles[0] = new LvzObjectToggle(objectId, false);
@@ -608,7 +909,7 @@ namespace SS.Matchmaking.Modules
 
                 _headerAndFrameEnabledObjects.Clear();
 
-                // characters
+                // statbox characters
                 for (int i = 0; i < _characterObjects.Length; i++)
                 {
                     ref LvzState state = ref _characterObjects[i];
@@ -625,7 +926,7 @@ namespace SS.Matchmaking.Modules
                     // We could change the image to ' ', but there's no need to since it's disabled.
                 }
 
-                // strikethroughs
+                // statbox strikethroughs
                 foreach (short objectId in _strikethoughEnabledObjects)
                 {
                     toggles[0] = new LvzObjectToggle(objectId, false);
@@ -646,31 +947,41 @@ namespace SS.Matchmaking.Modules
             /// <param name="togglesWritten"></param>
             public static void GetDifferences(MatchLvzState from, MatchLvzState to, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
+                //if (changes.Length < )
+                //    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+
+                //if (toggles.Length < )
+                //    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+
                 changesWritten = 0;
                 togglesWritten = 0;
 
-                // header and frame
-                foreach (short objectId in from._headerAndFrameEnabledObjects)
+                // scoreboard timer
+                ToggleDifference(ref from._timerState.MinutesTens, ref to._timerState.MinutesTens, ref toggles, ref togglesWritten);
+                ToggleDifference(ref from._timerState.MinutesOnes, ref to._timerState.MinutesOnes, ref toggles, ref togglesWritten);
+                ToggleDifference(ref from._timerState.SecondsTens, ref to._timerState.SecondsTens, ref toggles, ref togglesWritten);
+                ToggleDifference(ref from._timerState.SecondsOnes, ref to._timerState.SecondsOnes, ref toggles, ref togglesWritten);
+
+                // scoreboard freqs
+                for (int i = 0; i < from._freqStates.Length; i++)
                 {
-                    if (!to._headerAndFrameEnabledObjects.Contains(objectId))
-                    {
-                        toggles[0] = new LvzObjectToggle(objectId, false);
-                        toggles = toggles[1..];
-                        togglesWritten++;
-                    }
+                    ToggleDifference(ref from._freqStates[i].Thousands, ref to._freqStates[i].Thousands, ref toggles, ref togglesWritten);
+                    ToggleDifference(ref from._freqStates[i].Hundreds, ref to._freqStates[i].Hundreds, ref toggles, ref togglesWritten);
+                    ToggleDifference(ref from._freqStates[i].Tens, ref to._freqStates[i].Tens, ref toggles, ref togglesWritten);
+                    ToggleDifference(ref from._freqStates[i].Ones, ref to._freqStates[i].Ones, ref toggles, ref togglesWritten);
                 }
 
-                foreach (short objectId in to._headerAndFrameEnabledObjects)
+                // scoreboard score
+                for (int i = 0; i < from._scoreStates.Length; i++)
                 {
-                    if (!from._headerAndFrameEnabledObjects.Contains(objectId))
-                    {
-                        toggles[0] = new LvzObjectToggle(objectId, true);
-                        toggles = toggles[1..];
-                        togglesWritten++;
-                    }
+                    ToggleDifference(ref from._scoreStates[i].Tens, ref to._scoreStates[i].Tens, ref toggles, ref togglesWritten);
+                    ToggleDifference(ref from._scoreStates[i].Ones, ref to._scoreStates[i].Ones, ref toggles, ref togglesWritten);
                 }
 
-                // characters
+                // statbox header and frame
+                ToggleDifferences(from._headerAndFrameEnabledObjects, to._headerAndFrameEnabledObjects, ref toggles, ref togglesWritten);
+
+                // statbox characters
                 for (int i = 0; i < from._characterObjects.Length; i++)
                 {
                     LvzState fromState = from._characterObjects[i];
@@ -702,25 +1013,85 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                // strikethroughs
-                foreach (short objectId in from._strikethoughEnabledObjects)
+                // statbox strikethroughs
+                ToggleDifferences(from._strikethoughEnabledObjects, to._strikethoughEnabledObjects, ref toggles, ref togglesWritten);
+
+                static void ToggleDifference(ref short? fromState, ref short? toState, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
                 {
-                    if (!to._strikethoughEnabledObjects.Contains(objectId))
+                    if (fromState != toState)
                     {
-                        toggles[0] = new LvzObjectToggle(objectId, false);
-                        toggles = toggles[1..];
-                        togglesWritten++;
+                        if (fromState is not null)
+                        {
+                            toggles[0] = new LvzObjectToggle(fromState.Value, false);
+                            toggles = toggles[1..];
+                            togglesWritten++;
+                        }
+
+                        if (toState is not null)
+                        {
+                            toggles[0] = new LvzObjectToggle(toState.Value, true);
+                            toggles = toggles[1..];
+                            togglesWritten++;
+                        }
                     }
                 }
 
-                foreach (short objectId in to._strikethoughEnabledObjects)
+                static void ToggleDifferences(HashSet<short> fromEnabledObjects, HashSet<short> toEnabledObjects, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
                 {
-                    if (!from._strikethoughEnabledObjects.Contains(objectId))
+                    foreach (short objectId in fromEnabledObjects)
                     {
-                        toggles[0] = new LvzObjectToggle(objectId, true);
+                        if (!toEnabledObjects.Contains(objectId))
+                        {
+                            toggles[0] = new LvzObjectToggle(objectId, false);
+                            toggles = toggles[1..];
+                            togglesWritten++;
+                        }
+                    }
+
+                    foreach (short objectId in toEnabledObjects)
+                    {
+                        if (!fromEnabledObjects.Contains(objectId))
+                        {
+                            toggles[0] = new LvzObjectToggle(objectId, true);
+                            toggles = toggles[1..];
+                            togglesWritten++;
+                        }
+                    }
+                }
+            }
+
+            private static void RefreshScore(ITeam team, ref ScoreState scoreState, short tens0, short ones0, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
+            {
+                if (toggles.Length < 2)
+                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+
+                short score = team.Score;
+
+                int tens = ((score / 10) % 10);
+                int ones = (score % 10);
+
+                short tensObjectId = (short)(tens0 + tens);
+                short onesObjectId = (short)(ones0 + ones);
+
+                ToggleDigit(ref scoreState.Tens, tensObjectId, ref toggles, ref togglesWritten);
+                ToggleDigit(ref scoreState.Ones, onesObjectId, ref toggles, ref togglesWritten);
+            }
+
+            private static void ToggleDigit(ref short? state, short valueObjectId, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
+            {
+                if (state != valueObjectId)
+                {
+                    if (state is not null)
+                    {
+                        toggles[0] = new LvzObjectToggle(state.Value, false);
                         toggles = toggles[1..];
                         togglesWritten++;
                     }
+
+                    state = valueObjectId;
+                    toggles[0] = new LvzObjectToggle(valueObjectId, true);
+                    toggles = toggles[1..];
+                    togglesWritten++;
                 }
             }
 
@@ -1194,6 +1565,29 @@ namespace SS.Matchmaking.Modules
             private static Memory<LvzState> SliceRockets(Memory<LvzState> line)
             {
                 return line.Slice(30, 2);
+            }
+
+            private struct TimerState
+            {
+                public short? MinutesTens;
+                public short? MinutesOnes;
+
+                public short? SecondsTens;
+                public short? SecondsOnes;
+            }
+
+            private struct FreqState
+            {
+                public short? Thousands;
+                public short? Hundreds;
+                public short? Tens;
+                public short? Ones;
+            }
+
+            private struct ScoreState
+            {
+                public short? Tens;
+                public short? Ones;
             }
         }
 

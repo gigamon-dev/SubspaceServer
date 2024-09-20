@@ -21,5 +21,21 @@
         /// The # of lives each player begins with.
         /// </summary>
         int LivesPerPlayer { get; }
+
+        /// <summary>
+        /// The duration of the match.
+        /// </summary>
+        /// <remarks>
+        /// <see langword="null"/> means no limit.
+        /// </remarks>
+        TimeSpan? TimeLimit { get; }
+
+        /// <summary>
+        /// The duration of overtime.
+        /// </summary>
+        /// <remarks>
+        /// <see langword="null"/> means no limit.
+        /// </remarks>
+        TimeSpan? OverTimeLimit { get; }
     }
 }
