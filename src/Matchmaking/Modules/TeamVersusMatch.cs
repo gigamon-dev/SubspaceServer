@@ -125,8 +125,7 @@ namespace SS.Matchmaking.Modules
         /// <summary>
         /// Slots that are available for substitute players.
         /// </summary>
-        private readonly LinkedList<PlayerSlot> _availableSubSlots = new(); // TODO: pooling of node objects
-                                                                            // TODO: when a match ends, remember to remove from _availableSubSlots
+        private readonly LinkedList<PlayerSlot> _availableSubSlots = new();
 
         /// <summary>
         /// Data per arena base name (shared among arenas with the same base name).
@@ -605,6 +604,16 @@ namespace SS.Matchmaking.Modules
             {
                 // This was the last life of the slot.
                 killedPlayerSlot.Status = PlayerSlotStatus.KnockedOut;
+
+                // If there was a sub in-progress, cancel it.
+                if (killedPlayerSlot.SubPlayer is not null)
+                {
+                    CancelSubInProgress(killedPlayerSlot, true);
+                }
+
+                // If the slot was available for a sub (e.g. ?requestsub), it no longer is.
+                killedPlayerSlot.AvailableSubSlotNode.List?.Remove(killedPlayerSlot.AvailableSubSlotNode);
+                killedPlayerSlot.IsSubRequested = false;
 
                 // The player needs to be moved to spec, but if done immediately, any remaining weapons fire from the player will be removed.
                 // We want to wait a short time to allow for a double-kill (though shorter than the respawn time),
@@ -1233,18 +1242,22 @@ namespace SS.Matchmaking.Modules
             if (slot is null)
                 return;
 
-            if (slot.IsSubRequested)
+            if (slot.Lives <= 0)
             {
-                _chat.SendMessage(player, $"You've already requested to be subbed out.");
+                // The slot has already been knocked out.
+                _chat.SendMessage(player, "Your assigned slot is not eligible for a sub since it's knocked out.");
+                return;
+            }
+
+            if (slot.AvailableSubSlotNode.List is not null || slot.IsSubRequested)
+            {
+                // The slot is already open for a sub.
+                _chat.SendMessage(player, "Your assigned slot is already open for a sub.");
                 return;
             }
 
             slot.IsSubRequested = true;
-
-            if (slot.AvailableSubSlotNode.List is null)
-            {
-                _availableSubSlots.AddLast(slot.AvailableSubSlotNode);
-            }
+            _availableSubSlots.AddLast(slot.AvailableSubSlotNode);
 
             _chat.SendArenaMessage(player.Arena, $"{player.Name} has requested to be subbed out.");
             SendSubAvailabilityNotificationToQueuedPlayers(slot.MatchData);
