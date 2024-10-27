@@ -570,7 +570,7 @@ namespace SS.Core.Modules
 
             if (!parameters.Contains("-v", StringComparison.OrdinalIgnoreCase))
             {
-                _chat.SendMessage(player, $"{prefix}: avg ping: {average} ploss: s2c: {packetloss.s2c * 100d:F2} c2s: {packetloss.c2s * 100d:F2}");
+                _chat.SendMessage(player, $"{prefix}: avg ping: {average} ploss: s2c: {packetloss.S2C * 100d:F2} c2s: {packetloss.C2S * 100d:F2}");
             }
             else
             {
@@ -582,7 +582,7 @@ namespace SS.Core.Modules
                 _chat.SendMessage(player, $"{prefix}: effective ping: {average} (average of above)");
 
                 double s2cRelLoss = (reliableLag.Retries == 0) ? 0d : ((reliableLag.Retries - reliableLag.AckDups) * 100d / reliableLag.ReliablePacketsSent);
-                _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.s2c * 100d:F2}  c2s: {packetloss.c2s * 100d:F2}  s2cwpn: {packetloss.s2cwpn * 100:F2}  s2crel: {s2cRelLoss:F2}");
+                _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.S2C * 100d:F2}  c2s: {packetloss.C2S * 100d:F2}  s2cwpn: {packetloss.S2CWeapon * 100:F2}  s2crel: {s2cRelLoss:F2}");
                 _chat.SendMessage(player, $"{prefix}: reliable: dups: {reliableLag.RelDups * 100d / reliableLag.ReliablePacketsReceived:F2}%  resends: {reliableLag.Retries * 100d / reliableLag.ReliablePacketsSent:F2}%");
                 _chat.SendMessage(player, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal}  s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal}");
 

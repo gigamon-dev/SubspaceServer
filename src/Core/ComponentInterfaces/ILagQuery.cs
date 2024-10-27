@@ -16,7 +16,7 @@ namespace SS.Core.ComponentInterfaces
 
     public struct PacketlossSummary
     {
-        public double s2c, c2s, s2cwpn;
+        public double S2C, C2S, S2CWeapon;
     }
 
     public record struct TimeSyncRecord()

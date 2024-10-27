@@ -327,7 +327,7 @@ namespace SS.Core.Modules
             _chat.SendMessage(player, $"Ping:{current}ms  LowPing:{low}ms  HighPing:{high}ms  AvePing:{average}ms");
 
             // TODO: unacked rels
-            _chat.SendMessage(player, $"LOSS: S2C:{packetloss.s2c * 100d,4:F1}%  C2S:{packetloss.c2s * 100d,4:F1}%  S2CWeapons:{packetloss.s2cwpn * 100d,4:F1}%  S2C_RelOut:0({stats.ReliablePacketsSent})");
+            _chat.SendMessage(player, $"LOSS: S2C:{packetloss.S2C * 100d,4:F1}%  C2S:{packetloss.C2S * 100d,4:F1}%  S2CWeapons:{packetloss.S2CWeapon * 100d,4:F1}%  S2C_RelOut:0({stats.ReliablePacketsSent})");
             _chat.SendMessage(player, $"S2C:0-->0  C2S:0-->0");
             _chat.SendMessage(player, $"C2S CURRENT: Slow:0 Fast:0 0.0%   TOTAL: Slow:0 Fast:0 0.0%");
             _chat.SendMessage(player, $"S2C CURRENT: Slow:{clientPing.S2CSlowCurrent} Fast:{clientPing.S2CFastCurrent} 0.0%   TOTAL: Slow:{clientPing.S2CSlowTotal} Fast:{clientPing.S2CFastTotal} 0.0%");
@@ -368,7 +368,7 @@ namespace SS.Core.Modules
             int low = Math.Min(Math.Min(positionPing.Min, clientPing.Min), reliablePing.Min);
             int high = Math.Max(Math.Max(positionPing.Max, clientPing.Max), reliablePing.Max);
 
-            _chat.SendMessage(player, $"PING Current:{current} ms  Average:{average} ms  Low:{low} ms  High:{high} ms  S2C:{packetloss.s2c * 100d,4:F1}%  C2S:{packetloss.c2s * 100d,4:F1}%");
+            _chat.SendMessage(player, $"PING Current:{current} ms  Average:{average} ms  Low:{low} ms  High:{high} ms  S2C:{packetloss.S2C * 100d,4:F1}%  C2S:{packetloss.C2S * 100d,4:F1}%");
         }
 
         private void Command_sg_spec(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)

@@ -79,21 +79,21 @@
         /// </summary>
         /// <param name="player">The player the data is for.</param>
         /// <param name="data">The data reported by the client in the <see cref="Packets.C2S_Security"/> packet.</param>
-        void ClientLatency(Player player, in ClientLatencyData data);
+        void ClientLatency(Player player, ref readonly ClientLatencyData data);
 
         /// <summary>
         /// For collecting information when a time sync request arrives (0x00 0x05 core packet).
         /// </summary>
         /// <param name="player">The player the data is for.</param>
         /// <param name="data">Data for the sync.</param>
-        void TimeSync(Player player, in TimeSyncData data);
+        void TimeSync(Player player, ref readonly TimeSyncData data);
 
         /// <summary>
         /// For collecting information after processing the outgoing network queues.
         /// </summary>
         /// <param name="player">The player the data is for.</param>
         /// <param name="data">The reliable data to record.</param>
-        void RelStats(Player player, in ReliableLagData data);
+        void RelStats(Player player, ref readonly ReliableLagData data);
 
         /// <summary>
         /// Clears previously collected data for a player.

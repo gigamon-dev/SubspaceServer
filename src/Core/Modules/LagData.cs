@@ -76,19 +76,19 @@ namespace SS.Core.Modules
                 lagStats.UpdateReliableAckStats(ms);
         }
 
-        void ILagCollect.ClientLatency(Player player, in ClientLatencyData data)
+        void ILagCollect.ClientLatency(Player player, ref readonly ClientLatencyData data)
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.UpdateClientLatencyStats(in data);
         }
 
-        void ILagCollect.TimeSync(Player player, in TimeSyncData data)
+        void ILagCollect.TimeSync(Player player, ref readonly TimeSyncData data)
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.UpdateTimeSyncStats(in data);
         }
 
-        void ILagCollect.RelStats(Player player, in ReliableLagData data)
+        void ILagCollect.RelStats(Player player, ref readonly ReliableLagData data)
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 lagStats.UpdateReliableStats(in data);
@@ -372,7 +372,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            public void UpdateClientLatencyStats(in ClientLatencyData data)
+            public void UpdateClientLatencyStats(ref readonly ClientLatencyData data)
             {
                 lock (lockObj)
                 {
@@ -382,7 +382,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            public void UpdateTimeSyncStats(in TimeSyncData data)
+            public void UpdateTimeSyncStats(ref readonly TimeSyncData data)
             {
                 lock (lockObj)
                 {
@@ -391,7 +391,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            public void UpdateReliableStats(in ReliableLagData data)
+            public void UpdateReliableStats(ref readonly ReliableLagData data)
             {
                 lock (lockObj)
                 {
@@ -446,15 +446,15 @@ namespace SS.Core.Modules
 
                     s = Packetloss.ServerPacketsSent;
                     r = Packetloss.ClientPacketsReceived;
-                    summary.s2c = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
+                    summary.S2C = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
 
                     s = Packetloss.ClientPacketsSent;
                     r = Packetloss.ServerPacketsReceived;
-                    summary.c2s = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
+                    summary.C2S = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
 
                     s = WeaponSentCount;
                     r = WeaponReceiveCount;
-                    summary.s2cwpn = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
+                    summary.S2CWeapon = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
                 }
             }
 

@@ -316,26 +316,26 @@ namespace SS.Core.Modules
                 if (Spec(player, lagLimits.SpecFreq, "ping"))
                     _chat.SendMessage(player, $"You have been specced for excessive ping ({averagePing} > {lagLimits.Ping.ForceSpec}.");
             }
-            else if (packetloss.s2c > lagLimits.S2CLoss.ForceSpec)
+            else if (packetloss.S2C > lagLimits.S2CLoss.ForceSpec)
             {
                 player.Flags.NoShip = true;
 
                 if (Spec(player, lagLimits.SpecFreq, "s2c ploss"))
-                    _chat.SendMessage(player, $"You have been specced for excessive S2C packetloss ({packetloss.s2c:P2} > {lagLimits.S2CLoss.ForceSpec:P2}.");
+                    _chat.SendMessage(player, $"You have been specced for excessive S2C packetloss ({packetloss.S2C:P2} > {lagLimits.S2CLoss.ForceSpec:P2}.");
             }
-            else if (packetloss.s2cwpn > lagLimits.WeaponLoss.ForceSpec)
+            else if (packetloss.S2CWeapon > lagLimits.WeaponLoss.ForceSpec)
             {
                 player.Flags.NoShip = true;
 
                 if (Spec(player, lagLimits.SpecFreq, "s2c wpn ploss"))
-                    _chat.SendMessage(player, $"You have been specced for excessive S2C weapon packetloss ({packetloss.s2cwpn:P2} > {lagLimits.WeaponLoss.ForceSpec:P2}.");
+                    _chat.SendMessage(player, $"You have been specced for excessive S2C weapon packetloss ({packetloss.S2CWeapon:P2} > {lagLimits.WeaponLoss.ForceSpec:P2}.");
             }
-            else if (packetloss.c2s > lagLimits.C2SLoss.ForceSpec)
+            else if (packetloss.C2S > lagLimits.C2SLoss.ForceSpec)
             {
                 player.Flags.NoShip = true;
 
                 if (Spec(player, lagLimits.SpecFreq, "c2s ploss"))
-                    _chat.SendMessage(player, $"You have been specced for excessive C2S packetloss ({packetloss.c2s:P2} > {lagLimits.C2SLoss.ForceSpec:P2}.");
+                    _chat.SendMessage(player, $"You have been specced for excessive C2S packetloss ({packetloss.C2S:P2} > {lagLimits.C2SLoss.ForceSpec:P2}.");
             }
             else
             {
@@ -344,14 +344,14 @@ namespace SS.Core.Modules
 
             // check conditions for disallowing flags/balls
             player.Flags.NoFlagsBalls = averagePing > lagLimits.Ping.NoFlags
-                || packetloss.s2c > lagLimits.S2CLoss.NoFlags
-                || packetloss.s2cwpn > lagLimits.WeaponLoss.NoFlags
-                || packetloss.c2s > lagLimits.C2SLoss.NoFlags;
+                || packetloss.S2C > lagLimits.S2CLoss.NoFlags
+                || packetloss.S2CWeapon > lagLimits.WeaponLoss.NoFlags
+                || packetloss.C2S > lagLimits.C2SLoss.NoFlags;
 
             // calculate weapon ignore percent
             double ignore1 = (double)(averagePing - lagLimits.Ping.IgnoreWeaponStart) / (lagLimits.Ping.IgnoreWeaponAll - lagLimits.Ping.IgnoreWeaponStart);
-            double ignore2 = (double)(packetloss.s2c - lagLimits.S2CLoss.IgnoreWeaponStart) / (lagLimits.S2CLoss.IgnoreWeaponAll - lagLimits.S2CLoss.IgnoreWeaponStart);
-            double ignore3 = (double)(packetloss.s2cwpn - lagLimits.WeaponLoss.IgnoreWeaponStart) / (lagLimits.WeaponLoss.IgnoreWeaponAll - lagLimits.WeaponLoss.IgnoreWeaponStart);
+            double ignore2 = (double)(packetloss.S2C - lagLimits.S2CLoss.IgnoreWeaponStart) / (lagLimits.S2CLoss.IgnoreWeaponAll - lagLimits.S2CLoss.IgnoreWeaponStart);
+            double ignore3 = (double)(packetloss.S2CWeapon - lagLimits.WeaponLoss.IgnoreWeaponStart) / (lagLimits.WeaponLoss.IgnoreWeaponAll - lagLimits.WeaponLoss.IgnoreWeaponStart);
 
             // use the max of the 3
             _game.SetIgnoreWeapons(player, Math.Clamp(Math.Max(Math.Max(ignore1, ignore2), ignore3), 0d, 1d));
@@ -372,22 +372,22 @@ namespace SS.Core.Modules
             /// <summary>
             /// Ping at which to force a player to spec.
             /// </summary>
-            public int ForceSpec { get; init; }
+            public int ForceSpec;
 
             /// <summary>
             /// Ping at which to start ignoring weapons.
             /// </summary>
-            public int IgnoreWeaponStart { get; init; }
+            public int IgnoreWeaponStart;
 
             /// <summary>
             /// Ping at which all weapons should be ignored.
             /// </summary>
-            public int IgnoreWeaponAll { get; init; }
+            public int IgnoreWeaponAll;
 
             /// <summary>
             /// Ping at which a player isn't allowed to pick up flags or balls.
             /// </summary>
-            public int NoFlags { get; init; }
+            public int NoFlags;
         }
 
         private struct S2CPacketlossLimits
