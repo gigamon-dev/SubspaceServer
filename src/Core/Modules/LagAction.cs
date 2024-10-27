@@ -162,24 +162,24 @@ namespace SS.Core.Modules
 
                     lagLimits.S2CLoss = new S2CPacketlossLimits
                     {
-                        ForceSpec = _configManager.GetInt(ch, "Lag", "S2CLossToSpec", LagSettings.S2CLossToSpec.Default),
-                        IgnoreWeaponStart = _configManager.GetInt(ch, "Lag", "S2CLossToStartIgnoringWeapons", LagSettings.S2CLossToStartIgnoringWeapons.Default),
-                        IgnoreWeaponAll = _configManager.GetInt(ch, "Lag", "S2CLossToIgnoreAllWeapons", LagSettings.S2CLossToIgnoreAllWeapons.Default),
-                        NoFlags = _configManager.GetInt(ch, "Lag", "S2CLossToDisallowFlags", LagSettings.S2CLossToDisallowFlags.Default),
+                        ForceSpec = _configManager.GetInt(ch, "Lag", "S2CLossToSpec", LagSettings.S2CLossToSpec.Default) / 1000.0,
+                        IgnoreWeaponStart = _configManager.GetInt(ch, "Lag", "S2CLossToStartIgnoringWeapons", LagSettings.S2CLossToStartIgnoringWeapons.Default) / 1000.0,
+                        IgnoreWeaponAll = _configManager.GetInt(ch, "Lag", "S2CLossToIgnoreAllWeapons", LagSettings.S2CLossToIgnoreAllWeapons.Default) / 1000.0,
+                        NoFlags = _configManager.GetInt(ch, "Lag", "S2CLossToDisallowFlags", LagSettings.S2CLossToDisallowFlags.Default) / 1000.0,
                     };
 
                     lagLimits.WeaponLoss = new S2CPacketlossLimits
                     {
-                        ForceSpec = _configManager.GetInt(ch, "Lag", "WeaponLossToSpec", LagSettings.WeaponLossToSpec.Default),
-                        IgnoreWeaponStart = _configManager.GetInt(ch, "Lag", "WeaponLossToStartIgnoringWeapons", LagSettings.WeaponLossToStartIgnoringWeapons.Default),
-                        IgnoreWeaponAll = _configManager.GetInt(ch, "Lag", "WeaponLossToIgnoreAllWeapons", LagSettings.WeaponLossToIgnoreAllWeapons.Default),
-                        NoFlags = _configManager.GetInt(ch, "Lag", "WeaponLossToDisallowFlags", LagSettings.WeaponLossToDisallowFlags.Default),
+                        ForceSpec = _configManager.GetInt(ch, "Lag", "WeaponLossToSpec", LagSettings.WeaponLossToSpec.Default) / 1000.0,
+                        IgnoreWeaponStart = _configManager.GetInt(ch, "Lag", "WeaponLossToStartIgnoringWeapons", LagSettings.WeaponLossToStartIgnoringWeapons.Default) / 1000.0,
+                        IgnoreWeaponAll = _configManager.GetInt(ch, "Lag", "WeaponLossToIgnoreAllWeapons", LagSettings.WeaponLossToIgnoreAllWeapons.Default) / 1000.0,
+                        NoFlags = _configManager.GetInt(ch, "Lag", "WeaponLossToDisallowFlags", LagSettings.WeaponLossToDisallowFlags.Default) / 1000.0,
                     };
 
                     lagLimits.C2SLoss = new C2SPacketlossLimits
                     {
-                        ForceSpec = _configManager.GetInt(ch, "Lag", "C2SLossToSpec", LagSettings.C2SLossToSpec.Default),
-                        NoFlags = _configManager.GetInt(ch, "Lag", "C2SLossToDisallowFlags", LagSettings.C2SLossToDisallowFlags.Default),
+                        ForceSpec = _configManager.GetInt(ch, "Lag", "C2SLossToSpec", LagSettings.C2SLossToSpec.Default) / 1000.0,
+                        NoFlags = _configManager.GetInt(ch, "Lag", "C2SLossToDisallowFlags", LagSettings.C2SLossToDisallowFlags.Default) / 1000.0,
                     };
 
                     lagLimits.SpikeForceSpec = TimeSpan.FromMilliseconds(_configManager.GetInt(ch, "Lag", "SpikeToSpec", LagSettings.SpikeToSpec.Default));
