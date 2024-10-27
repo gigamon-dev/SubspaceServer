@@ -1332,7 +1332,7 @@ namespace SS.Core.Modules
             public void Reset()
             {
                 Player = null;
-                _loginBytes.Initialize();
+                Array.Clear(_loginBytes);
                 _loginLength = 0;
                 _doneCallback = null;
                 _result.Reset();

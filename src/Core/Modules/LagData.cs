@@ -231,7 +231,7 @@ namespace SS.Core.Modules
 
             public void Reset()
             {
-                Buckets.Initialize();
+                Array.Clear(Buckets);
                 Current = 0;
                 Average = 0;
                 Max = 0;
@@ -263,7 +263,7 @@ namespace SS.Core.Modules
 
             public void Reset()
             {
-                _records.Initialize();
+                Array.Clear(_records);
                 _next = 0;
                 _count = 0;
             }
