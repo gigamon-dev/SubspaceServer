@@ -344,6 +344,9 @@ namespace SS.Core.Modules
                     Packetloss = default;
                     TimeSync.Reset();
                     ReliableLagData = default;
+                    LastWeaponSentCount = 0;
+                    WeaponSentCount = 0;
+                    WeaponReceiveCount = 0;
                 }
             }
 
