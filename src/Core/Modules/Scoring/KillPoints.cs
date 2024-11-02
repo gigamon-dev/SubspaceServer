@@ -200,6 +200,7 @@ namespace SS.Core.Modules.Scoring
                 PointsPerCarriedFlag = 0;
                 PointsPerTeamFlag = 0;
                 TeamKillPoints = false;
+                KillAdvisorRegistrationToken = null;
                 return true;
             }
         }

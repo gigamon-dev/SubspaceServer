@@ -4388,6 +4388,7 @@ namespace SS.Matchmaking.Modules
                 SubSlot = null;
                 NextShip = null;
                 HasFullyEnteredArena = false;
+                IsInMatchArena = false;
                 IsReturning = false;
                 IsInitialConnect = false;
                 IsWatchingExtraPositionData = false;

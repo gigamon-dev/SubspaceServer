@@ -1080,10 +1080,10 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        job.Set(d, state);
+                        job.Initialize(d, state);
 
                         // Queue the job up for the mainloop to process.
-                        if (!_mainloop.QueueMainWorkItem(Mainloop_ExecuteJob, job))
+                        if (!_mainloop.QueueMainWorkItem(static (j) => j.Execute(), job))
                             throw new Exception("Unable to queue main loop work item.");
 
                         // Wait for it to complete.
@@ -1094,12 +1094,6 @@ namespace SS.Core.Modules
                         s_jobPool.Return(job);
                     }
                 }
-
-                // local static helper function to execute a job
-                static void Mainloop_ExecuteJob(Job job)
-                {
-                    job.Execute();
-                }
             }
         }
 
@@ -1109,9 +1103,9 @@ namespace SS.Core.Modules
             private object? _state;
             private readonly AutoResetEvent _autoResetEvent = new(false);
 
-            public void Set(SendOrPostCallback? callback, object? state)
+            public void Initialize(SendOrPostCallback callback, object? state)
             {
-                _callback = callback ?? throw new ArgumentNullException(nameof(callback));
+                _callback = callback;
                 _state = state;
                 _autoResetEvent.Reset();
             }
@@ -1129,7 +1123,9 @@ namespace SS.Core.Modules
 
             bool IResettable.TryReset()
             {
-                Set(null, null);
+                _callback = null;
+                _state = null;
+                _autoResetEvent.Reset();
                 return true;
             }
 
