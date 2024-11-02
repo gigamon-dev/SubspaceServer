@@ -7,6 +7,7 @@ namespace SS.Utilities.ObjectPool
     /// <summary>
     /// A policy for pooling of <see cref="LinkedListNode{T}"/> instances.
     /// </summary>
+    /// <typeparam name="T">The element type of the nodes.</typeparam>
     public class LinkedListNodePooledObjectPolicy<T> : IPooledObjectPolicy<LinkedListNode<T>>
     {
         public LinkedListNode<T> Create()
