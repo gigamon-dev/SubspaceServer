@@ -1,33 +1,43 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
-using SS.Utilities.Collections;
 using System;
+using System.Collections.Generic;
 using System.Text;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that watches for a configured set of commands to be executed and notifies staff members when they are.
-    /// </summary>
-    /// <remarks>
-    /// This is the equivalent of the log_staff module in ASSS.
-    /// </remarks>
-    public class CommandWatch(
-        IChat chat,
-        IConfigManager configManager,
-        IObjectPoolManager objectPoolManager) : IModule
+	/// <summary>
+	/// Module that watches for a configured set of commands to be executed and notifies staff members when they are.
+	/// </summary>
+	/// <remarks>
+	/// This is the equivalent of the log_staff module in ASSS.
+	/// </remarks>
+	public class CommandWatch : IModule
     {
-        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+        private readonly IChat _chat;
+		private readonly IConfigManager _configManager;
+		private readonly IObjectPoolManager _objectPoolManager;
 
-        private readonly Trie _watchedCommands = new(false);
+		private readonly HashSet<string> _watchedCommands = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> _watchedCommandsLookup;
         private readonly object _lockObj = new();
 
-        #region Module members
+		public CommandWatch(
+            IChat chat,
+            IConfigManager configManager,
+            IObjectPoolManager objectPoolManager)
+		{
+			_chat = chat ?? throw new ArgumentNullException(nameof(chat));
+			_configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+			_objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
-        bool IModule.Load(IComponentBroker broker)
+            _watchedCommandsLookup = _watchedCommands.GetAlternateLookup<ReadOnlySpan<char>>();
+		}
+
+		#region Module members
+
+		bool IModule.Load(IComponentBroker broker)
         {
             Initialize();
 
@@ -49,7 +59,7 @@ namespace SS.Core.Modules
         {
             lock (_lockObj)
             {
-                if (!_watchedCommands.Contains(command))
+                if (!_watchedCommandsLookup.Contains(command))
                     return;
             }
 
@@ -100,7 +110,7 @@ namespace SS.Core.Modules
                 ReadOnlySpan<char> command;
                 while (!(command = commands.GetToken(" ,:;", out commands)).IsEmpty)
                 {
-                    _watchedCommands.Add(command);
+                    _watchedCommandsLookup.Add(command);
                 }
             }
         }

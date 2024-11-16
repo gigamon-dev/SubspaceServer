@@ -2,10 +2,8 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
-using SS.Utilities.Collections;
 using SS.Utilities.ObjectPool;
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -15,36 +13,52 @@ using System.Threading;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that provides functionality for dispatching commands run by players in chat messages.
-    /// </summary>
-    [CoreModuleInfo]
-    public class CommandManager(
-        IComponentBroker broker,
-        IPlayerData playerData,
-        ILogManager logManager,
-        ICapabilityManager capabilityManager,
-        IConfigManager configManager,
-        IObjectPoolManager objectPoolManager) : IModule, ICommandManager, IModuleLoaderAware
+	/// <summary>
+	/// Module that provides functionality for dispatching commands run by players in chat messages.
+	/// </summary>
+	[CoreModuleInfo]
+    public class CommandManager : IModule, ICommandManager, IModuleLoaderAware
     {
-        private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
-        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-        private InterfaceRegistrationToken<ICommandManager>? _iCommandManagerToken;
+        private readonly IComponentBroker _broker;
+		private readonly IPlayerData _playerData;
+		private readonly ILogManager _logManager;
+		private readonly ICapabilityManager _capabilityManager;
+		private readonly IConfigManager _configManager;
+		private readonly IObjectPoolManager _objectPoolManager;
+		private InterfaceRegistrationToken<ICommandManager>? _iCommandManagerToken;
 
         private IChat? _chat;
 
         private readonly ObjectPool<List<CommandSummary>> _commandSummaryListPool = new DefaultObjectPool<List<CommandSummary>>(new ListPooledObjectPolicy<CommandSummary>() { InitialCapacity = 256 });
 
         private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.NoRecursion);
-        private readonly Trie<LinkedList<CommandData>> _cmdLookup = new(false);
-        private readonly Trie _unloggedCommands = new(false);
+        private readonly Dictionary<string, LinkedList<CommandData>> _commands = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, LinkedList<CommandData>>.AlternateLookup<ReadOnlySpan<char>> _commandsLookup;
+        private readonly HashSet<string> _unloggedCommands = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> _unloggedCommandsLookup;
 
         private readonly object _defaultCommandLock = new();
-        private event DefaultCommandDelegate? DefaultCommandEvent;
+
+		public CommandManager(
+            IComponentBroker broker,
+            IPlayerData playerData,
+            ILogManager logManager,
+            ICapabilityManager capabilityManager,
+            IConfigManager configManager,
+            IObjectPoolManager objectPoolManager)
+		{
+			_broker = broker ?? throw new ArgumentNullException(nameof(broker));
+			_playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+			_logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+			_capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
+			_configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+			_objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
+
+            _commandsLookup = _commands.GetAlternateLookup<ReadOnlySpan<char>>();
+			_unloggedCommandsLookup = _unloggedCommands.GetAlternateLookup<ReadOnlySpan<char>>();
+		}
+
+		private event DefaultCommandDelegate? DefaultCommandEvent;
 
         #region IModule Members
 
@@ -54,7 +68,7 @@ namespace SS.Core.Modules
 
             try
             {
-                _cmdLookup.Clear();
+                _commands.Clear();
             }
             finally
             {
@@ -100,7 +114,7 @@ namespace SS.Core.Modules
 
             try
             {
-                _cmdLookup.Clear();
+                _commands.Clear();
             }
             finally
             {
@@ -166,10 +180,10 @@ namespace SS.Core.Modules
 
             try
             {
-                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData>? ll) == false)
+                if (_commands.TryGetValue(commandName, out LinkedList<CommandData>? ll) == false)
                 {
                     ll = new LinkedList<CommandData>();
-                    _cmdLookup.TryAdd(commandName, ll);
+                    _commands.TryAdd(commandName, ll);
                 }
 
                 ll.AddLast(cd);
@@ -232,7 +246,7 @@ namespace SS.Core.Modules
 
             try
             {
-                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData>? ll) == false)
+                if (_commands.TryGetValue(commandName, out LinkedList<CommandData>? ll) == false)
                     return;
 
                 for (LinkedListNode<CommandData>? node = ll.First; node != null; node = node.Next)
@@ -246,7 +260,7 @@ namespace SS.Core.Modules
                 }
 
                 if (ll.Count == 0)
-                    _cmdLookup.Remove(commandName, out _);
+                    _commands.Remove(commandName, out _);
             }
             finally
             {
@@ -260,7 +274,7 @@ namespace SS.Core.Modules
 
             try
             {
-                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData>? ll) == false)
+                if (_commands.TryGetValue(commandName, out LinkedList<CommandData>? ll) == false)
                     return;
 
                 for (LinkedListNode<CommandData>? node = ll.First; node != null; node = node.Next)
@@ -274,7 +288,7 @@ namespace SS.Core.Modules
                 }
 
                 if (ll.Count == 0)
-                    _cmdLookup.Remove(commandName, out _);
+                    _commands.Remove(commandName, out _);
             }
             finally
             {
@@ -384,7 +398,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    if (_cmdLookup.TryGetValue(cmd, out LinkedList<CommandData>? list))
+                    if (_commandsLookup.TryGetValue(cmd, out LinkedList<CommandData>? list))
                     {
                         foreach (CommandData cd in list)
                         {
@@ -444,7 +458,7 @@ namespace SS.Core.Modules
 
             try
             {
-                if (_cmdLookup.TryGetValue(commandName, out LinkedList<CommandData>? ll))
+                if (_commandsLookup.TryGetValue(commandName, out LinkedList<CommandData>? ll))
                 {
                     for (LinkedListNode<CommandData>? node = ll.First; node != null; node = node.Next)
                     {
@@ -470,7 +484,7 @@ namespace SS.Core.Modules
 
             try
             {
-                _unloggedCommands.Add(commandName);
+				_unloggedCommandsLookup.Add(commandName);
             }
             finally
             {
@@ -484,7 +498,7 @@ namespace SS.Core.Modules
 
             try
             {
-                _unloggedCommands.Remove(commandName);
+				_unloggedCommandsLookup.Remove(commandName);
             }
             finally
             {
@@ -543,7 +557,7 @@ namespace SS.Core.Modules
 
             try
             {
-                if (_unloggedCommands.Contains(cmd))
+                if (_unloggedCommandsLookup.Contains(cmd))
                     parameters = "...";
             }
             finally
@@ -670,7 +684,7 @@ namespace SS.Core.Modules
 
         private void ListCommands(Arena? arena, Player player, Player sendTo, bool excludeGlobal, bool excludeNoAccess)
         {
-            if (_chat == null)
+            if (_chat is null)
                 return;
 
             List<CommandSummary> globalCommands = _commandSummaryListPool.Get();
@@ -680,17 +694,16 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (var (commandName, commandDataList) in _cmdLookup)
+                foreach ((string commandName, LinkedList<CommandData> commandDataList) in _commands)
                 {
-                    var commandNameSpan = commandName.Span;
-                    bool canArena = Allowed(player, commandNameSpan, "cmd", null);
-                    bool canPriv = Allowed(player, commandNameSpan, "privcmd", null);
-                    bool canRemotePriv = Allowed(player, commandNameSpan, "rprivcmd", null);
+                    bool canArena = Allowed(player, commandName, "cmd", null);
+                    bool canPriv = Allowed(player, commandName, "privcmd", null);
+                    bool canRemotePriv = Allowed(player, commandName, "rprivcmd", null);
 
                     if (excludeNoAccess && !canArena && !canPriv && !canRemotePriv)
                         continue;
 
-                    foreach (var commandData in commandDataList!)
+                    foreach (CommandData commandData in commandDataList)
                     {
                         List<CommandSummary>? list = null;
                         if (commandData.Arena is null)
@@ -710,7 +723,7 @@ namespace SS.Core.Modules
                             list?.Add(
                                 new CommandSummary()
                                 {
-                                    Command = new MutableStringBuffer(commandNameSpan), // can't hold onto kvp.Key, create a copy of the string
+                                    Command = commandName, // can't hold onto kvp.Key, create a copy of the string
                                     CanArena = canArena,
                                     CanPriv = canPriv,
                                     CanRemotePriv = canRemotePriv,
@@ -752,12 +765,6 @@ namespace SS.Core.Modules
             {
                 _rwLock.ExitReadLock();
 
-                foreach (var summary in globalCommands)
-                    summary.Command.Dispose();
-
-                foreach (var summary in arenaCommands)
-                    summary.Command.Dispose();
-
                 _commandSummaryListPool.Return(globalCommands);
                 _commandSummaryListPool.Return(arenaCommands);
             }
@@ -784,7 +791,7 @@ namespace SS.Core.Modules
                             sb.Append(':');
                     }
 
-                    sb.Append(commandSummary.Command.Value);
+                    sb.Append(commandSummary.Command);
                 }
             }
         }
@@ -842,7 +849,7 @@ namespace SS.Core.Modules
 
         private struct CommandSummary
         {
-            public MutableStringBuffer Command { get; set; }
+            public string Command { get; set; }
             public bool CanArena { get; set; }
             public bool CanPriv { get; set; }
             public bool CanRemotePriv { get; set; }
@@ -850,60 +857,19 @@ namespace SS.Core.Modules
 
         private class CommandSummaryComparer : IComparer<CommandSummary>
         {
-            public static readonly CommandSummaryComparer Ordinal = new(StringComparison.Ordinal);
-            public static readonly CommandSummaryComparer OrdinalIgnoreCase = new(StringComparison.OrdinalIgnoreCase);
+            public static readonly CommandSummaryComparer Ordinal = new(StringComparer.Ordinal);
+            public static readonly CommandSummaryComparer OrdinalIgnoreCase = new(StringComparer.OrdinalIgnoreCase);
 
-            private readonly StringComparison _stringComparison;
+            private readonly StringComparer _stringComparer;
 
-            private CommandSummaryComparer(StringComparison stringComparison)
-            {
-                _stringComparison = stringComparison;
-            }
+			private CommandSummaryComparer(StringComparer stringComparer)
+			{
+                _stringComparer = stringComparer;
+			}
 
             public int Compare(CommandSummary x, CommandSummary y)
             {
-                return MemoryExtensions.CompareTo(x.Command.Value, y.Command.Value, _stringComparison);
-            }
-        }
-
-        private struct MutableStringBuffer : IDisposable
-        {
-            public char[]? Array { get; private set; }
-            public int Length { get; private set; }
-
-            public ReadOnlySpan<char> Value => Array is null ? ReadOnlySpan<char>.Empty : new ReadOnlySpan<char>(Array, 0, Length);
-
-            public MutableStringBuffer(ReadOnlySpan<char> value)
-            {
-                Array = null;
-                Length = 0;
-
-                Set(value);
-            }
-
-            public void Set(ReadOnlySpan<char> value)
-            {
-                if (Array is not null
-                    && (value.IsEmpty || Array.Length < value.Length))
-                {
-                    ArrayPool<char>.Shared.Return(Array);
-                    Array = null;
-                }
-
-                if (value.IsEmpty)
-                {
-                    Length = 0;
-                    return;
-                }
-
-                Array ??= ArrayPool<char>.Shared.Rent(value.Length);
-                value.CopyTo(Array);
-                Length = value.Length;
-            }
-
-            public void Dispose()
-            {
-                Set(ReadOnlySpan<char>.Empty);
+                return _stringComparer.Compare(x.Command, y.Command);
             }
         }
 

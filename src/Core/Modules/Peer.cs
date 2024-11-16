@@ -1024,23 +1024,27 @@ namespace SS.Core.Modules
                     string? sendDummyArenas = _configManager.GetStr(_configManager.Global, peerSection, "SendDummyArenas");
                     if (!string.IsNullOrWhiteSpace(sendDummyArenas))
                     {
-                        ReadOnlySpan<char> remaining = sendDummyArenas;
-                        ReadOnlySpan<char> token;
-                        while (!(token = remaining.GetToken(" \t:;,", out remaining)).IsEmpty)
+                        foreach (Range range in sendDummyArenas.AsSpan().SplitAny(' ', '\t', ':', ';', ','))
                         {
-                            peerZone.Config.SendDummyArenas.Add(token.ToString());
-                        }
+                            ReadOnlySpan<char> arenaName = sendDummyArenas[range].Trim();
+                            if (arenaName.IsEmpty)
+                                continue;
+
+							peerZone.Config.SendDummyArenasLookup.Add(arenaName);
+						}
                     }
 
                     string? relayArenas = _configManager.GetStr(_configManager.Global, peerSection, "RelayArenas");
                     if (!string.IsNullOrWhiteSpace(relayArenas))
                     {
-                        ReadOnlySpan<char> remaining = relayArenas;
-                        ReadOnlySpan<char> token;
-                        while (!(token = remaining.GetToken(" \t:;,", out remaining)).IsEmpty)
-                        {
-                            peerZone.Config.RelayArenas.Add(token.ToString());
-                        }
+						foreach (Range range in relayArenas.AsSpan().SplitAny(' ', '\t', ':', ';', ','))
+						{
+							ReadOnlySpan<char> arenaName = relayArenas[range].Trim();
+							if (arenaName.IsEmpty)
+								continue;
+
+							peerZone.Config.RelayArenasLookup.Add(arenaName);
+						}
                     }
 
                     string? renameArenas = _configManager.GetStr(_configManager.Global, peerSection, "RenameArenas");
@@ -1204,7 +1208,7 @@ namespace SS.Core.Modules
             if (peerZone is null)
                 return false;
 
-            return peerZone.Config.SendDummyArenas.Contains(localName);
+            return peerZone.Config.SendDummyArenasLookup.Contains(localName);
         }
 
         private bool HasArenaConfiguredAsRelay(PeerZone peerZone, ReadOnlySpan<char> localName)
@@ -1212,7 +1216,7 @@ namespace SS.Core.Modules
             if (peerZone is null)
                 return false;
 
-            return peerZone.Config.RelayArenas.Contains(localName);
+            return peerZone.Config.RelayArenasLookup.Contains(localName);
         }
 
         private PeerZone? FindZone(SocketAddress address)
@@ -1353,15 +1357,20 @@ namespace SS.Core.Modules
 
             public readonly List<string> Arenas = new();
             public readonly List<PeerArenaName> RenamedArenas = new();
-            public readonly Trie SendDummyArenas = new(false);
-            public readonly Trie RelayArenas = new(false);
+            public readonly HashSet<string> SendDummyArenas = new(StringComparer.OrdinalIgnoreCase);
+            public readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> SendDummyArenasLookup;
+            public readonly HashSet<string> RelayArenas = new(StringComparer.OrdinalIgnoreCase);
+			public readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> RelayArenasLookup;
 
-            public PeerZoneConfig(IPEndPoint endPoint)
+			public PeerZoneConfig(IPEndPoint endPoint)
             {
                 IPEndPoint = endPoint;
                 SocketAddress = IPEndPoint.Serialize();
                 _ipAddressBytes = IPEndPoint.Address.GetAddressBytes();
                 Port = (ushort)IPEndPoint.Port;
+
+                SendDummyArenasLookup = SendDummyArenas.GetAlternateLookup<ReadOnlySpan<char>>();
+                RelayArenasLookup = RelayArenas.GetAlternateLookup<ReadOnlySpan<char>>();
             }
         }
 

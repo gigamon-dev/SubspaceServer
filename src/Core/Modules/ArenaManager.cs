@@ -33,8 +33,8 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly ReaderWriterLockSlim _arenaLock = new(LockRecursionPolicy.SupportsRecursion);
 
-        private readonly Dictionary<string, Arena> _arenaDictionary = new(Constants.TargetArenaCount, StringComparer.OrdinalIgnoreCase);
-        private readonly Trie<Arena> _arenaTrie = new(false);
+        private readonly Dictionary<string, Arena> _arenas = new(Constants.TargetArenaCount, StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Arena>.AlternateLookup<ReadOnlySpan<char>> _arenasLookup;
 
         /// <summary>
         /// Key = module Type
@@ -117,7 +117,8 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _serverTimer = serverTimer ?? throw new ArgumentNullException(nameof(serverTimer));
 
-            _readOnlyKnownArenaNames = _knownArenaNames.AsReadOnly();
+            _arenasLookup = _arenas.GetAlternateLookup<ReadOnlySpan<char>>();
+			_readOnlyKnownArenaNames = _knownArenaNames.AsReadOnly();
 
             _arenaConfChanged = ArenaConfChanged;
             _arenaSyncDone = ArenaSyncDone;
@@ -241,8 +242,7 @@ namespace SS.Core.Modules
 
             ((IArenaManager)this).FreeArenaData(ref _adKey);
 
-            _arenaDictionary.Clear();
-            _arenaTrie.Clear();
+            _arenas.Clear();
 
             return true;
         }
@@ -261,7 +261,7 @@ namespace SS.Core.Modules
             ReadUnlock();
         }
 
-        Dictionary<string, Arena>.ValueCollection IArenaManager.Arenas => _arenaDictionary.Values;
+        Dictionary<string, Arena>.ValueCollection IArenaManager.Arenas => _arenas.Values;
 
         bool IArenaManager.RecycleArena(Arena arena)
         {
@@ -407,7 +407,7 @@ namespace SS.Core.Modules
                         try
                         {
                             // Use the per-arena data object to store temporary counts.
-                            foreach (Arena arena in _arenaDictionary.Values)
+                            foreach (Arena arena in _arenas.Values)
                             {
                                 if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                                     continue;
@@ -447,7 +447,7 @@ namespace SS.Core.Modules
                             }
 
                             // Update each arena's player counts from the counts in the per-arena data.
-                            foreach (Arena arena in _arenaDictionary.Values)
+                            foreach (Arena arena in _arenas.Values)
                             {
                                 if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                                     continue;
@@ -533,7 +533,7 @@ namespace SS.Core.Modules
                 // Remove the data from every arena
                 //
 
-                foreach (Arena arena in _arenaDictionary.Values)
+                foreach (Arena arena in _arenas.Values)
                 {
                     if (arena.TryRemoveExtraData(key.Id, out object? data))
                     {
@@ -1017,7 +1017,7 @@ namespace SS.Core.Modules
             WriteLock();
             try
             {
-                foreach (Arena arena in _arenaDictionary.Values)
+                foreach (Arena arena in _arenas.Values)
                 {
                     if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                         continue;
@@ -1176,8 +1176,7 @@ namespace SS.Core.Modules
                                 }
                                 else
                                 {
-                                    _arenaDictionary.Remove(arena.Name);
-                                    _arenaTrie.Remove(arena.Name, out _);
+                                    _arenas.Remove(arena.Name);
 
                                     // remove all the extra data object and return them to their factory
                                     foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
@@ -1198,11 +1197,9 @@ namespace SS.Core.Modules
                             {
                                 _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, "Failed to detach modules from arena, arena will not be destroyed. Check for correct interface releasing.");
 
-                                _arenaDictionary.Remove(arena.Name);
-                                _arenaTrie.Remove(arena.Name, out _);
+                                _arenas.Remove(arena.Name);
                                 string failName = Guid.NewGuid().ToString("N");
-                                _arenaDictionary.Add(failName, arena);
-                                _arenaTrie.Add(failName, arena);
+                                _arenas.Add(failName, arena);
 
                                 _logManager.LogA(LogLevel.Error, nameof(ArenaManager), arena, "WARNING: The server is no longer in a stable state because of this error. your modules need to be fixed.");
 
@@ -1313,7 +1310,7 @@ namespace SS.Core.Modules
                 _playerData.Lock();
                 try
                 {
-                    foreach (Arena arena in _arenaDictionary.Values)
+                    foreach (Arena arena in _arenas.Values)
                     {
                         if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                             continue;
@@ -1344,7 +1341,7 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    foreach (Arena arena in _arenaDictionary.Values)
+                    foreach (Arena arena in _arenas.Values)
                     {
                         if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                             continue;
@@ -1378,7 +1375,7 @@ namespace SS.Core.Modules
 
             try
             {
-                foreach (Arena arena in _arenaDictionary.Values)
+                foreach (Arena arena in _arenas.Values)
                 {
                     arena.CleanupTeamTargets();
                 }
@@ -1622,7 +1619,7 @@ namespace SS.Core.Modules
             ReadLock();
             try
             {
-                if (_arenaTrie.TryGetValue(name, out Arena? arena) == false)
+                if (!_arenasLookup.TryGetValue(name, out Arena? arena))
                     return null;
 
                 if (minState is not null && arena.Status < minState)
@@ -1654,8 +1651,7 @@ namespace SS.Core.Modules
                     arena.SetExtraData(keyId, factory.Get());
                 }
 
-                _arenaDictionary.Add(arenaName, arena);
-                _arenaTrie.Add(name, arena);
+                _arenas.Add(arenaName, arena);
             }
             finally
             {
@@ -1778,7 +1774,7 @@ namespace SS.Core.Modules
                 // Add the data to each arena.
                 //
 
-                foreach (Arena arena in _arenaDictionary.Values)
+                foreach (Arena arena in _arenas.Values)
                 {
                     arena.SetExtraData(keyId, factory.Get());
                 }

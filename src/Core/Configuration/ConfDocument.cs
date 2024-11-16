@@ -1,5 +1,4 @@
 ﻿using SS.Utilities;
-using SS.Utilities.Collections;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -9,15 +8,15 @@ using System.Threading.Tasks;
 
 namespace SS.Core.Configuration
 {
-    /// <summary>
-    /// A configuration "document" which is loaded from 1 or more <see cref="ConfFile"/> objects
-    /// starting from a base/root .conf file.
-    /// 
-    /// Whereas a <see cref="ConfFile"/> tokenizes a .conf file into a line by line object model.
-    /// This interprets the tokens further by first handling preprocessor directives, 
-    /// and then finally into a section, property representation.
-    /// </summary>
-    public class ConfDocument
+	/// <summary>
+	/// A configuration "document" which is loaded from 1 or more <see cref="ConfFile"/> objects
+	/// starting from a base/root .conf file.
+	/// 
+	/// Whereas a <see cref="ConfFile"/> tokenizes a .conf file into a line by line object model.
+	/// This interprets the tokens further by first handling preprocessor directives, 
+	/// and then finally into a section, property representation.
+	/// </summary>
+	public class ConfDocument
     {
         private readonly string? _name;
         private readonly IConfFileProvider _fileProvider;
@@ -41,7 +40,9 @@ namespace SS.Core.Configuration
         /// <summary>
         /// Active settings
         /// </summary>
-        private readonly Trie<SettingInfo> _settings = new(false);
+        private readonly Dictionary<string, SettingInfo> _settings = new(StringComparer.OrdinalIgnoreCase);
+
+        private readonly Dictionary<string, SettingInfo>.AlternateLookup<ReadOnlySpan<char>> _settingsLookup;
 
         /// <summary>
         /// The file currently being updated.
@@ -75,7 +76,9 @@ namespace SS.Core.Configuration
             _name = name;
             _fileProvider = fileProvider ?? throw new ArgumentNullException(nameof(fileProvider));
             _logger = logger;
-        }
+
+            _settingsLookup = _settings.GetAlternateLookup<ReadOnlySpan<char>>();
+		}
 
         /// <summary>
         /// Whether the document needs to be reloaded because one of the files it depends on has changed.
@@ -155,7 +158,7 @@ namespace SS.Core.Configuration
                     RawProperty rawProperty = (RawProperty)lineRef.Line;
                     string? section = rawProperty.SectionOverride ?? currentSection;
 
-                    Settings_AddOrReplace(
+                    AddOrReplaceSettingInfo(
                         section,
                         rawProperty.Key,
                         new SettingInfo()
@@ -185,33 +188,32 @@ namespace SS.Core.Configuration
             }
         }
 
-        private void Settings_AddOrReplace(ReadOnlySpan<char> section, ReadOnlySpan<char> key, SettingInfo settingInfo)
+        private void AddOrReplaceSettingInfo(ReadOnlySpan<char> section, ReadOnlySpan<char> key, SettingInfo settingInfo)
         {
             if (section.IsEmpty && key.IsEmpty)
                 throw new Exception("No section or key specified");
 
             ArgumentNullException.ThrowIfNull(settingInfo);
 
-            Span<char> trieKey = stackalloc char[!section.IsEmpty && !key.IsEmpty ? section.Length + 1 + key.Length : (!section.IsEmpty ? section.Length : key.Length)];
+            Span<char> settingKey = stackalloc char[!section.IsEmpty && !key.IsEmpty ? section.Length + 1 + key.Length : (!section.IsEmpty ? section.Length : key.Length)];
             if (!section.IsEmpty && !key.IsEmpty)
             {
-                bool success = trieKey.TryWrite($"{section}:{key}", out int charsWritten);
-                Debug.Assert(success && charsWritten == trieKey.Length);
+                bool success = settingKey.TryWrite($"{section}:{key}", out int charsWritten);
+                Debug.Assert(success && charsWritten == settingKey.Length);
             }
             else if (!section.IsEmpty)
             {
-                section.CopyTo(trieKey);
+                section.CopyTo(settingKey);
             }
             else
             {
-                key.CopyTo(trieKey);
+                key.CopyTo(settingKey);
             }
 
-            _settings.Remove(trieKey, out _);
-            _settings.TryAdd(trieKey, settingInfo);
+            _settingsLookup[settingKey] = settingInfo;
         }
 
-        private bool Settings_TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, [MaybeNullWhen(false)] out SettingInfo settingInfo)
+        private bool TryGetSettingInfo(ReadOnlySpan<char> section, ReadOnlySpan<char> key, [MaybeNullWhen(false)] out SettingInfo settingInfo)
         {
             if (section.IsEmpty && key.IsEmpty)
                 throw new Exception("No section or key specified");
@@ -231,7 +233,7 @@ namespace SS.Core.Configuration
                 key.CopyTo(trieKey);
             }
 
-            return _settings.TryGetValue(trieKey, out settingInfo);
+            return _settingsLookup.TryGetValue(trieKey, out settingInfo);
         }
 
         /// <summary>
@@ -243,7 +245,7 @@ namespace SS.Core.Configuration
         /// <returns><see langword="true"/> if the property was found; otherwise, <see langword="false"/>.</returns>
         public bool TryGetValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, [MaybeNullWhen(false)] out string value)
         {
-            if (!Settings_TryGetValue(section, key, out SettingInfo? settingInfo))
+            if (!TryGetSettingInfo(section, key, out SettingInfo? settingInfo))
             {
                 value = default;
                 return false;
@@ -307,7 +309,7 @@ namespace SS.Core.Configuration
         /// <param name="options">Options that affect how <paramref name="permanent"/> settings are saved to conf files.</param>
         public void UpdateOrAddProperty(string section, string key, string value, bool permanent, string? comment = null, ModifyOptions options = ModifyOptions.None)
         {
-            if (Settings_TryGetValue(section, key, out SettingInfo? settingInfo))
+            if (TryGetSettingInfo(section, key, out SettingInfo? settingInfo))
             {
                 // The setting exists, update it.
                 settingInfo.Value = value;
@@ -323,7 +325,7 @@ namespace SS.Core.Configuration
                 };
 
                 // Add the setting to our in-memory collection of settings.
-                Settings_AddOrReplace(section, key, settingInfo);
+                AddOrReplaceSettingInfo(section, key, settingInfo);
             }
 
             if (permanent)

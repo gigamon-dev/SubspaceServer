@@ -1,44 +1,39 @@
-﻿using Microsoft.Extensions.ObjectPool;
+﻿using CommunityToolkit.HighPerformance.Buffers;
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Utilities.Collections;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that implements capability management (<see cref="ICapabilityManager"/>) functionality by group (<see cref="IGroupManager"/>).
-    ///
-    /// <para>
-    /// Groups are configured in the "groupdef.conf" global config file.  
-    /// Within it, groups are defined and capablities assigned to each group. 
-    /// Sections are the group names and the properties within them are the capabilities.
-    /// </para>
-    /// 
-    /// <para>
-    /// Groups are further configured in the "staff.conf" global config file.
-    /// The [GroupPasswords] section can be used to set passwords for groups that can be logged into.
-    /// Group membership can be configured globally using the [(global)] section, 
-    /// or per arena using the base arena name for the section name 
-    /// (e.g. [turf] for turf, turf1, ..., turf{N}  arenas).
-    /// </para>
-    /// </summary>
-    [CoreModuleInfo]
-    public class CapabilityManager(
-        IComponentBroker broker,
-        IPlayerData playerData,
-        IArenaManager arenaManager,
-        ILogManager logManager,
-        IConfigManager configManager) : IAsyncModule, ICapabilityManager, IGroupManager
+	/// <summary>
+	/// Module that implements capability management (<see cref="ICapabilityManager"/>) functionality by group (<see cref="IGroupManager"/>).
+	///
+	/// <para>
+	/// Groups are configured in the "groupdef.conf" global config file.  
+	/// Within it, groups are defined and capablities assigned to each group. 
+	/// Sections are the group names and the properties within them are the capabilities.
+	/// </para>
+	/// 
+	/// <para>
+	/// Groups are further configured in the "staff.conf" global config file.
+	/// The [GroupPasswords] section can be used to set passwords for groups that can be logged into.
+	/// Group membership can be configured globally using the [(global)] section, 
+	/// or per arena using the base arena name for the section name 
+	/// (e.g. [turf] for turf, turf1, ..., turf{N}  arenas).
+	/// </para>
+	/// </summary>
+	[CoreModuleInfo]
+    public class CapabilityManager : IAsyncModule, ICapabilityManager, IGroupManager
     {
-        private readonly IComponentBroker _broker = broker;
-        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-        private InterfaceRegistrationToken<ICapabilityManager>? _iCapabilityManagerToken;
+        private readonly IComponentBroker _broker;
+		private readonly IPlayerData _playerData;
+		private readonly IArenaManager _arenaManager;
+		private readonly ILogManager _logManager;
+		private readonly IConfigManager _configManager;
+		private InterfaceRegistrationToken<ICapabilityManager>? _iCapabilityManagerToken;
         private InterfaceRegistrationToken<IGroupManager>? _iGroupManagerToken;
 
         private PlayerDataKey<PlayerData> _pdkey;
@@ -50,15 +45,28 @@ namespace SS.Core.Modules
         private const string Group_Default = "default";
         private const string Group_None = "none";
 
-        private readonly Trie<string> _groupNameCache = new(false)
-        {
-            { Group_Default, Group_Default },
-            { Group_None, Group_None }
-        };
+        private readonly StringPool _groupNamePool = new(16);
+        
+        public CapabilityManager(
+            IComponentBroker broker,
+            IPlayerData playerData,
+            IArenaManager arenaManager,
+            ILogManager logManager,
+            IConfigManager configManager)
+		{
+			_broker = broker;
+			_playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+			_arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+			_logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+			_configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
 
-        #region IModule Members
+            _groupNamePool.Add(Group_Default);
+			_groupNamePool.Add(Group_None);
+		}
 
-        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
+		#region IModule Members
+
+		async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _pdkey = _playerData.AllocatePlayerData(_playerDataPool);
 
@@ -206,7 +214,7 @@ namespace SS.Core.Modules
                 return;
 
             // first set it for the current session
-            playerData.Group = GetOrAddCachedGroupName(group);
+            playerData.Group = _groupNamePool.GetOrAdd(group);
 
             // now set it permanently
             if (global)
@@ -232,7 +240,7 @@ namespace SS.Core.Modules
             if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
-            playerData.Group = GetOrAddCachedGroupName(group);
+            playerData.Group = _groupNamePool.GetOrAdd(group);
             playerData.Source = GroupSource.Temp;
         }
 
@@ -350,7 +358,7 @@ namespace SS.Core.Modules
             string? group;
             if (arena != null && !string.IsNullOrEmpty(group = _configManager.GetStr(_staffConfHandle, arena.BaseName, player.Name)))
             {
-                playerData.Group = GetOrAddCachedGroupName(group);
+                playerData.Group = _groupNamePool.GetOrAdd(group);
                 playerData.Source = GroupSource.Arena;
 
                 if (log)
@@ -369,7 +377,7 @@ namespace SS.Core.Modules
             else if (!string.IsNullOrEmpty(group = _configManager.GetStr(_staffConfHandle, Constants.ArenaGroup_Global, player.Name)))
             {
                 // only global groups available for now
-                playerData.Group = GetOrAddCachedGroupName(group);
+                playerData.Group = _groupNamePool.GetOrAdd(group);
                 playerData.Source = GroupSource.Global;
 
                 if (log)
@@ -380,17 +388,6 @@ namespace SS.Core.Modules
                 playerData.Group = Group_Default;
                 playerData.Source = GroupSource.Default;
             }
-        }
-
-        private string GetOrAddCachedGroupName(ReadOnlySpan<char> group)
-        {
-            if (_groupNameCache.TryGetValue(group, out string? groupStr))
-                return groupStr;
-
-            // Add it to the cache.
-            groupStr = group.ToString();
-            _groupNameCache.Add(group, groupStr);
-            return groupStr;
         }
 
         #region Helper Types

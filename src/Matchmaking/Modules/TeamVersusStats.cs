@@ -8,7 +8,6 @@ using SS.Matchmaking.Interfaces;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
 using SS.Utilities;
-using SS.Utilities.Collections;
 using SS.Utilities.Json;
 using SS.Utilities.ObjectPool;
 using System.Diagnostics;
@@ -19,10 +18,10 @@ using System.Text.Json;
 
 namespace SS.Matchmaking.Modules
 {
-    /// <summary>
-    /// Module that tracks stats for team versus matches.
-    /// </summary>
-    [ModuleInfo($"""
+	/// <summary>
+	/// Module that tracks stats for team versus matches.
+	/// </summary>
+	[ModuleInfo($"""
         Tracks stats for team versus matches.
         For use with the {nameof(TeamVersusMatch)} module.
         """)]
@@ -90,20 +89,22 @@ namespace SS.Matchmaking.Modules
         /// <remarks>
         /// Key: base arena name
         /// </remarks>
-        private readonly Trie<(string LvlFilename, uint Checksum)> _arenaLvlTrie = new(false);
+        private readonly Dictionary<string, (string LvlFilename, uint Checksum)> _arenaMapInfo = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, (string LvlFilename, uint Checksum)>.AlternateLookup<ReadOnlySpan<char>> _arenaMapInfoLookup;
 
-        /// <summary>
-        /// Arena settings by base arena name.
-        /// </summary>
-        /// <remarks>
-        /// Key: base arena name
-        /// </remarks>
-        private readonly Trie<ArenaSettings> _arenaSettingsTrie = new(false);
+		/// <summary>
+		/// Arena settings by base arena name.
+		/// </summary>
+		/// <remarks>
+		/// Key: base arena name
+		/// </remarks>
+		private readonly Dictionary<string, ArenaSettings> _arenaSettings = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, ArenaSettings>.AlternateLookup<ReadOnlySpan<char>> _arenaSettingsLookup;
 
-        /// <summary>
-        /// Dictionary of <see cref="MatchStats"/> by <see cref="MatchIdentifier"/> for matches that are currently in progress.
-        /// </summary>
-        private readonly Dictionary<MatchIdentifier, MatchStats> _matchStatsDictionary = new();
+		/// <summary>
+		/// Dictionary of <see cref="MatchStats"/> by <see cref="MatchIdentifier"/> for matches that are currently in progress.
+		/// </summary>
+		private readonly Dictionary<MatchIdentifier, MatchStats> _matchStatsDictionary = new();
 
         /// <summary>
         /// Dictionary that links a player (by player name) to their <see cref="MemberStats"/> of the match currently in progress that they are assigned a slot in.
@@ -136,7 +137,10 @@ namespace SS.Matchmaking.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _watchDamage = watchDamage ?? throw new ArgumentNullException(nameof(watchDamage));
-        }
+
+            _arenaMapInfoLookup = _arenaMapInfo.GetAlternateLookup<ReadOnlySpan<char>>();
+            _arenaSettingsLookup = _arenaSettings.GetAlternateLookup<ReadOnlySpan<char>>();
+		}
 
         #region Module members
 
@@ -1169,7 +1173,7 @@ namespace SS.Matchmaking.Modules
                     else if (!Arena.TryParseArenaName(matchData.ArenaName, out arenaBaseName, out _))
                         arenaBaseName = "";
 
-                    if (_arenaLvlTrie.TryGetValue(arenaBaseName, out var lvlTuple))
+                    if (_arenaMapInfoLookup.TryGetValue(arenaBaseName, out var lvlTuple))
                     {
                         writer.WriteString("lvl_file_name"u8, lvlTuple.LvlFilename);
                         writer.WriteNumber("lvl_checksum"u8, (int)lvlTuple.Checksum);
@@ -1191,10 +1195,10 @@ namespace SS.Matchmaking.Modules
         {
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
             {
-                if (!_arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings? arenaSettings))
+                if (!_arenaSettings.TryGetValue(arena.BaseName, out ArenaSettings? arenaSettings))
                 {
                     arenaSettings = new ArenaSettings();
-                    _arenaSettingsTrie.Add(arena.BaseName, arenaSettings);
+                    _arenaSettings.Add(arena.BaseName, arenaSettings);
                 }
 
                 arenaSettings.BombDamageLevel = _clientSettings.GetSetting(arena, _bombDamageLevelClientSettingId) / 1000;
@@ -1219,7 +1223,7 @@ namespace SS.Matchmaking.Modules
                 if (mapPath is not null)
                     mapPath = Path.GetFileName(mapPath);
 
-                _arenaLvlTrie[arena.BaseName] = (mapPath!, _mapData.GetChecksum(arena, 0));
+                _arenaMapInfo[arena.BaseName] = (mapPath!, _mapData.GetChecksum(arena, 0));
             }
         }
 
@@ -1355,7 +1359,7 @@ namespace SS.Matchmaking.Modules
                 return;
 
             Arena? arena = player.Arena;
-            if (arena is null || !_arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings? arenaSettings))
+            if (arena is null || !_arenaSettings.TryGetValue(arena.BaseName, out ArenaSettings? arenaSettings))
                 return;
 
             MemberStats? playerStats = playerData.MemberStats;
@@ -1605,7 +1609,7 @@ namespace SS.Matchmaking.Modules
                 memberStats.LastPositionTime = positionPacket.Time;
 
                 Arena? arena = player.Arena;
-                if (arena is not null && _arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings? arenaSettings))
+                if (arena is not null && _arenaSettings.TryGetValue(arena.BaseName, out ArenaSettings? arenaSettings))
                 {
                     int shipIndex = (int)player.Ship;
                     ShipSettings arenaShipSettings = arenaSettings.ShipSettings[shipIndex];
@@ -1935,7 +1939,7 @@ namespace SS.Matchmaking.Modules
             else if (!Arena.TryParseArenaName(matchData.ArenaName, out arenaBaseName, out _))
                 return;
 
-            if (!_arenaSettingsTrie.TryGetValue(arenaBaseName, out ArenaSettings? arenaSettings))
+            if (!_arenaSettingsLookup.TryGetValue(arenaBaseName, out ArenaSettings? arenaSettings))
                 return;
 
             ShipSettings killedShipSettings = arenaSettings.ShipSettings[(int)ship];
@@ -2424,7 +2428,7 @@ namespace SS.Matchmaking.Modules
                 Arena? arena = player.Arena;
                 if (ship != ShipType.Spec
                     && arena is not null
-                    && _arenaSettingsTrie.TryGetValue(arena.BaseName, out ArenaSettings? arenaSettings))
+                    && _arenaSettings.TryGetValue(arena.BaseName, out ArenaSettings? arenaSettings))
                 {
                     int shipIndex = (int)ship;
                     ShipSettings arenaShipSettings = arenaSettings.ShipSettings[shipIndex];

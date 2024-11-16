@@ -2,17 +2,16 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
-using SS.Utilities.Collections;
 using System;
 using System.Collections.Generic;
 using System.Text;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that provides compatibility to use bots that were written to use subgame commands.
-    /// </summary>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module that provides compatibility to use bots that were written to use subgame commands.
+	/// </summary>
+	[CoreModuleInfo]
     public class SubgameCompatibility : IModule, IChatAdvisor
     {
         // Required dependencies
@@ -33,7 +32,7 @@ namespace SS.Core.Modules
 
         private AdvisorRegistrationToken<IChatAdvisor>? _chatAdvisorToken;
 
-        private readonly Trie<string> _aliases = new(false)
+        private readonly Dictionary<string, string> _aliases = new(StringComparer.OrdinalIgnoreCase)
         {
             {"?recycle",    "recyclearena"},
             {"?get",        "geta"},
@@ -64,6 +63,8 @@ namespace SS.Core.Modules
             {"*scorereset", "sg_scorereset"},
         };
 
+        private readonly Dictionary<string, string>.AlternateLookup<ReadOnlySpan<char>> _aliasesLookup;
+
         public SubgameCompatibility(
             IChat chat,
             ICommandManager commandManager,
@@ -88,7 +89,9 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _scoreStats = scoreStats ?? throw new ArgumentNullException(nameof(scoreStats));
-        }
+
+            _aliasesLookup = _aliases.GetAlternateLookup<ReadOnlySpan<char>>();
+		}
 
         #region Module members
 
@@ -164,7 +167,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            if (!_aliases.TryGetValue(key, out string? replacementCommand))
+            if (!_aliasesLookup.TryGetValue(key, out string? replacementCommand))
             {
                 charsWritten = 0;
                 return false;

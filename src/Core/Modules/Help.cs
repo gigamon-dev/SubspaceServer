@@ -23,19 +23,14 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public sealed class Help(
-        IChat chat,
-        ICommandManager commandManager,
-        IConfigManager configManager,
-        ILogManager logManager,
-        IObjectPoolManager objectPoolManager) : IModule, IModuleLoaderAware, IHelp, IConfigHelp, IDisposable
+    public sealed class Help : IModule, IModuleLoaderAware, IHelp, IConfigHelp, IDisposable
     {
-        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-        private InterfaceRegistrationToken<IHelp>? _iHelpToken;
+        private readonly IChat _chat;
+		private readonly ICommandManager _commandManager;
+		private readonly IConfigManager _configManager;
+		private readonly ILogManager _logManager;
+		private readonly IObjectPoolManager _objectPoolManager;
+		private InterfaceRegistrationToken<IHelp>? _iHelpToken;
         private InterfaceRegistrationToken<IConfigHelp>? _iConfigHelpToken;
 
         private string _helpCommandName = "man";
@@ -66,13 +61,15 @@ namespace SS.Core.Modules
         /// Key = section,
         /// Value = list of known keys
         /// </remarks>
-        private readonly Trie<List<string>> _sectionKeysTrie = new(false);
+        private readonly Dictionary<string, List<string>> _sectionKeys = new(StringComparer.OrdinalIgnoreCase);
+
+        private readonly Dictionary<string, List<string>>.AlternateLookup<ReadOnlySpan<char>> _sectionKeysLookup;
 
         // For use by the writer (there can only be one at a given time).
         private readonly SortedSet<string> _sortedSet = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// Lock for synchronizing access to <see cref="_assemblyConfigHelpDictionary"/>, <see cref="_configHelpTrie"/>, <see cref="_sectionList"/>, and <see cref="_sectionKeysTrie"/>.
+        /// Lock for synchronizing access to <see cref="_assemblyConfigHelpDictionary"/>, <see cref="_configHelpTrie"/>, <see cref="_sectionList"/>, and <see cref="_sectionKeys"/>.
         /// </summary>
         private readonly ReaderWriterLockSlim _rwLock = new();
 
@@ -93,10 +90,26 @@ namespace SS.Core.Modules
         /// Lock for synchronizing access to <see cref="_loadQueue"/> and <see cref="_loadTask"/>.
         /// </summary>
         private readonly object _loadLock = new();
+        
+        public Help(
+            IChat chat,
+            ICommandManager commandManager,
+            IConfigManager configManager,
+            ILogManager logManager,
+            IObjectPoolManager objectPoolManager)
+		{
+			_chat = chat ?? throw new ArgumentNullException(nameof(chat));
+			_commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+			_configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+			_logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+			_objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
-        #region Module members
+			_sectionKeysLookup = _sectionKeys.GetAlternateLookup<ReadOnlySpan<char>>();
+		}
 
-        bool IModule.Load(IComponentBroker broker)
+		#region Module members
+
+		bool IModule.Load(IComponentBroker broker)
         {
             PluginAssemblyLoadedCallback.Register(broker, Callback_PluginAssemblyLoaded);
             PluginAssemblyUnloadingCallback.Register(broker, Callback_PluginAssemblyUnloading);
@@ -161,7 +174,7 @@ namespace SS.Core.Modules
                             _assemblyConfigHelpDictionary.Clear();
                             _configHelpTrie.Clear();
                             _sectionList.Clear();
-                            _sectionKeysTrie.Clear();
+                            _sectionKeys.Clear();
                         }
                         finally
                         {
@@ -213,7 +226,7 @@ namespace SS.Core.Modules
             if (!_rwLock.IsReadLockHeld)
                 throw new InvalidOperationException($"{nameof(IConfigHelp)}.{nameof(IConfigHelp.Lock)} was not called.");
 
-            if (!_sectionKeysTrie.TryGetValue(section, out List<string>? keys))
+            if (!_sectionKeysLookup.TryGetValue(section, out List<string>? keys))
             {
                 keyList = null;
                 return false;
@@ -402,7 +415,7 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        if (!_sectionKeysTrie.TryGetValue(section, out List<string>? keyList))
+                        if (!_sectionKeysLookup.TryGetValue(section, out List<string>? keyList))
                         {
                             _chat.SendMessage(player, $"Config file section '{section}' not found.");
                             return;
@@ -805,7 +818,7 @@ namespace SS.Core.Modules
             void RefreshKeys()
             {
                 // Clear each section's keys.
-                foreach (List<string> keyList in _sectionKeysTrie.Values)
+                foreach (List<string> keyList in _sectionKeys.Values)
                 {
                     keyList.Clear();
                 }
@@ -822,11 +835,11 @@ namespace SS.Core.Modules
 
                 bool TryRemoveOneEmpty()
                 {
-                    foreach (var (section, keyList) in _sectionKeysTrie)
+                    foreach (var (section, keyList) in _sectionKeys)
                     {
                         if (keyList.Count == 0)
                         {
-                            _sectionKeysTrie.Remove(section.Span, out _);
+							_sectionKeys.Remove(section, out _);
                             return true;
                         }
                     }
@@ -851,7 +864,7 @@ namespace SS.Core.Modules
                     }
                 }
 
-                if (_sectionKeysTrie.TryGetValue(section, out List<string>? keyList))
+                if (_sectionKeys.TryGetValue(section, out List<string>? keyList))
                 {
                     keyList.Clear();
                     keyList.AddRange(_sortedSet);
@@ -859,7 +872,7 @@ namespace SS.Core.Modules
                 else
                 {
                     keyList = new List<string>(_sortedSet);
-                    _sectionKeysTrie.Add(section, keyList);
+                    _sectionKeys.Add(section, keyList);
                 }
             }
         }

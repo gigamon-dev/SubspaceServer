@@ -4,7 +4,6 @@ using SS.Core.Configuration;
 using SS.Core.Map;
 using SS.Packets.Game;
 using SS.Utilities;
-using SS.Utilities.Collections;
 using SS.Utilities.ObjectPool;
 using System;
 using System.Buffers;
@@ -20,13 +19,13 @@ using static SS.Core.ComponentInterfaces.IPeer;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that handles the majority of player commands.
-    /// </summary>
-    /// <remarks>
-    /// See the <see cref="AdminCommand"/> module for other commands that are geared towards server administration.
-    /// </remarks>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module that handles the majority of player commands.
+	/// </summary>
+	/// <remarks>
+	/// See the <see cref="AdminCommand"/> module for other commands that are geared towards server administration.
+	/// </remarks>
+	[CoreModuleInfo]
     public class PlayerCommand : IModule
     {
         // Regular dependencies (do not add any of these to a command group)
@@ -59,7 +58,8 @@ namespace SS.Core.Modules
         private DateTime _startedAt;
 
         private readonly Dictionary<Type, InterfaceFieldInfo> _interfaceFields = new();
-        private readonly Trie<CommandGroup> _commandGroups = new(false);
+        private readonly Dictionary<string, CommandGroup> _commandGroups = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, CommandGroup>.AlternateLookup<ReadOnlySpan<char>> _commandGroupsLookup;
 
         private readonly DefaultObjectPool<ArenaListItem> _arenaListItemPool = new(new DefaultPooledObjectPolicy<ArenaListItem>(), Constants.TargetArenaCount * 4);
         private readonly DefaultObjectPool<List<ArenaListItem>> _arenaListItemListPool = new(new ListPooledObjectPolicy<ArenaListItem>() { InitialCapacity = Constants.TargetArenaCount });
@@ -80,7 +80,9 @@ namespace SS.Core.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
-            foreach (FieldInfo fieldInfo in typeof(PlayerCommand).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+            _commandGroupsLookup = _commandGroups.GetAlternateLookup<ReadOnlySpan<char>>();
+
+			foreach (FieldInfo fieldInfo in typeof(PlayerCommand).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
             {
                 if (fieldInfo.FieldType.IsInterface
                     && fieldInfo.FieldType.IsAssignableTo(typeof(IComponentInterface))
@@ -460,7 +462,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                if (!_commandGroups.TryGetValue(parameters, out CommandGroup? group))
+                if (!_commandGroupsLookup.TryGetValue(parameters, out CommandGroup? group))
                 {
                     _chat.SendMessage(player, $"Command group '{parameters}' not found.");
                     return;
@@ -506,7 +508,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                if (!_commandGroups.TryGetValue(parameters, out CommandGroup? group))
+                if (!_commandGroupsLookup.TryGetValue(parameters, out CommandGroup? group))
                 {
                     _chat.SendMessage(player, $"Command group '{parameters}' not found.");
                     return;

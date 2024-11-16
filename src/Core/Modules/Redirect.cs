@@ -1,17 +1,16 @@
 ﻿using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
-using SS.Utilities;
-using SS.Utilities.Collections;
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Net;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that provides the ability to redirect players to another zone server.
-    /// </summary>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module that provides the ability to redirect players to another zone server.
+	/// </summary>
+	[CoreModuleInfo]
     public class Redirect : IModule, IRedirect
     {
         private readonly ICommandManager _commandManager;
@@ -20,7 +19,8 @@ namespace SS.Core.Modules
 
         private InterfaceRegistrationToken<IRedirect>? _iRedirectRegistrationToken;
 
-        private readonly Trie<RegisteredRedirect> _redirectCache = new(false);
+        private readonly Dictionary<string, RegisteredRedirect> _redirectCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, RegisteredRedirect>.AlternateLookup<ReadOnlySpan<char>> _redirectCacheLookup;
 
         public Redirect(
             ICommandManager commandManager,
@@ -30,7 +30,9 @@ namespace SS.Core.Modules
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _network = network ?? throw new ArgumentNullException(nameof(network));
-        }
+
+            _redirectCacheLookup = _redirectCache.GetAlternateLookup<ReadOnlySpan<char>>();
+		}
 
         #region Module members
 
@@ -61,71 +63,72 @@ namespace SS.Core.Modules
                 """)]
         bool IRedirect.AliasRedirect(ITarget target, ReadOnlySpan<char> destination)
         {
-            if (target == null)
+            if (target is null)
                 return false;
-
-            if (!_redirectCache.TryGetValue(destination, out RegisteredRedirect? registeredRedirect))
+            
+            if (_redirectCacheLookup.TryGetValue(destination, out RegisteredRedirect? registeredRedirect))
             {
-                bool isAlias = true;
-                ReadOnlySpan<char> value = _configManager.GetStr(_configManager.Global, "Redirects", destination);
-                if (value == null)
-                {
-                    // If it's not an alias, then maybe it's a literal address.
-                    isAlias = false;
-                    value = destination;
-                }
+				return RawRedirect(
+				    target,
+				    registeredRedirect.IP,
+				    registeredRedirect.Port,
+					registeredRedirect.ArenaName is null ? (short)-1 : (short)-3,
+					registeredRedirect.ArenaName);
+			}
 
-                // <ip>:<port>[:<arena>]
-                ReadOnlySpan<char> remaining = value;
-                ReadOnlySpan<char> token;
+			bool isAlias = true;
+			ReadOnlySpan<char> value = _configManager.GetStr(_configManager.Global, "Redirects", destination);
+			if (value.IsEmpty)
+			{
+				// If it's not an alias, then maybe it's a literal address.
+				isAlias = false;
+				value = destination;
+			}
 
-                // ip
-                token = remaining.GetToken(':', out remaining);
-                if (token.IsEmpty || token.IsWhiteSpace() || !IPAddress.TryParse(token, out IPAddress? address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
-                    return false;
+			// <ip>:<port>[:<arena>]
+			Span<Range> ranges = stackalloc Range[3];
+			int numRanges = value.Split(ranges, ':', StringSplitOptions.None);
+			if (numRanges < 2)
+				return false;
 
-                // port
-                token = remaining.GetToken(':', out remaining);
-                if (token.IsEmpty || token.IsWhiteSpace() || !ushort.TryParse(token, out ushort port))
-                    return false;
+			// ip
+			ReadOnlySpan<char> ipSpan = value[ranges[0]];
+			if (ipSpan.IsEmpty || ipSpan.IsWhiteSpace() || !IPAddress.TryParse(ipSpan, out IPAddress? address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork || !TryGetIPv4(address, out uint ip))
+				return false;
 
-                // (optional) arena name
-                string? arenaName = null;
-                remaining = remaining.TrimStart(':');
-                if (!remaining.IsEmpty && !remaining.IsWhiteSpace())
-                {
-                    arenaName = remaining.Trim().ToString();
-                }
+			// port
+			ReadOnlySpan<char> portSpan = value[ranges[1]];
+			if (portSpan.IsEmpty || portSpan.IsWhiteSpace() || !ushort.TryParse(portSpan, out ushort port))
+				return false;
 
-                registeredRedirect = new RegisteredRedirect(new IPEndPoint(address, port), arenaName);
+			// (optional) arena name
+			ReadOnlySpan<char> arenaName = (numRanges == 3) ? value[ranges[2]] : [];
 
-                if (isAlias)
-                {
-                    _redirectCache.Add(destination, registeredRedirect);
-                }
-            }
+			if (isAlias)
+			{
+                _redirectCacheLookup.TryAdd(destination, new RegisteredRedirect(ip, port, arenaName.ToString()));
+			}
 
-            return ((IRedirect)this).RawRedirect(
-                target,
-                registeredRedirect.IPEndPoint,
-                registeredRedirect.ArenaName != null ? (short)-3 : (short)-1,
-                registeredRedirect.ArenaName);
-        }
+			return RawRedirect(
+				target,
+				ip,
+                port,
+				arenaName.IsEmpty ? (short)-1 : (short)-3,
+				arenaName);
+		}
 
         bool IRedirect.RawRedirect(ITarget target, IPEndPoint ipEndPoint, short arenaType, ReadOnlySpan<char> arenaName)
-        {
-            if (target == null || ipEndPoint == null)
-                return false;
+		{
+			if (target == null || ipEndPoint == null)
+				return false;
 
-            if (!TryGetIPv4(ipEndPoint.Address, out uint ip))
-                return false;
+			if (!TryGetIPv4(ipEndPoint.Address, out uint ip))
+				return false;
 
-            S2C_Redirect redirect = new(ip, (ushort)ipEndPoint.Port, arenaType, arenaName, 0);
-            _network.SendToTarget(target, ref redirect, NetSendFlags.Reliable);
-            return true;
-        }
+			return RawRedirect(target, ip, (ushort)ipEndPoint.Port, arenaType, arenaName);
+		}
 
-        bool IRedirect.ArenaRequest(Player player, ReadOnlySpan<char> arenaName)
+		bool IRedirect.ArenaRequest(Player player, ReadOnlySpan<char> arenaName)
         {
             if (player == null)
                 return false;
@@ -168,20 +171,22 @@ namespace SS.Core.Modules
             return true;
         }
 
-        #region Helper types
+		private bool RawRedirect(ITarget target, uint ip, ushort port, short arenaType, ReadOnlySpan<char> arenaName)
+		{
+			S2C_Redirect redirect = new(ip, port, arenaType, arenaName, 0);
+			_network.SendToTarget(target, ref redirect, NetSendFlags.Reliable);
+			return true;
+		}
 
-        public class RegisteredRedirect
-        {
-            public readonly IPEndPoint IPEndPoint;
-            public readonly string? ArenaName;
+		#region Helper types
 
-            public RegisteredRedirect(IPEndPoint ipEndPoint, string? arenaName)
-            {
-                IPEndPoint = ipEndPoint;
-                ArenaName = arenaName;
-            }
-        }
+		public class RegisteredRedirect(uint ip, ushort port, string? arenaName)
+		{
+            public readonly uint IP = ip;
+            public readonly ushort Port = port;
+            public readonly string? ArenaName = arenaName;
+		}
 
-        #endregion
-    }
+		#endregion
+	}
 }

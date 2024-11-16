@@ -1,5 +1,4 @@
 ﻿using SkiaSharp;
-using SS.Utilities.Collections;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -8,10 +7,10 @@ using System.IO.MemoryMappedFiles;
 
 namespace SS.Core.Map
 {
-    /// <summary>
-    /// For reading the basic SubSpace map format which contains tile information and optionally a tileset (bitmap).
-    /// </summary>
-    public abstract class BasicLvl
+	/// <summary>
+	/// For reading the basic SubSpace map format which contains tile information and optionally a tileset (bitmap).
+	/// </summary>
+	public abstract class BasicLvl
     {
         /// <summary>
         /// maximum # of flags a map is allowed to contain
@@ -178,7 +177,7 @@ namespace SS.Core.Map
         }
 
         // Note: It seems SkiaSharp only supports encoding to jpg, png, and webp even though it has many other image formats defined.
-        private static readonly Trie<SKEncodedImageFormat> _extensionToImageFormatTrie = new(false)
+        private static readonly Dictionary<string, SKEncodedImageFormat> _extensionToImageFormat = new(StringComparer.OrdinalIgnoreCase)
         {
 			//{ ".bmp", SKEncodedImageFormat.Bmp },
 			//{ "bmp", SKEncodedImageFormat.Bmp },
@@ -198,6 +197,8 @@ namespace SS.Core.Map
 			//{ "heif", SKEncodedImageFormat.Heif },
 		};
 
+        private static readonly Dictionary<string, SKEncodedImageFormat>.AlternateLookup<ReadOnlySpan<char>> _extensionToImageFormatLookup = _extensionToImageFormat.GetAlternateLookup<ReadOnlySpan<char>>();
+
         /// <summary>
         /// Creates an image of the map, saving it to a specified <paramref name="path"/>.
         /// </summary>
@@ -210,7 +211,7 @@ namespace SS.Core.Map
             ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
             string extension = Path.GetExtension(path);
-            if (!_extensionToImageFormatTrie.TryGetValue(extension, out SKEncodedImageFormat format))
+            if (!_extensionToImageFormat.TryGetValue(extension, out SKEncodedImageFormat format))
                 throw new ArgumentException("Unsupported image format.", nameof(path));
 
             using SKBitmap bitmap = CreateBitmap();
@@ -250,7 +251,7 @@ namespace SS.Core.Map
             if (imageFormat.IsWhiteSpace())
                 throw new ArgumentException("Cannot be whitespace.", nameof(imageFormat));
 
-            if (!_extensionToImageFormatTrie.TryGetValue(imageFormat, out SKEncodedImageFormat format))
+            if (!_extensionToImageFormatLookup.TryGetValue(imageFormat, out SKEncodedImageFormat format))
                 throw new ArgumentException("Unsupported image format.", nameof(imageFormat));
 
             using SKBitmap bitmap = CreateBitmap();

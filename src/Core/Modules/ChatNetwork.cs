@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
-using SS.Utilities.Collections;
 using SS.Utilities.ObjectPool;
 using System;
 using System.Buffers;
@@ -10,15 +9,16 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
 namespace SS.Core.Modules
 {
-    /// <summary>
-    /// Module that provides the server functionality for the 'simple chat protocol'.
-    /// </summary>
-    [CoreModuleInfo]
+	/// <summary>
+	/// Module that provides the server functionality for the 'simple chat protocol'.
+	/// </summary>
+	[CoreModuleInfo]
     public class ChatNetwork : IModule, IChatNetwork, IStringBuilderPoolProvider, IDisposable
     {
         /// <summary>
@@ -41,9 +41,10 @@ namespace SS.Core.Modules
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly CancellationToken _cancellationToken;
         private Thread? _chatThread;
-        private readonly Trie<ChatMessageHandler> _handlerTrie = new(false);
+        private readonly Dictionary<string, ChatMessageHandler> _handlers = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, ChatMessageHandler>.AlternateLookup<ReadOnlySpan<char>> _handlersLookup;
 
-        private static readonly DefaultObjectPool<LinkedListNode<OutBuffer>> s_outBufferLinkedListNodePool = new(new LinkedListNodePooledObjectPolicy<OutBuffer>(), Constants.TargetPlayerCount * 64);
+		private static readonly DefaultObjectPool<LinkedListNode<OutBuffer>> s_outBufferLinkedListNodePool = new(new LinkedListNodePooledObjectPolicy<OutBuffer>(), Constants.TargetPlayerCount * 64);
 
         public ChatNetwork(
             IComponentBroker broker,
@@ -61,6 +62,7 @@ namespace SS.Core.Modules
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
             _cancellationToken = _cancellationTokenSource.Token;
+            _handlersLookup = _handlers.GetAlternateLookup<ReadOnlySpan<char>>();
         }
 
         #region Module members
@@ -231,15 +233,8 @@ namespace SS.Core.Modules
             if (handler is null)
                 throw new ArgumentNullException(nameof(handler));
 
-            if (_handlerTrie.Remove(type, out ChatMessageHandler? handlers))
-            {
-                handlers += handler;
-                _handlerTrie.Add(type, handlers);
-            }
-            else
-            {
-                _handlerTrie.Add(type, handler);
-            }
+            ref ChatMessageHandler? handlers = ref CollectionsMarshal.GetValueRefOrAddDefault(_handlersLookup, type, out _);
+            handlers += handler;
         }
 
         void IChatNetwork.RemoveHandler(ReadOnlySpan<char> type, ChatMessageHandler handler)
@@ -250,13 +245,13 @@ namespace SS.Core.Modules
             if (handler is null)
                 throw new ArgumentNullException(nameof(handler));
 
-            if (_handlerTrie.Remove(type, out ChatMessageHandler? handlers))
+            if (_handlersLookup.Remove(type, out string? actualType, out ChatMessageHandler? handlers))
             {
                 handlers -= handler;
 
                 if (handlers is not null)
                 {
-                    _handlerTrie.Add(type, handlers);
+                    _handlers.Add(actualType, handlers);
                 }
             }
         }
@@ -890,7 +885,7 @@ namespace SS.Core.Modules
                             line = line[(typeIndex + 1)..];
                         }
 
-                        if (_handlerTrie.TryGetValue(type, out ChatMessageHandler? handlers))
+                        if (_handlersLookup.TryGetValue(type, out ChatMessageHandler? handlers))
                         {
                             handlers(player, line);
                         }
@@ -948,7 +943,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            _handlerTrie.Clear();
+            _handlers.Clear();
         }
 
         #region Helper types
