@@ -1424,7 +1424,7 @@ namespace SS.Core
         /// This class is <see langword="private"/> to the <see cref="ModuleManager"/> 
         /// which fully manages loading each plugin assembly into a separate, isolated context.
         /// </summary>
-        private class ModulePluginLoadContext(string moduleAssemblyPath) : AssemblyLoadContext(Path.GetFileNameWithoutExtension(moduleAssemblyPath), true)
+        private class ModulePluginLoadContext(string moduleAssemblyPath) : AssemblyLoadContext(Path.GetFileNameWithoutExtension(moduleAssemblyPath), false)
         {
             private readonly AssemblyDependencyResolver _resolver = new(moduleAssemblyPath);
 
