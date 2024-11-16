@@ -5,6 +5,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Hashing;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -45,6 +46,7 @@ namespace SS.Core.Modules
         private readonly object _obsceneLock = new();
         private uint? _checksum = null;
         private List<string>? _obsceneList = null;
+        private SearchValues<string>? _obscenities = null;
 
         #region Module members
 
@@ -84,33 +86,44 @@ namespace SS.Core.Modules
 
         bool IObscene.Filter(Span<char> line)
         {
-            List<string>? obsceneList;
+			List<string>? obsceneList;
+			SearchValues<string>? obscenities;
 
             lock (_obsceneLock)
             {
-                obsceneList = _obsceneList;
+				obsceneList = _obsceneList;
+				obscenities = _obscenities;
             }
 
-            bool filtered = false;
+			bool filtered = false;
 
-            if (obsceneList is not null)
+			if (obsceneList is not null && obscenities is not null)
             {
-                foreach (string obscenity in obsceneList)
+                while (!line.IsEmpty)
                 {
-                    int index;
+					int index = line.IndexOfAny(obscenities);
+					if (index == -1)
+                        break;
 
-                    while ((index = MemoryExtensions.IndexOf(line, obscenity, StringComparison.OrdinalIgnoreCase)) != -1)
+                    line = line[index..];
+
+                    foreach (string obscenity in obsceneList)
                     {
-                        filtered = true;
-
-                        Span<char> toReplace = line.Slice(index, obscenity.Length);
-                        for (int charIndex = 0; charIndex < toReplace.Length; charIndex++)
+                        if (line.StartsWith(obscenity))
                         {
-                            ulong replaceCount = Interlocked.Increment(ref _replaceCount);
-                            toReplace[charIndex] = Replace[(int)replaceCount % Replace.Length];
-                        }
+							Span<char> toReplace = line[..obscenity.Length];
+							for (int charIndex = 0; charIndex < toReplace.Length; charIndex++)
+							{
+								ulong replaceCount = Interlocked.Increment(ref _replaceCount);
+								toReplace[charIndex] = Replace[(int)replaceCount % Replace.Length];
+							}
+
+                            filtered = true;
+							line = line[obscenity.Length..];
+                            break;
+						}
                     }
-                }
+				}
             }
 
             return filtered;
@@ -282,7 +295,7 @@ namespace SS.Core.Modules
                 {
                     _checksum = checksum;
                     _obsceneList = obsceneList;
-                    //_obscenities = SearchValues.Create(CollectionsMarshal.AsSpan(obsceneList), StringComparison.OrdinalIgnoreCase); // TODO: .NET 9
+                    _obscenities = SearchValues.Create(CollectionsMarshal.AsSpan(obsceneList), StringComparison.OrdinalIgnoreCase);
                 }
 
                 _logManager.LogM(LogLevel.Info, nameof(Obscene), $"Loaded {ObsceneFileName} (words:{obsceneList.Count}, checksum:{_checksum:X}).");
