@@ -89,7 +89,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// Lock for synchronizing access to <see cref="_loadQueue"/> and <see cref="_loadTask"/>.
         /// </summary>
-        private readonly object _loadLock = new();
+        private readonly Lock _loadLock = new();
         
         public Help(
             IChat chat,

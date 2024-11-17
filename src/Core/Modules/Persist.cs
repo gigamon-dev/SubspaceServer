@@ -43,7 +43,7 @@ namespace SS.Core.Modules
         private Thread? _workerThread;
         private TimeSpan _syncTimeSpan;
         private DateTime? _nextSync;
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         private ArenaDataKey<ArenaData> _adKey;
 

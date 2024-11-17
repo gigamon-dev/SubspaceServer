@@ -34,7 +34,7 @@ namespace SS.Core.Modules
 
         private readonly LvlData _emergencyMapData;
         private readonly Dictionary<LvlDataId, LvlData> _lvlDictionary = new(Constants.TargetArenaCount);
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         private readonly DefaultObjectPool<LvlData> _lvlDataPool = new(new DefaultPooledObjectPolicy<LvlData>(), Constants.TargetArenaCount);
 
@@ -872,7 +872,7 @@ namespace SS.Core.Modules
         {
             private readonly Dictionary<TemporaryTileKey, TemporaryTilePlacement> _placementDictionary = new(Bricks.MaxActiveBricks + CarryFlags.MaxFlags);
             private readonly Dictionary<TileCoordinates, TemporaryTileKey> _tiles = new(8192);
-            private readonly object _lock = new();
+            private readonly Lock _lock = new();
 
             public void Clear()
             {

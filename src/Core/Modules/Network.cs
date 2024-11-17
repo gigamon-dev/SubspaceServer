@@ -6002,7 +6002,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// For synchronizing <see cref="_total"/> and <see cref="_playing"/>.
             /// </summary>
-            private readonly object _lock = new();
+            private readonly Lock _lock = new();
 
             #region ReceiveThread only
 

@@ -21,7 +21,7 @@ namespace SS.Utilities.Collections
     /// <param name="nodePool">An object pool of <see cref="LinkedListNode{T}"/>.</param>
     public sealed class HybridEventQueue<T>(int initialCapacity, IEqualityComparer<T>? comparer, ObjectPool<LinkedListNode<T>> nodePool) : IDisposable where T : notnull
     {
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
         private readonly Dictionary<T, LinkedListNode<T>> _itemNodeDictionary = new(initialCapacity, comparer);
         private readonly LinkedList<T> _queue = new();
         private readonly AutoResetEvent _readyEvent = new(false);

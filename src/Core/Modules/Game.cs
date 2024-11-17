@@ -13,6 +13,7 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using ArenaSettings = SS.Core.ConfigHelp.Constants.Arena;
 using SSProto = SS.Core.Persist.Protobuf;
 
@@ -66,8 +67,8 @@ namespace SS.Core.Modules
 
         private DelegatePersistentData<Player>? _persistRegistration;
 
-        private readonly object _specmtx = new();
-        private readonly object _freqshipmtx = new();
+        private readonly Lock _specLock = new();
+        private readonly Lock _freqShipLock = new();
 
         private const int WeaponCount = 32;
 
@@ -553,7 +554,7 @@ namespace SS.Core.Modules
             if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
-            lock (_freqshipmtx)
+            lock (_freqShipLock)
             {
                 ExpireLock(player);
 
@@ -572,7 +573,7 @@ namespace SS.Core.Modules
             if (player == null || !player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
-            lock (_freqshipmtx)
+            lock (_freqShipLock)
             {
                 SSProto.ShipLock protoShipLock = SSProto.ShipLock.Parser.ParseFrom(inStream);
                 pd.expires = protoShipLock.Expires.ToDateTime();
@@ -782,7 +783,7 @@ namespace SS.Core.Modules
             }
             else if (action == PlayerAction.LeaveArena)
             {
-                lock (_specmtx)
+                lock (_specLock)
                 {
                     _playerData.Lock();
                     try
@@ -828,7 +829,7 @@ namespace SS.Core.Modules
                 // extra cleanup for fake players since LeaveArena isn't
                 // called. fake players can't be speccing anyone else, but other
                 // players can be speccing them.
-                lock (_specmtx)
+                lock (_specLock)
                 {
                     _playerData.Lock();
                     try
@@ -900,7 +901,7 @@ namespace SS.Core.Modules
             if (data == null)
                 return;
 
-            lock (_specmtx)
+            lock (_specLock)
             {
                 if (data.speccing == null)
                     return;
@@ -933,7 +934,7 @@ namespace SS.Core.Modules
 
         private void AddSpeccing(PlayerData data, Player t)
         {
-            lock (_specmtx)
+            lock (_specLock)
             {
                 data.speccing = t;
 
@@ -1508,7 +1509,7 @@ namespace SS.Core.Modules
             ref C2S_SpecRequest packet = ref MemoryMarshal.AsRef<C2S_SpecRequest>(data[..C2S_SpecRequest.Length]);
             int targetPlayerId = packet.PlayerId;
 
-            lock (_specmtx)
+            lock (_specLock)
             {
                 ClearSpeccing(pd);
 
@@ -1551,7 +1552,7 @@ namespace SS.Core.Modules
 
             short freq = player.Freq;
 
-            lock (_freqshipmtx)
+            lock (_freqShipLock)
             {
                 if (player.Flags.DuringChange)
                 {
@@ -1651,7 +1652,7 @@ namespace SS.Core.Modules
             }
 
             // check lock state
-            lock (_freqshipmtx)
+            lock (_freqShipLock)
             {
                 ExpireLock(player);
             }
@@ -1722,7 +1723,7 @@ namespace SS.Core.Modules
             if (freq < 0 || freq > 9999 || ship < 0 || ship > ShipType.Spec)
                 return;
 
-            lock (_freqshipmtx)
+            lock (_freqShipLock)
             {
                 if (player.Ship == ship &&
                     player.Freq == freq)
@@ -1737,7 +1738,7 @@ namespace SS.Core.Modules
                 player.Ship = ship;
                 player.Freq = freq;
 
-                lock (_specmtx)
+                lock (_specLock)
                 {
                     ClearSpeccing(pd);
                 }
@@ -1806,7 +1807,7 @@ namespace SS.Core.Modules
 
             short oldFreq = player.Freq;
 
-            lock (_freqshipmtx)
+            lock (_freqShipLock)
             {
                 if (player.Freq == freq)
                     return;
@@ -1839,7 +1840,7 @@ namespace SS.Core.Modules
             if (player == null)
                 return;
 
-            lock (_freqshipmtx)
+            lock (_freqShipLock)
             {
                 player.Flags.DuringChange = false;
             }
@@ -1853,7 +1854,7 @@ namespace SS.Core.Modules
             if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
-            lock (_freqshipmtx)
+            lock (_freqShipLock)
             {
                 if (pd.expires != null)
                     if (DateTime.UtcNow > pd.expires)

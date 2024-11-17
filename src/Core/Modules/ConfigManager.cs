@@ -685,7 +685,7 @@ namespace SS.Core.Modules
         private class DocumentInfo
         {
             private readonly LinkedList<DocumentHandle> _handles = new();
-            private readonly object _lockObj = new();
+            private readonly Lock _lock = new();
 
             public DocumentInfo(string path, ConfDocument document)
             {
@@ -705,7 +705,7 @@ namespace SS.Core.Modules
             {
                 get
                 {
-                    lock (_lockObj)
+                    lock (_lock)
                     {
                         return _isChangeNotificationPending;
                     }
@@ -713,7 +713,7 @@ namespace SS.Core.Modules
 
                 set
                 {
-                    lock (_lockObj)
+                    lock (_lock)
                     {
                         _isChangeNotificationPending = value;
                     }
@@ -724,7 +724,7 @@ namespace SS.Core.Modules
             {
                 DocumentHandle handle = new(this, scope, fileName, null);
 
-                lock (_lockObj)
+                lock (_lock)
                 {
                     _handles.AddLast(handle);
                 }
@@ -740,7 +740,7 @@ namespace SS.Core.Modules
                     fileName,
                     callback is not null ? new ConfigChangedInvoker(callback) : null);
 
-                lock (_lockObj)
+                lock (_lock)
                 {
                     _handles.AddLast(handle);
                 }
@@ -756,7 +756,7 @@ namespace SS.Core.Modules
                     fileName,
                     callback is not null ? new ConfigChangedInvoker<TState>(callback, state) : null);
 
-                lock (_lockObj)
+                lock (_lock)
                 {
                     _handles.AddLast(handle);
                 }
@@ -773,7 +773,7 @@ namespace SS.Core.Modules
 
                 handle.DocumentInfo = null;
 
-                lock (_lockObj)
+                lock (_lock)
                 {
                     return _handles.Remove(handle);
                 }
@@ -781,7 +781,7 @@ namespace SS.Core.Modules
 
             public void NotifyChanged()
             {
-                lock (_lockObj)
+                lock (_lock)
                 {
                     foreach (DocumentHandle handle in _handles)
                     {

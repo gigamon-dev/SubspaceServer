@@ -70,7 +70,7 @@ namespace SS.Core.Modules
         private byte[]? _identity = null;
         private readonly Dictionary<int, S2B_UserBanner> _bannerUploadDictionary = new();
         private int _bannerUploadPendingCount = 0;
-        private readonly object _lockObj = new();
+        private readonly Lock _lock = new();
 
         // Cached delegates
         private readonly ClientReliableCallback _mainloop_ReliableCallback_ServerDisconnect;
@@ -172,7 +172,7 @@ namespace SS.Core.Modules
             // allowing us to disconnect in the nicest possible manner.
 
             // Drop the connection.
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (_state != BillingState.Disabled)
                 {
@@ -188,7 +188,7 @@ namespace SS.Core.Modules
             // Wait for the connection to disconnect.
             while (true)
             {
-                lock (_lockObj)
+                lock (_lock)
                 {
                     if (_cc is null)
                         break;
@@ -236,7 +236,7 @@ namespace SS.Core.Modules
 
         BillingStatus IBilling.GetStatus()
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 return _state switch
                 {
@@ -254,7 +254,7 @@ namespace SS.Core.Modules
 
         ReadOnlySpan<byte> IBilling.GetIdentity()
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 return _identity ?? ReadOnlySpan<byte>.Empty;
             }
@@ -264,7 +264,7 @@ namespace SS.Core.Modules
         {
             if (player is not null && player.TryGetExtraData(_pdKey, out PlayerData? playerData))
             {
-                lock (_lockObj)
+                lock (_lock)
                 {
                     if (playerData.IsKnownToBiller)
                     {
@@ -282,7 +282,7 @@ namespace SS.Core.Modules
         {
             if (player is not null && player.TryGetExtraData(_pdKey, out PlayerData? playerData))
             {
-                lock (_lockObj)
+                lock (_lock)
                 {
                     if (playerData.IsKnownToBiller)
                     {
@@ -319,7 +319,7 @@ namespace SS.Core.Modules
 
             ref readonly LoginPacket loginPacket = ref authRequest.LoginPacket;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 // default to false
                 playerData.IsKnownToBiller = false;
@@ -435,7 +435,7 @@ namespace SS.Core.Modules
                 port,
                 _configManager.GetStr(_configManager.Global, "Billing", "Password"));
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 _networkClient.SendPacket(_cc!, ref packet, NetSendFlags.Reliable);
                 _state = BillingState.WaitLogin;
@@ -448,7 +448,7 @@ namespace SS.Core.Modules
             if (data.Length < 1)
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 // Move past WaitLogin on any packet.
                 if (_state == BillingState.WaitLogin)
@@ -501,7 +501,7 @@ namespace SS.Core.Modules
 
         void IClientConnectionHandler.Disconnected()
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 _cc = null;
                 _disconnectedAutoResetEvent.Set();
@@ -535,7 +535,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (playerData.HasDemographics)
                 {
@@ -565,7 +565,7 @@ namespace SS.Core.Modules
             Description = "The bandwidth limiter provider to use for the connection to the user database server.")]
         private bool MainloopTimer_DoWork()
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (_state == BillingState.NoSocket)
                 {
@@ -716,7 +716,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (action == PlayerAction.Disconnect)
                 {
@@ -770,7 +770,7 @@ namespace SS.Core.Modules
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (playerData.AuthRequest is not null)
                 {
@@ -815,7 +815,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (!playerData.IsKnownToBiller)
                     return;
@@ -894,7 +894,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (!playerData.IsKnownToBiller)
                     return;
@@ -966,7 +966,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_userdbadm(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (parameters.Equals("drop", StringComparison.OrdinalIgnoreCase))
                 {
@@ -1076,7 +1076,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (!playerData.IsKnownToBiller)
                     return;
@@ -1220,7 +1220,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (playerData.AuthRequest is null)
                 {
@@ -1335,7 +1335,7 @@ namespace SS.Core.Modules
         {
             if (success)
             {
-                lock (_lockObj)
+                lock (_lock)
                 {
                     if (_cc is not null)
                     {

@@ -6,6 +6,7 @@ using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using ArenaSettings = SS.Core.ConfigHelp.Constants.Arena;
 
 namespace SS.Core.Modules
@@ -33,7 +34,7 @@ namespace SS.Core.Modules
         // Locking is technically not necessary since all the logic in this module is intended to be executed on the mainloop thread.
         // However, there is the off chance someone writing a module makes a mistake and calls the IClientSettings interface from a different thread.
         // TODO: Maybe remove the locking and instead add checks that throw an exception if it's not the mainloop thread?
-        private readonly object _lockObj = new();
+        private readonly Lock _lock = new();
 
         #region Data for creating ClientSettingIdentifiers that represent bit fields
 
@@ -152,7 +153,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 SendOneSettings(player, arenaData);
             }
@@ -170,7 +171,7 @@ namespace SS.Core.Modules
             // However, the player might not have been sent the latest settings (an override could have been set, but not yet sent).
             // So, it makes more sense that DoMask() be called only before sending settings to a player.
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (playerData.Settings.Type != (byte)S2CPacketType.Settings)
                     return 0;
@@ -407,7 +408,7 @@ namespace SS.Core.Modules
             if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 SetOverride(ref arenaData.OverrideData, id, value, true);
             }
@@ -418,7 +419,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 SetOverride(ref playerData.OverrideData, id, value, true);
             }
@@ -429,7 +430,7 @@ namespace SS.Core.Modules
             if (arena is null || !arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 SetOverride(ref arenaData.OverrideData, id, 0, false);
             }
@@ -440,7 +441,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 SetOverride(ref playerData.OverrideData, id, 0, false);
             }
@@ -454,7 +455,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 return TryGetOverride(ref arenaData.OverrideData, id, out value);
             }
@@ -468,7 +469,7 @@ namespace SS.Core.Modules
                 return false;
             }
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 return TryGetOverride(ref playerData.OverrideData, id, out value);
             }
@@ -481,7 +482,7 @@ namespace SS.Core.Modules
                 return 0;
             }
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 return GetSetting(ref arenaData.Settings, id);
             }
@@ -494,7 +495,7 @@ namespace SS.Core.Modules
                 return 0;
             }
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 return GetSetting(ref playerData.Settings, id);
             }
@@ -514,7 +515,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (action == ArenaAction.Create)
                 {

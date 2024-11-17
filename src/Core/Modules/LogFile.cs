@@ -3,6 +3,7 @@ using SS.Core.ComponentInterfaces;
 using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 using LogSettings = SS.Core.ConfigHelp.Constants.Global.Log;
 
 namespace SS.Core.Modules
@@ -19,7 +20,7 @@ namespace SS.Core.Modules
         private readonly IServerTimer _serverTimer;
         private InterfaceRegistrationToken<ILogFile>? _iLogFileToken;
 
-        private readonly object _lockObj = new();
+        private readonly Lock _lock = new();
         private StreamWriter? _streamWriter = null;
         private DateTime? _fileDate;
 
@@ -89,7 +90,7 @@ namespace SS.Core.Modules
             if (!_logManager.FilterLog(in logEntry, "log_file"))
                 return;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (_streamWriter is null)
                     return;
@@ -131,7 +132,7 @@ namespace SS.Core.Modules
 
         private void FlushLog()
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 try
                 {
@@ -146,7 +147,7 @@ namespace SS.Core.Modules
 
         private void CloseLog()
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (_streamWriter is not null)
                 {
@@ -167,7 +168,7 @@ namespace SS.Core.Modules
         [ConfigHelp("Log", "DatedLogsPath", ConfigScope.Global, Default = "log", Description = "Path of the folder to store logs.")]
         private void ReopenLog()
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 CloseLog();
 

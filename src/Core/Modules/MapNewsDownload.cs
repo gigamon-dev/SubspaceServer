@@ -556,11 +556,11 @@ namespace SS.Core.Modules
             private readonly string _newsFilename;
             private FileSystemWatcher? _fileWatcher;
 
-            private readonly object _newsLock = new();
+            private readonly Lock _newsLock = new();
             private byte[]? _compressedNewsData; // includes packet header
             private uint? _newsChecksum;
 
-            private readonly object _refreshLock = new();
+            private readonly Lock _refreshLock = new();
             private Task? _refreshTask = null;
             private bool _isRefreshRequested = false;
 

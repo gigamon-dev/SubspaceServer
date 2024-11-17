@@ -40,7 +40,7 @@ namespace SS.Core.Modules
 
         // for IServerTimer
         private readonly LinkedList<ThreadPoolTimer> _serverTimerList = new();
-        private readonly object _serverTimerLock = new();
+        private readonly Lock _serverTimerLock = new();
 
         private static readonly ObjectPool<Job> s_jobPool;
 
@@ -914,7 +914,7 @@ namespace SS.Core.Modules
             public ITimerCallbackInvoker CallbackInvoker;
 
             // for synchronization
-            private readonly object _lockObj = new();
+            private readonly Lock _lockObj = new();
             private bool _stop = false;
             private readonly ManualResetEvent _timerExecuting = new(true);
             private bool _disposed = false;

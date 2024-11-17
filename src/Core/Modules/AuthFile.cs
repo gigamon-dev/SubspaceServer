@@ -36,7 +36,7 @@ namespace SS.Core.Modules
         private HashAlgorithm? _hashAlgorithm;
         private HashEncoding _hashEncoding;
         private int _encodedHashLength;
-        private readonly object _hashLock = new();
+        private readonly Lock _hashLock = new();
         private bool _allowUnknown;
         private PlayerDataKey<PlayerData> _pdKey;
 

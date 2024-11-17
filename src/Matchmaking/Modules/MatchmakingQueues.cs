@@ -1634,7 +1634,7 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// For synchronization since this object is accessed by multiple threads, the mainloop thread and the persist thread.
             /// </summary>
-            private readonly object _lock = new();
+            private readonly Lock _lock = new();
 
             /// <summary>
             /// Gets the play hold expiration time without refreshing it.

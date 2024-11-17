@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -33,7 +34,7 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IAuth>? _iAuthToken;
 
         private readonly Dictionary<uint, BanRecord> _banDictionary = new();
-        private readonly object _lockObj = new();
+        private readonly Lock _lock = new();
 
         #region Module methods
 
@@ -85,7 +86,7 @@ namespace SS.Core.Modules
             ref readonly LoginPacket loginPacket = ref authRequest.LoginPacket;
             bool handled = false;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (player.IsStandard // only standard clients have a MacId
                     && _banDictionary.TryGetValue(loginPacket.MacId, out BanRecord? ban))
@@ -215,7 +216,7 @@ namespace SS.Core.Modules
                 {
                     BanRecord ban = new(DateTime.UtcNow + timeout, player.Name!, reason.Trim().ToString());
 
-                    lock (_lockObj)
+                    lock (_lock)
                     {
                         _banDictionary[targetPlayer.MacId] = ban;
                     }
@@ -246,7 +247,7 @@ namespace SS.Core.Modules
             {
                 DateTime now = DateTime.UtcNow;
 
-                lock (_lockObj)
+                lock (_lock)
                 {
                     foreach (var kvp in _banDictionary)
                     {
@@ -284,7 +285,7 @@ namespace SS.Core.Modules
             {
                 bool success;
 
-                lock (_lockObj)
+                lock (_lock)
                 {
                     success = _banDictionary.Remove(macId);
                 }

@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Threading;
 
 namespace SS.Core
 {
@@ -229,7 +230,7 @@ namespace SS.Core
 
         private int _total = 0;
         private int _playing = 0;
-        private readonly object _playerCountsLock = new();
+        private readonly Lock _playerCountsLock = new();
 
         /// <summary>
         /// Get the player counts for the arena.

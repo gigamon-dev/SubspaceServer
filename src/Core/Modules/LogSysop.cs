@@ -6,6 +6,7 @@ using SS.Utilities;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -44,7 +45,7 @@ namespace SS.Core.Modules
 
         private Memory<char>[]? _logData;
         private int _logPosition = 0;
-        private readonly object _lockObj = new();
+        private readonly Lock _lock = new();
 
         private DateTime? _lastDroppedLogNotification = null;
 
@@ -139,7 +140,7 @@ namespace SS.Core.Modules
 
             if (_logManager.FilterLog(in logEntry, "log_lastlog"))
             {
-                lock (_lockObj)
+                lock (_lock)
                 {
                     Memory<char> buffer = _logData![_logPosition];
                     Span<char> span = buffer.Span;
@@ -256,7 +257,7 @@ namespace SS.Core.Modules
 
             try
             {
-                lock (_lockObj)
+                lock (_lock)
                 {
                     // Move backwards and find lines that match the filters.
                     int left = count;

@@ -37,7 +37,7 @@ namespace SS.Core.Modules
         private readonly HashSet<string> _unloggedCommands = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> _unloggedCommandsLookup;
 
-        private readonly object _defaultCommandLock = new();
+        private readonly Lock _defaultCommandLock = new();
 
 		public CommandManager(
             IComponentBroker broker,

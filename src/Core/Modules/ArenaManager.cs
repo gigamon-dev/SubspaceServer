@@ -89,7 +89,7 @@ namespace SS.Core.Modules
 
         private bool _isRefreshKnownArenasRequested = false;
         private Task? _refreshKnownArenasTask = null;
-        private readonly object _refreshLock = new();
+        private readonly Lock _refreshLock = new();
 
         // cached delegates
         private readonly ConfigChangedDelegate<Arena> _arenaConfChanged;

@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -15,7 +16,7 @@ namespace SS.Core.Modules
 
         private readonly Random _random = Random.Shared; // thread-safe instance
 
-        private readonly object _rngLock = new();
+        private readonly Lock _rngLock = new();
         private readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
 
         bool IModule.Load(IComponentBroker broker)

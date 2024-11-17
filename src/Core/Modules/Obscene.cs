@@ -39,11 +39,11 @@ namespace SS.Core.Modules
         private ulong _replaceCount = 0;
         private FileSystemWatcher? _fileSystemWatcher;
 
-        private readonly object _loadLock = new();
+        private readonly Lock _loadLock = new();
         private bool _isLoadRequested = false;
         private Task? _loadTask = null;
 
-        private readonly object _obsceneLock = new();
+        private readonly Lock _obsceneLock = new();
         private uint? _checksum = null;
         private List<string>? _obsceneList = null;
         private SearchValues<string>? _obscenities = null;

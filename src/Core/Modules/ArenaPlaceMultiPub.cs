@@ -5,6 +5,7 @@ using SS.Utilities;
 using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -31,7 +32,7 @@ namespace SS.Core.Modules
         private const int InitialArenaNameListCapacity = 8;
         private readonly ObjectPool<List<string>> _stringListPool = new DefaultObjectPool<List<string>>(new ListPooledObjectPolicy<string>() { InitialCapacity = InitialArenaNameListCapacity });
         private readonly List<string> _pubNames = new(InitialArenaNameListCapacity);
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
 
         #region IModule Members
 

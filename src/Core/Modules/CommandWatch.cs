@@ -4,6 +4,7 @@ using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -21,7 +22,7 @@ namespace SS.Core.Modules
 
 		private readonly HashSet<string> _watchedCommands = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> _watchedCommandsLookup;
-        private readonly object _lockObj = new();
+        private readonly Lock _lock = new();
 
 		public CommandWatch(
             IChat chat,
@@ -57,7 +58,7 @@ namespace SS.Core.Modules
 
         private void Callback_CommandExecuted(Player player, ITarget target, ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, ChatSound sound)
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (!_watchedCommandsLookup.Contains(command))
                     return;
@@ -101,7 +102,7 @@ namespace SS.Core.Modules
             Description = "A list of commands that trigger messages to all logged-in staff.")]
         private void Initialize()
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 _watchedCommands.Clear();
 

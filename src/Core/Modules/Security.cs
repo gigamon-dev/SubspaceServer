@@ -117,7 +117,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// For synchronizing access to this class' data.
         /// </summary>
-        private readonly object _lockObj = new();
+        private readonly Lock _lock = new();
 
         [ConfigHelp<bool>("Security", "SecurityKickoff", ConfigScope.Global, Default = false,
             Description = "Whether to kick players off of the server for violating security checks.")]
@@ -226,7 +226,7 @@ namespace SS.Core.Modules
                     ArrayPool<byte>.Shared.Return(buffer);
                 }
 
-                lock (_lockObj)
+                lock (_lock)
                 {
                     _scrty = data;
                 }
@@ -246,7 +246,7 @@ namespace SS.Core.Modules
             uint doorSeed;
             ServerTick timestamp;
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 _packet.GreenSeed = greenSeed = _prng.Get32();
                 _packet.DoorSeed = doorSeed = _prng.Get32();
@@ -404,7 +404,7 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (action == PlayerAction.EnterArena)
                 {
@@ -443,7 +443,7 @@ namespace SS.Core.Modules
             {
                 SwitchChecksums();
 
-                lock (_lockObj)
+                lock (_lock)
                 {
                     //
                     // Determine which players to check/sync
@@ -505,7 +505,7 @@ namespace SS.Core.Modules
 
         private bool MainloopTimer_Check()
         {
-            lock (_lockObj)
+            lock (_lock)
             {
                 _playerData.Lock();
 
@@ -588,7 +588,7 @@ namespace SS.Core.Modules
 
             ref C2S_Security pkt = ref MemoryMarshal.AsRef<C2S_Security>(data);
 
-            lock (_lockObj)
+            lock (_lock)
             {
                 if (!pd.Sent)
                 {

@@ -3,6 +3,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -332,11 +333,11 @@ namespace SS.Core.Modules
             /// </summary>
             private uint WeaponReceiveCount;
 
-            private readonly object lockObj = new();
+            private readonly Lock _lock = new();
 
             public void Reset()
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     PositionPacketPing.Reset();
                     ReliablePing.Reset();
@@ -358,7 +359,7 @@ namespace SS.Core.Modules
 
             public void UpdatePositionStats(int ms, int? clientS2CPing, uint serverWeaponCount)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     PositionPacketPing.Add(ms * 2); // convert one-way to round-trip
                     LastWeaponSentCount = serverWeaponCount;
@@ -369,7 +370,7 @@ namespace SS.Core.Modules
 
             public void UpdateReliableAckStats(int ms)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     ReliablePing.Add(ms);
                 }
@@ -377,7 +378,7 @@ namespace SS.Core.Modules
 
             public void UpdateClientLatencyStats(ref readonly ClientLatencyData data)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     ClientReportedPing = data;
                     WeaponReceiveCount = data.WeaponCount;
@@ -387,7 +388,7 @@ namespace SS.Core.Modules
 
             public void UpdateTimeSyncStats(ref readonly TimeSyncData data)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     Packetloss = data;
                     TimeSync.Update(data.ServerTime, data.ClientTime);
@@ -396,7 +397,7 @@ namespace SS.Core.Modules
 
             public void UpdateReliableStats(ref readonly ReliableLagData data)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     ReliableLagData = data;
                 }
@@ -404,7 +405,7 @@ namespace SS.Core.Modules
 
             public void QueryPositionPing(out PingSummary ping)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     ping.Current = PositionPacketPing.Current;
                     ping.Average = PositionPacketPing.Average;
@@ -415,7 +416,7 @@ namespace SS.Core.Modules
 
             public void QueryClientPing(out ClientPingSummary ping)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     // ClientReportedPing is in ticks (centiseconds).  Convert to milliseconds.
                     ping.Current = ClientReportedPing.LastPing * 10;
@@ -432,7 +433,7 @@ namespace SS.Core.Modules
 
             public void QueryReliablePing(out PingSummary ping)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     ping.Current = ReliablePing.Current;
                     ping.Average = ReliablePing.Average;
@@ -443,7 +444,7 @@ namespace SS.Core.Modules
 
             public void QueryPacketloss(out PacketlossSummary summary)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     ulong s, r;
 
@@ -463,7 +464,7 @@ namespace SS.Core.Modules
 
             public void QueryReliableLag(out ReliableLagData data)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     data = ReliableLagData;
                 }
@@ -471,7 +472,7 @@ namespace SS.Core.Modules
 
             public void QueryTimeSyncHistory(ICollection<TimeSyncRecord> records)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     TimeSync.GetHistory(records);
                 }
@@ -479,7 +480,7 @@ namespace SS.Core.Modules
 
             public int? QueryTimeSyncDrift()
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     return TimeSync.Drift;
                 }
@@ -487,7 +488,7 @@ namespace SS.Core.Modules
 
             public bool GetPositionPingHistogram(ICollection<PingHistogramBucket> data)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     return GetPingHistogram(PositionPacketPing, data);
                 }
@@ -495,7 +496,7 @@ namespace SS.Core.Modules
 
             public bool GetReliablePingHistogram(ICollection<PingHistogramBucket> data)
             {
-                lock (lockObj)
+                lock (_lock)
                 {
                     return GetPingHistogram(ReliablePing, data);
                 }
