@@ -588,7 +588,7 @@ namespace SS.Core.Modules
                 ExpireMask(player);
                 mask = pd.Mask;
 
-                remaining = pd.Expires is null ? new TimeSpan?() : now - pd.Expires.Value;
+                remaining = pd.Expires is null ? new TimeSpan?() : pd.Expires.Value - now;
             }
         }
 
@@ -604,7 +604,7 @@ namespace SS.Core.Modules
             {
                 pd.Mask = mask;
 
-                if (timeout == 0)
+                if (timeout == 0 || mask.IsClear)
                     pd.Expires = null;
                 else
                     pd.Expires = DateTime.UtcNow.AddSeconds(timeout);

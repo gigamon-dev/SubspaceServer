@@ -3205,6 +3205,7 @@ namespace SS.Core.Modules
         {
             ChatMask mask;
             Player? targetPlayer = null;
+            int timeout = 0;
 
             // get the current mask
             if (target.TryGetArenaTarget(out Arena? arena))
@@ -3213,15 +3214,36 @@ namespace SS.Core.Modules
             }
             else if (target.TryGetPlayerTarget(out targetPlayer))
             {
-                mask = _chat.GetPlayerChatMask(targetPlayer);
+                _chat.GetPlayerChatMask(targetPlayer, out mask, out TimeSpan? remainingTimeSpan);
+
+                if (remainingTimeSpan is not null)
+                {
+                    double remainingSeconds = remainingTimeSpan.Value.TotalSeconds;
+                    if (remainingSeconds > 0)
+                    {
+                        if (remainingSeconds < int.MaxValue)
+                        {
+                            try
+                            {
+                                timeout = Convert.ToInt32(remainingSeconds);
+                            }
+                            catch (OverflowException)
+                            {
+                                // This shouldn't happen due to the bounds checks. In case it somehow did, timeout will be 0.
+                            }
+                        }
+                        else
+                        {
+                            timeout = int.MaxValue;
+                        }
+                    }
+                }
             }
             else
             {
                 _chat.SendMessage(player, "Bad target.");
                 return;
             }
-
-            int timeout = 0;
 
             // read the parameters, updating what's needed in the mask
             ReadOnlySpan<char> remaining = parameters;
