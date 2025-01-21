@@ -30,7 +30,7 @@ namespace SS.Core.Modules.Scoring
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public class Stats : IModule, IGlobalPlayerStats, IArenaPlayerStats, IAllPlayerStats, IScoreStats, IStatsAdvisor
+    public sealed class Stats : IModule, IGlobalPlayerStats, IArenaPlayerStats, IAllPlayerStats, IScoreStats, IStatsAdvisor
     {
         private readonly IComponentBroker _broker;
         private readonly IChat _chat;
@@ -50,14 +50,14 @@ namespace SS.Core.Modules.Scoring
 
         private PlayerDataKey<PlayerData> _pdKey;
 
-        private readonly HashSet<PersistInterval> _intervals = new()
-        {
+        private readonly HashSet<PersistInterval> _intervals =
+        [
             PersistInterval.Forever,
             PersistInterval.Reset,
             PersistInterval.Game,
-        };
+        ];
 
-        private readonly List<DelegatePersistentData<Player, (PersistInterval, PersistScope)>> _persistRegisteredList = new();
+        private readonly List<DelegatePersistentData<Player, (PersistInterval, PersistScope)>> _persistRegisteredList = [];
 
         public Stats(
             IComponentBroker broker,
@@ -1251,7 +1251,7 @@ namespace SS.Core.Modules.Scoring
                         }
                         else
                         {
-                            pd.CurrentArenaStats.Add(interval, new());
+                            pd.CurrentArenaStats.Add(interval, []);
                         }
                     }
                 }

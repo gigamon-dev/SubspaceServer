@@ -38,7 +38,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// ConfigHelpRecords for each assembly.
         /// </summary>
-        private readonly Dictionary<Assembly, List<ConfigHelpRecord>> _assemblyConfigHelpDictionary = new();
+        private readonly Dictionary<Assembly, List<ConfigHelpRecord>> _assemblyConfigHelpDictionary = [];
 
         /// <summary>
         /// ConfigHelpRecords for each setting.
@@ -52,7 +52,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// Known sections.
         /// </summary>
-        private readonly List<string> _sectionList = new();
+        private readonly List<string> _sectionList = [];
 
         /// <summary>
         /// Known keys for each known section.
@@ -504,7 +504,7 @@ namespace SS.Core.Modules
                                     if (index == -1)
                                     {
                                         line = remaining;
-                                        remaining = ReadOnlySpan<char>.Empty;
+                                        remaining = [];
                                     }
                                     else
                                     {
@@ -555,7 +555,7 @@ namespace SS.Core.Modules
                     if (index == -1)
                     {
                         line = remaining;
-                        remaining = ReadOnlySpan<char>.Empty;
+                        remaining = [];
                     }
                     else
                     {
@@ -732,7 +732,7 @@ namespace SS.Core.Modules
                     {
                         if (!_assemblyConfigHelpDictionary.TryGetValue(assembly, out List<ConfigHelpRecord>? configHelpList))
                         {
-                            configHelpList = new List<ConfigHelpRecord>();
+                            configHelpList = [];
                             _assemblyConfigHelpDictionary.Add(assembly, configHelpList);
                         }
 

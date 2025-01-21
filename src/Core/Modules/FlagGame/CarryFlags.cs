@@ -17,7 +17,7 @@ namespace SS.Core.Modules.FlagGame
     /// E.g. jackpot zone, running zone, warzone ctf.
     /// </summary>
     [CoreModuleInfo]
-    public class CarryFlags : IModule, ICarryFlagGame
+    public sealed class CarryFlags : IModule, ICarryFlagGame
     {
         public const int MaxFlags = 256; // continuum supports 303
 
@@ -635,7 +635,7 @@ namespace SS.Core.Modules.FlagGame
             {
                 if (ad.CarryFlagBehavior != null)
                 {
-                    if (ad.CarryFlagBehavior != this)
+                    if (ad.CarryFlagBehavior != _defaultCarryFlagBehavior)
                     {
                         arena.ReleaseInterface(ref ad.CarryFlagBehavior);
                     }

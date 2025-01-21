@@ -97,7 +97,7 @@ namespace SS.Core.Configuration
         /// </summary>
         private Dictionary<string, string> Defs { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        private readonly HashSet<ConfFile> processedFiles = new();
+        private readonly HashSet<ConfFile> processedFiles = [];
         public IReadOnlySet<ConfFile> ProcessedFiles => processedFiles;
 
         /// <summary>

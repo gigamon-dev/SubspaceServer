@@ -18,7 +18,7 @@ namespace SS.Core.Modules
     /// Module that provides functionality to transfer files to and from game clients.
     /// </summary>
     [CoreModuleInfo]
-    public class FileTransfer : IModule, IFileTransfer
+    public sealed class FileTransfer : IModule, IFileTransfer
     {
         /// <summary>
         /// The # of expected concurrent uploads.

@@ -14,16 +14,16 @@ namespace SS.Core.Modules.Scoring
     /// Module for rewarding players periodically for flag games.
     /// </summary>
     [CoreModuleInfo]
-    public class PeriodicReward : IModule, IPeriodicReward, IPeriodicRewardPoints
+    public sealed class PeriodicReward : IModule, IPeriodicReward, IPeriodicRewardPoints
     {
-        private IAllPlayerStats _allPlayerStats;
-        private IArenaManager _arenaManager;
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private IMainloopTimer _mainloopTimer;
-        private INetwork _network;
-        private IPlayerData _playerData;
+        private readonly IAllPlayerStats _allPlayerStats;
+        private readonly IArenaManager _arenaManager;
+        private readonly IChat _chat;
+        private readonly ICommandManager _commandManager;
+        private readonly IConfigManager _configManager;
+        private readonly IMainloopTimer _mainloopTimer;
+        private readonly INetwork _network;
+        private readonly IPlayerData _playerData;
 
         private ArenaDataKey<ArenaData> _adKey;
 
@@ -303,9 +303,7 @@ namespace SS.Core.Modules.Scoring
                     // Find out how many points to award to each team.
                     //
 
-                    IPeriodicRewardPoints? periodicRewardPoints = arena.GetInterface<IPeriodicRewardPoints>();
-                    if (periodicRewardPoints == null)
-                        periodicRewardPoints = this;
+                    IPeriodicRewardPoints? periodicRewardPoints = arena.GetInterface<IPeriodicRewardPoints>() ?? this;
 
                     try
                     {
@@ -442,11 +440,8 @@ namespace SS.Core.Modules.Scoring
                 Description = "Whether players in safe zones receive rewards.")]
             public Settings(IConfigManager configManager, ConfigHandle ch)
             {
-                if (configManager == null)
-                    throw new ArgumentNullException(nameof(configManager));
-
-                if (ch == null)
-                    throw new ArgumentNullException(nameof(ch));
+                ArgumentNullException.ThrowIfNull(configManager);
+                ArgumentNullException.ThrowIfNull(ch);
 
                 RewardDelay = TimeSpan.FromMilliseconds(configManager.GetInt(ch, "Periodic", "RewardDelay", PeriodicSettings.RewardDelay.Default) * 10);
                 RewardMinimumPlayers = configManager.GetInt(ch, "Periodic", "RewardMinimumPlayers", PeriodicSettings.RewardMinimumPlayers.Default);

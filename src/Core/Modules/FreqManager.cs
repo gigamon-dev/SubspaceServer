@@ -20,7 +20,7 @@ namespace SS.Core.Modules
     /// </remarks>
     /// </summary>
     [CoreModuleInfo]
-    public class FreqManager : IModule, IFreqManager, IFreqBalancer, IFreqManagerEnforcerAdvisor
+    public sealed class FreqManager : IModule, IFreqManager, IFreqBalancer, IFreqManagerEnforcerAdvisor
     {
         private readonly IArenaManager _arenaManager;
         private readonly IConfigManager _configManager;
@@ -905,11 +905,8 @@ namespace SS.Core.Modules
 
         private static int GetPlayerMetric(Player player, IFreqBalancer balancer)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (balancer == null)
-                throw new ArgumentNullException(nameof(balancer));
+            ArgumentNullException.ThrowIfNull(player);
+            ArgumentNullException.ThrowIfNull(balancer);
 
             return player.IsHuman ? balancer.GetPlayerMetric(player) : 0;
         }
@@ -919,8 +916,7 @@ namespace SS.Core.Modules
             if (freq == null)
                 return 0;
 
-            if (balancer == null)
-                throw new ArgumentNullException(nameof(balancer));
+            ArgumentNullException.ThrowIfNull(balancer);
 
             _playerData.Lock(); // TODO: review this lock
 
@@ -1106,7 +1102,7 @@ namespace SS.Core.Modules
 
         private class ArenaData : IResettable
         {
-            public readonly List<Freq> Freqs = new();
+            public readonly List<Freq> Freqs = [];
             public Config Config;
 
             public readonly object Lock = new(); // TODO: I think everything should be done serially on the arena level, ASSS has some strange locking using the PlayerData lock and a module level lock.
@@ -1136,7 +1132,7 @@ namespace SS.Core.Modules
 
         private class Freq : IResettable
         {
-            public readonly HashSet<Player> Players = new();
+            public readonly HashSet<Player> Players = [];
             public short FreqNum { get; private set; }
             public bool IsRequired { get; private set; }
             public bool IsRemembered { get; private set; }

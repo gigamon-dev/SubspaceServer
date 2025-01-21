@@ -17,7 +17,7 @@ namespace SS.Core.Modules.Scoring
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class Jackpot : IModule, IJackpot
+    public sealed class Jackpot : IModule, IJackpot
     {
         // required dependencies
         private readonly IArenaManager _arenaManager;

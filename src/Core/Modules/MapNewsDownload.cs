@@ -251,8 +251,7 @@ namespace SS.Core.Modules
 
             async Task<MapDownloadData?> CompressMapAsync(string filePath, bool compress, bool isOptional)
             {
-                if (string.IsNullOrWhiteSpace(filePath))
-                    throw new ArgumentException("Cannot be null or white-space.", nameof(filePath));
+                ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
                 try
                 {
@@ -568,8 +567,7 @@ namespace SS.Core.Modules
             {
                 _parent = parent ?? throw new ArgumentNullException(nameof(parent));
 
-                if (string.IsNullOrWhiteSpace(filename))
-                    throw new ArgumentException("Cannot be null or white-space.", nameof(filename));
+                ArgumentException.ThrowIfNullOrWhiteSpace(filename);
 
                 _newsFilename = filename;
             }

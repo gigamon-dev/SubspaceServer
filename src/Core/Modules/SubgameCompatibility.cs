@@ -12,7 +12,7 @@ namespace SS.Core.Modules
 	/// Module that provides compatibility to use bots that were written to use subgame commands.
 	/// </summary>
 	[CoreModuleInfo]
-    public class SubgameCompatibility : IModule, IChatAdvisor
+    public sealed class SubgameCompatibility : IModule, IChatAdvisor
     {
         // Required dependencies
         private readonly IChat _chat;
@@ -247,7 +247,7 @@ namespace SS.Core.Modules
             if (!targetPlayer.IsStandard)
                 return;
 
-            List<TimeSyncRecord> records = new(); // TODO: pool
+            List<TimeSyncRecord> records = []; // TODO: pool
             _lagQuery.QueryTimeSyncHistory(targetPlayer, records);
 
             if (records.Count == 0)
@@ -336,9 +336,7 @@ namespace SS.Core.Modules
             _chat.SendMessage(player, $"S2C CURRENT: Slow:{clientPing.S2CSlowCurrent} Fast:{clientPing.S2CFastCurrent} 0.0%   TOTAL: Slow:{clientPing.S2CSlowTotal} Fast:{clientPing.S2CFastTotal} 0.0%");
 
             TimeSpan sessionDuration = DateTime.UtcNow - player.ConnectTime;
-            TimeSpan usage;
-            DateTime? firstLoginTimestamp;
-            if (_billing is null || !_billing.TryGetUsage(targetPlayer, out usage, out firstLoginTimestamp))
+            if (_billing is null || !_billing.TryGetUsage(targetPlayer, out TimeSpan usage, out DateTime? firstLoginTimestamp))
             {
                 usage = sessionDuration;
                 firstLoginTimestamp = DateTime.MinValue;

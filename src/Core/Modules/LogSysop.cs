@@ -28,7 +28,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class LogSysop : IModule
+    public sealed class LogSysop : IModule
     {
         private readonly ICapabilityManager _capabilityManager;
         private readonly IChat _chat;
@@ -229,13 +229,13 @@ namespace SS.Core.Modules
             target.TryGetPlayerTarget(out Player? targetPlayer);
 
             Span<char> nameFilter = targetPlayer == null
-                ? Span<char>.Empty
+                ? []
                 : stackalloc char[targetPlayer.Name!.Length + 2];
 
             if (!nameFilter.IsEmpty)
             {
                 if (!nameFilter.TryWrite($"[{targetPlayer!.Name}]", out _))
-                    nameFilter = Span<char>.Empty;
+                    nameFilter = [];
             }
 
             ReadOnlySpan<char> args = parameters;

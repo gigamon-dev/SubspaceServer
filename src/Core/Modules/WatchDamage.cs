@@ -12,7 +12,7 @@ namespace SS.Core.Modules
     /// Module that provides functionality to watch damage done to players.
     /// </summary>
     [CoreModuleInfo]
-    public class WatchDamage : IModule, IWatchDamage
+    public sealed class WatchDamage : IModule, IWatchDamage
     {
         private readonly IChat _chat;
         private readonly ICommandManager _commandManager;
@@ -303,7 +303,7 @@ namespace SS.Core.Modules
 
         private class PlayerData : IResettable
         {
-            public HashSet<Player> PlayersWatching = new();
+            public HashSet<Player> PlayersWatching = [];
             public int CallbackWatchCount;
 
             public int WatchCount => PlayersWatching.Count + CallbackWatchCount;

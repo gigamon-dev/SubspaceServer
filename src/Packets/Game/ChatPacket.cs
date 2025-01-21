@@ -76,7 +76,7 @@ namespace SS.Packets.Game
         public static Span<byte> GetMessageBytes(Span<byte> packetBytes)
         {
             if (packetBytes.Length <= HeaderLength)
-                return Span<byte>.Empty;
+                return [];
 
             packetBytes = packetBytes[HeaderLength..];
             if (packetBytes.Length > MaxMessageBytes)

@@ -14,7 +14,7 @@ namespace SS.Core.Modules
     /// Module for managing and tracking object pool usage.
     /// </summary>
     [CoreModuleInfo]
-    public class ObjectPoolManager : IModule, IObjectPoolManager
+    public sealed class ObjectPoolManager : IModule, IObjectPoolManager
     {
         private InterfaceRegistrationToken<IObjectPoolManager>? _iObjectPoolManagerToken;
 

@@ -38,7 +38,7 @@ namespace SS.Core.Modules
     /// This is better since the processing logic involves blocking I/O in certain cases
     /// such as reopening the log file for SIGHUP and opening/deleting the "MESSAGE" file for SIGUSR2.
     /// </remarks>
-    public class PosixSignal : IModule
+    public sealed class PosixSignal : IModule
     {
         private readonly IComponentBroker _broker;
 

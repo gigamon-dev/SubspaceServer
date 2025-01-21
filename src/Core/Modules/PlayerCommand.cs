@@ -26,7 +26,7 @@ namespace SS.Core.Modules
 	/// See the <see cref="AdminCommand"/> module for other commands that are geared towards server administration.
 	/// </remarks>
 	[CoreModuleInfo]
-    public class PlayerCommand : IModule
+    public sealed class PlayerCommand : IModule
     {
         // Regular dependencies (do not add any of these to a command group)
         private readonly IComponentBroker _broker;
@@ -57,7 +57,7 @@ namespace SS.Core.Modules
 
         private DateTime _startedAt;
 
-        private readonly Dictionary<Type, InterfaceFieldInfo> _interfaceFields = new();
+        private readonly Dictionary<Type, InterfaceFieldInfo> _interfaceFields = [];
         private readonly Dictionary<string, CommandGroup> _commandGroups = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, CommandGroup>.AlternateLookup<ReadOnlySpan<char>> _commandGroupsLookup;
 
@@ -95,17 +95,17 @@ namespace SS.Core.Modules
             AddCommandGroup(
                 new CommandGroup("core")
                 {
-                    InterfaceDependencies = new()
-                    {
+                    InterfaceDependencies =
+                    [
                         typeof(IArenaManager),
                         typeof(ICapabilityManager),
                         typeof(IConfigManager),
                         typeof(IMainloop),
                         typeof(IModuleManager),
                         typeof(INetwork),
-                    },
-                    Commands = new[]
-                    {
+                    ],
+                    Commands =
+                    [
                         new CommandInfo("arena", Command_arena),
                         new CommandInfo("shutdown", Command_shutdown),
                         new CommandInfo("recyclezone", Command_recyclezone),
@@ -131,22 +131,22 @@ namespace SS.Core.Modules
                         new CommandInfo("serverstats", Command_serverstats),
                         new CommandInfo("send", Command_send),
                         new CommandInfo("where", Command_where)
-                    }
+                    ]
                 });
 
             AddCommandGroup(
                 new CommandGroup("game")
                 {
-                    InterfaceDependencies = new()
-                    {
+                    InterfaceDependencies =
+                    [
                         typeof(IArenaManager),
                         typeof(ICapabilityManager),
                         typeof(IConfigManager),
                         typeof(IGame),
                         typeof(INetwork),
-                    },
-                    Commands = new[]
-                    {
+                    ],
+                    Commands =
+                    [
                         new CommandInfo("setfreq", Command_setfreq),
                         new CommandInfo("setship", Command_setship),
                         new CommandInfo("specall", Command_specall),
@@ -157,36 +157,36 @@ namespace SS.Core.Modules
                         new CommandInfo("unlock", Command_unlock),
                         new CommandInfo("lockarena", Command_lockarena),
                         new CommandInfo("unlockarena", Command_unlockarena),
-                    }
+                    ]
                 });
 
             AddCommandGroup(
                 new CommandGroup("jackpot")
                 {
-                    InterfaceDependencies = new()
-                    {
+                    InterfaceDependencies =
+                    [
                         typeof(IArenaManager),
                         typeof(ICapabilityManager),
                         typeof(IJackpot),
-                    },
-                    Commands = new[]
-                    {
+                    ],
+                    Commands =
+                    [
                         new CommandInfo("jackpot", Command_jackpot),
                         new CommandInfo("setjackpot", Command_setjackpot),
-                    }
+                    ]
                 });
 
             AddCommandGroup(
                 new CommandGroup("config")
                 {
-                    InterfaceDependencies = new()
-                    {
+                    InterfaceDependencies =
+                    [
                         typeof(IArenaManager),
                         typeof(IClientSettings),
                         typeof(IConfigManager),
-                    },
-                    Commands = new[]
-                    {
+                    ],
+                    Commands =
+                    [
                         new CommandInfo("geta", Command_getX),
                         new CommandInfo("getg", Command_getX),
                         new CommandInfo("seta", Command_setX),
@@ -195,87 +195,85 @@ namespace SS.Core.Modules
                         new CommandInfo("getcsoverride", Command_getcsoverride),
                         new CommandInfo("setcsoverride", Command_setcsoverride),
                         new CommandInfo("rmcsoverride", Command_rmcsoverride),
-                    }
+                    ]
                 });
 
             AddCommandGroup(
                 new CommandGroup("flag")
                 {
-                    InterfaceDependencies = new()
-                    {
-                    },
-                    Commands = new[]
-                    {
+                    InterfaceDependencies = [],
+                    Commands =
+                    [
                         new CommandInfo("flagreset", Command_flagreset),
                         new CommandInfo("flaginfo", Command_flaginfo),
                         new CommandInfo("neutflag", Command_neutflag),
                         new CommandInfo("moveflag", Command_moveflag),
-                    }
+                    ]
                 });
 
             AddCommandGroup(
                 new CommandGroup("ball")
                 {
-                    InterfaceDependencies = new()
-                    {
+                    InterfaceDependencies =
+                    [
                         typeof(IBalls),
-                    },
-                    Commands = new[]
-                    {
+                    ],
+                    Commands =
+                    [
                         new CommandInfo("ballcount", Command_ballcount),
                         new CommandInfo("ballinfo", Command_ballinfo),
                         new CommandInfo("giveball", Command_giveball),
                         new CommandInfo("moveball", Command_moveball),
                         new CommandInfo("spawnball", Command_spawnball),
-                    }
+                    ]
                 });
 
             AddCommandGroup(
                 new CommandGroup("lag")
                 {
-                    InterfaceDependencies = new()
-                    {
+                    InterfaceDependencies =
+                    [
                         typeof(ILagQuery),
-                    },
-                    Commands = new[]
-                    {
+                    ],
+                    Commands =
+                    [
                         new CommandInfo("lag", Command_lag),
                         new CommandInfo("laghist", Command_laghist),
-                    }
+                    ]
                 });
 
             AddCommandGroup(
                 new CommandGroup("stats")
                 {
-                    InterfaceDependencies = new()
-                    {
+                    InterfaceDependencies =
+                    [
                         typeof(IArenaPlayerStats),
                         typeof(IConfigManager),
                         typeof(IPersistExecutor),
                         typeof(IScoreStats),
-                    },
-                    Commands = new[]
-                    {
+                    ],
+                    Commands =
+                    [
                         new CommandInfo("endinterval", Command_endinterval),
                         new CommandInfo("scorereset", Command_scorereset),
                         new CommandInfo("points", Command_points)
-                    }
+                    ]
                 });
 
             AddCommandGroup(
                 new CommandGroup("misc")
                 {
-                    InterfaceDependencies = new()
-                    {
+                    InterfaceDependencies =
+                    [
                         typeof(IArenaManager),
                         typeof(ICapabilityManager),
                         typeof(IConfigManager),
                         typeof(IFileTransfer),
                         typeof(IGroupManager),
                         typeof(IMapData),
-                    },
-                    Commands = new[]
-                    {
+                    ],
+                    Commands =
+                    [
                         new CommandInfo("getgroup", Command_getgroup),
                         new CommandInfo("setgroup", Command_setgroup),
                         new CommandInfo("rmgroup", Command_rmgroup),
@@ -288,7 +286,7 @@ namespace SS.Core.Modules
                         new CommandInfo("sheep", Command_sheep),
                         new CommandInfo("mapinfo", Command_mapinfo),
                         new CommandInfo("mapimage", Command_mapimage),
-                    }
+                    ]
                 });
 
             void AddCommandGroup(CommandGroup group)
@@ -655,7 +653,7 @@ namespace SS.Core.Modules
             ReadOnlySpan<char> remaining = parameters;
             ReadOnlySpan<char> token;
             bool dashA = false;
-            ReadOnlySpan<char> arenaGroup = ReadOnlySpan<char>.Empty;
+            ReadOnlySpan<char> arenaGroup = [];
             PersistInterval? interval = null;
 
             while ((token = remaining.GetToken(" \t", out remaining)).Length > 0)
@@ -1362,9 +1360,9 @@ namespace SS.Core.Modules
 
             bool permanent = true;
             ModifyOptions options = ModifyOptions.None;
-            ReadOnlySpan<char> section = ReadOnlySpan<char>.Empty;
-            ReadOnlySpan<char> key = ReadOnlySpan<char>.Empty;
-            ReadOnlySpan<char> value = ReadOnlySpan<char>.Empty;
+            ReadOnlySpan<char> section = [];
+            ReadOnlySpan<char> key = [];
+            ReadOnlySpan<char> value = [];
             ReadOnlySpan<char> comment;
 
             ReadOnlySpan<char> remaining = parameters;
@@ -2034,8 +2032,8 @@ namespace SS.Core.Modules
             _game!.ShipReset(target);
         }
 
-        private static readonly (string Name, int Type)[] _prizeLookup = new[]
-        {
+        private static readonly (string Name, int Type)[] _prizeLookup =
+        [
             ( "random",    0 ),
             ( "charge",   13 ), // must come before "recharge"
             ( "x",         6 ), // must come before "prox"
@@ -2065,7 +2063,7 @@ namespace SS.Core.Modules
             ( "brick",    26 ),
             ( "rocket",   27 ),
             ( "port",     28 ),
-        };
+        ];
 
         private enum ParsePrizeLast
         {
@@ -2567,7 +2565,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            List<string> modulesList = new(); // TODO: use a pool
+            List<string> modulesList = []; // TODO: use a pool
 
             foreach (var moduleInfo in _mm!.GetModuleTypesAndDescriptions(arena))
             {
@@ -2778,7 +2776,7 @@ namespace SS.Core.Modules
                 return;
 
             bool detach = false;
-            ReadOnlySpan<char> module = ReadOnlySpan<char>.Empty;
+            ReadOnlySpan<char> module = [];
 
             ReadOnlySpan<char> token;
             while (!(token = parameters.GetToken(' ', out parameters)).IsEmpty)
@@ -4184,8 +4182,7 @@ namespace SS.Core.Modules
 
             public CommandGroup(string name)
             {
-                if (string.IsNullOrWhiteSpace(name))
-                    throw new ArgumentException("Cannot be null or white-space.", nameof(name));
+                ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
                 Name = name;
             }
@@ -4209,8 +4206,7 @@ namespace SS.Core.Modules
 
             private CommandInfo(string commandName)
             {
-                if (string.IsNullOrWhiteSpace(commandName))
-                    throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
+                ArgumentException.ThrowIfNullOrWhiteSpace(commandName);
 
                 CommandName = commandName;
             }

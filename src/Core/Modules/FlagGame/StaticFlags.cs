@@ -16,7 +16,7 @@ namespace SS.Core.Modules.FlagGame
     /// In other words, flags that can't be carried, AKA "turf" style flags.
     /// </summary>
     [CoreModuleInfo]
-    public class StaticFlags : IModule, IStaticFlagGame
+    public sealed class StaticFlags : IModule, IStaticFlagGame
     {
         /// <summary>
         /// The maximum # of static flags allowed.

@@ -11,21 +11,21 @@ namespace SS.Core.Modules.Scoring
     /// Module that provides functionality for Speed games.
     /// </summary>
     [CoreModuleInfo]
-    public class SpeedGame : IModule, IArenaAttachableModule
+    public sealed class SpeedGame : IModule, IArenaAttachableModule
     {
-        private IAllPlayerStats _allPlayerStats;
-        private IArenaManager _arenaManager;
-        private IArenaPlayerStats _arenaPlayerStats;
-        private IChat _chat;
-        private ICommandManager _commandManager;
-        private IConfigManager _configManager;
-        private IGame _game;
-        private IGameTimer _gameTimer;
-        private ILogManager _logManager;
-        private IMainloopTimer _mainloopTimer;
-        private INetwork _network;
-        private IPersistExecutor _persistExecutor;
-        private IPlayerData _playerData;
+        private readonly IAllPlayerStats _allPlayerStats;
+        private readonly IArenaManager _arenaManager;
+        private readonly IArenaPlayerStats _arenaPlayerStats;
+        private readonly IChat _chat;
+        private readonly ICommandManager _commandManager;
+        private readonly IConfigManager _configManager;
+        private readonly IGame _game;
+        private readonly IGameTimer _gameTimer;
+        private readonly ILogManager _logManager;
+        private readonly IMainloopTimer _mainloopTimer;
+        private readonly INetwork _network;
+        private readonly IPersistExecutor _persistExecutor;
+        private readonly IPlayerData _playerData;
 
         private ArenaDataKey<ArenaData> _adKey;
 
@@ -567,7 +567,7 @@ namespace SS.Core.Modules.Scoring
             public GameState GameState = GameState.Stopped;
             public DateTime? StartAfter;
 
-            public readonly List<Player> Rank = new();
+            public readonly List<Player> Rank = [];
 
             public bool TryReset()
             {

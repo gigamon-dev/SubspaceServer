@@ -30,12 +30,12 @@ namespace SS.Core.Configuration
         /// <summary>
         /// All of the files that the document consists of.
         /// </summary>
-        private readonly HashSet<ConfFile> _files = new();
+        private readonly HashSet<ConfFile> _files = [];
 
         /// <summary>
         /// Active lines
         /// </summary>
-        private readonly List<LineReference> _lines = new();
+        private readonly List<LineReference> _lines = [];
 
         /// <summary>
         /// Active settings

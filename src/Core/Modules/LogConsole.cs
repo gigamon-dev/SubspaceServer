@@ -8,14 +8,9 @@ namespace SS.Core.Modules
     /// Logging module that to the console.
     /// </summary>
     [CoreModuleInfo]
-    public class LogConsole : IModule
+    public sealed class LogConsole(ILogManager logManager) : IModule
     {
-        private ILogManager _logManager;
-
-        public LogConsole(ILogManager logManager)
-        {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
         #region IModule Members
 

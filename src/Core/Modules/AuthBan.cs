@@ -15,7 +15,7 @@ namespace SS.Core.Modules
     /// This module addes the ?kick command and other associated commands to manage bans.
     /// </summary>
     [CoreModuleInfo]
-    public class AuthBan(
+    public sealed class AuthBan(
         IAuth auth,
         ICapabilityManager capabilityManager,
         IChat chat,
@@ -33,7 +33,7 @@ namespace SS.Core.Modules
         private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
         private InterfaceRegistrationToken<IAuth>? _iAuthToken;
 
-        private readonly Dictionary<uint, BanRecord> _banDictionary = new();
+        private readonly Dictionary<uint, BanRecord> _banDictionary = [];
         private readonly Lock _lock = new();
 
         #region Module methods
@@ -172,7 +172,7 @@ namespace SS.Core.Modules
             if (targetPlayer.IsStandard) // only standard clients have a MacId
             {
                 TimeSpan timeout = TimeSpan.Zero;
-                ReadOnlySpan<char> reason = ReadOnlySpan<char>.Empty;
+                ReadOnlySpan<char> reason;
 
                 if (parameters.StartsWith("-t") || parameters.StartsWith("-s"))
                 {

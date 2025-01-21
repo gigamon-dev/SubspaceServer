@@ -43,8 +43,7 @@ namespace SS.Packets.Game
         /// <returns>Number of bytes for the packet.</returns>
         public int SetFileInfo(string fileName, uint checksum)
         {
-            if (string.IsNullOrWhiteSpace(fileName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(fileName));
+            ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
 
             ref File file = ref Files[0];
             file.FileName.Set(fileName);
@@ -67,8 +66,7 @@ namespace SS.Packets.Game
             if (fileIndex >= MaxFiles)
                 throw new ArgumentOutOfRangeException(nameof(fileIndex), ">= " + MaxFiles);
 
-            if (string.IsNullOrWhiteSpace(fileName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(fileName));
+            ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
 
             ref File file = ref Files[fileIndex];
             file.FileName.Set(fileName);
@@ -126,7 +124,6 @@ namespace SS.Packets.Game
             {
                 public const int Length = 16;
 
-                [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
                 [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
                 private byte _element0;
 

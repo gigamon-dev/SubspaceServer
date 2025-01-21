@@ -34,9 +34,7 @@ namespace SS.Core.Map.Lvz
             ObjectDataReadDelegate<TState> objectDataReadCallback,
             TState state)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
-
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
             ArgumentNullException.ThrowIfNull(objectDataReadCallback);
 
             long length = new FileInfo(path).Length;

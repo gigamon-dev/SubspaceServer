@@ -13,7 +13,7 @@ namespace SS.Core.Modules
     /// Module that provides functionality for banners (the small 12 x 8 bitmap image a player can choose to display next to their name).
     /// </summary>
     [CoreModuleInfo]
-    public class Banners(
+    public sealed class Banners(
         IComponentBroker broker,
         ICapabilityManager capabilityManager,
         IChat chat,

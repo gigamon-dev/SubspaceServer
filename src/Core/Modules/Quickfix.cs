@@ -18,7 +18,7 @@ namespace SS.Core.Modules
     /// </list>
     /// </summary>
     [CoreModuleInfo]
-    public class Quickfix : IModule
+    public sealed class Quickfix : IModule
     {
         private readonly ICommandManager _commandManager;
         private readonly ICapabilityManager _capabilityManager;

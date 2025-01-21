@@ -10,7 +10,7 @@ namespace SS.Core.Modules
     /// Players can be warped to a new (x,y) coordinate on the map, and even be sent to another arena.
     /// </summary>
     [CoreModuleInfo]
-    public class AutoWarp(
+    public sealed class AutoWarp(
         IArenaManager arenaManager,
         IGame game,
         IPrng prng) : IModule

@@ -23,7 +23,7 @@ namespace SS.Utilities
             }
         }
 
-        private static int[] _masks;
+        private static readonly int[] _masks;
 
         /// <summary>
         /// Gets a mask for reading a boolean bit at a particular location.
@@ -36,7 +36,7 @@ namespace SS.Utilities
         public static int GetMask(int bitIndex)
         {
             if (bitIndex < 0 || bitIndex > 31)
-                throw new ArgumentOutOfRangeException("bitIndex");
+                throw new ArgumentOutOfRangeException(nameof(bitIndex));
 
             return _masks[bitIndex];
         }

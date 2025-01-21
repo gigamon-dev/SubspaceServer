@@ -741,17 +741,13 @@ namespace SS.Core.Modules
                     }
                 }
 
-                Span<byte> span = stackalloc byte[1];
-
                 // ASSS sends what it calls a "brick clear" packet here. Which is an empty, 1 byte brick packet (0x21).
                 // However, there actually is no such mechanism to clear bricks on the client side. (would be nice to have though)
                 // ASSS probably included it to emulate what subgame sends when there are no active bricks.
                 // The Bricks module sends brick data on PlayerAction.EnterArena, which happens immediately after this method is called.
-                //span[0] = (byte)S2CPacketType.Brick;
-                //_network.SendToOne(player, span, NetSendFlags.Reliable);
 
                 // send entering arena finisher
-                span[0] = (byte)S2CPacketType.EnteringArena;
+                Span<byte> span = [(byte)S2CPacketType.EnteringArena];
                 _network?.SendToOne(player, span, NetSendFlags.Reliable);
 
                 if (player.TryGetExtraData(_spawnKey, out SpawnLoc? spawnLoc))

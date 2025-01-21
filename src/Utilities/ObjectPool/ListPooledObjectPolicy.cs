@@ -25,7 +25,7 @@ namespace SS.Utilities.ObjectPool
         public List<T> Create()
         {
             return InitialCapacity < 0
-                ? new List<T>()
+                ? []
                 : new List<T>(InitialCapacity);
         }
 

@@ -100,7 +100,7 @@ namespace SS.Core
         /// <summary>
         /// Gets the <see cref="System.Text.StringBuilder"/>.
         /// </summary>
-        public StringBuilder StringBuilder
+        public readonly StringBuilder StringBuilder
         {
             get
             {
@@ -131,8 +131,7 @@ namespace SS.Core
         /// <exception cref="ArgumentNullException"><paramref name="destination"/> was null.</exception>
         public void CopyToAndClear(StringBuilder destination)
         {
-            if (destination is null)
-                throw new ArgumentNullException(nameof(destination));
+            ArgumentNullException.ThrowIfNull(destination);
 
             if (_isCleared)
                 throw new InvalidOperationException();

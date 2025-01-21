@@ -76,16 +76,11 @@ namespace SS.Core.ComponentInterfaces
     /// <summary>
     /// Mask that tells what chat message types are allowed/disallowed.
     /// </summary>
-    public struct ChatMask
-    {
-        private BitVector32 _maskVector;
+    public struct ChatMask(int data)
+	{
+        private BitVector32 _maskVector = new(data);
 
-        public ChatMask(int data)
-        {
-            _maskVector = new(data);
-        }
-
-        public static ChatMask operator |(ChatMask a, ChatMask b) => new ChatMask(a._maskVector.Data | b._maskVector.Data);
+		public static ChatMask operator |(ChatMask a, ChatMask b) => new(a._maskVector.Data | b._maskVector.Data);
 
         public int Value => _maskVector.Data;
 

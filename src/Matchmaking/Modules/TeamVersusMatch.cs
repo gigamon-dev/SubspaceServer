@@ -109,7 +109,7 @@ namespace SS.Matchmaking.Modules
         /// <summary>
         /// Dictionary of matches.
         /// </summary>
-        private readonly Dictionary<MatchIdentifier, MatchData> _matchDataDictionary = new();
+        private readonly Dictionary<MatchIdentifier, MatchData> _matchDataDictionary = [];
 
         /// <summary>
         /// Dictionary for looking up what slot in a match a player is associated with.
@@ -134,12 +134,12 @@ namespace SS.Matchmaking.Modules
         /// <remarks>
         /// Key: Arena base name
         /// </remarks>
-        private readonly Dictionary<string, ArenaBaseData> _arenaBaseDataDictionary = new();
+        private readonly Dictionary<string, ArenaBaseData> _arenaBaseDataDictionary = [];
 
         /// <summary>
         /// Data per-arena (not all arenas, only those configured for matches).
         /// </summary>
-        private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new();
+        private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = [];
 
         private readonly DefaultObjectPool<ArenaData> _arenaDataPool = new(new DefaultPooledObjectPolicy<ArenaData>(), Constants.TargetArenaCount);
         private readonly DefaultObjectPool<TeamLineup> _teamLineupPool = new(new DefaultPooledObjectPolicy<TeamLineup>(), Constants.TargetPlayerCount);
@@ -1140,7 +1140,7 @@ namespace SS.Matchmaking.Modules
                     // Only remove inactive ones.
                     // Ongoing matches will continue to run with their old configuration, but will be discarded when they complete.
 
-                    List<MatchIdentifier> toRemove = new();
+                    List<MatchIdentifier> toRemove = [];
                     foreach ((MatchIdentifier matchIdentifier, MatchData matchData) in _matchDataDictionary)
                     {
                         if (string.Equals(matchIdentifier.MatchType, matchType, StringComparison.OrdinalIgnoreCase)
@@ -1207,7 +1207,7 @@ namespace SS.Matchmaking.Modules
             // Only remove inactive ones.
             // Ongoing matches will continue to run with their old configuration, but will be discarded when they complete.
 
-            List<MatchIdentifier> toRemove = new();
+            List<MatchIdentifier> toRemove = [];
             foreach ((MatchIdentifier matchIdentifier, MatchData matchData) in _matchDataDictionary)
             {
                 if (string.Equals(matchIdentifier.MatchType, matchType, StringComparison.OrdinalIgnoreCase)
@@ -2079,7 +2079,7 @@ namespace SS.Matchmaking.Modules
 
             bool LoadMatchBoxesConfiguration(ConfigHandle ch, string matchIdentifier, MatchConfiguration matchConfiguration)
             {
-                List<TileCoordinates> tempCoordList = new();
+                List<TileCoordinates> tempCoordList = [];
 
                 for (int boxIdx = 0; boxIdx < matchConfiguration.Boxes.Length; boxIdx++)
                 {
@@ -2124,7 +2124,7 @@ namespace SS.Matchmaking.Modules
                             return false;
                         }
 
-                        boxConfiguration.TeamStartLocations[teamIdx] = tempCoordList.ToArray();
+                        boxConfiguration.TeamStartLocations[teamIdx] = [.. tempCoordList];
                     }
 
                     matchConfiguration.Boxes[boxIdx] = boxConfiguration;
@@ -2312,7 +2312,7 @@ namespace SS.Matchmaking.Modules
                     }
 
                     // Get the Player objects of all the players in the match.
-                    Dictionary<string, Player> playersByName = new(); // TODO: pool
+                    Dictionary<string, Player> playersByName = []; // TODO: pool
                     HashSet<string> abandonedPlayerNames = _objectPoolManager.NameHashSetPool.Get();
 
                     try

@@ -35,7 +35,7 @@ namespace SS.Core.Modules
     /// JoWie rewrote it into a C module, and this is based on JoWie's C module.
     /// </remarks>
     [CoreModuleInfo]
-    public class Peer : IModule, IPeer, IStringBuilderPoolProvider
+    public sealed class Peer : IModule, IPeer, IStringBuilderPoolProvider
     {
         private static readonly TimeSpan StaleArenaTimeout = TimeSpan.FromSeconds(30);
 
@@ -160,11 +160,8 @@ namespace SS.Core.Modules
             if (findName.IsEmpty)
                 return false;
 
-            if (name is null)
-                throw new ArgumentNullException(nameof(name));
-
-            if (arena is null)
-                throw new ArgumentNullException(nameof(arena));
+            ArgumentNullException.ThrowIfNull(name);
+            ArgumentNullException.ThrowIfNull(arena);
 
             bool hasMatch = false;
 
@@ -1151,7 +1148,7 @@ namespace SS.Core.Modules
             _peerArenaPool.Return(peerArena);
         }
 
-        private PeerArenaName? FindPeerArenaRename(PeerZone peerZone, ReadOnlySpan<char> remoteName, bool remote)
+        private static PeerArenaName? FindPeerArenaRename(PeerZone peerZone, ReadOnlySpan<char> remoteName, bool remote)
         {
             foreach (PeerArenaName name in peerZone.Config.RenamedArenas)
             {
@@ -1203,7 +1200,7 @@ namespace SS.Core.Modules
             return false;
         }
 
-        private bool HasArenaConfiguredAsDummy(PeerZone peerZone, ReadOnlySpan<char> localName)
+        private static bool HasArenaConfiguredAsDummy(PeerZone peerZone, ReadOnlySpan<char> localName)
         {
             if (peerZone is null)
                 return false;
@@ -1211,7 +1208,7 @@ namespace SS.Core.Modules
             return peerZone.Config.SendDummyArenasLookup.Contains(localName);
         }
 
-        private bool HasArenaConfiguredAsRelay(PeerZone peerZone, ReadOnlySpan<char> localName)
+        private static bool HasArenaConfiguredAsRelay(PeerZone peerZone, ReadOnlySpan<char> localName)
         {
             if (peerZone is null)
                 return false;
@@ -1301,7 +1298,7 @@ namespace SS.Core.Modules
 
             public IReadOnlyList<string> ConfiguredArenas { get; }
 
-            public readonly List<PeerArena> Arenas = new();
+            public readonly List<PeerArena> Arenas = [];
             private readonly ReadOnlyCollection<PeerArena> _readOnlyArenas;
             IReadOnlyList<IPeerArena> IPeerZone.Arenas => _readOnlyArenas;
 
@@ -1355,8 +1352,8 @@ namespace SS.Core.Modules
 
             #endregion
 
-            public readonly List<string> Arenas = new();
-            public readonly List<PeerArenaName> RenamedArenas = new();
+            public readonly List<string> Arenas = [];
+            public readonly List<PeerArenaName> RenamedArenas = [];
             public readonly HashSet<string> SendDummyArenas = new(StringComparer.OrdinalIgnoreCase);
             public readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> SendDummyArenasLookup;
             public readonly HashSet<string> RelayArenas = new(StringComparer.OrdinalIgnoreCase);

@@ -39,7 +39,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public class Bricks(
+    public sealed class Bricks(
         IComponentBroker broker,
         IArenaManager arenaManager,
         IConfigManager configManager,

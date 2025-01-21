@@ -26,7 +26,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public class AuthVIE(
+    public sealed class AuthVIE(
         IAuth auth,
         IConfigManager configManager,
         ILogManager logManager) : IModule, IAuth

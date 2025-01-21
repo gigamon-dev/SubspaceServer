@@ -9,14 +9,14 @@ namespace SS.Core.Modules
     /// Module that adds commands for players to notify staff members (e.g. ?cheater).
     /// </summary>
     [CoreModuleInfo]
-    public class Notify : IModule
+    public sealed class Notify : IModule
     {
         private readonly IChat _chat;
         private readonly ICommandManager _commandManager;
         private readonly IConfigManager _configManager;
 
-        private static readonly char[] _alertCommandDelimiters = { ' ', ',', ':', ';' };
-        private readonly List<string> _commands = new();
+        private static readonly char[] _alertCommandDelimiters = [' ', ',', ':', ';'];
+        private readonly List<string> _commands = [];
         private string? _emptyReply;
 
         public Notify(

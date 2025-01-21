@@ -103,7 +103,7 @@ namespace SS.Matchmaking
         #endregion
     }
 
-    public struct QueueOptions
+    public readonly struct QueueOptions
     {
         /// <summary>
         /// Whether the queue allows solo players to queue up.

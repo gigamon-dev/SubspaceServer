@@ -41,7 +41,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public class BandwidthDefault(IConfigManager configManager) : IModule, IBandwidthLimiterProvider
+    public sealed class BandwidthDefault(IConfigManager configManager) : IModule, IBandwidthLimiterProvider
     {
         public const string InterfaceIdentifier = nameof(BandwidthDefault);
 
@@ -128,14 +128,13 @@ namespace SS.Core.Modules
             /// <remarks>
             /// This should be configured such that all the values in this array add up to 100.
             /// </remarks>
-            public int[] PriorityLimits { get; init; } = new[]
-                {
-                    configManager.GetInt(configManager.Global, "Net", "PriLimit0", 20), // low pri unrel
-                    configManager.GetInt(configManager.Global, "Net", "PriLimit1", 40), // reg pri unrel
-                    configManager.GetInt(configManager.Global, "Net", "PriLimit2", 20), // high pri unrel
-                    configManager.GetInt(configManager.Global, "Net", "PriLimit3", 15), // rel
-                    configManager.GetInt(configManager.Global, "Net", "PriLimit4", 5),  // ack
-                };
+            public int[] PriorityLimits { get; init; } = [
+                configManager.GetInt(configManager.Global, "Net", "PriLimit0", 20), // low pri unrel
+                configManager.GetInt(configManager.Global, "Net", "PriLimit1", 40), // reg pri unrel
+                configManager.GetInt(configManager.Global, "Net", "PriLimit2", 20), // high pri unrel
+                configManager.GetInt(configManager.Global, "Net", "PriLimit3", 15), // rel
+                configManager.GetInt(configManager.Global, "Net", "PriLimit4", 5),  // ack
+            ];
 
             /// <summary>
             /// The maximum # of buffers a client is able to buffer.

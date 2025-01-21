@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace SS.Packets.Game
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct C2S_Brick
+    public readonly struct C2S_Brick(short x, short y)
     {
         #region Static Members
 
@@ -12,9 +12,9 @@ namespace SS.Packets.Game
 
         #endregion
 
-        public readonly byte Type;
-        private readonly short x;
-        private readonly short y;
+        public readonly byte Type = (byte)C2SPacketType.Brick;
+        private readonly short x = LittleEndianConverter.Convert(x);
+        private readonly short y = LittleEndianConverter.Convert(y);
 
         #region Helper Properties
 

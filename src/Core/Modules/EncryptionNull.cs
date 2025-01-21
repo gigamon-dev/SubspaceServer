@@ -11,7 +11,7 @@ namespace SS.Core.Modules
     /// Module for the login sequence (connection init) that responds such that no encryption is used.
     /// </summary>
     [CoreModuleInfo]
-    public class EncryptionNull(IRawNetwork rawNetwork) : IModule
+    public sealed class EncryptionNull(IRawNetwork rawNetwork) : IModule
     {
         private readonly IRawNetwork _rawNetwork = rawNetwork ?? throw new ArgumentNullException(nameof(rawNetwork));
 
@@ -25,7 +25,6 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "ComponentBroker is a required parameter for the module to load even though it is not used.")]
         bool IModule.Load(IComponentBroker broker)
         {
             _rawNetwork.AppendConnectionInitHandler(Callback_ConnectionInit);
@@ -78,7 +77,7 @@ namespace SS.Core.Modules
             if (player is null)
             {
                 // no slots left?
-                Span<byte> disconnect = stackalloc byte[] { 0x00, 0x07 };
+                Span<byte> disconnect = [0x00, 0x07];
                 _rawNetwork.ReallyRawSend(remoteAddress, disconnect, ld);
                 return true;
             }

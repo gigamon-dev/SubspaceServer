@@ -13,7 +13,7 @@ namespace SS.Core.Modules
     /// Module that provides VIE encryption.
     /// </summary>
     [CoreModuleInfo]
-    public class EncryptionVIE(
+    public sealed class EncryptionVIE(
         IRawNetwork rawNetwork,
         IPlayerData playerData) : IModule, IEncrypt, IClientEncrypt
     {

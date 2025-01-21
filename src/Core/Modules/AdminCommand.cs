@@ -12,7 +12,7 @@ namespace SS.Core.Modules
     /// Module that handles commands for administrators.
     /// </summary>
     [CoreModuleInfo]
-    public class AdminCommand(
+    public sealed class AdminCommand(
         IArenaManager arenaManager,
         ICapabilityManager capabilityManager,
         IChat chat,
@@ -225,7 +225,7 @@ namespace SS.Core.Modules
             if (workingDir is null)
                 return;
 
-            string serverPath = Path.Join(workingDir, serverPathSpan, (!isZip && Path.GetFileName(serverPathSpan).IsEmpty) ? clientFileName : ReadOnlySpan<char>.Empty);
+            string serverPath = Path.Join(workingDir, serverPathSpan, (!isZip && Path.GetFileName(serverPathSpan).IsEmpty) ? clientFileName : []);
             string serverFullPath = Path.GetFullPath(serverPath);
             string currentDir = Directory.GetCurrentDirectory();
 
@@ -871,7 +871,7 @@ namespace SS.Core.Modules
                 throw new ArgumentException("Value was empty.", nameof(basePath));
 
             // Remove any directory separator chars from the end of basePath.
-            ReadOnlySpan<char> directorySeparatorChars = stackalloc char[2] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar };
+            ReadOnlySpan<char> directorySeparatorChars = [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar];
             basePath = basePath.TrimEnd(directorySeparatorChars);
 
             while (!path.IsEmpty)

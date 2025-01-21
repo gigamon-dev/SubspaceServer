@@ -45,7 +45,7 @@ namespace SS.Packets.Billing
         public static Span<byte> GetTextBytes(Span<byte> packetBytes)
         {
             if (packetBytes.Length <= HeaderLength)
-                return Span<byte>.Empty;
+                return [];
 
             packetBytes = packetBytes[HeaderLength..];
             if (packetBytes.Length > MaxTextBytes)

@@ -12,7 +12,7 @@ namespace SS.Core.Modules.Scoring
     /// Module that provides functionality for King of the Hill games.
     /// </summary>
     [CoreModuleInfo]
-    public class Koth : IModule, IArenaAttachableModule, ICrownsBehavior
+    public sealed class Koth : IModule, IArenaAttachableModule, ICrownsBehavior
     {
         private readonly IAllPlayerStats _allPlayerStats;
         private readonly IArenaManager _arenaManager;
@@ -152,9 +152,6 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
-                return;
-
             if (player.Packet.HasCrown)
             {
                 RemoveCrown(player);
@@ -297,11 +294,8 @@ namespace SS.Core.Modules.Scoring
 
         private void GetInitialPlayers(Arena arena, HashSet<Player> crownSet, HashSet<Player> noCrownSet)
         {
-            if (crownSet == null)
-                throw new ArgumentNullException(nameof(crownSet));
-
-            if (noCrownSet == null)
-                throw new ArgumentNullException(nameof(noCrownSet));
+            ArgumentNullException.ThrowIfNull(crownSet);
+            ArgumentNullException.ThrowIfNull(noCrownSet);
 
             _playerData.Lock();
 

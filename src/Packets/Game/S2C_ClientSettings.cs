@@ -182,7 +182,7 @@ namespace SS.Packets.Game
         public ShipSettings Lancaster;
         public ShipSettings Shark;
 
-        private Span<ShipSettings> ships => MemoryMarshal.CreateSpan(ref Warbird, 8);
+        private Span<ShipSettings> Ships => MemoryMarshal.CreateSpan(ref Warbird, 8);
 
         public ref ShipSettings this[int index]
         {
@@ -191,7 +191,7 @@ namespace SS.Packets.Game
                 if (index < 0 || index > 7)
                     throw new IndexOutOfRangeException();
 
-                return ref ships[index];
+                return ref Ships[index];
             }
         }
     }
@@ -396,7 +396,7 @@ namespace SS.Packets.Game
         public SpawnPosition SpawnPosition3;
         public SpawnPosition SpawnPosition4;
 
-        private Span<SpawnPosition> spawnPositions => MemoryMarshal.CreateSpan(ref SpawnPosition1, 4);
+        private Span<SpawnPosition> SpawnPositionSpan => MemoryMarshal.CreateSpan(ref SpawnPosition1, 4);
 
         public ref SpawnPosition this[int index]
         {
@@ -405,7 +405,7 @@ namespace SS.Packets.Game
                 if (index < 0 || index > 3)
                     throw new IndexOutOfRangeException();
 
-                return ref spawnPositions[index];
+                return ref SpawnPositionSpan[index];
             }
         }
     }

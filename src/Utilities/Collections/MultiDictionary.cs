@@ -17,7 +17,7 @@ namespace SS.Utilities.Collections
 
         public MultiDictionary()
         {
-            _dictionary = new Dictionary<TKey, LinkedList<TValue>>();
+            _dictionary = [];
         }
 
         public MultiDictionary(IEqualityComparer<TKey> comparer)
@@ -44,8 +44,7 @@ namespace SS.Utilities.Collections
         public void AddFirst(TKey key, TValue value)
         {
             // try to find the bucket
-            LinkedList<TValue>? bucketList;
-            if (_dictionary.TryGetValue(key, out bucketList) == false)
+            if (_dictionary.TryGetValue(key, out LinkedList<TValue>? bucketList) == false)
             {
                 // did not exist, create it
                 bucketList = new LinkedList<TValue>();
@@ -64,8 +63,7 @@ namespace SS.Utilities.Collections
         /// <param name="value"></param>
         public void AddLast(TKey key, TValue value)
         {
-            LinkedList<TValue>? bucketList;
-            if (_dictionary.TryGetValue(key, out bucketList) == false)
+            if (_dictionary.TryGetValue(key, out LinkedList<TValue>? bucketList) == false)
             {
                 bucketList = new LinkedList<TValue>();
                 _dictionary.Add(key, bucketList);
@@ -83,8 +81,7 @@ namespace SS.Utilities.Collections
         /// <returns></returns>
         public bool Remove(TKey key, TValue value)
         {
-            LinkedList<TValue>? bucketList;
-            if (_dictionary.TryGetValue(key, out bucketList) == false)
+            if (_dictionary.TryGetValue(key, out LinkedList<TValue>? bucketList) == false)
             {
                 // key does not exist, nothing to remove
                 return false;
@@ -107,8 +104,7 @@ namespace SS.Utilities.Collections
 
         public bool TryGetValues(TKey key, [MaybeNullWhen(false)] out TValue[] values)
         {
-            LinkedList<TValue>? bucketList;
-            if (_dictionary.TryGetValue(key, out bucketList))
+            if (_dictionary.TryGetValue(key, out LinkedList<TValue>? bucketList))
             {
                 values = new TValue[bucketList.Count];
                 LinkedListNode<TValue>? node = bucketList.First;
@@ -135,8 +131,7 @@ namespace SS.Utilities.Collections
         /// <returns>true if items are found, otherwise false</returns>
         public bool TryGetValues(TKey key, [MaybeNullWhen(false)] out IEnumerable<TValue> values)
         {
-            LinkedList<TValue>? bucketList;
-            if (_dictionary.TryGetValue(key, out bucketList))
+            if (_dictionary.TryGetValue(key, out LinkedList<TValue>? bucketList))
             {
                 values = bucketList;
                 return true;
@@ -156,11 +151,9 @@ namespace SS.Utilities.Collections
         /// <returns>whether items were found and added to the list</returns>
         public bool TryGetAppendValues(TKey key, LinkedList<TValue> appendToList)
         {
-            if (appendToList == null)
-                throw new ArgumentNullException("appendToList");
+            ArgumentNullException.ThrowIfNull(appendToList);
 
-            LinkedList<TValue>? bucketList;
-            if (_dictionary.TryGetValue(key, out bucketList))
+            if (_dictionary.TryGetValue(key, out LinkedList<TValue>? bucketList))
             {
                 foreach (TValue v in bucketList)
                     appendToList.AddLast(v);
@@ -181,8 +174,7 @@ namespace SS.Utilities.Collections
         /// <returns></returns>
         public bool TryGetFirstValue(TKey key, [MaybeNullWhen(false)] out TValue firstValue)
         {
-            LinkedList<TValue>? bucketList;
-            if (_dictionary.TryGetValue(key, out bucketList) == false)
+            if (_dictionary.TryGetValue(key, out LinkedList<TValue>? bucketList) == false)
             {
                 firstValue = default;
                 return false;
@@ -213,8 +205,7 @@ namespace SS.Utilities.Collections
             set
             {
                 // try to find the bucket
-                LinkedList<TValue>? bucketList;
-                if (_dictionary.TryGetValue(key, out bucketList) == false)
+                if (_dictionary.TryGetValue(key, out LinkedList<TValue>? bucketList) == false)
                 {
                     // did not exist, create it
                     bucketList = new LinkedList<TValue>();
@@ -251,8 +242,8 @@ namespace SS.Utilities.Collections
 
         private struct Enumerator : IEnumerator<KeyValuePair<TKey, TValue>>
         {
-            private IEnumerator<KeyValuePair<TKey, LinkedList<TValue>>> _dictionaryEnumerator;
-            private IEnumerator<TValue>? _linkedListEnumerator;
+            private readonly IEnumerator<KeyValuePair<TKey, LinkedList<TValue>>> _dictionaryEnumerator;
+            private LinkedList<TValue>.Enumerator? _linkedListEnumerator;
 
             public Enumerator(MultiDictionary<TKey, TValue> multiDictionary)
             {
@@ -268,7 +259,7 @@ namespace SS.Utilities.Collections
                 {
                     return new KeyValuePair<TKey, TValue>(
                         _dictionaryEnumerator.Current.Key,
-                        _linkedListEnumerator!.Current);
+                        _linkedListEnumerator!.Value.Current);
                 }
             }
 
@@ -291,7 +282,7 @@ namespace SS.Utilities.Collections
 
             public bool MoveNext()
             {
-                if (_linkedListEnumerator == null || _linkedListEnumerator.MoveNext() == false)
+                if (_linkedListEnumerator == null || _linkedListEnumerator.Value.MoveNext() == false)
                 {
                     if (_dictionaryEnumerator.MoveNext() == false)
                     {
@@ -299,7 +290,7 @@ namespace SS.Utilities.Collections
                     }
 
                     _linkedListEnumerator = _dictionaryEnumerator.Current.Value.GetEnumerator();
-                    return _linkedListEnumerator.MoveNext();
+                    return _linkedListEnumerator.Value.MoveNext();
                 }
 
                 return true;
@@ -345,8 +336,7 @@ namespace SS.Utilities.Collections
 
         bool ICollection<KeyValuePair<TKey, TValue>>.Contains(KeyValuePair<TKey, TValue> item)
         {
-            LinkedList<TValue>? bucketList;
-            if (_dictionary.TryGetValue(item.Key, out bucketList) == false)
+            if (_dictionary.TryGetValue(item.Key, out LinkedList<TValue>? bucketList) == false)
             {
                 return false;
             }

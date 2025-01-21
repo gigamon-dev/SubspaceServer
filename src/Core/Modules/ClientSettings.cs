@@ -17,7 +17,7 @@ namespace SS.Core.Modules
     /// Settings are loaded from disk when an arena is loaded and when there is a config change.
     /// </summary>
     [CoreModuleInfo]
-    public class ClientSettings : IModule, IClientSettings
+    public sealed class ClientSettings : IModule, IClientSettings
     {
         private readonly IComponentBroker _broker;
         private readonly IArenaManager _arenaManager;
@@ -38,8 +38,8 @@ namespace SS.Core.Modules
 
         #region Data for creating ClientSettingIdentifiers that represent bit fields
 
-        private static readonly (string Key, int BitOffset, int BitLength)[] ShipWeaponBitfields = new[]
-        {
+        private static readonly (string Key, int BitOffset, int BitLength)[] ShipWeaponBitfields =
+        [
             ("ShrapnelMax", 0, 5),
             ("ShrapnelRate", 5, 5),
             ("CloakStatus", 10, 2),
@@ -53,17 +53,17 @@ namespace SS.Core.Modules
             ("DoubleBarrel", 26, 1),
             ("EmpBomb", 27, 1),
             ("SeeMines", 28, 1),
-        };
+        ];
 
-        private static readonly (string Key, int BitOffset, int BitLength)[] ShipMiscBitfields = new[]
-        {
+        private static readonly (string Key, int BitOffset, int BitLength)[] ShipMiscBitfields =
+        [
             ("SeeBombLevel", 0, 2),
             ("DisableFastShooting", 2, 1),
             ("Radius", 3, 8),
-        };
+        ];
 
-        private static readonly (string Section, string Key, int BitOffset, int BitLength)[] BitSetBitfields = new[]
-        {
+        private static readonly (string Section, string Key, int BitOffset, int BitLength)[] BitSetBitfields =
+        [
             ("Bullet", "ExactDamage", 8, 1),
             ("Spectator", "HideFlags", 9, 1),
             ("Spectator", "NoXRadar", 10, 1),
@@ -72,7 +72,7 @@ namespace SS.Core.Modules
             ("Misc", "MaxTimerDrift", 16, 3),
             ("Soccer", "DisableWallPass", 19, 1),
             ("Soccer", "DisableBallKilling", 20, 1),
-        };
+        ];
 
         #endregion
 
@@ -320,9 +320,9 @@ namespace SS.Core.Modules
             // spawn locations
             if (section.Equals("Spawn", StringComparison.OrdinalIgnoreCase))
             {
-                Span<char> xName = stackalloc char[] { 'T', 'e', 'a', 'm', '#', '-', 'X' };
-                Span<char> yName = stackalloc char[] { 'T', 'e', 'a', 'm', '#', '-', 'Y' };
-                Span<char> rName = stackalloc char[] { 'T', 'e', 'a', 'm', '#', '-', 'R', 'a', 'd', 'i', 'u', 's' };
+                Span<char> xName = ['T', 'e', 'a', 'm', '#', '-', 'X'];
+                Span<char> yName = ['T', 'e', 'a', 'm', '#', '-', 'Y'];
+                Span<char> rName = ['T', 'e', 'a', 'm', '#', '-', 'R', 'a', 'd', 'i', 'u', 's'];
 
                 for (int i = 0; i < 4; i++)
                 {

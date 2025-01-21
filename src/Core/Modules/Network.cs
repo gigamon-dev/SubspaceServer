@@ -102,7 +102,7 @@ namespace SS.Core.Modules
         /// <remarks>
         /// Synchronized with <see cref="_clientConnectionsLock"/>.
         /// </remarks>
-        private readonly Dictionary<SocketAddress, ClientConnection> _clientConnections = new();
+        private readonly Dictionary<SocketAddress, ClientConnection> _clientConnections = [];
         private readonly ReaderWriterLockSlim _clientConnectionsLock = new(LockRecursionPolicy.SupportsRecursion);
 
         private delegate void CorePacketHandler(Span<byte> data, ConnData conn, NetReceiveFlags flags);
@@ -148,7 +148,7 @@ namespace SS.Core.Modules
         /// Synchronized with <see cref="_connectionInitLock"/>.
         /// </para>
         /// </remarks>
-        private readonly List<ConnectionInitHandler> _connectionInitHandlers = new();
+        private readonly List<ConnectionInitHandler> _connectionInitHandlers = [];
         private readonly ReaderWriterLockSlim _connectionInitLock = new(LockRecursionPolicy.NoRecursion);
 
         private PeerPacketHandler? _peerPacketHandler;
@@ -2444,7 +2444,7 @@ namespace SS.Core.Modules
 
             List<Player> toKick = new(Constants.TargetPlayerCount);
             List<Player> toFree = new(Constants.TargetPlayerCount);
-            List<ClientConnection> toDrop = new();
+            List<ClientConnection> toDrop = [];
 
             while (_stopToken.IsCancellationRequested == false)
             {

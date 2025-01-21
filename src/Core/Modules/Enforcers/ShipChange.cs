@@ -26,7 +26,7 @@ namespace SS.Core.Modules.Enforcers
     /// </list>
     /// </summary>
     [CoreModuleInfo]
-    public class ShipChange : IModule, IArenaAttachableModule, IFreqManagerEnforcerAdvisor
+    public sealed class ShipChange : IModule, IArenaAttachableModule, IFreqManagerEnforcerAdvisor
     {
         private readonly IArenaManager _arenaManager;
         private readonly IConfigManager _configManager;

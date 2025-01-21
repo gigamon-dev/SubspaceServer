@@ -422,7 +422,7 @@ namespace SS.Utilities.Collections
 
             public TrieNode()
             {
-                Children = new();
+                Children = [];
             }
 
             public TrieNode(IEqualityComparer<char> equalityComparer)
@@ -500,11 +500,11 @@ namespace SS.Utilities.Collections
                 _enumerator = new Enumerator(trie, prefix);
             }
 
-            public KeyEnumerator GetEnumerator() => this;
+            public readonly KeyEnumerator GetEnumerator() => this;
 
-            public ReadOnlyMemory<char> Current => _enumerator.Current.Key;
+            public readonly ReadOnlyMemory<char> Current => _enumerator.Current.Key;
 
-            object? IEnumerator.Current => _enumerator.Current.Key;
+            readonly object? IEnumerator.Current => _enumerator.Current.Key;
 
             public void Dispose()
             {
@@ -531,11 +531,11 @@ namespace SS.Utilities.Collections
                 _enumerator = new Enumerator(trie);
             }
 
-            public ValueEnumerator GetEnumerator() => this;
+            public readonly ValueEnumerator GetEnumerator() => this;
 
-            public TValue Current => _enumerator.Current.Value;
+            public readonly TValue Current => _enumerator.Current.Value;
 
-            object? IEnumerator.Current => _enumerator.Current.Value;
+            readonly object? IEnumerator.Current => _enumerator.Current.Value;
 
             public void Dispose()
             {
@@ -571,7 +571,7 @@ namespace SS.Utilities.Collections
             /// </summary>
             /// <param name="trie">The trie to iterate over.</param>
             /// <exception cref="ArgumentNullException">The <paramref name="trie"/> was null.</exception>
-            internal Enumerator(Trie<TValue> trie) : this(trie, ReadOnlySpan<char>.Empty)
+            internal Enumerator(Trie<TValue> trie) : this(trie, [])
             {
             }
 
@@ -583,8 +583,7 @@ namespace SS.Utilities.Collections
             /// <exception cref="ArgumentNullException">The <paramref name="trie"/> was null.</exception>
             internal Enumerator(Trie<TValue> trie, ReadOnlySpan<char> prefix)
             {
-                if (trie is null)
-                    throw new ArgumentNullException(nameof(trie));
+                ArgumentNullException.ThrowIfNull(trie);
 
                 TrieNode? node = trie.FindNode(prefix);
                 if (node is not null)
@@ -597,9 +596,9 @@ namespace SS.Utilities.Collections
                 }
             }
 
-            public Enumerator GetEnumerator() => this;
+            public readonly Enumerator GetEnumerator() => this;
 
-            public (ReadOnlyMemory<char> Key, TValue Value) Current
+            public readonly (ReadOnlyMemory<char> Key, TValue Value) Current
             {
                 get
                 {
@@ -610,7 +609,7 @@ namespace SS.Utilities.Collections
                 }
             }
 
-            object IEnumerator.Current => Current;
+            readonly object IEnumerator.Current => Current;
 
             public void Dispose()
             {

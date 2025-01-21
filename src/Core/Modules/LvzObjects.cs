@@ -17,7 +17,7 @@ namespace SS.Core.Modules
     /// Module for controlling LVZ objects.
     /// </summary>
     [CoreModuleInfo]
-    public class LvzObjects(
+    public sealed class LvzObjects(
         IArenaManager arenaManager,
         ICapabilityManager capabilityManager,
         IChat chat,
@@ -1220,7 +1220,7 @@ namespace SS.Core.Modules
 
         private class ArenaData : IResettable
         {
-            public readonly List<LvzData> List = new();
+            public readonly List<LvzData> List = [];
 
             public int ToggleDifferences = 0;
             public int ExtraDifferences = 0;

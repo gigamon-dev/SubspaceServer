@@ -26,7 +26,7 @@ namespace SS.Core.Modules
 	/// </para>
 	/// </summary>
 	[CoreModuleInfo]
-    public class CapabilityManager : IAsyncModule, ICapabilityManager, IGroupManager
+    public sealed class CapabilityManager : IAsyncModule, ICapabilityManager, IGroupManager
     {
         private readonly IComponentBroker _broker;
 		private readonly IPlayerData _playerData;

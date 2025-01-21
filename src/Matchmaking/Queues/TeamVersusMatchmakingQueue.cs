@@ -32,8 +32,7 @@ namespace SS.Matchmaking.Queues
             QueueOptions options,
             string? description)
         {
-            if (string.IsNullOrWhiteSpace(queueName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(queueName));
+            ArgumentException.ThrowIfNullOrWhiteSpace(queueName);
 
             if (!options.AllowSolo && !options.AllowGroups)
                 throw new ArgumentException($"At minimum {nameof(options.AllowSolo)} or {nameof(options.AllowGroups)} must be true.", nameof(options));

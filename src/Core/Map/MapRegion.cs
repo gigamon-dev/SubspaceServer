@@ -42,7 +42,7 @@ namespace SS.Core.Map
             if (_chunks.TryGetValues(chunkType, out IEnumerable<ReadOnlyMemory<byte>>? matches))
                 return matches;
             else
-                return Enumerable.Empty<ReadOnlyMemory<byte>>();
+                return [];
         }
 
         /// <summary>
@@ -126,7 +126,7 @@ namespace SS.Core.Map
         /// <summary>
         /// Collection of run length encoded records that describes the coordinates the region contains.
         /// </summary>
-        private readonly LinkedList<RleEntry> _rleData = new();
+        private readonly LinkedList<RleEntry> _rleData = [];
 
         internal MapRegion()
         {
@@ -338,7 +338,7 @@ namespace SS.Core.Map
                 cy = 0,
                 n;
 
-            LinkedList<RleEntry> lastRowData = new();
+            LinkedList<RleEntry> lastRowData = [];
 
             while (i < source.Length)
             {

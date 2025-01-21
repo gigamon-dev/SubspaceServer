@@ -68,7 +68,7 @@ namespace SS.Core.Modules
         private readonly AutoResetEvent _disconnectedAutoResetEvent = new(false);
         private DateTime _lastEvent;
         private byte[]? _identity = null;
-        private readonly Dictionary<int, S2B_UserBanner> _bannerUploadDictionary = new();
+        private readonly Dictionary<int, S2B_UserBanner> _bannerUploadDictionary = new(32);
         private int _bannerUploadPendingCount = 0;
         private readonly Lock _lock = new();
 

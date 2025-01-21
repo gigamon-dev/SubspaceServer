@@ -215,14 +215,13 @@ namespace SS.Utilities
         /// <returns>The string.</returns>
         public static string ReadNullTerminatedString(this ReadOnlySpan<byte> source, Encoding encoding)
         {
-            if (encoding == null)
-                throw new ArgumentNullException(nameof(encoding));
+            ArgumentNullException.ThrowIfNull(encoding);
 
             int nullTerminationIndex = source.IndexOf((byte)0);
 
             return nullTerminationIndex == -1
                 ? encoding.GetString(source)
-                : encoding.GetString(source.Slice(0, nullTerminationIndex));
+                : encoding.GetString(source[..nullTerminationIndex]);
         }
 
         #endregion
@@ -238,7 +237,7 @@ namespace SS.Utilities
         public static Span<byte> SliceNullTerminated(this Span<byte> source)
         {
             int index = source.IndexOf((byte)0);
-            return index == -1 ? source : source.Slice(0, index);
+            return index == -1 ? source : source[..index];
         }
 
         /// <summary>
@@ -250,7 +249,7 @@ namespace SS.Utilities
         public static ReadOnlySpan<byte> SliceNullTerminated(this ReadOnlySpan<byte> source)
         {
             int index = source.IndexOf((byte)0);
-            return index == -1 ? source : source.Slice(0, index);
+            return index == -1 ? source : source[..index];
         }
 
         #endregion
@@ -311,8 +310,7 @@ namespace SS.Utilities
         /// <returns>The number of bytes written, including the null terminator.</returns>
         public static int WriteNullTerminatedString(this Span<byte> destination, ReadOnlySpan<char> value, Encoding encoding)
         {
-            if (encoding == null)
-                throw new ArgumentNullException(nameof(encoding));
+            ArgumentNullException.ThrowIfNull(encoding);
 
             if (value.Length > 0)
             {
@@ -397,8 +395,7 @@ namespace SS.Utilities
         /// </param>
         public static void WriteNullPaddedString(this Span<byte> destination, ReadOnlySpan<char> value, Encoding encoding, bool nullTerminatorRequired = true)
         {
-            if (encoding == null)
-                throw new ArgumentNullException(nameof(encoding));
+            ArgumentNullException.ThrowIfNull(encoding);
 
             if (nullTerminatorRequired)
             {
@@ -450,8 +447,7 @@ namespace SS.Utilities
             if (byteLimit < 0)
                 throw new ArgumentOutOfRangeException(nameof(byteLimit), "Value cannot be negative.");
 
-            if (encoding == null)
-                encoding = DefaultEncoding;
+            encoding ??= DefaultEncoding;
 
             if (encoding.IsSingleByte)
                 return (str.Length <= byteLimit) ? str : str[..byteLimit];
@@ -498,8 +494,7 @@ namespace SS.Utilities
         /// <returns>The trimmed string.</returns>
         public static string ToTrimmedString(this StringBuilder sb)
         {
-            if (sb == null)
-                throw new ArgumentNullException(nameof(sb));
+            ArgumentNullException.ThrowIfNull(sb);
 
             // Find the last non-whitespace character
             int end;
@@ -602,13 +597,13 @@ namespace SS.Utilities
             int index = str.IndexOf(delimiter);
             if (index == -1)
             {
-                remaining = ReadOnlySpan<char>.Empty;
+                remaining = [];
                 return str;
             }
             else
             {
                 remaining = str[index..];
-                return str.Slice(0, index);
+                return str[..index];
             }
         }
 
@@ -627,13 +622,13 @@ namespace SS.Utilities
             int index = str.IndexOf(delimiter);
             if (index == -1)
             {
-                remaining = Span<char>.Empty;
+                remaining = [];
                 return str;
             }
             else
             {
                 remaining = str[index..];
-                return str.Slice(0, index);
+                return str[..index];
             }
         }
 
@@ -652,13 +647,13 @@ namespace SS.Utilities
             int index = str.IndexOfAny(delimiters);
             if (index == -1)
             {
-                remaining = ReadOnlySpan<char>.Empty;
+                remaining = [];
                 return str;
             }
             else
             {
                 remaining = str[index..];
-                return str.Slice(0, index);
+                return str[..index];
             }
         }
 
@@ -677,13 +672,13 @@ namespace SS.Utilities
             int index = str.IndexOfAny(delimiters);
             if (index == -1)
             {
-                remaining = Span<char>.Empty;
+                remaining = [];
                 return str;
             }
             else
             {
                 remaining = str[index..];
-                return str.Slice(0, index);
+                return str[..index];
             }
         }
 
@@ -735,7 +730,7 @@ namespace SS.Utilities
             Current = default;
         }
 
-        public WrapTextEnumerator GetEnumerator() => this;
+        public readonly WrapTextEnumerator GetEnumerator() => this;
 
         public ReadOnlySpan<char> Current { get; private set; }
 
@@ -764,7 +759,7 @@ namespace SS.Utilities
                 }
             }
 
-            Current = _text.Slice(0, index + 1);
+            Current = _text[..(index + 1)];
 
             _text = _text[(index + 1)..];
             if (_text.Length > 0 && _text[0] == _delimiter)
@@ -790,10 +785,10 @@ namespace SS.Utilities
             _text = text ?? throw new ArgumentNullException(nameof(text));
             _width = width;
             _delimiter = delimiter;
-            Current = ReadOnlySpan<char>.Empty;
+            Current = [];
         }
 
-        public WrapTextStringBuilderEnumerator GetEnumerator() => this;
+        public readonly WrapTextStringBuilderEnumerator GetEnumerator() => this;
 
         public ReadOnlySpan<char> Current { get; private set; }
 
@@ -801,7 +796,7 @@ namespace SS.Utilities
         {
             if (_startIndex >= _text.Length)
             {
-                Current = ReadOnlySpan<char>.Empty;
+                Current = [];
                 return false;
             }
 
@@ -827,8 +822,7 @@ namespace SS.Utilities
                 }
             }
 
-            if (_buffer == null)
-                _buffer = ArrayPool<char>.Shared.Rent(_width);
+            _buffer ??= ArrayPool<char>.Shared.Rent(_width);
 
             int length = endIndex - _startIndex + 1;
             _text.CopyTo(_startIndex, _buffer, 0, length);

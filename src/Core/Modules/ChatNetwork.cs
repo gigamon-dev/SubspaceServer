@@ -19,7 +19,7 @@ namespace SS.Core.Modules
 	/// Module that provides the server functionality for the 'simple chat protocol'.
 	/// </summary>
 	[CoreModuleInfo]
-    public class ChatNetwork : IModule, IChatNetwork, IStringBuilderPoolProvider, IDisposable
+    public sealed class ChatNetwork : IModule, IChatNetwork, IStringBuilderPoolProvider, IDisposable
     {
         /// <summary>
         /// The maximum # of bytes to allow a message to be in the "simple chat protocol".
@@ -230,8 +230,7 @@ namespace SS.Core.Modules
             if (type.IsEmpty)
                 throw new ArgumentException(paramName: nameof(type), message: "The value cannot be empty.");
 
-            if (handler is null)
-                throw new ArgumentNullException(nameof(handler));
+            ArgumentNullException.ThrowIfNull(handler);
 
             ref ChatMessageHandler? handlers = ref CollectionsMarshal.GetValueRefOrAddDefault(_handlersLookup, type, out _);
             handlers += handler;
@@ -242,8 +241,7 @@ namespace SS.Core.Modules
             if (type.IsEmpty)
                 throw new ArgumentException(paramName: nameof(type), message: "The value cannot be empty.");
 
-            if (handler is null)
-                throw new ArgumentNullException(nameof(handler));
+            ArgumentNullException.ThrowIfNull(handler);
 
             if (_handlersLookup.Remove(type, out string? actualType, out ChatMessageHandler? handlers))
             {
@@ -435,11 +433,11 @@ namespace SS.Core.Modules
         private void ChatThread()
         {
             WaitHandle waitHandle = _cancellationToken.WaitHandle;
-            List<Socket> readList = new();
-            List<Socket> writeList = new();
-            Dictionary<Socket, (Player Player, ClientData ClientData)> playerSocketDictionary = new();
-            HashSet<Player> playersToRemove = new();
-            HashSet<Player> playersToProcess = new();
+            List<Socket> readList = new(Constants.TargetPlayerCount);
+            List<Socket> writeList = new(Constants.TargetPlayerCount);
+            Dictionary<Socket, (Player Player, ClientData ClientData)> playerSocketDictionary = new(Constants.TargetPlayerCount);
+            HashSet<Player> playersToRemove = new(Constants.TargetPlayerCount);
+            HashSet<Player> playersToProcess = new(Constants.TargetPlayerCount);
 
             while (!waitHandle.WaitOne(100))
             {
@@ -877,7 +875,7 @@ namespace SS.Core.Modules
                         if (typeIndex == -1)
                         {
                             type = line;
-                            line = ReadOnlySpan<char>.Empty;
+                            line = [];
                         }
                         else
                         {

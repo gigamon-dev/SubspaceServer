@@ -31,7 +31,7 @@ namespace SS.Core
         [ConfigHelp<int>("Misc", "ActivateAppShutdownTime", ConfigScope.Arena, Description = "Amount of time a ship is shutdown after application is reactivated")]
         [ConfigHelp<int>("Shrapnel", "ShrapnelSpeed", ConfigScope.Arena, Description = "Speed that shrapnel travels")]
         public static readonly (string Section, string Key)[] LongNames =
-        {
+        [
             ("Bullet", "BulletDamageLevel"), /* * 1000 */
 	        ("Bomb", "BombDamageLevel"), /* * 1000 */
 	        ("Bullet", "BulletAliveTime"),
@@ -52,7 +52,7 @@ namespace SS.Core
 	        ("Wormhole", "SwitchTime"),
             ("Misc", "ActivateAppShutdownTime"),
             ("Shrapnel", "ShrapnelSpeed"),
-        };
+        ];
 
         [ConfigHelp<short>("Latency", "SendRoutePercent", ConfigScope.Arena, Description = "Percentage of the ping time that is spent on the C2S portion of the ping (used in more accurately syncronizing clocks)")]
         [ConfigHelp<short>("Bomb", "BombExplodeDelay", ConfigScope.Arena, Description = "How long after the proximity sensor is triggered before bomb explodes")]
@@ -108,7 +108,7 @@ namespace SS.Core
         [ConfigHelp<short>("Flag", "FlaggerSpeedAdjustment", ConfigScope.Arena, Description = "Amount of speed adjustment player carrying flag gets (negative numbers mean slower)")]
         [ConfigHelp<short>("Latency", "ClientSlowPacketSampleSize", ConfigScope.Arena, Description = "Number of packets to sample S2C before checking for kickout")]
         public static readonly (string Section, string Key)[] ShortNames =
-        {
+        [
             ("Latency", "SendRoutePercent"),
             ("Bomb", "BombExplodeDelay"),
             ("Misc", "SendPositionDelay"),
@@ -167,7 +167,7 @@ namespace SS.Core
             ("Unused", "Unused3"),
             ("Unused", "Unused2"),
             ("Unused", "Unused1"),
-        };
+        ];
 
         [ConfigHelp<bool>("Shrapnel", "Random", ConfigScope.Arena, Description = "Whether shrapnel spreads in circular or random patterns")]
         [ConfigHelp<bool>("Soccer", "BallBounce", ConfigScope.Arena, Description = "Whether the ball bounces off walls")]
@@ -205,7 +205,7 @@ namespace SS.Core
         [ConfigHelp<bool>("Soccer", "BallLocation", ConfigScope.Arena, Description = "Whether the balls location is displayed at all times or not")]
         [ConfigHelp<byte>("Misc", "AntiWarpSettleDelay", ConfigScope.Arena, Description = "How many ticks to activate a fake antiwarp after attaching, portaling, or warping.")]
         public static readonly (string Section, string Key)[] ByteNames =
-        {
+        [
             ("Shrapnel", "Random"),
             ("Soccer", "BallBounce"),
             ("Soccer", "AllowBombs"),
@@ -238,7 +238,7 @@ namespace SS.Core
             ("Unused", "Unused3"),
             ("Unused", "Unused2"),
             ("Unused", "Unused1"),
-        };
+        ];
 
         [ConfigHelp<byte>("PrizeWeight", "QuickCharge", ConfigScope.Arena, Default = 0, Min = 0, Max = 255, Description = "Likelihood of 'Recharge' prize appearing")]
         [ConfigHelp<byte>("PrizeWeight", "Energy", ConfigScope.Arena, Default = 0, Min = 0, Max = 255, Description = "Likelihood of 'Energy Upgrade' prize appearing")]
@@ -269,7 +269,7 @@ namespace SS.Core
         [ConfigHelp<byte>("PrizeWeight", "Rocket", ConfigScope.Arena, Default = 0, Min = 0, Max = 255, Description = "Likelihood of 'Rocket' prize appearing")]
         [ConfigHelp<byte>("PrizeWeight", "Portal", ConfigScope.Arena, Default = 0, Min = 0, Max = 255, Description = "Likelihood of 'Portal' prize appearing")]
         public static readonly (string Section, string Key)[] PrizeWeightNames =
-        {
+        [
             ("PrizeWeight", "QuickCharge"),
             ("PrizeWeight", "Energy"),
             ("PrizeWeight", "Rotation"),
@@ -298,7 +298,7 @@ namespace SS.Core
             ("PrizeWeight", "Brick"),
             ("PrizeWeight", "Rocket"),
             ("PrizeWeight", "Portal"),
-        };
+        ];
 
         [ConfigHelp<byte>("DPrizeWeight", "QuickCharge", ConfigScope.Arena, Default = 0, Min = 0, Max = 255, Description = "Likelihood of 'Recharge' prize appearing")]
         [ConfigHelp<byte>("DPrizeWeight", "Energy", ConfigScope.Arena, Default = 0, Min = 0, Max = 255, Description = "Likelihood of 'Energy Upgrade' prize appearing")]
@@ -329,7 +329,7 @@ namespace SS.Core
         [ConfigHelp<byte>("DPrizeWeight", "Rocket", ConfigScope.Arena, Default = 0, Min = 0, Max = 255, Description = "Likelihood of 'Rocket' prize appearing")]
         [ConfigHelp<byte>("DPrizeWeight", "Portal", ConfigScope.Arena, Default = 0, Min = 0, Max = 255, Description = "Likelihood of 'Portal' prize appearing")]
         public static readonly (string Section, string Key)[] DeathPrizeWeightNames =
-        {
+        [
             ("DPrizeWeight", "QuickCharge"),
             ("DPrizeWeight", "Energy"),
             ("DPrizeWeight", "Rotation"),
@@ -358,17 +358,17 @@ namespace SS.Core
             ("DPrizeWeight", "Brick"),
             ("DPrizeWeight", "Rocket"),
             ("DPrizeWeight", "Portal"),
-        };
+        ];
 
         /* the following names are only key names, not key+section names */
 
         [ConfigHelp<int>("All", "SuperTime", ConfigScope.Arena, Description = "How long Super lasts on the ship (in ticks)")]
         [ConfigHelp<int>("All", "ShieldsTime", ConfigScope.Arena, Description = "How long Shields lasts on the ship (in ticks)")]
         public static readonly string[] ShipLongNames =
-        {
+        [
             "SuperTime",
             "ShieldsTime"
-        };
+        ];
 
         [ConfigHelp<short>("All", "Gravity", ConfigScope.Arena, Description = "How strong of an effect the wormhole has on this ship (0 = none)")]
         [ConfigHelp<short>("All", "GravityTopSpeed", ConfigScope.Arena, Description = "Ship are allowed to move faster than their maximum speed while effected by a wormhole.  This determines how much faster they can go (0 = no extra speed)")]
@@ -419,7 +419,7 @@ namespace SS.Core
         [ConfigHelp<short>("All", "SoccerBallProximity", ConfigScope.Arena, Description = "How close the player must be in order to pick up ball (in pixels)")]
         [ConfigHelp<short>("All", "SoccerBallSpeed", ConfigScope.Arena, Description = "Initial speed given to the ball when fired by the carrier")]
         public static readonly string[] ShipShortNames =
-        {
+        [
             "Gravity",
             "GravityTopSpeed",
             "BulletFireEnergy",
@@ -469,7 +469,7 @@ namespace SS.Core
             "SoccerBallFriction",
             "SoccerBallProximity",
             "SoccerBallSpeed"
-        };
+        ];
 
         [ConfigHelp<byte>("All", "TurretLimit", ConfigScope.Arena, Description = "Number of turrets allowed on a ship")]
         [ConfigHelp<byte>("All", "BurstShrapnel", ConfigScope.Arena, Description = "Number of bullets released when a 'Burst' is activated")]
@@ -490,7 +490,7 @@ namespace SS.Core
         [ConfigHelp<byte>("All", "InitialPortal", ConfigScope.Arena, Description = "Initial number of Portals given to ships when they start")]
         [ConfigHelp<byte>("All", "BombBounceCount", ConfigScope.Arena, Description = "Number of times a ship's bombs bounce before they explode on impact")]
         public static readonly string[] ShipByteNames =
-        {
+        [
             "TurretLimit",
             "BurstShrapnel",
             "MaxMines",
@@ -509,6 +509,6 @@ namespace SS.Core
             "InitialDecoy",
             "InitialPortal",
             "BombBounceCount"
-        };
+        ];
     }
 }

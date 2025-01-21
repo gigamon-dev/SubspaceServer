@@ -8,7 +8,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module that provides the ability to restrict players from entering an arena based on a configured capability (General:NeedCap in the arena.conf).
     /// </summary>
-    public class ArenaAuthorization(ICapabilityManager capabilityManager, IConfigManager configManager) : IModule, IArenaAuthorizationAdvisor
+    public sealed class ArenaAuthorization(ICapabilityManager capabilityManager, IConfigManager configManager) : IModule, IArenaAuthorizationAdvisor
     {
         private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
         private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));

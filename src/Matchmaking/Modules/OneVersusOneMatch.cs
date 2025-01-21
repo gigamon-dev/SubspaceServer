@@ -68,7 +68,7 @@ namespace SS.Matchmaking.Modules
         /// Not using per-arena data since it will have data for arenas that aren't created yet.
         /// Also, it only has data for arenas having the base arena name (hence why the key is the arena number).
         /// </remarks>
-        private readonly Dictionary<int, ArenaData> _arenaDataDictionary = new();
+        private readonly Dictionary<int, ArenaData> _arenaDataDictionary = [];
 
         public OneVersusOneMatch(
             IArenaManager arenaManager,
@@ -815,18 +815,11 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private struct BoxConfiguration
+        private readonly struct BoxConfiguration(OneVersusOneMatchmakingQueue queue, TileCoordinates startLocation1, TileCoordinates startLocation2)
         {
-            public BoxConfiguration(OneVersusOneMatchmakingQueue queue, TileCoordinates startLocation1, TileCoordinates startLocation2)
-            {
-                Queue = queue ?? throw new ArgumentNullException(nameof(queue));
-                StartLocation1 = startLocation1;
-                StartLocation2 = startLocation2;
-            }
-
-            public OneVersusOneMatchmakingQueue Queue { get; }
-            public TileCoordinates StartLocation1 { get; }
-            public TileCoordinates StartLocation2 { get; }
+            public OneVersusOneMatchmakingQueue Queue { get; } = queue ?? throw new ArgumentNullException(nameof(queue));
+            public TileCoordinates StartLocation1 { get; } = startLocation1;
+            public TileCoordinates StartLocation2 { get; } = startLocation2;
         }
 
         private enum BoxStatus

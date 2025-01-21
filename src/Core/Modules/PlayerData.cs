@@ -11,7 +11,7 @@ namespace SS.Core.Modules
     /// Module that manages <see cref="Player"/> objects.
     /// </summary>
     [CoreModuleInfo]
-    public class PlayerData : IModule, IPlayerData
+    public sealed class PlayerData : IModule, IPlayerData
     {
         internal readonly IComponentBroker Broker;
         private readonly ILogManager _logManager;

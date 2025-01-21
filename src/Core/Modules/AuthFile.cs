@@ -461,7 +461,7 @@ namespace SS.Core.Modules
             Span<byte> data = stackalloc byte[56];
             data.Clear();
 
-            int encodedBytes = StringUtils.DefaultEncoding.GetBytes(lowerName, data.Slice(0, 24));
+            int encodedBytes = StringUtils.DefaultEncoding.GetBytes(lowerName, data[..24]);
             if (encodedBytes != lowerName.Length)
                 return false;
 
@@ -533,7 +533,7 @@ namespace SS.Core.Modules
             private int _passwordHashLength = 0;
 
             public ReadOnlySpan<char> PasswordHash => _passwordHashChars is null
-                ? ReadOnlySpan<char>.Empty
+                ? []
                 : new ReadOnlySpan<char>(_passwordHashChars, 0, _passwordHashLength);
 
             public void SetPasswordHash(ReadOnlySpan<char> value)

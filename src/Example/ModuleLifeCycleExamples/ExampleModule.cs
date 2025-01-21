@@ -1,7 +1,7 @@
 ﻿using SS.Core;
 using SS.Core.ComponentInterfaces;
 
-namespace Example;
+namespace Example.ModuleLifeCycleExamples;
 
 /// <summary>
 /// This is an example of the simplest form of loading and unloading a module.

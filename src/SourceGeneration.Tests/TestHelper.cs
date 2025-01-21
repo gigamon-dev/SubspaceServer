@@ -1,7 +1,6 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using SS.Core;
-using SS.SourceGeneration;
 
 namespace SS.SourceGeneration.Tests
 {
@@ -14,14 +13,11 @@ namespace SS.SourceGeneration.Tests
             var references = AppDomain.CurrentDomain.GetAssemblies()
                 .Where(assembly => !assembly.IsDynamic && !string.IsNullOrWhiteSpace(assembly.Location))
                 .Select(assembly => MetadataReference.CreateFromFile(assembly.Location))
-                .Concat(new[]
-                {
-                    MetadataReference.CreateFromFile(typeof(GenerateConfigHelpConstantsAttribute).Assembly.Location)
-                });
+                .Concat([MetadataReference.CreateFromFile(typeof(GenerateConfigHelpConstantsAttribute).Assembly.Location)]);
 
             CSharpCompilation compilation = CSharpCompilation.Create(
                 assemblyName: "Tests",
-                syntaxTrees: new[] { syntaxTree },
+                syntaxTrees: [syntaxTree],
                 references: references);
 
             ConfigHelpConstantsGenerator generator = new();

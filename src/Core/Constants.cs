@@ -21,12 +21,12 @@ namespace SS.Core
         /// </list>
         /// </summary>
         public static readonly IReadOnlyCollection<string> ConfigSearchPaths = new ReadOnlyCollection<string>(
-            new string[] {
+            [
                 "arenas/{1}/{0}",
                 "conf/{0}",
                 "{0}",
                 "arenas/(default)/{0}",
-            });
+            ]);
 
         /// <summary>
         /// Search paths for lvl files with placeholders:
@@ -36,14 +36,14 @@ namespace SS.Core
         /// </list>
         /// </summary>
         public static readonly IReadOnlyCollection<string> LvlSearchPaths = new ReadOnlyCollection<string>(
-            new string[] {
+            [
                 "arenas/{1}/{0}",
                 "maps/{0}",
                 "{0}",
                 "arenas/{1}/{1}.lvl",
                 "maps/{1}.lvl",
                 "arenas/(default)/{0}",
-            });
+            ]);
 
         /// <summary>
         /// Search paths for lvz files with placeholders:
@@ -53,12 +53,12 @@ namespace SS.Core
         /// </list>
         /// </summary>
         public static readonly IReadOnlyCollection<string> LvzSearchPaths = new ReadOnlyCollection<string>(
-            new string[] {
+            [
                 "arenas/{1}/{0}",
                 "maps/{0}",
                 "{0}",
                 "arenas/(default)/{0}",
-            });
+            ]);
 
         #endregion
 

@@ -956,7 +956,7 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// Groups that the player has a pending invite to.
             /// </summary>
-            public readonly HashSet<PlayerGroup> PendingGroups = new();
+            public readonly HashSet<PlayerGroup> PendingGroups = [];
 
             bool IResettable.TryReset()
             {

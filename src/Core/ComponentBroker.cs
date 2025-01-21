@@ -124,7 +124,7 @@ namespace SS.Core
         /// In the case of an interface getting registered more than once (with the same name or no name), a node earlier in the list "overrides" similar registrations that come after it.
         /// </para>
         /// </summary>
-        private readonly Dictionary<Type, LinkedList<InterfaceData>> _interfaceRegistrations = new();
+        private readonly Dictionary<Type, LinkedList<InterfaceData>> _interfaceRegistrations = [];
 
         public InterfaceRegistrationToken<TInterface> RegisterInterface<TInterface>(TInterface instance, string? name = null) where TInterface : class, IComponentInterface
         {
@@ -425,7 +425,7 @@ namespace SS.Core
         /// <summary>
         /// The callback dictionary where: Key is the delegate type. Value is the delegate itself.
         /// </summary>
-        private readonly Dictionary<Type, Delegate> _callbackRegistrations = new();
+        private readonly Dictionary<Type, Delegate> _callbackRegistrations = [];
 
         public void RegisterCallback<TDelegate>(TDelegate handler) where TDelegate : Delegate
         {
@@ -541,12 +541,12 @@ namespace SS.Core
             /// <summary>
             /// The registered advisors.
             /// </summary>
-            public ImmutableArray<TAdvisor> Registered { get; private set; } = ImmutableArray<TAdvisor>.Empty;
+            public ImmutableArray<TAdvisor> Registered { get; private set; } = [];
 
             /// <summary>
             /// <see cref="Registered"/> combined with those from parent.
             /// </summary>
-            public ImmutableArray<TAdvisor> Advisors { get; private set; } = ImmutableArray<TAdvisor>.Empty;
+            public ImmutableArray<TAdvisor> Advisors { get; private set; } = [];
 
             public void AddAndRecombine(TAdvisor toAdd, IComponentBroker? parent)
             {
@@ -585,7 +585,7 @@ namespace SS.Core
             }
         }
 
-        private readonly Dictionary<Type, AdvisorData> _advisorDictionary = new();
+        private readonly Dictionary<Type, AdvisorData> _advisorDictionary = [];
         private readonly ReaderWriterLockSlim _advisorLock = new();
 
         private event Action<Type>? AdvisorChanged;
@@ -718,7 +718,7 @@ namespace SS.Core
             }
             else
             {
-                return ImmutableArray<TAdvisor>.Empty;
+                return [];
             }
         }
 

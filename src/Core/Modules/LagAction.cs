@@ -22,7 +22,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class LagAction : IModule
+    public sealed class LagAction : IModule
     {
         private readonly IArenaManager _arenaManager;
         private readonly IChat _chat;

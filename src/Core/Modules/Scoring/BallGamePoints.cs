@@ -20,7 +20,7 @@ namespace SS.Core.Modules.Scoring
     /// It also rewards points to players (depending on settings).
     /// </remarks>
     [CoreModuleInfo]
-    public class BallGamePoints : IModule, IArenaAttachableModule, IBallGamePoints, IBallsAdvisor
+    public sealed class BallGamePoints : IModule, IArenaAttachableModule, IBallGamePoints, IBallsAdvisor
     {
         private const int MaxTeams = 8;
 
@@ -129,7 +129,7 @@ namespace SS.Core.Modules.Scoring
         ReadOnlySpan<int> IBallGamePoints.GetScores(Arena arena)
         {
             if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
-                return ReadOnlySpan<int>.Empty;
+                return [];
 
             return ad.TeamScores;
         }

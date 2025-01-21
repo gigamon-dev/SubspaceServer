@@ -14,7 +14,7 @@ namespace SS.Core.Modules
 	/// <remarks>
 	/// This is the equivalent of the log_staff module in ASSS.
 	/// </remarks>
-	public class CommandWatch : IModule
+	public sealed class CommandWatch : IModule
     {
         private readonly IChat _chat;
 		private readonly IConfigManager _configManager;

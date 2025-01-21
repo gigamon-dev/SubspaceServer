@@ -15,7 +15,7 @@ namespace SS.Core.Modules
     /// general mechanism to mark players.
     /// </remarks>
     [CoreModuleInfo]
-    public class Crowns(
+    public sealed class Crowns(
         ILogManager logManager,
         INetwork network,
         IObjectPoolManager objectPoolManager,

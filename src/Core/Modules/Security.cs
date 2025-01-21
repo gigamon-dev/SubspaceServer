@@ -38,7 +38,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class Security(
+    public sealed class Security(
         IComponentBroker broker,
         IArenaManager arenaManager,
         ICapabilityManager capabilityManager,

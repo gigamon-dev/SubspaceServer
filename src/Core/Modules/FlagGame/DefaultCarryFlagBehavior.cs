@@ -10,7 +10,7 @@ namespace SS.Core.Modules.FlagGame
     /// <summary>
     /// Default implementation of behaviors for carriable flags.
     /// </summary>
-    public class DefaultCarryFlagBehavior : ICarryFlagBehavior
+    public sealed class DefaultCarryFlagBehavior : ICarryFlagBehavior
     {
         private readonly ICarryFlagGame _carryFlagGame;
         private readonly ILogManager _logManager;
@@ -224,7 +224,7 @@ namespace SS.Core.Modules.FlagGame
 
         #endregion
 
-        protected void DropFlags(Arena arena, ReadOnlySpan<short> flagIds, TileCoordinates coordinates, short ownerFreq)
+        private void DropFlags(Arena arena, ReadOnlySpan<short> flagIds, TileCoordinates coordinates, short ownerFreq)
         {
             if (arena == null)
                 return;
@@ -420,7 +420,7 @@ namespace SS.Core.Modules.FlagGame
             return true;
         }
 
-        protected void SpawnFlags(Arena arena, ReadOnlySpan<short> flagIds, short ownerFreq)
+        private void SpawnFlags(Arena arena, ReadOnlySpan<short> flagIds, short ownerFreq)
         {
             var settings = _carryFlagGame.GetSettings(arena);
             if (settings == null)
@@ -432,7 +432,7 @@ namespace SS.Core.Modules.FlagGame
             }
         }
 
-        protected void SpawnFlag(Arena arena, short flagId, TileCoordinates coordinates, int radius, short ownerFreq)
+        private void SpawnFlag(Arena arena, short flagId, TileCoordinates coordinates, int radius, short ownerFreq)
         {
             TileCoordinates? location = null;
             int tries = 0;

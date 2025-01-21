@@ -23,7 +23,7 @@ namespace SS.Core.Modules
     /// Module that manages the core game state.
     /// </summary>
     [CoreModuleInfo]
-    public class Game(
+    public sealed class Game(
         IComponentBroker broker,
         IArenaManager arenaManager,
         ICapabilityManager capabilityManager,
@@ -206,8 +206,7 @@ namespace SS.Core.Modules
 
         void IGame.WarpTo(ITarget target, short x, short y)
         {
-            if (target == null)
-                throw new ArgumentNullException(nameof(target));
+            ArgumentNullException.ThrowIfNull(target);
 
             S2C_WarpTo warpTo = new(x, y);
             _network.SendToTarget(target, ref warpTo, NetSendFlags.Reliable | NetSendFlags.Urgent);
@@ -215,8 +214,7 @@ namespace SS.Core.Modules
 
         void IGame.GivePrize(ITarget target, Prize prize, short count)
         {
-            if (target == null)
-                throw new ArgumentNullException(nameof(target));
+            ArgumentNullException.ThrowIfNull(target);
 
             S2C_PrizeReceive packet = new(count, prize);
             _network.SendToTarget(target, ref packet, NetSendFlags.Reliable);
@@ -317,10 +315,9 @@ namespace SS.Core.Modules
 
         void IGame.ShipReset(ITarget target)
         {
-            if (target == null)
-                throw new ArgumentNullException(nameof(target));
+            ArgumentNullException.ThrowIfNull(target);
 
-            ReadOnlySpan<byte> shipResetBytes = stackalloc byte[1] { (byte)S2CPacketType.ShipReset };
+            ReadOnlySpan<byte> shipResetBytes = [(byte)S2CPacketType.ShipReset];
             _network.SendToTarget(target, shipResetBytes, NetSendFlags.Reliable);
 
             _playerData.Lock();
@@ -722,7 +719,7 @@ namespace SS.Core.Modules
                 pd.pos.Time = ServerTick.Now;
                 pd.lastRgnCheck = DateTime.UtcNow;
 
-                pd.LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
+                pd.LastRegionSet = [];
 
                 pd.lockship = ad.initLockship;
                 if (ad.initSpec)
@@ -808,7 +805,7 @@ namespace SS.Core.Modules
                     ClearSpeccing(pd);
                 }
 
-                pd.LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
+                pd.LastRegionSet = [];
             }
             else if (action == PlayerAction.EnterGame)
             {
@@ -959,7 +956,7 @@ namespace SS.Core.Modules
             if (t == null)
                 return;
 
-            ReadOnlySpan<byte> specBytes = stackalloc byte[2] { (byte)S2CPacketType.SpecData, sendExtraPositionData ? (byte)1 : (byte)0 };
+            ReadOnlySpan<byte> specBytes = [(byte)S2CPacketType.SpecData, sendExtraPositionData ? (byte)1 : (byte)0];
             _network.SendToOne(t, specBytes, NetSendFlags.Reliable);
         }
 
@@ -1575,12 +1572,9 @@ namespace SS.Core.Modules
                 ship != ShipType.Spec &&
                 !(_capabilityManager != null && _capabilityManager.HasCapability(player, Constants.Capabilities.BypassLock)))
             {
-                if (_chat != null)
-                    _chat.SendMessage(player, $"You have been locked in {(player.Ship == ShipType.Spec ? "spectator mode" : "your ship")}.");
-
+                _chat.SendMessage(player, $"You have been locked in {(player.Ship == ShipType.Spec ? "spectator mode" : "your ship")}.");
                 return;
             }
-
 
             IFreqManager? fm = arena.GetInterface<IFreqManager>();
             if (fm is not null)
@@ -1660,9 +1654,7 @@ namespace SS.Core.Modules
             if (pd.lockship &&
                 !(_capabilityManager != null && _capabilityManager.HasCapability(player, Constants.Capabilities.BypassLock)))
             {
-                if (_chat != null)
-                    _chat.SendMessage(player, $"You have been locked in {(player.Ship == ShipType.Spec ? "spectator mode" : "your ship")}.");
-
+                _chat.SendMessage(player, $"You have been locked in {(player.Ship == ShipType.Spec ? "spectator mode" : "your ship")}.");
                 return;
             }
 
@@ -2262,7 +2254,7 @@ namespace SS.Core.Modules
                     if (spec && (p.Arena != null) && (p.Ship != ShipType.Spec))
                         SetShipAndFreq(p, ShipType.Spec, p.Arena.SpecFreq);
 
-                    if (notify && (pd.lockship != nval) && (_chat != null))
+                    if (notify && (pd.lockship != nval))
                     {
                         _chat.SendMessage(p, nval ?
                             (p.Ship == ShipType.Spec ?
@@ -2602,7 +2594,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// Set of regions the player was in during the last region check.
             /// </summary>
-            public ImmutableHashSet<MapRegion> LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
+            public ImmutableHashSet<MapRegion> LastRegionSet = [];
 
             public ShipType? PlayerPostitionPacket_LastShip;
 
@@ -2627,7 +2619,7 @@ namespace SS.Core.Modules
                 MapRegionNoWeapons = false;
                 expires = null;
                 lastRgnCheck = default;
-                LastRegionSet = ImmutableHashSet<MapRegion>.Empty;
+                LastRegionSet = [];
                 PlayerPostitionPacket_LastShip = null;
                 LastBomb = null;
                 return true;

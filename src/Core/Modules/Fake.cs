@@ -9,7 +9,7 @@ namespace SS.Core.Modules
     /// Module for managing fake players.
     /// </summary>
     [CoreModuleInfo]
-    public class Fake(
+    public sealed class Fake(
         ICommandManager commandManager,
         ILogManager logManager,
         IMainloop mainloop,

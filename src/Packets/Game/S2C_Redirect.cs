@@ -32,7 +32,6 @@ namespace SS.Packets.Game
         {
             public const int Length = 16;
 
-            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
             [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
             private byte _element0;
 

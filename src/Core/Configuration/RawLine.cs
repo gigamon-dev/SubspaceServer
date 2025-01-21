@@ -240,8 +240,7 @@ namespace SS.Core.Configuration
 
         public RawPreprocessorInclude(string filePath)
         {
-            if (string.IsNullOrWhiteSpace(filePath))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(filePath));
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
             FilePath = filePath;
         }
@@ -291,8 +290,7 @@ namespace SS.Core.Configuration
 
         public RawPreprocessorDefine(string name, string? value)
         {
-            if (string.IsNullOrWhiteSpace(name))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(name));
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
             Name = name;
             Value = value;

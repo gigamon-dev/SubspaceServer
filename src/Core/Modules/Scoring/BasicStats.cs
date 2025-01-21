@@ -84,7 +84,7 @@ namespace SS.Core.Modules.Scoring
     /// </list>
     /// </summary>
     [CoreModuleInfo]
-    public class BasicStats : IModule
+    public sealed class BasicStats : IModule
     {
         private readonly IPlayerData _playerData;
         private readonly IAllPlayerStats _allPlayerStats;

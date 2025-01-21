@@ -147,8 +147,7 @@ X. Exit
                     return;
                 }
 
-                int inputInt;
-                if (!int.TryParse(input, out inputInt))
+                if (!int.TryParse(input, out int inputInt))
                     continue;
 
                 switch (inputInt)

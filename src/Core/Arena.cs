@@ -273,8 +273,7 @@ namespace SS.Core
         /// <param name="manager">The creator.</param>
         internal Arena(IComponentBroker parent, string name, ArenaManager manager) : base(parent)
         {
-            if (string.IsNullOrWhiteSpace(name))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(name));
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
             Debug.Assert(parent == manager.Broker);
             Manager = manager ?? throw new ArgumentNullException(nameof(manager));
@@ -507,7 +506,7 @@ namespace SS.Core
 
             if (baseName.IsEmpty && numberChars.IsEmpty)
             {
-                baseName = ReadOnlySpan<char>.Empty;
+                baseName = [];
                 number = 0;
                 return false;
             }
@@ -525,7 +524,7 @@ namespace SS.Core
                 bool success = int.TryParse(numberChars, out number);
                 if (!success)
                 {
-                    baseName = ReadOnlySpan<char>.Empty;
+                    baseName = [];
                 }
 
                 return success;

@@ -28,7 +28,7 @@ namespace SS.Core.Modules
         private ExitCode _quitCode = ExitCode.None;
 
         // for main loop workitems
-        private readonly BlockingCollection<IRunInMainWorkItem> _runInMainQueue = new(); // TODO: maybe we should use bounding?
+        private readonly BlockingCollection<IRunInMainWorkItem> _runInMainQueue = []; // not bounded
         private readonly AutoResetEvent _runInMainAutoResetEvent = new(false);
         private SynchronizationContext? _originalSynchronizationContext;
 
@@ -150,12 +150,7 @@ namespace SS.Core.Modules
             _originalSynchronizationContext = SynchronizationContext.Current;
             SynchronizationContext.SetSynchronizationContext(new MainloopSynchronizationContext(this));
 
-            WaitHandle[] waitHandles = new WaitHandle[]
-            {
-                _cancellationToken.WaitHandle,
-                _runInMainAutoResetEvent,
-                _mainloopTimerAutoResetEvent
-            };
+            WaitHandle[] waitHandles = [_cancellationToken.WaitHandle, _runInMainAutoResetEvent, _mainloopTimerAutoResetEvent];
 
             while (!_cancellationToken.IsCancellationRequested)
             {
@@ -327,8 +322,7 @@ namespace SS.Core.Modules
 
         bool IMainloop.QueueMainWorkItem<TState>(Action<TState> callback, TState state)
         {
-            if (callback == null)
-                throw new ArgumentNullException(nameof(callback));
+            ArgumentNullException.ThrowIfNull(callback);
 
             if (_runInMainQueue.IsAddingCompleted)
                 return false;
@@ -382,8 +376,7 @@ namespace SS.Core.Modules
 
         bool IMainloop.QueueThreadPoolWorkItem<TState>(Action<TState> callback, TState state)
         {
-            if (callback == null)
-                throw new ArgumentNullException(nameof(callback));
+            ArgumentNullException.ThrowIfNull(callback);
 
             return ThreadPool.QueueUserWorkItem(callback, state, false);
         }
@@ -410,8 +403,7 @@ namespace SS.Core.Modules
             int interval,
             object? key)
         {
-            if (callbackInvoker == null)
-                throw new ArgumentNullException(nameof(callbackInvoker));
+            ArgumentNullException.ThrowIfNull(callbackInvoker);
 
             lock (_mainloopTimerLock)
             {
@@ -450,8 +442,7 @@ namespace SS.Core.Modules
 
         private void MainloopTimer_ClearTimer(Delegate callback, object? key, Action<MainloopTimer>? timerDisposedAction)
         {
-            if (callback == null)
-                throw new ArgumentNullException(nameof(callback));
+            ArgumentNullException.ThrowIfNull(callback);
 
             LinkedList<MainloopTimer>? timersRemoved = null;
 
@@ -478,9 +469,7 @@ namespace SS.Core.Modules
 
                             if (timerDisposedAction != null)
                             {
-                                if (timersRemoved == null)
-                                    timersRemoved = new LinkedList<MainloopTimer>();
-
+                                timersRemoved ??= new LinkedList<MainloopTimer>();
                                 timersRemoved.AddLast(node);
                             }
                         }
@@ -504,9 +493,7 @@ namespace SS.Core.Modules
 
                     if (timerDisposedAction != null)
                     {
-                        if (timersRemoved == null)
-                            timersRemoved = new LinkedList<MainloopTimer>();
-
+                        timersRemoved ??= new LinkedList<MainloopTimer>();
                         timersRemoved.AddLast(timer);
                     }
                 }
@@ -531,8 +518,7 @@ namespace SS.Core.Modules
             int interval,
             object? key)
         {
-            if (callback == null)
-                throw new ArgumentNullException(nameof(callback));
+            ArgumentNullException.ThrowIfNull(callback);
 
             ServerTimer_SetTimer(
                 new TimerCallbackInvoker(callback),
@@ -548,8 +534,7 @@ namespace SS.Core.Modules
             TState state,
             object? key)
         {
-            if (callback == null)
-                throw new ArgumentNullException(nameof(callback));
+            ArgumentNullException.ThrowIfNull(callback);
 
             ServerTimer_SetTimer(
                 new TimerCallbackInvoker<TState>(callback, state),
@@ -564,8 +549,7 @@ namespace SS.Core.Modules
             int interval,
             object? key)
         {
-            if (callbackInvoker == null)
-                throw new ArgumentNullException(nameof(callbackInvoker));
+            ArgumentNullException.ThrowIfNull(callbackInvoker);
 
             ThreadPoolTimer timer = new(
                 this,
@@ -619,8 +603,7 @@ namespace SS.Core.Modules
 
         private void ServerTimer_ClearTimer(Delegate callback, object? key, Action<ThreadPoolTimer>? timerDisposedAction)
         {
-            if (callback == null)
-                throw new ArgumentNullException(nameof(callback));
+            ArgumentNullException.ThrowIfNull(callback);
 
             LinkedList<ThreadPoolTimer>? timersToDispose = null;
 
@@ -639,9 +622,7 @@ namespace SS.Core.Modules
 
                         _serverTimerList.Remove(node);
 
-                        if (timersToDispose == null)
-                            timersToDispose = new LinkedList<ThreadPoolTimer>();
-
+                        timersToDispose ??= new LinkedList<ThreadPoolTimer>();
                         timersToDispose.AddLast(node);
                     }
 
@@ -674,8 +655,7 @@ namespace SS.Core.Modules
         /// <param name="timerToRemove"></param>
         private void RemoveTimer(ThreadPoolTimer timerToRemove)
         {
-            if (timerToRemove == null)
-                throw new ArgumentNullException(nameof(timerToRemove));
+            ArgumentNullException.ThrowIfNull(timerToRemove);
 
             bool itemRemoved;
 
@@ -752,11 +732,8 @@ namespace SS.Core.Modules
             // private constructor and this method forces whoever creates it, to wait on it.  So hopefully no misuse.
             public static void CreateAndWait(BlockingCollection<IRunInMainWorkItem> runInMainQueue, AutoResetEvent runInMainAutoResetEvent)
             {
-                if (runInMainQueue == null)
-                    throw new ArgumentNullException(nameof(runInMainQueue));
-
-                if (runInMainAutoResetEvent == null)
-                    throw new ArgumentNullException(nameof(runInMainAutoResetEvent));
+                ArgumentNullException.ThrowIfNull(runInMainQueue);
+                ArgumentNullException.ThrowIfNull(runInMainAutoResetEvent);
 
                 WaitForMainWorkItem workItem = new(); // TODO: object pooling
                 workItem.Wait(runInMainQueue, runInMainAutoResetEvent);
@@ -764,11 +741,8 @@ namespace SS.Core.Modules
 
             private void Wait(BlockingCollection<IRunInMainWorkItem> runInMainQueue, AutoResetEvent runInMainAutoResetEvent)
             {
-                if (runInMainQueue == null)
-                    throw new ArgumentNullException(nameof(runInMainQueue));
-
-                if (runInMainAutoResetEvent == null)
-                    throw new ArgumentNullException(nameof(runInMainAutoResetEvent));
+                ArgumentNullException.ThrowIfNull(runInMainQueue);
+                ArgumentNullException.ThrowIfNull(runInMainAutoResetEvent);
 
                 lock (lockObj)
                 {

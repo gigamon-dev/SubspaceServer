@@ -13,7 +13,7 @@ namespace SS.Core.Modules
     /// periodically (Misc:PeriodicMessage0 through Misc:PeriodicMessage9 settings).
     /// </summary>
     [CoreModuleInfo]
-    public class Messages : IModule
+    public sealed class Messages : IModule
     {
         private readonly IArenaManager _arenaManager;
         private readonly IChat _chat;

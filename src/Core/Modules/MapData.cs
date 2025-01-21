@@ -18,7 +18,7 @@ namespace SS.Core.Modules
     /// Module that manages map data (lvl and lvz files) for arenas.
     /// </summary>
     [CoreModuleInfo]
-    public class MapData : IModule, IMapData
+    public sealed class MapData : IModule, IMapData
     {
         private readonly IArenaManager _arenaManager;
         private readonly IComponentBroker _broker;

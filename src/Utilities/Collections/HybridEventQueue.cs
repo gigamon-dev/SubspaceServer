@@ -59,7 +59,7 @@ namespace SS.Utilities.Collections
         {
             ObjectDisposedException.ThrowIf(_isDisposed, this);
 
-            bool queued = false;
+            bool queued;
             LinkedListNode<T> node = _nodePool.Get();
             node.Value = item;
 

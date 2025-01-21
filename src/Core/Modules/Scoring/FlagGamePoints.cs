@@ -16,7 +16,7 @@ namespace SS.Core.Modules.Scoring
     /// For a running/jackpot style win, it watches for flag pickup and checks if 1 team is carrying all the flags.
     /// </remarks>
     [CoreModuleInfo]
-    public class FlagGamePoints : IModule, IArenaAttachableModule
+    public sealed class FlagGamePoints : IModule, IArenaAttachableModule
     {
         private readonly IArenaManager _arenaManager;
         private readonly IChat _chat;

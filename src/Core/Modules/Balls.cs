@@ -20,7 +20,7 @@ namespace SS.Core.Modules
     /// </list>
     /// </summary>
     [CoreModuleInfo]
-    public class Balls(
+    public sealed class Balls(
         IComponentBroker broker,
         IArenaManager arenaManager,
         IConfigManager configManager,
@@ -127,10 +127,7 @@ namespace SS.Core.Modules
             {
                 bool isOverride = ballCount != null;
 
-                if (ballCount == null)
-                {
-                    ballCount = ad.Settings.BallCount;
-                }
+                ballCount ??= ad.Settings.BallCount;
 
                 if (TryChangeBallCount(arena, ballCount.Value))
                 {

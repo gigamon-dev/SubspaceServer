@@ -446,7 +446,7 @@ namespace SS.Packets.Game
 
         public ServerTick Time
         {
-            readonly get => new ServerTick(LittleEndianConverter.Convert(time));
+            readonly get => new(LittleEndianConverter.Convert(time));
             set => time = LittleEndianConverter.Convert(value);
         }
 

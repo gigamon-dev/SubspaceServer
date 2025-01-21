@@ -23,7 +23,7 @@ namespace SS.Core.Modules.Scoring
     /// </list>
     /// </remarks>
     [CoreModuleInfo]
-    public class KillPoints : IModule, IArenaAttachableModule, IKillAdvisor
+    public sealed class KillPoints : IModule, IArenaAttachableModule, IKillAdvisor
     {
         private readonly IArenaManager _arenaManager;
         private readonly IConfigManager _configManager;

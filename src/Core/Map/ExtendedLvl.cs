@@ -237,7 +237,7 @@ namespace SS.Core.Map
         public ImmutableHashSet<MapRegion> RegionsAtCoord(short x, short y)
         {
             if (!_regionSetCoordinates.TryGetValue(new TileCoordinates(x, y), out ImmutableHashSet<MapRegion>? regionSet))
-                return ImmutableHashSet<MapRegion>.Empty;
+                return [];
 
             return regionSet;
         }
@@ -304,7 +304,7 @@ namespace SS.Core.Map
                     if (newRegionSet == null)
                     {
                         // set does not exist yet, create it
-                        newRegionSet = ImmutableHashSet.Create(region);
+                        newRegionSet = [region];
                         _regionSets.Add(newRegionSet);
                     }
                 }
@@ -313,7 +313,7 @@ namespace SS.Core.Map
 
                 if (!_regionMemberSets.TryGetValue(region, out HashSet<ImmutableHashSet<MapRegion>>? memberOfSet))
                 {
-                    memberOfSet = new HashSet<ImmutableHashSet<MapRegion>>();
+                    memberOfSet = [];
                     _regionMemberSets.Add(region, memberOfSet);
                 }
                 memberOfSet.Add(newRegionSet);
@@ -471,7 +471,7 @@ namespace SS.Core.Map
             if (_chunks.TryGetValues(chunkType, out IEnumerable<ReadOnlyMemory<byte>>? matches))
                 return matches;
             else
-                return Enumerable.Empty<ReadOnlyMemory<byte>>();
+                return [];
         }
     }
 }

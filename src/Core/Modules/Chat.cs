@@ -35,7 +35,7 @@ namespace SS.Core.Modules
     /// </list>
     /// </remarks>
     [CoreModuleInfo]
-    public class Chat(
+    public sealed class Chat(
         IComponentBroker broker,
         IArenaManager arenaManager,
         ICapabilityManager capabilityManager,
@@ -916,8 +916,7 @@ namespace SS.Core.Modules
 
         private void GetArenaSet(HashSet<Player> set, Arena? arena, Player? except)
         {
-            if (set is null)
-                throw new ArgumentNullException(nameof(set));
+            ArgumentNullException.ThrowIfNull(set);
 
             _playerData.Lock();
 
@@ -941,11 +940,8 @@ namespace SS.Core.Modules
 
         private void GetCapabilitySet(HashSet<Player> set, string capability, Player? except)
         {
-            if (set is null)
-                throw new ArgumentNullException(nameof(set));
-
-            if (string.IsNullOrWhiteSpace(capability))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(capability));
+            ArgumentNullException.ThrowIfNull(set);
+            ArgumentException.ThrowIfNullOrWhiteSpace(capability);
 
             _playerData.Lock();
 
@@ -1346,11 +1342,8 @@ namespace SS.Core.Modules
 
         private void RunCommands(ReadOnlySpan<char> msg, Player player, ITarget target, ChatSound sound)
         {
-            if (player is null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (target is null)
-                throw new ArgumentNullException(nameof(target));
+            ArgumentNullException.ThrowIfNull(player);
+            ArgumentNullException.ThrowIfNull(target);
 
             if (msg.Length < 2)
                 return;

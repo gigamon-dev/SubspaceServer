@@ -12,7 +12,7 @@ namespace SS.Core.Modules
     /// Logging module that writes to a file.
     /// </summary>
     [CoreModuleInfo]
-    public class LogFile : IModule, ILogFile
+    public sealed class LogFile : IModule, ILogFile
     {
         private readonly IConfigManager _configManager;
         private readonly ILogManager _logManager;
@@ -110,7 +110,7 @@ namespace SS.Core.Modules
                     Span<char> dateTimeStr = stackalloc char[20];
                     if (now.TryFormat(dateTimeStr, out int charsWritten, "u"))
                     {
-                        _streamWriter.Write(dateTimeStr.Slice(0, charsWritten));
+                        _streamWriter.Write(dateTimeStr[..charsWritten]);
                         _streamWriter.Write(' ');
                     }
 

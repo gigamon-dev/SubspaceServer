@@ -22,7 +22,7 @@ namespace SS.Core.Modules
     /// <para>This is equivalent to ap_multipub.c in ASSS.</para>
     /// </remarks>
     [CoreModuleInfo]
-    public class ArenaPlaceMultiPub(IComponentBroker broker, IConfigManager configManager, IArenaManager arenaManager) : IModule, IArenaPlace
+    public sealed class ArenaPlaceMultiPub(IComponentBroker broker, IConfigManager configManager, IArenaManager arenaManager) : IModule, IArenaPlace
     {
         private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));

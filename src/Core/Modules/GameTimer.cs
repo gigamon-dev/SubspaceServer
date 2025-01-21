@@ -13,7 +13,7 @@ namespace SS.Core.Modules
     /// The timer can be linked to a "Timed Game" such as a game of speed zone.
     /// </summary>
     [CoreModuleInfo]
-    public class GameTimer(
+    public sealed class GameTimer(
         IArenaManager arenaManager,
         IChat chat,
         ICommandManager commandManager,
@@ -452,7 +452,7 @@ namespace SS.Core.Modules
             /// Durations that define when warning notifications are sent, in increasing order.
             /// A value of 10 seconds, means a notification will be sent to the arena when there are 10 seconds left.
             /// </summary>
-            public readonly List<TimeSpan> WarningAt = new();
+            public readonly List<TimeSpan> WarningAt = [];
 
             /// <summary>
             /// Index of the next notification. -1 when there is none.

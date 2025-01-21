@@ -40,8 +40,7 @@ namespace SS.Core.Configuration
         /// <param name="logger">A logger to report errors to.</param>
         public ConfFile(string path, IConfigLogger? logger)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
             Path = path;
             _logger = logger;
@@ -86,7 +85,7 @@ namespace SS.Core.Configuration
             }
         }
 
-        public List<RawLine> Lines { get; } = new List<RawLine>();
+        public List<RawLine> Lines { get; } = [];
 
         /// <summary>
         /// Whether changes have been made that have not yet been saved to <see cref="Path"/>.
@@ -422,7 +421,7 @@ namespace SS.Core.Configuration
 
             line = line[i..];
             hasValueDelimiter = line.Length > 0 && line[0] == RawProperty.KeyValueDelimiter;
-            value = hasValueDelimiter ? line[1..].Trim() : ReadOnlySpan<char>.Empty;
+            value = hasValueDelimiter ? line[1..].Trim() : [];
         }
 
         private static void ParseKey(StringBuilder sb, out string? sectionOverride, out string key)
@@ -507,8 +506,7 @@ namespace SS.Core.Configuration
 
         public async Task SaveAsync(string path)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("A path is required.", nameof(path));
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
             await using (StreamWriter writer = new(path, false, StringUtils.DefaultEncoding))
             {

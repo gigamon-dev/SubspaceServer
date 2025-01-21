@@ -17,7 +17,7 @@ namespace SS.Core.Modules
 	/// Module that provides functionality for dispatching commands run by players in chat messages.
 	/// </summary>
 	[CoreModuleInfo]
-    public class CommandManager : IModule, ICommandManager, IModuleLoaderAware
+    public sealed class CommandManager : IModule, ICommandManager, IModuleLoaderAware
     {
         private readonly IComponentBroker _broker;
 		private readonly IPlayerData _playerData;
@@ -135,33 +135,24 @@ namespace SS.Core.Modules
 
         void ICommandManager.AddCommand(string commandName, CommandDelegate handler, Arena? arena, string? helpText)
         {
-            if (string.IsNullOrWhiteSpace(commandName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
-
-            if (handler == null)
-                throw new ArgumentNullException(nameof(handler));
+            ArgumentException.ThrowIfNullOrWhiteSpace(commandName);
+            ArgumentNullException.ThrowIfNull(handler);
 
             AddCommand(commandName, handler, arena, helpText);
         }
 
         void ICommandManager.AddCommand(string commandName, CommandWithSoundDelegate handler, Arena? arena, string? helpText)
         {
-            if (string.IsNullOrWhiteSpace(commandName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
-
-            if (handler == null)
-                throw new ArgumentNullException(nameof(handler));
+            ArgumentException.ThrowIfNullOrWhiteSpace(commandName);
+            ArgumentNullException.ThrowIfNull(handler);
 
             AddCommand(commandName, handler, arena, helpText);
         }
 
         private void AddCommand(string commandName, Delegate handler, Arena? arena, string? helpText)
         {
-            if (string.IsNullOrWhiteSpace(commandName))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(commandName));
-
-            if (handler == null)
-                throw new ArgumentNullException(nameof(handler));
+            ArgumentException.ThrowIfNullOrWhiteSpace(commandName);
+            ArgumentNullException.ThrowIfNull(handler);
 
             if (string.IsNullOrWhiteSpace(helpText))
             {
@@ -196,8 +187,7 @@ namespace SS.Core.Modules
 
         private bool TryGetHelpText(string commandName, Delegate handler, [MaybeNullWhen(false)] out string helpText)
         {
-            if (handler == null)
-                throw new ArgumentNullException(nameof(handler));
+            ArgumentNullException.ThrowIfNull(handler);
 
             try
             {
@@ -510,8 +500,7 @@ namespace SS.Core.Modules
 
         private bool Allowed(Player player, ReadOnlySpan<char> cmd, string prefix, Arena? remoteArena)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
+            ArgumentNullException.ThrowIfNull(player);
 
             if (cmd.IsEmpty)
                 throw new ArgumentException("Cannot be empty.", nameof(cmd));
@@ -543,11 +532,8 @@ namespace SS.Core.Modules
 
         private void LogCommand(Player player, ITarget target, ReadOnlySpan<char> cmd, ReadOnlySpan<char> parameters, ChatSound sound)
         {
-            if (player == null)
-                throw new ArgumentNullException(nameof(player));
-
-            if (target == null)
-                throw new ArgumentNullException(nameof(target));
+            ArgumentNullException.ThrowIfNull(player);
+            ArgumentNullException.ThrowIfNull(target);
 
             if (cmd.IsEmpty)
                 throw new ArgumentException("Cannot be empty.", nameof(cmd));

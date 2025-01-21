@@ -55,7 +55,7 @@ namespace SS.Utilities
         /// </summary>
         public static Pool<T> Default { get; set; } = new();
 
-        private readonly ConcurrentBag<T> _availableBag = new();
+        private readonly ConcurrentBag<T> _availableBag = [];
 
         public Type Type => typeof(T);
 

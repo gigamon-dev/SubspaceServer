@@ -31,7 +31,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public class ConfigManager(
+    public sealed class ConfigManager(
         IComponentBroker broker,
         IMainloop mainloop,
         IServerTimer serverTimer) : IAsyncModule, IModuleLoaderAware, IConfigManager, IConfigLogger, IDisposable
@@ -49,12 +49,12 @@ namespace SS.Core.Modules
         /// <summary>
         /// Path --> ConfFile
         /// </summary>
-        private readonly Dictionary<string, ConfFile> _files = new();
+        private readonly Dictionary<string, ConfFile> _files = [];
 
         /// <summary>
         /// Path --> ConfDocument
         /// </summary>
-        private readonly Dictionary<string, DocumentInfo> _documents = new();
+        private readonly Dictionary<string, DocumentInfo> _documents = [];
 
         private readonly SemaphoreSlim _semaphore = new(1, 1);
         private bool _isDisposed;
@@ -505,7 +505,7 @@ namespace SS.Core.Modules
 
         #region IDisposable
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (!_isDisposed)
             {
@@ -689,8 +689,7 @@ namespace SS.Core.Modules
 
             public DocumentInfo(string path, ConfDocument document)
             {
-                if (string.IsNullOrWhiteSpace(path))
-                    throw new ArgumentException("A path is required.", nameof(path));
+                ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
                 Path = path;
                 Document = document ?? throw new ArgumentNullException(nameof(document));

@@ -11,7 +11,7 @@ namespace SS.Core.Modules
     /// Module that loads modules based on an xml configuration file.
     /// </summary>
     [CoreModuleInfo]
-    public class ModuleLoader(IModuleManager mm) : IModule, IModuleLoader
+    public sealed class ModuleLoader(IModuleManager mm) : IModule, IModuleLoader
     {
         private readonly IModuleManager _mm = mm ?? throw new ArgumentNullException(nameof(mm));
         private InterfaceRegistrationToken<IModuleLoader>? _iModuleLoaderToken;

@@ -7,7 +7,7 @@ namespace SS.Core.Modules
     /// Module for that provides a bandwidth limiters that do not impose a limit.
     /// </summary>
     [CoreModuleInfo]
-    public class BandwidthNoLimit : IModule, IBandwidthLimiterProvider
+    public sealed class BandwidthNoLimit : IModule, IBandwidthLimiterProvider
     {
         public const string InterfaceIdentifier = nameof(BandwidthNoLimit);
 

@@ -11,7 +11,7 @@ namespace SS.Core.Modules
     /// Module that tracks lag statistics of players.
     /// </summary>
     [CoreModuleInfo]
-    public class LagData : IModule, ILagCollect, ILagQuery
+    public sealed class LagData : IModule, ILagCollect, ILagQuery
     {
         // TODO: maybe some of these could be config settings?
         private const int MaxPing = 10000;
@@ -247,7 +247,7 @@ namespace SS.Core.Modules
 
         private class TimeSyncHistory
         {
-            private TimeSyncRecord[] _records = new TimeSyncRecord[TimeSyncSamples];
+            private readonly TimeSyncRecord[] _records = new TimeSyncRecord[TimeSyncSamples];
             private int _next = 0;
             private int _count = 0;
 
@@ -311,11 +311,11 @@ namespace SS.Core.Modules
 
         private class PlayerLagStats : IResettable
         {
-            private PingStats PositionPacketPing = new();
-            private PingStats ReliablePing = new();
+            private readonly PingStats PositionPacketPing = new();
+            private readonly PingStats ReliablePing = new();
             private ClientLatencyData ClientReportedPing;
             private TimeSyncData Packetloss;
-            private TimeSyncHistory TimeSync = new();
+            private readonly TimeSyncHistory TimeSync = new();
             private ReliableLagData ReliableLagData;
 
             /// <summary>

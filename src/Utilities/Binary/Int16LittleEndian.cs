@@ -10,21 +10,16 @@ namespace SS.Utilities.Binary
     /// It can be useful for reading/writing data that's specifically transmitted or stored as little-endian (network packets, binary data from a file to be read/written, etc.).
     /// </remarks>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct Int16LittleEndian
+    public struct Int16LittleEndian(short value)
     {
         public const int Length = 2;
 
-        private short value;
+        private short value = LittleEndianConverter.Convert(value);
 
         public short Value
         {
-            get => LittleEndianConverter.Convert(value);
+            readonly get => LittleEndianConverter.Convert(value);
             set => this.value = LittleEndianConverter.Convert(value);
-        }
-
-        public Int16LittleEndian(short value)
-        {
-            this.value = LittleEndianConverter.Convert(value);
         }
 
         public static implicit operator short(Int16LittleEndian a) => a.Value;

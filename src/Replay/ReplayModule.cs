@@ -59,7 +59,7 @@ namespace SS.Replay
         playback of all aspects of the game including: flag games, crowns, 
         synchronization of doors & greens, etc.
         """)]
-    public class ReplayModule : IModule, IFreqManagerEnforcerAdvisor
+    public sealed class ReplayModule : IModule, IFreqManagerEnforcerAdvisor
     {
         private const uint ReplayFileVersion = 2;
         private const uint MapChecksumKey = 0x46692018;
@@ -663,7 +663,7 @@ namespace SS.Replay
 
                 ad.State = ReplayState.Recording;
                 ad.StartedBy = recorder?.Name!;
-                ad.RecorderQueue = new();
+                ad.RecorderQueue = [];
 
                 ServerTick started = ServerTick.Now;
 
@@ -2473,12 +2473,12 @@ namespace SS.Replay
             /// <summary>
             /// For playback, maps playerIds in a replay to the fake players.
             /// </summary>
-            public readonly Dictionary<short, Player> PlayerIdMap = new();
+            public readonly Dictionary<short, Player> PlayerIdMap = [];
 
             /// <summary>
             /// Queue for commands to the thread performing a playback.
             /// </summary>
-            public readonly BlockingCollection<PlaybackCommand> PlaybackQueue = new();
+            public readonly BlockingCollection<PlaybackCommand> PlaybackQueue = [];
 
             /// <summary>
             /// Queue of events to record.

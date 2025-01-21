@@ -30,7 +30,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public class Core : IAsyncModule, IModuleLoaderAware, IAuth
+    public sealed class Core : IAsyncModule, IModuleLoaderAware, IAuth
     {
         // required dependencies
         private readonly IComponentBroker _broker;
@@ -608,7 +608,7 @@ namespace SS.Core.Modules
         {
             if (_network != null)
             {
-                ReadOnlySpan<byte> keepAlive = stackalloc byte[1] { (byte)S2CPacketType.KeepAlive };
+                ReadOnlySpan<byte> keepAlive = [(byte)S2CPacketType.KeepAlive];
                 _network.SendToArena(null, null, keepAlive, NetSendFlags.Reliable);
             }
 
@@ -1190,8 +1190,7 @@ namespace SS.Core.Modules
 
         private async Task<uint> GetChecksumAsync(string path)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
             try
             {
@@ -1220,8 +1219,7 @@ namespace SS.Core.Modules
 
         private async Task<uint> GetUInt32Async(string path, int offset)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Cannot be null or white-space.", nameof(path));
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
             try
             {
@@ -1305,7 +1303,7 @@ namespace SS.Core.Modules
                 get
                 {
                     var loginBytes = ((IAuthRequest)this).LoginBytes;
-                    return (loginBytes.Length > LoginPacket.VIELength) ? loginBytes[LoginPacket.VIELength..] : ReadOnlySpan<byte>.Empty;
+                    return (loginBytes.Length > LoginPacket.VIELength) ? loginBytes[LoginPacket.VIELength..] : [];
                 }
             }
 

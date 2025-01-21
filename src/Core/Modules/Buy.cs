@@ -8,7 +8,7 @@ namespace SS.Core.Modules
     /// Module that allows players to buy items with points.
     /// </summary>
     [CoreModuleInfo]
-    public class Buy(
+    public sealed class Buy(
         IArenaPlayerStats arenaPlayerStats,
         IChat chat,
         ICommandManager commandManager,
@@ -75,8 +75,7 @@ namespace SS.Core.Modules
             Description = "Points cost for Rocket. 0 to disallow purchase.")]
         [ConfigHelp<int>("Cost", "Portal", ConfigScope.Arena, Default = DefaultCost,
             Description = "Points cost for Portal. 0 to disallow purchase.")]
-        private static readonly (string MatchString, string SettingKey, Prize Prize)[] _items = new[]
-        {
+        private static readonly (string MatchString, string SettingKey, Prize Prize)[] _items = [
             ("x",        "XRadar",    Prize.XRadar),
             ("recharge", "Recharge",  Prize.Recharge),
             ("energy",   "Energy",    Prize.Energy),
@@ -101,7 +100,7 @@ namespace SS.Core.Modules
             ("brick",    "Brick",     Prize.Brick),
             ("rocket",   "Rocket",    Prize.Rocket),
             ("port",     "Portal",    Prize.Portal),
-        };
+        ];
 
         #region Module members
 

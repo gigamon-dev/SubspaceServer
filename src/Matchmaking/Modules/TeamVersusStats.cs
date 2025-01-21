@@ -104,7 +104,7 @@ namespace SS.Matchmaking.Modules
 		/// <summary>
 		/// Dictionary of <see cref="MatchStats"/> by <see cref="MatchIdentifier"/> for matches that are currently in progress.
 		/// </summary>
-		private readonly Dictionary<MatchIdentifier, MatchStats> _matchStatsDictionary = new();
+		private readonly Dictionary<MatchIdentifier, MatchStats> _matchStatsDictionary = [];
 
         /// <summary>
         /// Dictionary that links a player (by player name) to their <see cref="MemberStats"/> of the match currently in progress that they are assigned a slot in.
@@ -307,7 +307,7 @@ namespace SS.Matchmaking.Modules
             await _gameStatsRepository!.GetPlayerRatingsAsync(matchConfiguration.GameTypeId, playerRatingDictionary);
 
             // Create a list of player ratings sorted by rating.
-            List<(string PlayerName, int Rating)> playerRatingList = new(); // TODO: pool
+            List<(string PlayerName, int Rating)> playerRatingList = []; // TODO: pool
             foreach ((string playerName, int rating) in playerRatingDictionary)
             {
                 playerRatingList.Add((playerName, rating));
@@ -2499,7 +2499,7 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// Key = freq
             /// </summary>
-            public readonly SortedList<short, TeamStats> Teams = new();
+            public readonly SortedList<short, TeamStats> Teams = [];
 
             public readonly Dictionary<string, PlayerInfo> PlayerInfoDictionary = new(StringComparer.OrdinalIgnoreCase);
 
@@ -2734,7 +2734,7 @@ namespace SS.Matchmaking.Modules
             /// Player slots
             /// e.g. in a 4v4 match, there would be 4 slots. 
             /// </summary>
-            public readonly List<SlotStats> Slots = new();
+            public readonly List<SlotStats> Slots = [];
 
             public int RemainingSlots;
             public int AverageRating;
@@ -2794,7 +2794,7 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// Stats for each player that occupied the slot.
             /// </summary>
-            public readonly List<MemberStats> Members = new();
+            public readonly List<MemberStats> Members = [];
 
             /// <summary>
             /// Stats of the player that currently holds the slot.

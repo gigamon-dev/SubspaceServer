@@ -16,7 +16,7 @@ namespace SS.Core.Modules.Enforcers
     /// Each ship is represented as a bit within the mask, <see cref="ShipMask"/>.
     /// </summary>
     [CoreModuleInfo]
-    public class LegalShip : IModule, IArenaAttachableModule, IFreqManagerEnforcerAdvisor
+    public sealed class LegalShip : IModule, IArenaAttachableModule, IFreqManagerEnforcerAdvisor
     {
         private readonly IArenaManager _arenaManager;
         private readonly IConfigManager _configManager;
@@ -193,7 +193,7 @@ namespace SS.Core.Modules.Enforcers
 
             // settings
             public ShipMask? ArenaMask = null;
-            public Dictionary<short, ShipMask> FreqMasks = new();
+            public readonly Dictionary<short, ShipMask> FreqMasks = [];
 
             public void ClearSettings()
             {

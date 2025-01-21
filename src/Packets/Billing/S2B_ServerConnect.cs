@@ -45,7 +45,6 @@ namespace SS.Packets.Billing
         {
             public const int Length = 126;
 
-            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
             [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
             private byte _element0;
 
@@ -60,7 +59,6 @@ namespace SS.Packets.Billing
         {
             public const int Length = 32;
 
-            [SuppressMessage("Style", "IDE0044:Add readonly modifier", Justification = "Inline array")]
             [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Inline array")]
             private byte _element0;
 

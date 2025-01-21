@@ -29,8 +29,8 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<IPersist>? _iPersistToken;
         private InterfaceRegistrationToken<IPersistExecutor>? _iPersistExecutorToken;
 
-        private readonly List<PersistentData<Player>> _playerRegistrations = new();
-        private readonly List<PersistentData<Arena>> _arenaRegistrations = new();
+        private readonly List<PersistentData<Player>> _playerRegistrations = [];
+        private readonly List<PersistentData<Arena>> _arenaRegistrations = [];
 
         private readonly Pool<PlayerWorkItem> _playerWorkItemPool;
         private readonly Pool<ArenaWorkItem> _arenaWorkItemPool;
@@ -39,7 +39,7 @@ namespace SS.Core.Modules
         private readonly Pool<PutAllWorkItem> _putAllWorkItemPool;
         private readonly ObjectPool<MemoryStream> _memoryStreamPool = ObjectPool.Create(new MemoryStreamPooledObjectPolicy()); // Note: This creates a DisposableObjectPool.
 
-        private readonly BlockingCollection<PersistWorkItem> _workQueue = new();
+        private readonly BlockingCollection<PersistWorkItem> _workQueue = [];
         private Thread? _workerThread;
         private TimeSpan _syncTimeSpan;
         private DateTime? _nextSync;
