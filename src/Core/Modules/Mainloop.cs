@@ -389,15 +389,15 @@ namespace SS.Core.Modules
 
         void IMainloopTimer.SetTimer(TimerDelegate callback, int initialDelay, int interval, object? key)
         {
-            MainloopTimer_SetTimer(new TimerCallbackInvoker(callback), initialDelay, interval, key);
+            SetMainloopTimer(new TimerCallbackInvoker(callback), initialDelay, interval, key);
         }
 
         void IMainloopTimer.SetTimer<TState>(TimerDelegate<TState> callback, int initialDelay, int interval, TState state, object? key)
         {
-            MainloopTimer_SetTimer(new TimerCallbackInvoker<TState>(callback, state), initialDelay, interval, key);
+            SetMainloopTimer(new TimerCallbackInvoker<TState>(callback, state), initialDelay, interval, key);
         }
 
-        private void MainloopTimer_SetTimer(
+        private void SetMainloopTimer(
             ITimerCallbackInvoker callbackInvoker,
             int initialDelay,
             int interval,
@@ -415,22 +415,22 @@ namespace SS.Core.Modules
 
         void IMainloopTimer.ClearTimer(TimerDelegate callback, object? key)
         {
-            MainloopTimer_ClearTimer(callback, key, null);
+            ClearMainloopTimer(callback, key, null);
         }
 
         void IMainloopTimer.ClearTimer(TimerDelegate callback, object? key, TimerCleanupDelegate cleanupCallback)
         {
-            MainloopTimer_ClearTimer(callback, key, _ => cleanupCallback());
+            ClearMainloopTimer(callback, key, _ => cleanupCallback());
         }
 
         void IMainloopTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object? key)
         {
-            MainloopTimer_ClearTimer(callback, key, null);
+            ClearMainloopTimer(callback, key, null);
         }
 
         void IMainloopTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object? key, TimerCleanupDelegate<TState> cleanupCallback)
         {
-            MainloopTimer_ClearTimer(callback, key,
+            ClearMainloopTimer(callback, key,
                 (timer) =>
                 {
                     if (timer.CallbackInvoker is TimerCallbackInvoker<TState> callbackInvoker)
@@ -440,7 +440,7 @@ namespace SS.Core.Modules
                 });
         }
 
-        private void MainloopTimer_ClearTimer(Delegate callback, object? key, Action<MainloopTimer>? timerDisposedAction)
+        private void ClearMainloopTimer(Delegate callback, object? key, Action<MainloopTimer>? timerDisposedAction)
         {
             ArgumentNullException.ThrowIfNull(callback);
 
@@ -501,7 +501,7 @@ namespace SS.Core.Modules
 
             if (timerDisposedAction != null && timersRemoved != null)
             {
-                for (LinkedListNode<MainloopTimer>? node = _mainloopTimerList.First; node != null; node = node.Next)
+                for (LinkedListNode<MainloopTimer>? node = timersRemoved.First; node != null; node = node.Next)
                 {
                     timerDisposedAction.Invoke(node.Value);
                 }
@@ -520,7 +520,7 @@ namespace SS.Core.Modules
         {
             ArgumentNullException.ThrowIfNull(callback);
 
-            ServerTimer_SetTimer(
+            SetServerTimer(
                 new TimerCallbackInvoker(callback),
                 initialDelay,
                 interval,
@@ -536,14 +536,14 @@ namespace SS.Core.Modules
         {
             ArgumentNullException.ThrowIfNull(callback);
 
-            ServerTimer_SetTimer(
+            SetServerTimer(
                 new TimerCallbackInvoker<TState>(callback, state),
                 initialDelay,
                 interval,
                 key);
         }
 
-        private void ServerTimer_SetTimer(
+        private void SetServerTimer(
             ITimerCallbackInvoker callbackInvoker,
             int initialDelay,
             int interval,
@@ -570,7 +570,7 @@ namespace SS.Core.Modules
             TimerDelegate callback,
             object? key)
         {
-            ServerTimer_ClearTimer(callback, key, null);
+            ClearServerTimer(callback, key, null);
         }
 
         void IServerTimer.ClearTimer(
@@ -578,12 +578,12 @@ namespace SS.Core.Modules
             object? key,
             TimerCleanupDelegate cleanupCallback)
         {
-            ServerTimer_ClearTimer(callback, key, _ => cleanupCallback());
+            ClearServerTimer(callback, key, _ => cleanupCallback());
         }
 
         void IServerTimer.ClearTimer<TState>(TimerDelegate<TState> callback, object? key)
         {
-            ServerTimer_ClearTimer(callback, key, null);
+            ClearServerTimer(callback, key, null);
         }
 
         void IServerTimer.ClearTimer<TState>(
@@ -591,7 +591,7 @@ namespace SS.Core.Modules
             object? key,
             TimerCleanupDelegate<TState> cleanupCallback)
         {
-            ServerTimer_ClearTimer(callback, key,
+            ClearServerTimer(callback, key,
                 (timer) =>
                 {
                     if (timer.CallbackInvoker is TimerCallbackInvoker<TState> callbackInvoker)
@@ -601,7 +601,7 @@ namespace SS.Core.Modules
                 });
         }
 
-        private void ServerTimer_ClearTimer(Delegate callback, object? key, Action<ThreadPoolTimer>? timerDisposedAction)
+        private void ClearServerTimer(Delegate callback, object? key, Action<ThreadPoolTimer>? timerDisposedAction)
         {
             ArgumentNullException.ThrowIfNull(callback);
 
@@ -653,7 +653,7 @@ namespace SS.Core.Modules
         /// Used by <see cref="ThreadPoolTimer"/> to remove itself.
         /// </summary>
         /// <param name="timerToRemove"></param>
-        private void RemoveTimer(ThreadPoolTimer timerToRemove)
+        private void RemoveServerTimer(ThreadPoolTimer timerToRemove)
         {
             ArgumentNullException.ThrowIfNull(timerToRemove);
 
@@ -878,7 +878,7 @@ namespace SS.Core.Modules
         /// <summary>
         /// Encapsulates logic for a timer that runs on the thread pool.
         /// </summary>
-        private class ThreadPoolTimer
+        private sealed class ThreadPoolTimer : IDisposable
         {
             private readonly Timer _timer;
             private readonly Mainloop _owner;
@@ -963,7 +963,7 @@ namespace SS.Core.Modules
                     if (isContinuing == false)
                     {
                         // make sure that this timer object is removed from the timer list (it may have been removed already)
-                        _owner.RemoveTimer(this);
+                        _owner.RemoveServerTimer(this);
                     }
                 }
             }
@@ -998,22 +998,24 @@ namespace SS.Core.Modules
 
             #region IDisposable Members
 
-            public void Dispose() => Dispose(true);
-
-            protected virtual void Dispose(bool disposing)
+            private void Dispose(bool disposing)
             {
-                if (_disposed)
+                if (!_disposed)
                 {
-                    return;
-                }
+                    if (disposing)
+                    {
+                        Stop(true);
+                        _timer.Dispose();
+                    }
 
-                if (disposing)
-                {
-                    Stop(true);
-                    _timer.Dispose();
+                    _disposed = true;
                 }
+            }
 
-                _disposed = true;
+            public void Dispose()
+            {
+                Dispose(disposing: true);
+                GC.SuppressFinalize(this);
             }
 
             #endregion
