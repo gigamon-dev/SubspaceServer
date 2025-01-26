@@ -446,18 +446,18 @@ namespace SS.Core.Modules
             {
                 lock (_lock)
                 {
-                    ulong s, r;
+                    int s, r;
 
-                    s = Packetloss.ServerPacketsSent;
-                    r = Packetloss.ClientPacketsReceived;
+                    s = (int)Packetloss.ServerPacketsSent;
+                    r = (int)Packetloss.ClientPacketsReceived;
                     summary.S2C = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
 
-                    s = Packetloss.ClientPacketsSent;
-                    r = Packetloss.ServerPacketsReceived;
+                    s = (int)Packetloss.ClientPacketsSent;
+                    r = (int)Packetloss.ServerPacketsReceived;
                     summary.C2S = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
 
-                    s = WeaponSentCount;
-                    r = WeaponReceiveCount;
+                    s = (int)WeaponSentCount;
+                    r = (int)WeaponReceiveCount;
                     summary.S2CWeapon = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
                 }
             }

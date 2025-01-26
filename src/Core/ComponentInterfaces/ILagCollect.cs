@@ -23,8 +23,8 @@
     public readonly struct TimeSyncData
     {
         /* what the server thinks */
-        public readonly ulong ServerPacketsReceived { get; init; }
-        public readonly ulong ServerPacketsSent { get; init; }
+        public readonly uint ServerPacketsReceived { get; init; }
+        public readonly uint ServerPacketsSent { get; init; }
 
         /* what the client reports */
         public readonly uint ClientPacketsReceived { get; init; }

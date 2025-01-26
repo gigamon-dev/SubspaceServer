@@ -1522,8 +1522,8 @@ namespace SS.Core.Modules
 
                     TimeSyncData timeSyncData = new()
                     {
-                        ServerPacketsReceived = Interlocked.Read(ref conn.PacketsReceived),
-                        ServerPacketsSent = Interlocked.Read(ref conn.PacketsSent),
+                        ServerPacketsReceived = Interlocked.CompareExchange(ref conn.PacketsReceived, 0, 0),
+                        ServerPacketsSent = Interlocked.CompareExchange(ref conn.PacketsSent, 0, 0),
                         ClientPacketsReceived = request.PacketsReceived,
                         ClientPacketsSent = request.PacketsSent,
                         ServerTime = serverTime,
@@ -2566,7 +2566,7 @@ namespace SS.Core.Modules
                         }
 
                         // Check drop conditions (ordered to disconnect or lag out).
-                        TimeSpan noDataLimit = Interlocked.Read(ref clientConnection.PacketsReceived) > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10);
+                        TimeSpan noDataLimit = Interlocked.CompareExchange(ref clientConnection.PacketsReceived, 0, 0) > 0 ? TimeSpan.FromSeconds(65) : TimeSpan.FromSeconds(10);
 
                         string? reason;
                         if (clientConnection.Status == ClientConnectionStatus.Disconnecting)
@@ -4558,8 +4558,8 @@ namespace SS.Core.Modules
             if (conn is null)
                 return;
 
-            stats.PacketsSent = Interlocked.Read(ref conn.PacketsSent);
-            stats.PacketsReceived = Interlocked.Read(ref conn.PacketsReceived);
+            stats.PacketsSent = Interlocked.CompareExchange(ref conn.PacketsSent, 0, 0);
+            stats.PacketsReceived = Interlocked.CompareExchange(ref conn.PacketsReceived, 0, 0);
             stats.ReliablePacketsSent = Interlocked.Read(ref conn.ReliablePacketsSent);
             stats.ReliablePacketsReceived = Interlocked.Read(ref conn.ReliablePacketsReceived);
             stats.BytesSent = Interlocked.Read(ref conn.BytesSent);
@@ -4677,7 +4677,7 @@ namespace SS.Core.Modules
             /// <remarks>
             /// Synchronized using <see cref="Interlocked"/> methods.
             /// </remarks>
-            public ulong PacketsSent;
+            public uint PacketsSent;
 
             /// <summary>
             /// The number of packets received.
@@ -4685,7 +4685,7 @@ namespace SS.Core.Modules
             /// <remarks>
             /// Synchronized using <see cref="Interlocked"/> methods.
             /// </remarks>
-            public ulong PacketsReceived;
+            public uint PacketsReceived;
 
             /// <summary>
             /// The number of reliable packets sent, or in the process of being sent.
