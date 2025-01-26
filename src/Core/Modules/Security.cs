@@ -470,6 +470,9 @@ namespace SS.Core.Modules
                                 pd.SettingsChecksum = _clientSettings.GetChecksum(player, _packet.Key);
                                 pd.Sent = true;
                                 pd.Cancelled = false;
+
+                                // Keep a snapshot of the # of weapon packets sent as of now (request being sent), so that it is available when a response is received.
+                                _lagCollect.SetPendingWeaponSentCount(player);
                             }
                             else
                             {

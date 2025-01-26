@@ -184,13 +184,6 @@ namespace SS.Core.ComponentInterfaces
         void ShipReset(ITarget target);
 
         /// <summary>
-        /// Increments the count of S2C weapon packets that were sent to a player.
-        /// </summary>
-        /// <param name="player">The player to increment the count for.</param>
-        /// <param name="packets">The amount to increment by.</param>
-        void IncrementWeaponPacketCount(Player player, int packets);
-
-        /// <summary>
         /// Sets whether a player can see other players energy.
         /// </summary>
         /// <param name="player">The player to set.</param>

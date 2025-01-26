@@ -64,8 +64,28 @@
         /// <param name="player">The player the data is for.</param>
         /// <param name="ms">The one-way time (difference between the server's time and the client's time from the position packet) in milliseconds.</param>
         /// <param name="clientS2CPing">The S2C ping in milliseconds reported by the client in a position packet's extra position data. <see langword="null"/> for position packets without extra position data.</param>
-        /// <param name="serverWeaponCount">The number of S2C weapon packets sent to a player since entering the arena.</param>
-        void Position(Player player, int ms, int? clientS2CPing, uint serverWeaponCount);
+        void Position(Player player, int ms, int? clientS2CPing);
+
+        /// <summary>
+        /// Increments the number of S2C weapon packets sent to a player since entering the arena.
+        /// </summary>
+        /// <param name="player">The player to update the data for.</param>
+        void IncrementWeaponSentCount(Player player);
+
+        /// <summary>
+        /// Adds to the number of S2C weapon packets sent to a player since entering the arena.
+        /// </summary>
+        /// <param name="player">The player to update the data for.</param>
+        /// <param name="value">The amount to add.</param>
+        void AddWeaponSentCount(Player player, uint value);
+
+        /// <summary>
+        /// Stores the # of weapon packets that the server sent to the client since entering an arena, as of the start of a security check.
+        /// This "pending" value is kept so that it can be used when the security response is received (<see cref="ClientLatency(Player, ref readonly ClientLatencyData)"/> is called), 
+        /// rather than look at the current count which would include packets sent after the security request was sent.
+        /// </summary>
+        /// <param name="player">The player to update the data for.</param>
+        void SetPendingWeaponSentCount(Player player);
 
         /// <summary>
         /// For collecting information when a reliable acknowledgement packet arrives.

@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
@@ -42,6 +43,8 @@ namespace SS.Core.Modules
         {
             _lagkey = _playerData.AllocatePlayerData<PlayerLagStats>();
 
+            PlayerActionCallback.Register(_broker, Callback_PlayerAction);
+
             _iLagCollectToken = _broker.RegisterInterface<ILagCollect>(this);
             _iLagQueryToken = _broker.RegisterInterface<ILagQuery>(this);
 
@@ -56,6 +59,8 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iLagQueryToken) != 0)
                 return false;
 
+            PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
+
             _playerData.FreePlayerData(ref _lagkey);
 
             return true;
@@ -63,12 +68,39 @@ namespace SS.Core.Modules
 
         #endregion
 
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
+        {
+            if (action == PlayerAction.EnterArena)
+            {
+                if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+                    lagStats.ResetWeaponSentCount();
+            }
+        }
+
         #region ILagCollect Members
 
-        void ILagCollect.Position(Player player, int ms, int? clientS2CPing, uint serverWeaponCount)
+        void ILagCollect.Position(Player player, int ms, int? clientS2CPing)
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
-                lagStats.UpdatePositionStats(ms, clientS2CPing, serverWeaponCount);
+                lagStats.UpdatePositionStats(ms, clientS2CPing);
+        }
+
+        void ILagCollect.IncrementWeaponSentCount(Player player)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+                lagStats.IncrementWeaponSentCount();
+        }
+
+        void ILagCollect.AddWeaponSentCount(Player player, uint value)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+                lagStats.AddWeaponSentCount(value);
+        }
+
+        void ILagCollect.SetPendingWeaponSentCount(Player player)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+                lagStats.SetPendingWeaponSentCount();
         }
 
         void ILagCollect.RelDelay(Player player, int ms)
@@ -313,25 +345,31 @@ namespace SS.Core.Modules
         {
             private readonly PingStats PositionPacketPing = new();
             private readonly PingStats ReliablePing = new();
-            private ClientLatencyData ClientReportedPing;
+            private ClientLatencyData ClientReportedData;
             private TimeSyncData Packetloss;
             private readonly TimeSyncHistory TimeSync = new();
             private ReliableLagData ReliableLagData;
 
             /// <summary>
-            /// The latest # of weapon packets that the server sent to the client.
+            /// The latest # of weapon packets that the server sent to the client since entering an arena.
             /// </summary>
+            /// <remarks>Synchronized with <see cref="Interlocked"/> methods.</remarks>
             private uint LastWeaponSentCount;
 
             /// <summary>
-            /// The # of weapon packets that the server sent to the client, as of the last successful security check.
+            /// The # of weapon packets that the server sent to the client since entering an arena, as of the start of a security check.
+            /// </summary>
+            private uint PendingWeaponSentCount;
+
+            /// <summary>
+            /// The # of weapon packets that the server sent to the client since entering an arena, as of the last successful security check.
             /// </summary>
             private uint WeaponSentCount;
 
             /// <summary>
-            /// The # of weapon packets that the client reported it received, as of the last successful security check.
+            /// The # of weapon packets that the client reported it received since entering an arena, as of the last successful security check.
             /// </summary>
-            private uint WeaponReceiveCount;
+            private uint WeaponReceiveCount => ClientReportedData.WeaponCount;
 
             private readonly Lock _lock = new();
 
@@ -341,13 +379,13 @@ namespace SS.Core.Modules
                 {
                     PositionPacketPing.Reset();
                     ReliablePing.Reset();
-                    ClientReportedPing = default;
+                    ClientReportedData = default;
                     Packetloss = default;
                     TimeSync.Reset();
                     ReliableLagData = default;
-                    LastWeaponSentCount = 0;
+                    Interlocked.Exchange(ref LastWeaponSentCount, 0);
+                    PendingWeaponSentCount = 0;
                     WeaponSentCount = 0;
-                    WeaponReceiveCount = 0;
                 }
             }
 
@@ -357,14 +395,36 @@ namespace SS.Core.Modules
                 return true;
             }
 
-            public void UpdatePositionStats(int ms, int? clientS2CPing, uint serverWeaponCount)
+            public void UpdatePositionStats(int ms, int? clientS2CPing)
             {
                 lock (_lock)
                 {
                     PositionPacketPing.Add(ms * 2); // convert one-way to round-trip
-                    LastWeaponSentCount = serverWeaponCount;
 
                     // TODO: do something with clientS2CPing?
+                }
+            }
+
+            public void ResetWeaponSentCount()
+            {
+                Interlocked.Exchange(ref LastWeaponSentCount, 0);
+            }
+
+            public void IncrementWeaponSentCount()
+            {
+                Interlocked.Increment(ref LastWeaponSentCount);
+            }
+
+            public void AddWeaponSentCount(uint value)
+            {
+                Interlocked.Add(ref LastWeaponSentCount, value);
+            }
+
+            public void SetPendingWeaponSentCount()
+            {
+                lock (_lock)
+                {
+                    PendingWeaponSentCount = Interlocked.CompareExchange(ref LastWeaponSentCount, 0, 0);
                 }
             }
 
@@ -380,9 +440,8 @@ namespace SS.Core.Modules
             {
                 lock (_lock)
                 {
-                    ClientReportedPing = data;
-                    WeaponReceiveCount = data.WeaponCount;
-                    WeaponSentCount = LastWeaponSentCount;
+                    ClientReportedData = data;
+                    WeaponSentCount = PendingWeaponSentCount;
                 }
             }
 
@@ -419,15 +478,15 @@ namespace SS.Core.Modules
                 lock (_lock)
                 {
                     // ClientReportedPing is in ticks (centiseconds).  Convert to milliseconds.
-                    ping.Current = ClientReportedPing.LastPing * 10;
-                    ping.Average = ClientReportedPing.AveragePing * 10;
-                    ping.Min = ClientReportedPing.LowestPing * 10;
-                    ping.Max = ClientReportedPing.HighestPing * 10;
+                    ping.Current = ClientReportedData.LastPing * 10;
+                    ping.Average = ClientReportedData.AveragePing * 10;
+                    ping.Min = ClientReportedData.LowestPing * 10;
+                    ping.Max = ClientReportedData.HighestPing * 10;
 
-                    ping.S2CSlowTotal = ClientReportedPing.S2CSlowTotal;
-                    ping.S2CFastTotal = ClientReportedPing.S2CFastTotal;
-                    ping.S2CSlowCurrent = ClientReportedPing.S2CSlowCurrent;
-                    ping.S2CFastCurrent = ClientReportedPing.S2CFastCurrent;
+                    ping.S2CSlowTotal = ClientReportedData.S2CSlowTotal;
+                    ping.S2CFastTotal = ClientReportedData.S2CFastTotal;
+                    ping.S2CSlowCurrent = ClientReportedData.S2CSlowCurrent;
+                    ping.S2CFastCurrent = ClientReportedData.S2CFastCurrent;
                 }
             }
 

@@ -356,17 +356,6 @@ namespace SS.Core.Modules
             }
         }
 
-        void IGame.IncrementWeaponPacketCount(Player player, int packets)
-        {
-            if (player == null)
-                return;
-
-            if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
-                return;
-
-            pd.S2CWeaponSent = (uint)(pd.S2CWeaponSent + packets);
-        }
-
         void IGame.SetPlayerEnergyViewing(Player player, SeeEnergy value)
         {
             if (player == null)
@@ -774,7 +763,6 @@ namespace SS.Core.Modules
                 pd.pl_epd.seeEpd = seeEpd;
                 pd.EpdPlayerWatchCount = 0;
 
-                pd.S2CWeaponSent = 0;
                 pd.deathWithoutFiring = 0;
                 player.Flags.SentWeaponPacket = false;
             }
@@ -1016,13 +1004,12 @@ namespace SS.Core.Modules
             ServerTick gtc = ServerTick.Now;
 
             // lag data
-            if (_lagCollect != null && !isFake)
+            if (!isFake)
             {
                 _lagCollect.Position(
                     player,
                     (gtc - pos.Time) * 10,
-                    hasExtra ? extra.S2CPing * 10 : new int?(),
-                    pd.S2CWeaponSent);
+                    hasExtra ? extra.S2CPing * 10 : new int?());
             }
 
             bool isNewer = pos.Time > pd.pos.Time;
@@ -1392,7 +1379,9 @@ namespace SS.Core.Modules
                                         }
 
                                         if (wpn.Weapon.Type != 0)
-                                            idata.S2CWeaponSent++;
+                                        {
+                                            _lagCollect.IncrementWeaponSentCount(i);
+                                        }
 
                                         ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref wpn, 1));
                                         if (data.Length > length)
@@ -2519,11 +2508,6 @@ namespace SS.Core.Modules
             public Player? speccing;
 
             /// <summary>
-            /// The # of S2C weapon packets sent to the player.
-            /// </summary>
-            public uint S2CWeaponSent;
-
-            /// <summary>
             /// used for determining which weapon packets to ignore for the player, if any
             /// e.g. if the player is lagging badly, it can be set to handicap against the player
             /// </summary>
@@ -2608,7 +2592,6 @@ namespace SS.Core.Modules
             {
                 pos = new();
                 speccing = null;
-                S2CWeaponSent = 0;
                 ignoreWeapons = 0;
                 deathWithoutFiring = 0;
                 EpdPlayerWatchCount = 0;
