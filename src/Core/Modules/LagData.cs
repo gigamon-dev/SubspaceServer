@@ -4,6 +4,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace SS.Core.Modules
@@ -505,19 +506,17 @@ namespace SS.Core.Modules
             {
                 lock (_lock)
                 {
-                    int s, r;
+                    summary.S2C = CalculatePacketloss(Packetloss.ServerPacketsSent, Packetloss.ClientPacketsReceived);
+                    summary.C2S = CalculatePacketloss(Packetloss.ClientPacketsSent, Packetloss.ServerPacketsReceived);
+                    summary.S2CWeapon = CalculatePacketloss(WeaponSentCount, WeaponReceiveCount);
+                }
 
-                    s = (int)Packetloss.ServerPacketsSent;
-                    r = (int)Packetloss.ClientPacketsReceived;
-                    summary.S2C = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
-
-                    s = (int)Packetloss.ClientPacketsSent;
-                    r = (int)Packetloss.ServerPacketsReceived;
-                    summary.C2S = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
-
-                    s = (int)WeaponSentCount;
-                    r = (int)WeaponReceiveCount;
-                    summary.S2CWeapon = s > PacketlossMinPackets ? (double)(s - r) / s : 0.0;
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                static double CalculatePacketloss(uint sent, uint received)
+                {
+                    // The difference between sent and received is signed. This allows for negative packetloss.
+                    // The rest is unsigned, which allows for use of the full range of 32-bit values.
+                    return sent > PacketlossMinPackets ? (double)((int)sent - (int)received) / sent : 0.0;
                 }
             }
 
