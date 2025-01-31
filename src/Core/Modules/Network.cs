@@ -515,7 +515,55 @@ namespace SS.Core.Modules
 
             // All connections need to be disconnected in PreUnload because they are holding onto interfaces of encryption modules.
             // The encryption modules will be unable to Unload if the interfaces are not released first.
+            StopThreadsAndDisconnectConnections();
+        }
 
+        bool IModule.Unload(IComponentBroker broker)
+        {
+            if (broker.UnregisterInterface(ref _iNetworkToken) != 0)
+                return false;
+
+            if (broker.UnregisterInterface(ref _iNetworkClientToken) != 0)
+                return false;
+
+            if (broker.UnregisterInterface(ref _iRawNetworkToken) != 0)
+                return false;
+
+            // Normally, all threads are already stopped and all connections disconnected by this point because PreUnload should have ran.
+            // However, if there's a failure to load all modules during startup, then the PostLoad/PreUnload steps will NOT be run.
+            // So, stopping threads and disconnecting connections needs to be done here too.
+            StopThreadsAndDisconnectConnections();
+
+            Array.Clear(_handlers);
+            Array.Clear(_nethandlers);
+            Array.Clear(_sizedhandlers);
+
+            _relQueue.Clear();
+            _sizedSendQueue.Clear();
+
+            // close all sockets
+            foreach (ListenData listenData in _listenDataList)
+            {
+                listenData.GameSocket.Dispose();
+                listenData.PingSocket.Dispose();
+            }
+            _listenDataList.Clear();
+
+            _pingData.ConnectAsPopulationStats.Clear();
+
+            if (_clientSocket is not null)
+            {
+                _clientSocket.Dispose();
+                _clientSocket = null;
+            }
+
+            _playerData.FreePlayerData(ref _connKey);
+
+            return true;
+        }
+
+        private void StopThreadsAndDisconnectConnections()
+        {
             // First, stop the worker threads.
             // This way, any new connection attempts will be ignored,
             // and there will not be any further processing on the connections we're forcing to disconnect.
@@ -611,45 +659,6 @@ namespace SS.Core.Modules
 
             // Give a chance for any queued mainloop work to complete (reliable callbacks and IClientConnectionHandler.Disconnected).
             _mainloop.WaitForMainWorkItemDrain();
-        }
-
-        bool IModule.Unload(IComponentBroker broker)
-        {
-            if (broker.UnregisterInterface(ref _iNetworkToken) != 0)
-                return false;
-
-            if (broker.UnregisterInterface(ref _iNetworkClientToken) != 0)
-                return false;
-
-            if (broker.UnregisterInterface(ref _iRawNetworkToken) != 0)
-                return false;
-
-            Array.Clear(_handlers);
-            Array.Clear(_nethandlers);
-            Array.Clear(_sizedhandlers);
-
-            _relQueue.Clear();
-            _sizedSendQueue.Clear();
-
-            // close all sockets
-            foreach (ListenData listenData in _listenDataList)
-            {
-                listenData.GameSocket.Dispose();
-                listenData.PingSocket.Dispose();
-            }
-            _listenDataList.Clear();
-
-            _pingData.ConnectAsPopulationStats.Clear();
-
-            if (_clientSocket is not null)
-            {
-                _clientSocket.Dispose();
-                _clientSocket = null;
-            }
-
-            _playerData.FreePlayerData(ref _connKey);
-
-            return true;
         }
 
         #endregion
