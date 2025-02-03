@@ -926,11 +926,11 @@ namespace SS.Core.Modules
                                 if (!peerArena.IsConfigured && !showAllPeer)
                                     continue;
 
-                                ReadOnlySpan<char> arenaName = peerArena.Name!.LocalName;
+                                ReadOnlySpan<char> arenaName = peerArena.Name.LocalName;
                                 bool isPrivate = arenaName.Length > 0 && arenaName[0] == '#';
                                 if (!isPrivate || includePrivateArenas)
                                 {
-                                    AddOrUpdateArenaListItem(arenaList, peerArena.Name.LocalName, true, 0, false);
+                                    AddOrUpdateArenaListItem(arenaList, arenaName, true, peerArena.PlayerCount, false);
                                 }
                             }
                         }
@@ -3028,14 +3028,15 @@ namespace SS.Core.Modules
         private void Command_find(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (target.Type != TargetType.Arena
-                || parameters.IsWhiteSpace())
+                || parameters.IsWhiteSpace()
+                || parameters.Length > Constants.MaxPlayerNameLength)
             {
                 return;
             }
 
             int score = int.MaxValue; // lower is better, -1 means it's an exact match
-            StringBuilder bestPlayer = _objectPoolManager.StringBuilderPool.Get();
-            StringBuilder bestArena = _objectPoolManager.StringBuilderPool.Get();
+            string? bestPlayer = null;
+            string? bestArena = null;
 
             _playerData.Lock();
 
@@ -3049,10 +3050,8 @@ namespace SS.Core.Modules
                     if (parameters.Equals(otherPlayer.Name, StringComparison.OrdinalIgnoreCase))
                     {
                         // exact match
-                        bestPlayer.Clear();
-                        bestPlayer.Append(otherPlayer.Name);
-                        bestArena.Clear();
-                        bestArena.Append(otherPlayer.Arena?.Name);
+                        bestPlayer = otherPlayer.Name;
+                        bestArena = otherPlayer.Arena?.Name;
                         score = -1;
                         break;
                     }
@@ -3063,10 +3062,8 @@ namespace SS.Core.Modules
                         // for substring matches, the score is the distance from the start of the name
                         if (index < score)
                         {
-                            bestPlayer.Clear();
-                            bestPlayer.Append(otherPlayer.Name);
-                            bestArena.Clear();
-                            bestArena.Append(otherPlayer.Arena?.Name);
+                            bestPlayer = otherPlayer.Name;
+                            bestArena = otherPlayer.Arena?.Name;
                             score = index;
                         }
                     }
@@ -3084,7 +3081,7 @@ namespace SS.Core.Modules
                 {
                     try
                     {
-                        peer.FindPlayer(parameters, ref score, bestPlayer, bestArena);
+                        peer.FindPlayer(parameters, ref score, ref bestPlayer, ref bestArena);
                     }
                     finally
                     {
@@ -3093,45 +3090,17 @@ namespace SS.Core.Modules
                 }
             }
 
-            if (bestPlayer.Length > 0
-                && bestArena.Length > 0)
+            if (!string.IsNullOrEmpty(bestPlayer) && !string.IsNullOrEmpty(bestArena))
             {
                 if (bestArena[0] != '#'
                     || _capabilityManager!.HasCapability(player, Constants.Capabilities.SeePrivArena)
-                    || IsInArena(player, bestArena))
+                    || (player.Arena is not null && player.Arena.Name.Equals(bestArena, StringComparison.OrdinalIgnoreCase)))
                 {
-                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-                    try
-                    {
-                        sb.Append(bestPlayer);
-                        sb.Append(" is in arena ");
-                        sb.Append(bestArena);
-                        sb.Append('.');
-
-                        _chat.SendMessage(player, sb);
-                    }
-                    finally
-                    {
-                        _objectPoolManager.StringBuilderPool.Return(sb);
-                    }
+                    _chat.SendMessage(player, $"{bestPlayer} is in arena {bestArena}.");
                 }
                 else
                 {
-                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-                    try
-                    {
-                        sb.Append(bestPlayer);
-                        sb.Append(" is in a private arena.");
-                        sb.Append('.');
-
-                        _chat.SendMessage(player, sb);
-                    }
-                    finally
-                    {
-                        _objectPoolManager.StringBuilderPool.Return(sb);
-                    }
+                    _chat.SendMessage(player, $"{bestPlayer} is in a private arena.");
                 }
             }
 
@@ -3139,17 +3108,13 @@ namespace SS.Core.Modules
             {
                 // exact match not found
                 // have the command manager send it as the default command (to be handled by the billing server)
-                _commandManager.Command($"\\find {parameters}", player, target, ChatSound.None);
-            }
+                const string prefix = "\\find ";
+                int length = prefix.Length + parameters.Length;
+                Span<char> newCommand = stackalloc char[length];
+                if (!MemoryExtensions.TryWrite(newCommand, $"{prefix}{parameters}", out int charsWritten) || charsWritten != length)
+                    return;
 
-            static bool IsInArena(Player player, StringBuilder arenaName)
-            {
-                if (player.Arena is null)
-                    return false;
-
-                Span<char> arenaSpan = stackalloc char[arenaName.Length];
-                arenaName.CopyTo(0, arenaSpan, arenaName.Length);
-                return MemoryExtensions.Equals(player.Arena.Name, arenaSpan, StringComparison.OrdinalIgnoreCase);
+                _commandManager.Command(newCommand, player, target, ChatSound.None);
             }
         }
 

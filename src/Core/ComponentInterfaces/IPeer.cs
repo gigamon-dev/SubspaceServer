@@ -25,7 +25,7 @@ namespace SS.Core.ComponentInterfaces
             /// </summary>
             /// <remarks>
             /// A peer zone is uniquely identified by its IP + port combination.
-            /// <see cref="IPEndPoint"/> is mutable, therefore exposing the IP and port separately as unmutable properties.
+            /// <see cref="IPEndPoint"/> is mutable, therefore exposing the IP and port separately as immutable properties.
             /// </remarks>
             ReadOnlySpan<byte> IPAddress { get; }
 
@@ -34,7 +34,7 @@ namespace SS.Core.ComponentInterfaces
             /// </summary>
             /// <remarks>
             /// A peer zone is uniquely identified by its IP + port combination.
-            /// <see cref="IPEndPoint"/> is mutable, therefore exposing the IP and port separately as unmutable properties.
+            /// <see cref="IPEndPoint"/> is mutable, therefore exposing the IP and port separately as immutable properties.
             /// </remarks>
             ushort Port { get; }
 
@@ -72,12 +72,12 @@ namespace SS.Core.ComponentInterfaces
             /// <summary>
             /// The name of the peer arena on this server.
             /// </summary>
-            ReadOnlySpan<char> LocalName { get; }
+            string LocalName { get; }
 
             /// <summary>
             /// The name of the peer arena on the peer server.
             /// </summary>
-            ReadOnlySpan<char> RemoteName { get; }
+            string RemoteName { get; }
 
             /// <summary>
             /// Whether the difference between <see cref="LocalName"/> and <see cref="RemoteName"/> is only in the character casing.
@@ -102,7 +102,7 @@ namespace SS.Core.ComponentInterfaces
             /// <summary>
             /// The name of the arena (local and remote).
             /// </summary>
-            IPeerArenaName? Name { get; }
+            IPeerArenaName Name { get; }
 
             /// <summary>
             /// Whether the arena was specified in the config.
@@ -134,19 +134,19 @@ namespace SS.Core.ComponentInterfaces
         int GetPopulationSummary();
 
         /// <summary>
-        /// Find a playeyr in one of the peer zones.
+        /// Find a player in one of the peer zones.
         /// When a partial name is given, a best guess is returned.
         /// Guesses are based on a score, 0 means perfect match. 
         /// Higher values indicate how far from the start the given search string matches 
-        /// (see <see cref="Modules.PlayerCommand.Command_find(string, string, Player, ITarget)"/>).
+        /// (see <see cref="Modules.PlayerCommand.Command_find(ReadOnlySpan{char}, ReadOnlySpan{char}, Player, ITarget)"/>).
         /// Only arenas that the peer module has been configured for will be checked (PeerX:Arenas).
         /// </summary>
         /// <param name="findName">The player name to find.</param>
-        /// <param name="score">The score this function has to beat, it is modified if a match is found.</param>
-        /// <param name="name">A buffer to place the name of the found player in.</param>
-        /// <param name="arena">A buffer to place the name of the arena of the player in (the local name).</param>
+        /// <param name="score">The score this function has to beat. It is modified if a match is found.</param>
+        /// <param name="player">The name of the found player.</param>
+        /// <param name="arena">The arena name of the found <paramref name="player"/> (the local name).</param>
         /// <returns><see langword="true"/> if a match has been found.</returns>
-        bool FindPlayer(ReadOnlySpan<char> findName, ref int score, StringBuilder name, StringBuilder arena);
+        bool FindPlayer(ReadOnlySpan<char> findName, ref int score, ref string? player, ref string? arena);
 
         /// <summary>
         /// Attempts to place the given player in the arena of one of the peer zones.

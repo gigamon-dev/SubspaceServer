@@ -1,9 +1,9 @@
-﻿using Microsoft.Extensions.ObjectPool;
+﻿using CommunityToolkit.HighPerformance.Buffers;
+using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Packets.Peer;
 using SS.Utilities;
-using SS.Utilities.Collections;
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
@@ -155,22 +155,15 @@ namespace SS.Core.Modules
             }
         }
 
-        bool IPeer.FindPlayer(ReadOnlySpan<char> findName, ref int score, StringBuilder name, StringBuilder arena)
+        bool IPeer.FindPlayer(ReadOnlySpan<char> findName, ref int score, ref string? player, ref string? arena)
         {
             if (findName.IsEmpty)
                 return false;
 
-            ArgumentNullException.ThrowIfNull(name);
-            ArgumentNullException.ThrowIfNull(arena);
-
-            bool hasMatch = false;
-
-            StringBuilder bestPlayerName = _objectPoolManager.StringBuilderPool.Get();
             _rwLock.EnterReadLock();
             try
             {
-                PeerArena? bestPeerArena = null;
-
+                // Look for an exact match.
                 foreach (PeerZone peerZone in _peers)
                 {
                     foreach (PeerArena peerArena in peerZone.Arenas)
@@ -180,28 +173,35 @@ namespace SS.Core.Modules
                             continue;
                         }
 
-                        foreach (ReadOnlyMemory<char> playerName in peerArena.Players)
+                        if (peerArena.PlayersLookup.TryGetValue(findName, out string? actualName))
                         {
-                            ReadOnlySpan<char> playerNameSpan = playerName.Span;
-                            if (playerNameSpan.Equals(findName, StringComparison.OrdinalIgnoreCase))
-                            {
-                                // Exact match.
-                                name.Clear();
-                                name.Append(playerNameSpan);
+                            // Exact match.
+                            player = actualName;
+                            arena = peerArena.Name.LocalName;
+                            score = -1;
+                            return true;
+                        }
+                    }
+                }
 
-                                arena.Clear();
-                                arena.Append(peerArena.Name!.LocalName);
+                // Look for a partial match.
+                bool hasMatch = false;
+                foreach (PeerZone peerZone in _peers)
+                {
+                    foreach (PeerArena peerArena in peerZone.Arenas)
+                    {
+                        if (!peerArena.IsConfigured)
+                        {
+                            continue;
+                        }
 
-                                score = -1;
-                                return true;
-                            }
-
-                            int index = playerNameSpan.IndexOf(findName, StringComparison.OrdinalIgnoreCase);
+                        foreach (string playerName in peerArena.Players)
+                        {
+                            int index = MemoryExtensions.IndexOf(playerName, findName, StringComparison.OrdinalIgnoreCase);
                             if (index != -1 && index < score)
                             {
-                                bestPlayerName.Clear();
-                                bestPlayerName.Append(playerName);
-                                bestPeerArena = peerArena;
+                                player = playerName;
+                                arena = peerArena.Name.LocalName;
                                 score = index;
                                 hasMatch = true;
                             }
@@ -209,25 +209,12 @@ namespace SS.Core.Modules
                     }
                 }
 
-                if (bestPlayerName.Length > 0)
-                {
-                    name.Clear();
-                    name.Append(bestPlayerName);
-                }
-
-                if (bestPeerArena is not null)
-                {
-                    arena.Clear();
-                    arena.Append(bestPeerArena.Name!.LocalName);
-                }
+                return hasMatch;
             }
             finally
             {
                 _rwLock.ExitReadLock();
-                _objectPoolManager.StringBuilderPool.Return(bestPlayerName);
             }
-
-            return hasMatch;
         }
 
         bool IPeer.ArenaRequest(Player player, short arenaType, ReadOnlySpan<char> arenaName)
@@ -355,7 +342,7 @@ namespace SS.Core.Modules
             {
                 foreach (PeerArena peerArena in peerZone.Arenas)
                 {
-                    if (arenaName.Equals(remote ? peerArena.Name!.RemoteName : peerArena.Name!.LocalName, StringComparison.OrdinalIgnoreCase))
+                    if (arenaName.Equals(remote ? peerArena.Name.RemoteName : peerArena.Name.LocalName, StringComparison.OrdinalIgnoreCase))
                     {
                         return peerArena;
                     }
@@ -508,7 +495,7 @@ namespace SS.Core.Modules
                         AppendArenaIdToBuffer(ref peerZone.PlayerListBuffer, ref pos, otherPeerArena.LocalId);
 
                         // Arena name
-                        AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, otherPeerArena.Name!.LocalName);
+                        AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, otherPeerArena.Name.LocalName);
                         AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, "\0");
 
                         // Players
@@ -516,14 +503,14 @@ namespace SS.Core.Modules
                         {
                             // Dummy player
                             AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, ":");
-                            AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, otherPeerArena.Name!.LocalName);
+                            AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, otherPeerArena.Name.LocalName);
                             AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, "\0");
                         }
                         else
                         {
-                            foreach (ReadOnlyMemory<char> playerName in otherPeerArena.Players)
+                            foreach (string playerName in otherPeerArena.Players)
                             {
-                                AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, playerName.Span);
+                                AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, playerName);
                                 AppendToBuffer(ref peerZone.PlayerListBuffer, ref pos, "\0");
                             }
                         }
@@ -603,7 +590,7 @@ namespace SS.Core.Modules
                             try
                             {
                                 peerZone.Arenas.RemoveAt(i);
-                                peerZone.ArenaLookup.Remove(peerArena.Name!.RemoteName, out _);
+                                peerZone.ArenaDictionary.Remove(peerArena.Name.RemoteName, out _);
                             }
                             finally
                             {
@@ -749,20 +736,22 @@ namespace SS.Core.Modules
 
                     int decodedCharCount = StringUtils.DefaultEncoding.GetChars(remoteNameBytes, arenaNameBuffer);
                     Debug.Assert(charCount == decodedCharCount);
-                    Span<char> remoteName = arenaNameBuffer[..charCount];
+                    Span<char> remoteNameSpan = arenaNameBuffer[..charCount];
 
                     // Make sure the remote name is all lower case.
                     // This ensures proper sorting in Continuum.
                     // Note: renamed local arena names are kept in the character casing specified in the config (PeerX:RenameArenas).
-                    for (int i = 0; i < remoteName.Length; i++)
+                    for (int i = 0; i < remoteNameSpan.Length; i++)
                     {
-                        if (char.IsUpper(remoteName[i]))
-                            remoteName[i] = char.ToLowerInvariant(remoteName[i]);
+                        if (char.IsUpper(remoteNameSpan[i]))
+                            remoteNameSpan[i] = char.ToLowerInvariant(remoteNameSpan[i]);
                     }
 
-                    // If this arena as a rename target (the bar in foo=bar), ignore it.
+                    string remoteName = StringPool.Shared.GetOrAdd(remoteNameSpan);
+
+                    // If this arena exists as a rename target (the bar in foo=bar), ignore it.
                     // Except if the rename is just a difference in the character case (foo=FOO).
-                    PeerArenaName? rename = FindPeerArenaRename(peerZone, remoteName, false);
+                    PeerArenaName? rename = FindPeerArenaRename(peerZone, remoteNameSpan, false);
                     if (rename is not null && !rename.IsCaseChange)
                     {
                         while (payload.Length > 0)
@@ -788,13 +777,12 @@ namespace SS.Core.Modules
                         continue;
                     }
 
-                    if (!peerZone.ArenaLookup.TryGetValue(remoteName, out PeerArena? peerArena))
+                    if (!peerZone.ArenaDictionary.TryGetValue(remoteName, out PeerArena? peerArena))
                     {
                         peerArena = _peerArenaPool.Get();
                         peerArena.LocalId = _nextArenaId++;
-                        peerArena.Name = _peerArenaNamePool.Get();
 
-                        PeerArenaName? name = FindPeerArenaRename(peerZone, remoteName, true);
+                        PeerArenaName? name = FindPeerArenaRename(peerZone, remoteNameSpan, true);
                         if (name is not null)
                         {
                             peerArena.Name.SetNames(name.RemoteName, name.LocalName);
@@ -805,12 +793,12 @@ namespace SS.Core.Modules
                         }
 
                         peerZone.Arenas.Add(peerArena);
-                        peerZone.ArenaLookup.TryAdd(remoteName, peerArena);
+                        peerZone.ArenaDictionary.TryAdd(peerArena.Name.RemoteName, peerArena);
                     }
 
                     peerArena.Id = id;
-                    peerArena.IsConfigured = HasArenaConfigured(peerZone, peerArena.Name!.LocalName);
-                    peerArena.IsRelay = HasArenaConfiguredAsRelay(peerZone, peerArena.Name!.LocalName);
+                    peerArena.IsConfigured = HasArenaConfigured(peerZone, peerArena.Name.LocalName);
+                    peerArena.IsRelay = HasArenaConfiguredAsRelay(peerZone, peerArena.Name.LocalName);
                     peerArena.LastUpdate = now;
                     peerArena.Players.Clear();
 
@@ -846,7 +834,7 @@ namespace SS.Core.Modules
                         decodedCharCount = StringUtils.DefaultEncoding.GetChars(playerNameBytes, playerNameBuffer);
                         Debug.Assert(charCount == decodedCharCount);
                         Span<char> playerNameChars = playerNameBuffer[..charCount];
-                        peerArena.Players.Add(playerNameChars);
+                        peerArena.Players.Add(StringPool.Shared.GetOrAdd(playerNameChars));
                     }
                 }
             }
@@ -905,7 +893,7 @@ namespace SS.Core.Modules
                     CleanupPeerArena(peerArena);
                 }
                 peerZone.Arenas.Clear();
-                peerZone.ArenaLookup.Clear();
+                peerZone.ArenaDictionary.Clear();
 
                 peerZone.PlayerCount = BinaryPrimitives.ReadInt16LittleEndian(payload);
             }
@@ -1027,7 +1015,7 @@ namespace SS.Core.Modules
                             if (arenaName.IsEmpty)
                                 continue;
 
-							peerZone.Config.SendDummyArenasLookup.Add(arenaName);
+							peerZone.Config.SendDummyArenas.Add(StringPool.Shared.GetOrAdd(arenaName));
 						}
                     }
 
@@ -1040,7 +1028,7 @@ namespace SS.Core.Modules
 							if (arenaName.IsEmpty)
 								continue;
 
-							peerZone.Config.RelayArenasLookup.Add(arenaName);
+							peerZone.Config.RelayArenas.Add(StringPool.Shared.GetOrAdd(arenaName));
 						}
                     }
 
@@ -1057,7 +1045,7 @@ namespace SS.Core.Modules
                                 local = local.TrimStart('=');
 
                                 PeerArenaName peerArenaName = _peerArenaNamePool.Get();
-                                peerArenaName.SetNames(remote, local);
+                                peerArenaName.SetNames(StringPool.Shared.GetOrAdd(remote), StringPool.Shared.GetOrAdd(local));
                                 peerZone.Config.RenamedArenas.Add(peerArenaName);
                             }
                         }
@@ -1127,32 +1115,24 @@ namespace SS.Core.Modules
                 CleanupPeerArena(peerArena);
             }
             peerZone.Arenas.Clear();
-            peerZone.ArenaLookup.Clear();
+            peerZone.ArenaDictionary.Clear();
 
             peerZone.PlayerListBuffer = null;
         }
 
         private void CleanupPeerArena(PeerArena peerArena)
         {
-            if (peerArena == null)
+            if (peerArena is null)
                 return;
-
-            if (peerArena.Name is not null)
-            {
-                _peerArenaNamePool.Return(peerArena.Name);
-                peerArena.Name = null;
-            }
-
-            peerArena.Players.Clear();
 
             _peerArenaPool.Return(peerArena);
         }
 
-        private static PeerArenaName? FindPeerArenaRename(PeerZone peerZone, ReadOnlySpan<char> remoteName, bool remote)
+        private static PeerArenaName? FindPeerArenaRename(PeerZone peerZone, ReadOnlySpan<char> arenaName, bool remote)
         {
             foreach (PeerArenaName name in peerZone.Config.RenamedArenas)
             {
-                if (remoteName.Equals(remote ? name.RemoteName : name.LocalName, StringComparison.OrdinalIgnoreCase))
+                if (arenaName.Equals(remote ? name.RemoteName : name.LocalName, StringComparison.OrdinalIgnoreCase))
                 {
                     return name;
                 }
@@ -1302,7 +1282,10 @@ namespace SS.Core.Modules
             private readonly ReadOnlyCollection<PeerArena> _readOnlyArenas;
             IReadOnlyList<IPeerArena> IPeerZone.Arenas => _readOnlyArenas;
 
-            public readonly Trie<PeerArena> ArenaLookup = new(false);
+            /// <summary>
+            /// Key: Remote name
+            /// </summary>
+            public readonly Dictionary<string, PeerArena> ArenaDictionary = new(StringComparer.OrdinalIgnoreCase);
 
             public readonly uint[] Timestamps = new uint[256];
             public byte[]? PlayerListBuffer;
@@ -1373,44 +1356,49 @@ namespace SS.Core.Modules
 
         private class PeerArenaName : IPeerArenaName, IResettable
         {
-            #region Remote
+            private string? _remoteName;
+            public string RemoteName
+            {
+                get
+                {
+                    if (_remoteName is null)
+                        throw new InvalidOperationException("Not initialized.");
 
-            private readonly char[] _remoteNameArray = new char[Constants.MaxArenaNameLength];
-            private int _remoteLength = 0;
-            public ReadOnlySpan<char> RemoteName => _remoteNameArray.AsSpan(0, _remoteLength);
+                    return _remoteName;
+                }
+            }
 
-            #endregion
+            private string? _localName;
+            public string LocalName
+            {
+                get
+                {
+                    if (_localName is null)
+                        throw new InvalidOperationException("Not initialized.");
 
-            #region Local
-
-            private readonly char[] _localNameArray = new char[Constants.MaxArenaNameLength];
-            private int _localLength = 0;
-            public ReadOnlySpan<char> LocalName => _localNameArray.AsSpan(0, _localLength);
-
-            #endregion
+                    return _localName;
+                }
+            }
 
             public bool IsCaseChange { get; private set; }
 
-            public void SetNames(ReadOnlySpan<char> remoteName, ReadOnlySpan<char> localName)
+            public void SetNames(string remoteName, string localName)
             {
-                if (remoteName.Length > Constants.MaxArenaNameLength)
-                    throw new ArgumentOutOfRangeException(nameof(remoteName), $"Arena names can have a maximum of {Constants.MaxArenaNameLength} characters.");
+                _remoteName = remoteName;
+                _localName = localName;
+                IsCaseChange = string.Equals(_localName, _remoteName, StringComparison.OrdinalIgnoreCase) && !string.Equals(_localName, _remoteName, StringComparison.Ordinal);
+            }
 
-                if (localName.Length > Constants.MaxArenaNameLength)
-                    throw new ArgumentOutOfRangeException(nameof(localName), $"Arena names can have a maximum of {Constants.MaxArenaNameLength} characters.");
-
-                remoteName.CopyTo(_remoteNameArray);
-                _remoteLength = remoteName.Length;
-
-                localName.CopyTo(_localNameArray);
-                _localLength = localName.Length;
-
-                IsCaseChange = LocalName.Equals(RemoteName, StringComparison.OrdinalIgnoreCase) && !LocalName.Equals(RemoteName, StringComparison.Ordinal);
+            public void Reset()
+            {
+                _remoteName = null;
+                _localName = null;
+                IsCaseChange = false;
             }
 
             bool IResettable.TryReset()
             {
-                SetNames("", "");
+                Reset();
                 return true;
             }
         }
@@ -1421,8 +1409,8 @@ namespace SS.Core.Modules
 
             public uint LocalId { get; set; }
 
-            public PeerArenaName? Name { get; set; }
-            IPeerArenaName? IPeerArena.Name => Name;
+            public readonly PeerArenaName Name = new();
+            IPeerArenaName IPeerArena.Name => Name;
 
             public bool IsConfigured { get; set; }
 
@@ -1430,15 +1418,21 @@ namespace SS.Core.Modules
 
             public DateTime LastUpdate { get; set; }
 
-            public readonly Trie Players = new(false);
+            public readonly HashSet<string> Players = new(StringComparer.OrdinalIgnoreCase);
+            public readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> PlayersLookup;
 
             int IPeerArena.PlayerCount => Players.Count;
+
+            public PeerArena()
+            {
+                PlayersLookup = Players.GetAlternateLookup<ReadOnlySpan<char>>();
+            }
 
             bool IResettable.TryReset()
             {
                 Id = 0;
                 LocalId = 0;
-                Name = null; // this should have already been cleared and object returned to the pool
+                Name.Reset();
                 IsConfigured = false;
                 IsRelay = false;
                 LastUpdate = default;
