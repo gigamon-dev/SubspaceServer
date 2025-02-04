@@ -60,6 +60,7 @@ namespace SS.Matchmaking.Modules
         private readonly ICommandManager _commandManager;
         private readonly IConfigManager _configManager;
         private readonly ILogManager _logManager;
+        private readonly IMainloopTimer _mainloopTimer;
         private readonly IMapData _mapData;
         private readonly IObjectPoolManager _objectPoolManager;
         private readonly IPlayerData _playerData;
@@ -122,6 +123,7 @@ namespace SS.Matchmaking.Modules
             ICommandManager commandManager,
             IConfigManager configManager,
             ILogManager logManager,
+            IMainloopTimer mainloopTimer,
             IMapData mapData,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
@@ -133,6 +135,7 @@ namespace SS.Matchmaking.Modules
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
@@ -469,7 +472,116 @@ namespace SS.Matchmaking.Modules
                 teamStats.RefreshRemainingSlotsAndAverageRating();
             }
 
+            _mainloopTimer.SetTimer(MainloopTimer_ProcessPlayerDistances, 1000, 1000, matchStats, matchStats);
+
             return ValueTask.CompletedTask;
+        }
+
+        private bool MainloopTimer_ProcessPlayerDistances(MatchStats matchStats)
+        {
+            if (matchStats.MatchData is null
+                || matchStats.StartTimestamp == DateTime.MinValue
+                || matchStats.EndTimestamp is not null
+                || matchStats.Teams.Count == 0)
+            {
+                // The stats are not for an ongoing match, stop the timer.
+                return false;
+            }
+
+            foreach ((short freq, TeamStats teamStats) in matchStats.Teams)
+            {
+                foreach (SlotStats slotStats in teamStats.Slots)
+                {
+                    MemberStats? memberStats = slotStats.Current;
+                    if (memberStats is null)
+                        continue;
+
+                    Player? player = _playerData.FindPlayer(memberStats.PlayerName);
+                    if (player is null || player.Flags.IsDead)
+                        continue;
+
+                    // Distance to team
+                    int? distanceSquared = null;
+                    foreach (SlotStats otherSlotStats in teamStats.Slots)
+                    {
+                        if (slotStats == otherSlotStats)
+                            continue;
+
+                        MemberStats? otherMemberStats = otherSlotStats.Current;
+                        if (otherMemberStats is null)
+                            continue;
+
+                        Player? otherPlayer = _playerData.FindPlayer(otherMemberStats.PlayerName);
+                        if (otherPlayer is null || otherPlayer.Flags.IsDead)
+                            continue;
+
+                        int distanceX = player.Position.X - otherPlayer.Position.X;
+                        int distanceY = player.Position.Y - otherPlayer.Position.Y;
+                        int distance = (distanceX * distanceX) + (distanceY * distanceY);
+                        if (distanceSquared is null || distance < distanceSquared)
+                            distanceSquared = distance;
+                    }
+
+                    if (distanceSquared is not null)
+                    {
+                        ulong distance = (uint)Math.Ceiling(Math.Sqrt(distanceSquared.Value));
+
+                        if (memberStats.DistanceToTeamSum is null || memberStats.DistanceToTeamSamples is null)
+                        {
+                            memberStats.DistanceToTeamSum = distance;
+                            memberStats.DistanceToTeamSamples = 1;
+                        }
+                        else
+                        {
+                            memberStats.DistanceToTeamSum += distance;
+                            memberStats.DistanceToTeamSamples++;
+                        }
+                    }
+
+                    // Distance to enemy
+                    distanceSquared = null;
+                    foreach (TeamStats otherTeamStats in matchStats.Teams.Values)
+                    {
+                        if (teamStats == otherTeamStats)
+                            continue;
+
+                        foreach (SlotStats otherSlotStats in otherTeamStats.Slots)
+                        {
+                            MemberStats? otherMemberStats = otherSlotStats.Current;
+                            if (otherMemberStats is null)
+                                continue;
+
+                            Player? otherPlayer = _playerData.FindPlayer(otherMemberStats.PlayerName);
+                            if (otherPlayer is null || otherPlayer.Flags.IsDead)
+                                continue;
+
+                            int distanceX = player.Position.X - otherPlayer.Position.X;
+                            int distanceY = player.Position.Y - otherPlayer.Position.Y;
+                            int distance = (distanceX * distanceX) + (distanceY * distanceY);
+                            if (distanceSquared is null || distance < distanceSquared)
+                                distanceSquared = distance;
+                        }
+                    }
+
+                    if (distanceSquared is not null)
+                    {
+                        ulong distance = (uint)Math.Ceiling(Math.Sqrt(distanceSquared.Value));
+
+                        if (memberStats.DistanceToEnemySum is null || memberStats.DistanceToEnemySamples is null)
+                        {
+                            memberStats.DistanceToEnemySum = distance;
+                            memberStats.DistanceToEnemySamples = 1;
+                        }
+                        else
+                        {
+                            memberStats.DistanceToEnemySum += distance;
+                            memberStats.DistanceToEnemySamples++;
+                        }
+                    }
+                }
+            }
+
+            return true;
         }
 
         async ValueTask<bool> ITeamVersusStatsBehavior.PlayerKilledAsync(
@@ -907,6 +1019,8 @@ namespace SS.Matchmaking.Modules
             matchStats.EndTimestamp = DateTime.UtcNow;
             ServerTick endTick = ServerTick.Now;
 
+            _mainloopTimer.ClearTimer<MatchStats>(MainloopTimer_ProcessPlayerDistances, matchStats);
+
             Arena? arena = matchData.Arena; // null if the arena doesn't exist
 
             if (reason != MatchEndReason.Cancelled)
@@ -1104,6 +1218,18 @@ namespace SS.Matchmaking.Modules
                             if (memberStats.WastedBricks > 0)
                                 writer.WriteNumber("wasted_brick"u8, memberStats.WastedBricks);
 
+                            if (memberStats.DistanceToEnemySum is not null && memberStats.DistanceToEnemySamples is not null && memberStats.DistanceToEnemySamples > 0)
+                            {
+                                writer.WriteNumber("enemy_distance_sum"u8, memberStats.DistanceToEnemySum.Value);
+                                writer.WriteNumber("enemy_distance_samples"u8, memberStats.DistanceToEnemySamples.Value);
+                            }
+
+                            if (memberStats.DistanceToTeamSum is not null && memberStats.DistanceToTeamSamples is not null && memberStats.DistanceToTeamSamples > 0)
+                            {
+                                writer.WriteNumber("team_distance_sum"u8, memberStats.DistanceToTeamSum.Value);
+                                writer.WriteNumber("team_distance_samples"u8, memberStats.DistanceToTeamSamples.Value);
+                            }
+
                             writer.WriteNumber("rating_change"u8, (int)memberStats.RatingChange); // round towards zero (cut any fractional part off)
 
                             writer.WriteStartObject("ship_usage"u8);
@@ -1288,7 +1414,7 @@ namespace SS.Matchmaking.Modules
                 Debug.Assert(!string.Equals(slotStats.Current.PlayerName, playerSlot.PlayerName, StringComparison.OrdinalIgnoreCase));
 
                 _playerMemberDictionary.Remove(slotStats.Current.PlayerName!);
-                
+
                 Player? subOutPlayer = _playerData.FindPlayer(slotStats.Current.PlayerName);
                 if (subOutPlayer is not null)
                 {
@@ -1298,7 +1424,7 @@ namespace SS.Matchmaking.Modules
 
             // Sub in
             string? subInPlayerName = playerSlot.PlayerName;
-            if(!string.IsNullOrWhiteSpace(subInPlayerName))
+            if (!string.IsNullOrWhiteSpace(subInPlayerName))
             {
                 MemberStats? memberStats = slotStats.Members.Find(mStat => string.Equals(subInPlayerName, mStat.PlayerName, StringComparison.OrdinalIgnoreCase));
                 if (memberStats is null)
@@ -2151,7 +2277,7 @@ namespace SS.Matchmaking.Modules
             foreach (TeamStats teamStats in matchStats.Teams.Values)
             {
                 SendHorizonalRule(notifySet);
-                _chat.SendSetMessage(notifySet, $"| Freq {teamStats.Team!.Freq,-4}            Ki/De TK SK AS FR WR WRk WEPM Mi LO PTime | DDealt/DTaken DmgE KiDmg FRDmg TmDmg | AcB AcG | Rat TRat |");
+                _chat.SendSetMessage(notifySet, $"| Freq {teamStats.Team!.Freq,-4}            Ki/De TK SK AS FR WR WRk WEPM   dE Mi LO PTime | DDealt/DTaken DmgE KiDmg FRDmg TmDmg | AcB AcG | Rat TRat |");
                 SendHorizonalRule(notifySet);
 
                 int totalKills = 0;
@@ -2202,6 +2328,7 @@ namespace SS.Matchmaking.Modules
 
                         // Calculations
                         int? wastedEnergy = memberStats.PlayTime == TimeSpan.Zero ? null : (int)(memberStats.WastedEnergy / memberStats.PlayTime.TotalMinutes);
+                        int? aveEnemyDistance = memberStats.DistanceToEnemySum is null || memberStats.DistanceToEnemySamples is null || memberStats.DistanceToEnemySamples < 0 ? null : (int)(memberStats.DistanceToEnemySum / memberStats.DistanceToEnemySamples / 16);
                         int damageDealt = memberStats.DamageDealtBombs + memberStats.DamageDealtBullets;
                         int damageTaken = memberStats.DamageTakenBombs + memberStats.DamageTakenBullets + memberStats.DamageTakenTeam + memberStats.DamageSelf;
                         int totalDamage = damageDealt + damageTaken;
@@ -2254,6 +2381,7 @@ namespace SS.Matchmaking.Modules
                             $" {memberStats.WastedRepels,2}" +
                             $" {memberStats.WastedRockets,3}" +
                             $" {wastedEnergy,4}" +
+                            $" {aveEnemyDistance,4}" +
                             $" {memberStats.MineFireCount,2}" +
                             $" {memberStats.LagOuts,2}" +
                             $"{(int)playTime.TotalMinutes,3}:{playTime:ss}" +
@@ -2281,6 +2409,7 @@ namespace SS.Matchmaking.Modules
                     $" {totalWastedRepels,2}" +
                     $" {totalWastedRockets,3}" +
                     $"     " +
+                    $"     " +
                     $" {totalMineFireCount,2}" +
                     $" {totalLagOuts,2}" +
                     $"      " +
@@ -2294,7 +2423,7 @@ namespace SS.Matchmaking.Modules
 
             void SendHorizonalRule(HashSet<Player> notifySet)
             {
-                _chat.SendSetMessage(notifySet, $"+----------------------------------------------------------------+--------------------------------------+---------+----------+");
+                _chat.SendSetMessage(notifySet, $"+---------------------------------------------------------------------+--------------------------------------+---------+----------+");
             }
         }
 
@@ -2981,6 +3110,30 @@ namespace SS.Matchmaking.Modules
             public short WastedDecoys;
             public short WastedPortals;
             public short WastedBricks;
+
+            #endregion
+
+            #region Distance
+
+            /// <summary>
+            /// The sum of the distances to the nearest enemy player (in pixels), periodically taken.
+            /// </summary>
+            public ulong? DistanceToEnemySum;
+
+            /// <summary>
+            /// The number of samples taken for <see cref="DistanceToEnemySum"/>.
+            /// </summary>
+            public uint? DistanceToEnemySamples;
+
+            /// <summary>
+            /// The sum of the distances to the nearest teammate (in pixels), periodically taken.
+            /// </summary>
+            public ulong? DistanceToTeamSum;
+
+            /// <summary>
+            /// The number of samples taken for <see cref="DistanceToTeamSum"/>.
+            /// </summary>
+            public uint? DistanceToTeamSamples;
 
             #endregion
 
