@@ -1,5 +1,8 @@
 ﻿namespace SS.Matchmaking.TeamVersus
 {
+    /// <summary>
+    /// Configuration settings for a match.
+    /// </summary>
     public interface IMatchConfiguration
     {
         /// <summary>
@@ -37,5 +40,10 @@
         /// <see langword="null"/> means no limit.
         /// </remarks>
         TimeSpan? OverTimeLimit { get; }
+
+        /// <summary>
+        /// Gets the configuration of the match boxes.
+        /// </summary>
+        ReadOnlySpan<IMatchBoxConfiguration> Boxes { get; }
     }
 }

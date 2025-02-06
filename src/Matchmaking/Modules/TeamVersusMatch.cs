@@ -3986,16 +3986,18 @@ namespace SS.Matchmaking.Modules
             public ItemsCommandOption ItemsCommandOption { get; init; } = ItemsCommandOption.None;
 
             public required MatchBoxConfiguration[] Boxes;
+
+            ReadOnlySpan<IMatchBoxConfiguration> IMatchConfiguration.Boxes => Boxes;
         }
 
-        private class MatchBoxConfiguration
+        private class MatchBoxConfiguration : IMatchBoxConfiguration
         {
             /// <summary>
             /// Available starting locations for each team.
             /// </summary>
             public required TileCoordinates[][] TeamStartLocations;
 
-            public string? PlayAreaMapRegion;
+            public string? PlayAreaMapRegion { get; init; }
         }
 
         /// <summary>

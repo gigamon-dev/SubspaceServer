@@ -3,6 +3,7 @@ using Microsoft.IO;
 using SS.Core;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
+using SS.Core.Map;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
 using SS.Matchmaking.TeamVersus;
@@ -488,6 +489,17 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
+            Arena? arena = matchStats.MatchData.Arena;
+            if (arena is null)
+            {
+                // The arena does not exist, but the match can still be ongoing.
+                // A short amount of time is given for players to return to the match after everyone leaves.
+                return true;
+            }
+
+            string? playRegionName = matchStats.MatchData.Configuration.Boxes[matchStats.MatchData.MatchIdentifier.BoxIdx].PlayAreaMapRegion;
+            MapRegion? playRegion = playRegionName is not null ? _mapData.FindRegionByName(arena, playRegionName) : null;
+
             foreach ((short freq, TeamStats teamStats) in matchStats.Teams)
             {
                 foreach (SlotStats slotStats in teamStats.Slots)
@@ -497,8 +509,12 @@ namespace SS.Matchmaking.Modules
                         continue;
 
                     Player? player = _playerData.FindPlayer(memberStats.PlayerName);
-                    if (player is null || player.Flags.IsDead)
+                    if (player is null 
+                        || player.Flags.IsDead
+                        || (playRegion is not null && !_mapData.RegionsAt(arena, (short)(player.Position.X / 16), (short)(player.Position.Y / 16)).Contains(playRegion)))
+                    {
                         continue;
+                    }
 
                     // Distance to team
                     int? distanceSquared = null;
@@ -512,8 +528,12 @@ namespace SS.Matchmaking.Modules
                             continue;
 
                         Player? otherPlayer = _playerData.FindPlayer(otherMemberStats.PlayerName);
-                        if (otherPlayer is null || otherPlayer.Flags.IsDead)
+                        if (otherPlayer is null
+                            || otherPlayer.Flags.IsDead
+                            || (playRegion is not null && !_mapData.RegionsAt(arena, (short)(otherPlayer.Position.X / 16), (short)(otherPlayer.Position.Y / 16)).Contains(playRegion)))
+                        {
                             continue;
+                        }
 
                         int distanceX = player.Position.X - otherPlayer.Position.X;
                         int distanceY = player.Position.Y - otherPlayer.Position.Y;
@@ -552,8 +572,12 @@ namespace SS.Matchmaking.Modules
                                 continue;
 
                             Player? otherPlayer = _playerData.FindPlayer(otherMemberStats.PlayerName);
-                            if (otherPlayer is null || otherPlayer.Flags.IsDead)
+                            if (otherPlayer is null
+                                || otherPlayer.Flags.IsDead
+                                || (playRegion is not null && !_mapData.RegionsAt(arena, (short)(otherPlayer.Position.X / 16), (short)(otherPlayer.Position.Y / 16)).Contains(playRegion)))
+                            {
                                 continue;
+                            }
 
                             int distanceX = player.Position.X - otherPlayer.Position.X;
                             int distanceY = player.Position.Y - otherPlayer.Position.Y;
