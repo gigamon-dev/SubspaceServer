@@ -13,12 +13,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.26.1" />
-    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="8.0.4">
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="9.0.1">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.0" />
-    <PackageReference Include="Npgsql" Version="8.0.3" />
+    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
+    <PackageReference Include="Npgsql" Version="9.0.2" />
   </ItemGroup>
 
   <ItemGroup>

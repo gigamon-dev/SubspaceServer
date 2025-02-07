@@ -10,14 +10,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.2.2" />
-    <PackageReference Include="Google.Protobuf" Version="3.26.1" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.4" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="8.0.4" />
-    <PackageReference Include="SkiaSharp" Version="2.88.8" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.8" />
-    <PackageReference Include="System.IO.Hashing" Version="8.0.0" />
+    <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.1" />
+    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="9.0.1" />
+    <PackageReference Include="SkiaSharp" Version="3.116.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.116.1" />
+    <PackageReference Include="System.IO.Hashing" Version="9.0.1" />
   </ItemGroup>
 
   <ItemGroup>
