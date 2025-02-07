@@ -38,7 +38,7 @@ This document provides an overview of the various server parts and their relatio
 | directory | SS.Core.Modules.DirectoryPublisher | |
 | enc_null | SS.Core.Modules.EncryptionNull | |
 | enc_vie | SS.Core.Modules.EncryptionVIE | |
-| enc_cont:enc_cont | SS.EncryptionContinuum.EncryptionContinuum | Closed source<br>TODO: provide a native binary like ASSS does. |
+| enc_cont:enc_cont | SS.EncryptionCont.EncryptionContNative | Closed source. Each release provides native binaries for the supported platforms and architectures. |
 | enf_flagwin | - | No plans to add it. |
 | enf_legalship | SS.Core.Modules.Enforcers.LegalShip | |
 | enf_lockspec | SS.Core.Modules.Enforcers.LockSpec | |

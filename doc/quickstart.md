@@ -14,13 +14,7 @@ If you already have a zone running *ASSS*, see [Quickstart from ASSS](quickstart
 
 ## Prerequisites
 
-The server requires that .NET be installed. If you don't already have it, you can get it from: https://dotnet.microsoft.com. (Currently .NET 7)
-
-The server can technically be run on any system supported by .NET. However, pre-built binaries are only being provided for Linux x64 and Windows x64.
-
-> You are free to download the source code and build it for other platforms/architectures, but be aware of these known limitations:
-> - The System.Data.SQLite NuGet package doesn't include native binaries for ARM64. To work around this, either build your own ARM64 binary for SQLite or do not use the persist modules (`SS.Core.Modules.PersistSQLite` and `SS.Core.Modules.Persist`).
-> - The Continuum Encryption native binaries (closed source) are currently only available for Linux x64 and Windows x64. In the future, macOS and ARM64 binaries may be considered.
+The server requires that .NET be installed. If you don't already have it, you can get it from: https://dotnet.microsoft.com.
 
 ## Installation
 
@@ -58,7 +52,7 @@ The script is named: `run-server.sh`. From the shell, `cd` to the folder you ins
 
 #### Windows
 
-The script is named: `run-server.cmd`. Run it from File Explorer, or from command line `cd` to the folder you installed the server to, and run it.
+The script is named: `run-server.cmd`. Run it from File Explorer, or from the command line `cd` to the folder you installed the server to, and run it.
 
 ```
 run-server.cmd
@@ -66,7 +60,7 @@ run-server.cmd
 
 #### PowerShell
 
-Alternatively, a PowerShell script, `run-server-ps1` is also included, in case that is your preference.
+Alternatively, a PowerShell script, `run-server.ps1` is also included, in case that is your preference.
 
 ```
 ./run-server.ps1

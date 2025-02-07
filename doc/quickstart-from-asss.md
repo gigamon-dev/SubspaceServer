@@ -15,13 +15,7 @@ If you don't already have a zone running *ASSS*, see [Quickstart](./quickstart.m
 
 ## Prerequisites
 
-The server requires that .NET be installed. If you don't already have it, you can get it from: https://dotnet.microsoft.com. (Currently .NET 7)
-
-The server can technically be run on any system supported by .NET. However, pre-built binaries are only being provided for Linux x64 and Windows x64.
-
-> You are free to download the source code and build it for other platforms/architectures, but be aware of these known limitations:
-> - The System.Data.SQLite NuGet package doesn't include native binaries for ARM64. To work around this, either build your own ARM64 binary for SQLite or do not use the persist modules (`SS.Core.Modules.PersistSQLite` and `SS.Core.Modules.Persist`).
-> - The Continuum Encryption native binaries (closed source) are currently only available for Linux x64 and Windows x64. In the future, macOS and ARM64 binaries may be considered.
+The server requires that .NET be installed. If you don't already have it, you can get it from: https://dotnet.microsoft.com.
 
 ## Installation
 
