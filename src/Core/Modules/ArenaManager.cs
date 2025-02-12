@@ -1660,11 +1660,6 @@ namespace SS.Core.Modules
 
             try
             {
-               /* foreach ((int keyId, ExtraDataFactory factory) in _extraDataRegistrations)
-                {
-                    arena.SetExtraData(keyId, factory.Get());
-                }*/
-
                 _arenas.Remove(arenaName);
             }
             finally
@@ -1848,7 +1843,6 @@ namespace SS.Core.Modules
                 ReadOnlySpan<char> arenaName;
                           
                 //Create new PermanentArenas that don't exist yet
-
                 while (!(arenaName = remaining.GetToken(", \t\n", out remaining)).IsEmpty)
                 {
                     if (!_arenas.ContainsKey(arenaName.ToString())) //TODO:  It's possible an arena could exist but not be permanent so wouldn't be converted, would need to also check if arena.KeepAlive
@@ -1859,9 +1853,9 @@ namespace SS.Core.Modules
                     }
                 }
 
-                //Remove 
+                //Cycle through existing PermanenetArenas and remove those not configured
                 foreach (Arena arena in _arenas.Values) {
-                    // Don't remove public arenas.
+                    // Ignore public # arenas, might not be necessary
                     if (!Regex.IsMatch(arena.Name, "\\d")) { 
                         if (!permanentArenas.Split(new char[0]).Contains(arena.Name) && arena.KeepAlive == true)
                         {
