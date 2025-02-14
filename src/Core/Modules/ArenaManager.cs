@@ -3,7 +3,6 @@ using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
-using SS.Utilities;
 using SS.Utilities.Collections;
 using System;
 using System.Buffers;
@@ -11,10 +10,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using TeamSettings = SS.Core.ConfigHelp.Constants.Arena.Team;
@@ -29,6 +26,8 @@ namespace SS.Core.Modules
     public sealed class ArenaManager : IModule, IArenaManager, IArenaManagerInternal, IModuleLoaderAware, IDisposable
     {
         private const string ArenasDirectoryName = "arenas";
+
+        private static readonly SearchValues<char> s_permanentArenasDelimiters = SearchValues.Create(',', ' ', '\t', '\n');
 
         /// <summary>
         /// the read-write lock for the global arena list
@@ -148,20 +147,14 @@ namespace SS.Core.Modules
 
             QueueRefreshKnownArenas();
 
+            GlobalConfigChangedCallback.Register(broker, RefreshPermanentArenas);
+
             _iArenaManagerToken = Broker.RegisterInterface<IArenaManager>(this);
             _iArenaManagerInternalToken = Broker.RegisterInterface<IArenaManagerInternal>(this);
-
-            GlobalConfigChangedCallback.Register(Broker, Callback_GlobalConfigChanged);
 
             return true;
         }
 
-        [ConfigHelp("Arenas", "PermanentArenas", ConfigScope.Global,
-            Description = """
-                Names of arenas to permanently keep running.
-                These arenas will be created when the server is started
-                and show up on the arena list, even if no players are in them.
-                """)]
         void IModuleLoaderAware.PostLoad(IComponentBroker broker)
         {
             _network = broker.GetInterface<INetwork>();
@@ -180,7 +173,7 @@ namespace SS.Core.Modules
 
             _persistExecutor = broker.GetInterface<IPersistExecutor>();
 
-            UpdatePermanentArenas();
+            RefreshPermanentArenas();
         }
 
         void IModuleLoaderAware.PreUnload(IComponentBroker broker)
@@ -213,6 +206,8 @@ namespace SS.Core.Modules
             if (Broker.UnregisterInterface(ref _iArenaManagerInternalToken) != 0)
                 return false;
 
+            GlobalConfigChangedCallback.Unregister(broker, RefreshPermanentArenas);
+
             if (_knownArenaWatcher is not null)
             {
                 _knownArenaWatcher.EnableRaisingEvents = false;
@@ -232,8 +227,6 @@ namespace SS.Core.Modules
             ((IArenaManager)this).FreeArenaData(ref _adKey);
 
             _arenas.Clear();
-
-            GlobalConfigChangedCallback.Unregister(Broker, Callback_GlobalConfigChanged);
 
             return true;
         }
@@ -1601,7 +1594,6 @@ namespace SS.Core.Modules
             // It will be transitioned when the arena is ready.
         }
 
-
         private Arena? FindArena(ReadOnlySpan<char> name, ArenaState? minState, ArenaState? maxState)
         {
             ReadLock();
@@ -1647,27 +1639,6 @@ namespace SS.Core.Modules
             }
 
             _logManager.LogA(LogLevel.Info, nameof(ArenaManager), arena, "Created arena.");
-
-            return arena;
-        }
-
-        private Arena RemoveArena(ReadOnlySpan<char> name)
-        {
-            string arenaName = StringPool.Shared.GetOrAdd(name);
-            Arena arena = new(Broker, arenaName, this);
-
-            WriteLock();
-
-            try
-            {
-                _arenas.Remove(arenaName);
-            }
-            finally
-            {
-                WriteUnlock();
-            }
-
-            _logManager.LogA(LogLevel.Info, nameof(ArenaManager), arena, "Removed arena.");
 
             return arena;
         }
@@ -1831,55 +1802,87 @@ namespace SS.Core.Modules
             }
         }
 
-        private void UpdatePermanentArenas()
+        [ConfigHelp("Arenas", "PermanentArenas", ConfigScope.Global,
+            Description = """
+                Names of arenas to permanently keep running.
+                These arenas will be created when the server is started
+                and show up on the arena list, even if no players are in them.
+                """)]
+        private void RefreshPermanentArenas()
         {
-            string? permanentArenas = _configManager.GetStr(_configManager.Global, "Arenas", "PermanentArenas");
-            if (!string.IsNullOrWhiteSpace(permanentArenas))
-            {
-                int totalCreated = 0;
-                int totalRemoved = 0;
+            int totalCreated = 0;
+            int totalUpdated = 0;
 
-                ReadOnlySpan<char> remaining = permanentArenas;
-                ReadOnlySpan<char> arenaName;
-                          
-                //Create new PermanentArenas that don't exist yet
-                while (!(arenaName = remaining.GetToken(", \t\n", out remaining)).IsEmpty)
+            HashSet<string> permanentArenaSet = _objectPoolManager.NameHashSetPool.Get();
+            try
+            {
+                ReadOnlySpan<char> permanentArenas = _configManager.GetStr(_configManager.Global, "Arenas", "PermanentArenas");
+                foreach (Range range in permanentArenas.SplitAny(s_permanentArenasDelimiters))
                 {
-                    if (!_arenas.ContainsKey(arenaName.ToString())) //TODO:  It's possible an arena could exist but not be permanent so wouldn't be converted, would need to also check if arena.KeepAlive
+                    string arenaName = StringPool.Shared.GetOrAdd(permanentArenas[range]);
+                    permanentArenaSet.Add(arenaName);
+                }
+
+                _logManager.LogM(LogLevel.Drivel, nameof(ArenaManager), $"{permanentArenaSet.Count} PermanentArenas: {permanentArenas}");
+
+                // Remove the KeepAlive flag from any arenas that are no longer permanent.
+                // They will automatically be reaped when empty.
+                foreach (Arena arena in _arenas.Values)
+                {
+                    if (arena.KeepAlive && !permanentArenaSet.Contains(arena.Name))
                     {
-                        ++totalCreated;
-                        _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Creating permanent arena '{arenaName}'.");
-                        CreateArena(arenaName, true);
+                        arena.KeepAlive = false;
+                        _logManager.LogA(LogLevel.Info, nameof(ArenaManager), arena, $"Updated to be not permanent.");
+                        totalUpdated++;
                     }
                 }
 
-                //Cycle through existing PermanenetArenas and remove those not configured
-                foreach (Arena arena in _arenas.Values) {
-                    // Ignore public # arenas, might not be necessary
-                    if (!Regex.IsMatch(arena.Name, "\\d")) { 
-                        if (!permanentArenas.Split(new char[0]).Contains(arena.Name) && arena.KeepAlive == true)
+                // Add or update any new permanent arenas.
+                foreach (string arenaName in permanentArenaSet)
+                {
+                    if (_arenas.TryGetValue(arenaName, out Arena? arena))
+                    {
+                        if (!arena.KeepAlive)
                         {
-                            ++totalRemoved;
-                            _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Removing permanent arena '{arena.Name}'.");
-                            RemoveArena(arena.Name);
+                            arena.KeepAlive = true;
+                            _logManager.LogA(LogLevel.Info, nameof(ArenaManager), arena, $"Updated to be permanent.");
+                            totalUpdated++;
                         }
                     }
-                }
-
-                if (totalCreated > 0)
-                {
-                    _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Created {totalCreated} permanent arena(s).");
-                }
-
-                if (totalRemoved > 0) {
-                    _logManager.LogM(LogLevel.Info, nameof(ArenaManager), $"Removed {totalRemoved} permanent arena(s).");
+                    else
+                    {
+                        // The arena does not yet exist, create it as being permanent.
+                        arena = CreateArena(arenaName, true);
+                        _logManager.LogA(LogLevel.Info, nameof(ArenaManager), arena, $"Created permanent arena '{arenaName}'.");
+                        totalCreated++;
+                    }
                 }
             }
-        }
+            finally
+            {
+                _objectPoolManager.NameHashSetPool.Return(permanentArenaSet);
+            }
 
-        private void Callback_GlobalConfigChanged()
-        {
-            UpdatePermanentArenas();
+            if (totalCreated > 0 || totalUpdated > 0)
+            {
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    sb.Append("Refreshed permanent arenas.");
+
+                    if (totalCreated > 0)
+                        sb.Append($" Created {totalCreated}.");
+                    
+                    if (totalUpdated > 0)
+                        sb.Append($" Updated {totalUpdated}.");
+
+                    _logManager.LogM(LogLevel.Info, nameof(ArenaManager), sb);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
+            }
         }
 
         #region Helper types
