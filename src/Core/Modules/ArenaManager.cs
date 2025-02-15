@@ -1819,8 +1819,11 @@ namespace SS.Core.Modules
                 ReadOnlySpan<char> permanentArenas = _configManager.GetStr(_configManager.Global, "Arenas", "PermanentArenas");
                 foreach (Range range in permanentArenas.SplitAny(s_permanentArenasDelimiters))
                 {
-                    string arenaName = StringPool.Shared.GetOrAdd(permanentArenas[range]);
-                    permanentArenaSet.Add(arenaName);
+                    ReadOnlySpan<char> arenaName = permanentArenas[range].Trim();
+                    if (arenaName.IsEmpty)
+                        continue;
+
+                    permanentArenaSet.Add(StringPool.Shared.GetOrAdd(arenaName));
                 }
 
                 _logManager.LogM(LogLevel.Drivel, nameof(ArenaManager), $"{permanentArenaSet.Count} PermanentArenas: {permanentArenas}");
