@@ -1,3 +1,4 @@
+using CommunityToolkit.HighPerformance.Buffers;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Modules;
 using System;
@@ -279,8 +280,8 @@ namespace SS.Core
             Manager = manager ?? throw new ArgumentNullException(nameof(manager));
 
             Name = name;
-            BaseName = name.TrimEnd(_digitChars);
-            if (string.IsNullOrEmpty(BaseName))
+            ReadOnlySpan<char> baseNameSpan = name.AsSpan().TrimEnd(_digitChars);
+            if (baseNameSpan.IsEmpty)
             {
                 BaseName = Constants.ArenaGroup_Public;
                 IsPublic = true;
@@ -288,6 +289,7 @@ namespace SS.Core
             }
             else
             {
+                BaseName = StringPool.Shared.GetOrAdd(baseNameSpan);
                 ReadOnlySpan<char> numberStr = Name.AsSpan(BaseName.Length);
                 if (numberStr.IsWhiteSpace()
                     || !int.TryParse(numberStr, out int number))
