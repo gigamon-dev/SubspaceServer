@@ -272,7 +272,7 @@ namespace SS.Core.Modules
                     break;
 #if CFG_USE_ARENA_STAFF_LIST
                 case GroupSource.ArenaList:
-                    _configManager.SetStr(player.Arena.Cfg, "Staff", player.Name, Group_Default, comment, true);
+                    _configManager.SetStr(player.Arena!.Cfg!, "Staff", player.Name!, Group_Default, comment, true);
                     break;
 #endif
                 case GroupSource.Temp:
@@ -367,7 +367,7 @@ namespace SS.Core.Modules
 #if CFG_USE_ARENA_STAFF_LIST
             else if (arena != null && arena.Cfg != null && !string.IsNullOrEmpty(group = _configManager.GetStr(arena.Cfg, "Staff", player.Name)))
             {
-                playerData.Group = GetOrAddCachedGroupName(group);
+                playerData.Group = _groupNamePool.GetOrAdd(group);
                 playerData.Source = GroupSource.ArenaList;
 
                 if (log)
