@@ -141,13 +141,13 @@ namespace SS.Core.Modules
             if (_groupDefConfHandle is null)
                 throw new InvalidOperationException("Not loaded");
 
-            if (player == null)
+            if (player is null)
                 return false;
 
             if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return false;
 
-            return _configManager.GetStr(_groupDefConfHandle, pd.Group, capability) != null;
+            return _configManager.GetStr(_groupDefConfHandle, pd.Group, capability) is not null;
         }
 
         bool ICapabilityManager.HasCapability(ReadOnlySpan<char> name, ReadOnlySpan<char> capability)
@@ -159,7 +159,7 @@ namespace SS.Core.Modules
             if (string.IsNullOrEmpty(group))
                 group = Group_Default;
 
-            return _configManager.GetStr(_groupDefConfHandle, group, capability) != null;
+            return _configManager.GetStr(_groupDefConfHandle, group, capability) is not null;
         }
 
         bool ICapabilityManager.HasCapability(Player player, Arena arena, ReadOnlySpan<char> capability)
@@ -167,14 +167,14 @@ namespace SS.Core.Modules
             if (_groupDefConfHandle is null)
                 throw new InvalidOperationException("Not loaded");
 
-            if (player == null || arena == null)
+            if (player is null || arena is null)
                 return false;
 
             PlayerData tempPlayerData = _playerDataPool.Get();
             try
             {
                 UpdateGroup(player, tempPlayerData, arena, false);
-                return _configManager.GetStr(_groupDefConfHandle, tempPlayerData.Group, capability) != null;
+                return _configManager.GetStr(_groupDefConfHandle, tempPlayerData.Group, capability) is not null;
             }
             finally
             {
@@ -184,7 +184,7 @@ namespace SS.Core.Modules
 
         bool ICapabilityManager.HigherThan(Player a, Player b)
         {
-            if (a == null || b == null)
+            if (a is null || b is null)
                 return false;
 
             if (!b.TryGetExtraData(_pdkey, out PlayerData? bPlayerData))
@@ -204,7 +204,7 @@ namespace SS.Core.Modules
 
         string IGroupManager.GetGroup(Player player)
         {
-            if (player == null)
+            if (player is null)
                 return Group_Default;
 
             if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
@@ -218,7 +218,7 @@ namespace SS.Core.Modules
             if (_staffConfHandle is null)
                 throw new InvalidOperationException("Not loaded");
 
-            if (player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
@@ -233,7 +233,7 @@ namespace SS.Core.Modules
                 _configManager.SetStr(_staffConfHandle, Constants.ArenaGroup_Global, player.Name!, playerData.Group, comment, true);
                 playerData.Source = GroupSource.Global;
             }
-            else if (player.Arena != null)
+            else if (player.Arena is not null && !IsReservedStaffConfSection(player.Arena.BaseName))
             {
                 _configManager.SetStr(_staffConfHandle, player.Arena.BaseName, player.Name!, playerData.Group, comment, true);
                 playerData.Source = GroupSource.Arena;
@@ -242,7 +242,7 @@ namespace SS.Core.Modules
 
         void IGroupManager.SetTempGroup(Player player, ReadOnlySpan<char> group)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (group.IsWhiteSpace())
@@ -260,7 +260,7 @@ namespace SS.Core.Modules
             if (_staffConfHandle is null)
                 throw new InvalidOperationException("Not loaded");
 
-            if (player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
@@ -279,11 +279,17 @@ namespace SS.Core.Modules
                     break;
 
                 case GroupSource.Arena:
-                    _configManager.SetStr(_staffConfHandle, player.Arena!.BaseName, player.Name!, Group_Default, comment, true);
+                    if (player.Arena is not null && !IsReservedStaffConfSection(player.Arena.BaseName))
+                    {
+                        _configManager.SetStr(_staffConfHandle, player.Arena.BaseName, player.Name!, Group_Default, comment, true);
+                    }
                     break;
 
                 case GroupSource.ArenaList:
-                    _configManager.SetStr(player.Arena!.Cfg!, "Staff", player.Name!, Group_Default, comment, true);
+                    if (player.Arena is not null && player.Arena.Cfg is not null)
+                    {
+                        _configManager.SetStr(player.Arena.Cfg, "Staff", player.Name!, Group_Default, comment, true);
+                    }
                     break;
 
                 case GroupSource.Temp:
@@ -297,11 +303,7 @@ namespace SS.Core.Modules
                 throw new InvalidOperationException("Not loaded");
 
             string? correctPw = _configManager.GetStr(_staffConfHandle, "GroupPasswords", group);
-
-            if (string.IsNullOrWhiteSpace(correctPw))
-                return false;
-
-            return pw.Equals(correctPw, StringComparison.Ordinal);
+            return !string.IsNullOrWhiteSpace(correctPw) && pw.Equals(correctPw, StringComparison.Ordinal);
         }
 
         #endregion
@@ -310,7 +312,7 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
@@ -335,7 +337,7 @@ namespace SS.Core.Modules
 
         private void Callback_NewPlayer(Player player, bool isNew)
         {
-            if (player == null)
+            if (player is null)
                 return;
 
             if (isNew)
@@ -354,7 +356,7 @@ namespace SS.Core.Modules
             if (_staffConfHandle is null)
                 throw new InvalidOperationException("Not loaded");
 
-            if (player == null || playerData == null)
+            if (player is null || playerData is null)
                 return;
 
             if (!player.Flags.Authenticated)
@@ -367,7 +369,9 @@ namespace SS.Core.Modules
             }
 
             string? group;
-            if (arena != null && !string.IsNullOrEmpty(group = _configManager.GetStr(_staffConfHandle, arena.BaseName, player.Name)))
+            if (arena is not null 
+                && !IsReservedStaffConfSection(arena.BaseName) 
+                && !string.IsNullOrEmpty(group = _configManager.GetStr(_staffConfHandle, arena.BaseName, player.Name)))
             {
                 playerData.Group = _groupNamePool.GetOrAdd(group);
                 playerData.Source = GroupSource.Arena;
@@ -375,7 +379,10 @@ namespace SS.Core.Modules
                 if (log)
                     _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), player, $"Assigned to group '{playerData.Group}' (arena).");
             }
-            else if (_useArenaConfStaffList && arena != null && arena.Cfg != null && !string.IsNullOrEmpty(group = _configManager.GetStr(arena.Cfg, "Staff", player.Name)))
+            else if (_useArenaConfStaffList 
+                && arena is not null 
+                && arena.Cfg is not null 
+                && !string.IsNullOrEmpty(group = _configManager.GetStr(arena.Cfg, "Staff", player.Name)))
             {
                 playerData.Group = _groupNamePool.GetOrAdd(group);
                 playerData.Source = GroupSource.ArenaList;
@@ -397,6 +404,12 @@ namespace SS.Core.Modules
                 playerData.Group = Group_Default;
                 playerData.Source = GroupSource.Default;
             }
+        }
+
+        private static bool IsReservedStaffConfSection(ReadOnlySpan<char> section)
+        {
+            return section.Equals("General", StringComparison.OrdinalIgnoreCase) 
+                || section.Equals("GroupPasswords", StringComparison.OrdinalIgnoreCase);
         }
 
         #region Helper Types
