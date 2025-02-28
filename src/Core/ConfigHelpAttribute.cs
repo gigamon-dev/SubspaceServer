@@ -171,7 +171,6 @@ namespace SS.Core
     /// <remarks>
     /// <param name="scope"></param>
     /// <param name="fileName"></param>
-    /// <param name="rootNamespace"></param>
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true, Inherited = false)]
     public class GenerateConfigHelpConstantsAttribute(ConfigScope scope, string? fileName) : Attribute
     {

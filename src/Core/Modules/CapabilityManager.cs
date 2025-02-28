@@ -46,6 +46,7 @@ namespace SS.Core.Modules
         private const string Group_None = "none";
 
         private readonly StringPool _groupNamePool = new(16);
+        private bool _useArenaConfStaffList = false;
         
         public CapabilityManager(
             IComponentBroker broker,
@@ -64,8 +65,16 @@ namespace SS.Core.Modules
 			_groupNamePool.Add(Group_None);
 		}
 
-		#region IModule Members
+        #region IModule Members
 
+        [ConfigHelp<bool>("General", "UseArenaConfStaffList", ConfigScope.Global, FileName = "staff.conf", Default = false, 
+            Description = """
+                Controls whether the server should look in arena.conf files 
+                for a [Staff] section when assigning groups.
+
+                This is off by default since the recommended way to assign groups is
+                centrally in the "conf/staff.conf" file, for easiest maintenance.
+                """)]
 		async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _pdkey = _playerData.AllocatePlayerData(_playerDataPool);
@@ -86,6 +95,8 @@ namespace SS.Core.Modules
                 _logManager.LogM(LogLevel.Error, nameof(CapabilityManager), "Error opening staff.conf");
                 return false;
             }
+
+            _useArenaConfStaffList = _configManager.GetBool(_staffConfHandle, "General", "UseArenaConfStaffList", ConfigHelp.Constants.GlobalStaff.General.UseArenaConfStaffList.Default);
 
             _iCapabilityManagerToken = _broker.RegisterInterface<ICapabilityManager>(this);
             _iGroupManagerToken = _broker.RegisterInterface<IGroupManager>(this);
@@ -270,11 +281,11 @@ namespace SS.Core.Modules
                 case GroupSource.Arena:
                     _configManager.SetStr(_staffConfHandle, player.Arena!.BaseName, player.Name!, Group_Default, comment, true);
                     break;
-#if CFG_USE_ARENA_STAFF_LIST
+
                 case GroupSource.ArenaList:
                     _configManager.SetStr(player.Arena!.Cfg!, "Staff", player.Name!, Group_Default, comment, true);
                     break;
-#endif
+
                 case GroupSource.Temp:
                     break;
             }
@@ -364,8 +375,7 @@ namespace SS.Core.Modules
                 if (log)
                     _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), player, $"Assigned to group '{playerData.Group}' (arena).");
             }
-#if CFG_USE_ARENA_STAFF_LIST
-            else if (arena != null && arena.Cfg != null && !string.IsNullOrEmpty(group = _configManager.GetStr(arena.Cfg, "Staff", player.Name)))
+            else if (_useArenaConfStaffList && arena != null && arena.Cfg != null && !string.IsNullOrEmpty(group = _configManager.GetStr(arena.Cfg, "Staff", player.Name)))
             {
                 playerData.Group = _groupNamePool.GetOrAdd(group);
                 playerData.Source = GroupSource.ArenaList;
@@ -373,7 +383,6 @@ namespace SS.Core.Modules
                 if (log)
                     _logManager.LogP(LogLevel.Drivel, nameof(CapabilityManager), player, $"Assigned to group '{playerData.Group}' (arenaconf)");
             }
-#endif
             else if (!string.IsNullOrEmpty(group = _configManager.GetStr(_staffConfHandle, Constants.ArenaGroup_Global, player.Name)))
             {
                 // only global groups available for now
@@ -412,12 +421,11 @@ namespace SS.Core.Modules
             /// </summary>
             Arena,
 
-#if CFG_USE_ARENA_STAFF_LIST
             /// <summary>
             /// Arena config, [Staff] section
             /// </summary>
             ArenaList,
-#endif
+
             /// <summary>
             /// Temporary, not persisted in a config file.
             /// </summary>
