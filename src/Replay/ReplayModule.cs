@@ -2497,7 +2497,7 @@ namespace SS.Replay
             /// <summary>
             /// For thread synchronization.
             /// </summary>
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             // Cached delegate
             public readonly Func<bool> HasPlaybackCommandFunc;

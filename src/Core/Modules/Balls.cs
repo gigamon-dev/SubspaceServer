@@ -7,6 +7,7 @@ using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using SoccerSettings = SS.Core.ConfigHelp.Constants.Arena.Soccer;
 
 namespace SS.Core.Modules
@@ -1399,7 +1400,7 @@ namespace SS.Core.Modules
 
             #endregion
 
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             public void SetSpawns(ReadOnlySpan<BallSpawn> spawns)
             {

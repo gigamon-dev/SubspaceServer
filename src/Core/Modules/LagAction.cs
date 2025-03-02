@@ -458,7 +458,7 @@ namespace SS.Core.Modules
             /// </summary>
             public short SpecFreq;
 
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             public bool TryReset()
             {
@@ -491,7 +491,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// Lock to hold before accessing any of the data members of this class.
             /// </summary>
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             public bool TryReset()
             {

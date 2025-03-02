@@ -9,6 +9,7 @@ using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using BrickSettings = SS.Core.ConfigHelp.Constants.Arena.Brick;
 using RoutingSettings = SS.Core.ConfigHelp.Constants.Arena.Routing;
 
@@ -595,7 +596,7 @@ namespace SS.Core.Modules
             /// </summary>
             public readonly Queue<BrickData> Bricks = new(MaxActiveBricks);
 
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             public bool TryReset()
             {

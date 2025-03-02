@@ -1016,7 +1016,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// To synchronize access to <see cref="OutList"/>. It is the only data member accesssed by threads other than the ChatThread.
             /// </summary>
-            public readonly object OutLock = new();
+            public readonly Lock OutLock = new();
 
             #endregion
 

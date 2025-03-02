@@ -5,6 +5,7 @@ using SS.Packets.Game;
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using System.Threading;
 
 namespace SS.Core.Modules.Scoring
 {
@@ -224,7 +225,7 @@ namespace SS.Core.Modules.Scoring
             // state
             public int Jackpot;
 
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             public bool TryReset()
             {

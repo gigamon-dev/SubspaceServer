@@ -52,7 +52,7 @@ namespace SS.Core
         /// <summary>
         /// For synchronizing access to all data members.
         /// </summary>
-        private readonly object _moduleLock = new();
+        private readonly Lock _moduleLock = new();
 
         /// <summary>
         /// Semaphore for allowing a single writer.
@@ -997,7 +997,8 @@ namespace SS.Core
 
         public IEnumerable<(Type Type, string? Description)> GetModuleTypesAndDescriptions(Arena? arena)
         {
-            lock (_moduleLock)
+            _moduleLock.Enter();
+            try
             {
                 foreach (ModuleData moduleData in _moduleTypeLookup.Values)
                 {
@@ -1006,6 +1007,10 @@ namespace SS.Core
 
                     yield return (moduleData.ModuleType, moduleData.Description);
                 }
+            }
+            finally
+            {
+                _moduleLock.Exit();
             }
         }
 
@@ -1022,13 +1027,18 @@ namespace SS.Core
             else
             {
                 // Search plug-in modules.
-                lock (_moduleLock)
+                _moduleLock.Enter();
+                try
                 {
                     foreach (Type type in GetPluginModuleTypes(moduleTypeName))
                     {
                         if (TryGetModuleInfo(type, out info))
                             yield return info;
                     }
+                }
+                finally
+                {
+                    _moduleLock.Exit();
                 }
             }
         }

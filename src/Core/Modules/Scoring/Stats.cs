@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Threading;
 using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules.Scoring
@@ -1317,7 +1318,7 @@ namespace SS.Core.Modules.Scoring
                 { PersistInterval.Game, new() },
             };
 
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             public bool TryReset()
             {

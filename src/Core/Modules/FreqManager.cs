@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using System.Threading;
 using GeneralSettings = SS.Core.ConfigHelp.Constants.Arena.General;
 using MiscSettings = SS.Core.ConfigHelp.Constants.Arena.Misc;
 using TeamSettings = SS.Core.ConfigHelp.Constants.Arena.Team;
@@ -1105,7 +1106,7 @@ namespace SS.Core.Modules
             public readonly List<Freq> Freqs = [];
             public Config Config;
 
-            public readonly object Lock = new(); // TODO: I think everything should be done serially on the arena level, ASSS has some strange locking using the PlayerData lock and a module level lock.
+            public readonly Lock Lock = new(); // TODO: I think everything should be done serially on the arena level, ASSS has some strange locking using the PlayerData lock and a module level lock.
 
             public bool TryReset()
             {

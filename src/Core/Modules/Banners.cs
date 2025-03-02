@@ -6,6 +6,7 @@ using SS.Packets;
 using SS.Packets.Game;
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace SS.Core.Modules
 {
@@ -384,7 +385,7 @@ namespace SS.Core.Modules
             /// </summary>
             public BannerStatus Status;
 
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             public bool TryReset()
             {

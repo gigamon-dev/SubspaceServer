@@ -882,7 +882,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// For synchronizing access to everything except the <see cref="Stream"/>.
             /// </summary>
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             /// <summary>
             /// The current upload task producer. This provides the actual task and allows us to set its result.

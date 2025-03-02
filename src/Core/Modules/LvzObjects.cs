@@ -9,6 +9,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace SS.Core.Modules
@@ -1225,7 +1226,7 @@ namespace SS.Core.Modules
             public int ToggleDifferences = 0;
             public int ExtraDifferences = 0;
 
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             public LvzData? GetObjectData(short objectId)
             {

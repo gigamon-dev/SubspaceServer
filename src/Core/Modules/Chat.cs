@@ -1656,7 +1656,7 @@ namespace SS.Core.Modules
             /// </summary>
             public DateTime LastCheck;
 
-            public readonly object Lock = new();
+            public readonly Lock Lock = new();
 
             public void Reset()
             {
