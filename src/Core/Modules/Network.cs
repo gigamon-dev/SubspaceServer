@@ -2477,7 +2477,7 @@ namespace SS.Core.Modules
                             if (!player.TryGetExtraData(_connKey, out PlayerConnection? conn))
                                 continue;
 
-                            if (Monitor.TryEnter(conn.OutLock))
+                            if (conn.OutLock.TryEnter())
                             {
                                 try
                                 {
@@ -2486,7 +2486,7 @@ namespace SS.Core.Modules
                                 }
                                 finally
                                 {
-                                    Monitor.Exit(conn.OutLock);
+                                    conn.OutLock.Exit();
                                 }
                             }
 
@@ -3306,7 +3306,7 @@ namespace SS.Core.Modules
                             }
                         }
 
-                        if (!Monitor.TryEnter(conn.ReliableProcessingLock))
+                        if (!conn.ReliableProcessingLock.TryEnter())
                         {
                             // Another RelThread is already processing the connection.
                             continue;
@@ -3342,7 +3342,7 @@ namespace SS.Core.Modules
                         }
                         finally
                         {
-                            Monitor.Exit(conn.ReliableProcessingLock);
+                            conn.ReliableProcessingLock.Exit();
                         }
 
                         // If there is more work, make sure the connection gets processed again.
@@ -3708,7 +3708,7 @@ namespace SS.Core.Modules
                         Span<byte> groupedPacketBuffer = stackalloc byte[Constants.MaxGroupedPacketLength];
                         PacketGrouper packetGrouper = new(this, groupedPacketBuffer);
 
-                        if (Monitor.TryEnter(conn.OutLock))
+                        if (conn.OutLock.TryEnter())
                         {
                             try
                             {
@@ -3716,7 +3716,7 @@ namespace SS.Core.Modules
                             }
                             finally
                             {
-                                Monitor.Exit(conn.OutLock);
+                                conn.OutLock.Exit();
                             }
                         }
                     }
@@ -4810,7 +4810,7 @@ namespace SS.Core.Modules
             /// <summary>
             /// For synchronizing <see cref="SizedSends"/>.
             /// </summary>
-            public readonly object SizedSendLock = new();
+            public readonly Lock SizedSendLock = new();
 
             /// <summary>
             /// Queue of pending sized sends for the connection.
@@ -4918,12 +4918,12 @@ namespace SS.Core.Modules
             /// <summary>
             /// Lock object for synchronizing processing of outgoing data.
             /// </summary>
-            public readonly object OutLock = new();
+            public readonly Lock OutLock = new();
 
             /// <summary>
             /// Lock object for synchronizing processing of incoming reliable data.
             /// </summary>
-            public readonly object ReliableLock = new();
+            public readonly Lock ReliableLock = new();
 
             /// <summary>
             /// This is used to ensure that only one incoming reliable packet is processed at a given time for the connection.
@@ -4933,12 +4933,12 @@ namespace SS.Core.Modules
             /// <see cref="ReliableLock"/> is not held while processing since the receive thread shouldn't be blocked from adding to <see cref="ReliableBuffer"/>.
             /// So, this is needed in case there are multiple threads processing reliable packets (Net:ReliableThreads > 1).
             /// </remarks>
-            public readonly object ReliableProcessingLock = new();
+            public readonly Lock ReliableProcessingLock = new();
 
             /// <summary>
             /// Lock object for synchronizing processing of incoming big data and incoming sized data
             /// </summary>
-            public readonly object BigLock = new();
+            public readonly Lock BigLock = new();
 
             /// <summary>
             /// A count of ongoing processing occurring, including any asynchronous work queued.
