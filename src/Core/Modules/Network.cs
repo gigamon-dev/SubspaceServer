@@ -1515,32 +1515,28 @@ namespace SS.Core.Modules
             uint clientTime = request.Time;
             uint serverTime = ServerTick.Now;
 
+            // note: this bypasses bandwidth limits
             TimeSyncResponse response = new(clientTime, serverTime);
+            SendRaw(conn, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)));
 
-            lock (conn.OutLock)
+            // submit data to lagdata
+            if (_lagCollect is not null && conn is PlayerConnection playerConnection)
             {
-                // note: this bypasses bandwidth limits
-                SendRaw(conn, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)));
+                Player? player = playerConnection.Player;
+                if (player is null)
+                    return;
 
-                // submit data to lagdata
-                if (_lagCollect is not null && conn is PlayerConnection playerConnection)
+                TimeSyncData timeSyncData = new()
                 {
-                    Player? player = playerConnection.Player;
-                    if (player is null)
-                        return;
+                    ServerPacketsReceived = Interlocked.CompareExchange(ref conn.PacketsReceived, 0, 0),
+                    ServerPacketsSent = Interlocked.CompareExchange(ref conn.PacketsSent, 0, 0),
+                    ClientPacketsReceived = request.PacketsReceived,
+                    ClientPacketsSent = request.PacketsSent,
+                    ServerTime = serverTime,
+                    ClientTime = clientTime,
+                };
 
-                    TimeSyncData timeSyncData = new()
-                    {
-                        ServerPacketsReceived = Interlocked.CompareExchange(ref conn.PacketsReceived, 0, 0),
-                        ServerPacketsSent = Interlocked.CompareExchange(ref conn.PacketsSent, 0, 0),
-                        ClientPacketsReceived = request.PacketsReceived,
-                        ClientPacketsSent = request.PacketsSent,
-                        ServerTime = serverTime,
-                        ClientTime = clientTime,
-                    };
-
-                    _lagCollect.TimeSync(player, in timeSyncData);
-                }
+                _lagCollect.TimeSync(player, in timeSyncData);
             }
         }
 
@@ -2764,10 +2760,7 @@ namespace SS.Core.Modules
                         chatPacket.PlayerId = -1;
                         int length = ChatPacket.SetMessage(chatBytes, message);
 
-                        lock (conn.OutLock)
-                        {
-                            SendRaw(conn, chatBytes[..length]);
-                        }
+                        SendRaw(conn, chatBytes[..length]);
                     }
 
                     _logManager.LogP(LogLevel.Info, nameof(Network), player, $"Kicked for {reason}.");
