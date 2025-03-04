@@ -651,50 +651,89 @@ namespace SS.Core.Modules
 
             void DoPutAll()
             {
-                // sync all players
-                _playerData.Lock();
+                // The following logic uses temporary, pooled collections of players and arenas since
+                // we don't want to hold onto the player data lock or arena lock while doing the actual processing.
+                //
+                // Accessing the player's data without holding the global player data lock should be ok.
+                // The player's state could change while we're processing, but not in a way that invalidates what we're doing.
+                // That is, the player can't request to switch to another arena, but can't until this thread completes additional requests.
+                // Similarly, accessing the arena's data without holding the global arena data lock should be ok.
+                // The arena can try to switch states, but will not be able to be destroyed until after this thread processes additional requests.
 
+                // Sync all players.
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
                 try
                 {
-                    foreach (Player player in _playerData.Players)
+                    // Determine which players to process.
+                    _playerData.Lock();
+
+                    try
                     {
-                        if (player.Status == PlayerState.Playing)
+                        foreach (Player player in _playerData.Players)
                         {
-                            DoPutPlayer(player, null); // global player data
-                            if (player.Arena != null)
+                            if (player.Status == PlayerState.Playing)
                             {
-                                DoPutPlayer(player, player.Arena); // per-arena player data
+                                players.Add(player);
                             }
+                        }
+                    }
+                    finally
+                    {
+                        _playerData.Unlock();
+                    }
+
+                    // Process the players.
+                    foreach (Player player in players)
+                    {
+                        DoPutPlayer(player, null); // global player data
+                        if (player.Arena != null)
+                        {
+                            DoPutPlayer(player, player.Arena); // per-arena player data
                         }
                     }
                 }
                 finally
                 {
-                    _playerData.Unlock();
+                    _objectPoolManager.PlayerSetPool.Return(players);
                 }
 
-                // sync all arenas
-                _arenaManager.Lock();
-
+                // Sync all arenas.
+                HashSet<Arena> arenas = _objectPoolManager.ArenaSetPool.Get();
                 try
                 {
-                    foreach (Arena arena in _arenaManager.Arenas)
+                    // Determine which arenas to process.
+                    _arenaManager.Lock();
+
+                    try
                     {
-                        if (arena.Status == ArenaState.Running)
+                        foreach (Arena arena in _arenaManager.Arenas)
                         {
-                            lock (_lock)
+                            if (arena.Status == ArenaState.Running)
                             {
-                                DoPutArena(arena); // per-arena arena data
+                                arenas.Add(arena);
                             }
+                        }
+                    }
+                    finally
+                    {
+                        _arenaManager.Unlock();
+                    }
+
+                    // Process the arenas.
+                    foreach (Arena arena in arenas)
+                    {
+                        lock (_lock)
+                        {
+                            DoPutArena(arena); // per-arena arena data
                         }
                     }
                 }
                 finally
                 {
-                    _arenaManager.Unlock();
+                    _objectPoolManager.ArenaSetPool.Return(arenas);
                 }
 
-                // global arena data
+                // Sync global data.
                 DoPutArena(null);
 
                 _nextSync = DateTime.UtcNow + _syncTimeSpan;
