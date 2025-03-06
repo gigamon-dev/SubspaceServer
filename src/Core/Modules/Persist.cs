@@ -662,6 +662,9 @@ namespace SS.Core.Modules
 
                 // Sync all players.
                 HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+
+                _persistDatastore.BeginTransaction();
+
                 try
                 {
                     // Determine which players to process.
@@ -735,6 +738,8 @@ namespace SS.Core.Modules
 
                 // Sync global data.
                 DoPutArena(null);
+
+                _persistDatastore.CommitTransaction();
 
                 _nextSync = DateTime.UtcNow + _syncTimeSpan;
             }
