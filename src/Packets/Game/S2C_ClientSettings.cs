@@ -433,8 +433,8 @@ namespace SS.Packets.Game
 
         public ushort Y
         {
-            get => (ushort)((BitField & XMask) >> 10);
-            set => BitField = (BitField & ~XMask) | (((uint)value << 10) & XMask);
+            get => (ushort)((BitField & YMask) >> 10);
+            set => BitField = (BitField & ~YMask) | (((uint)value << 10) & YMask);
         }
 
         public ushort Radius
