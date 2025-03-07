@@ -431,6 +431,9 @@ namespace SS.Core.ComponentInterfaces
         /// <returns><see langword="true"/> on success. <see langword="false"/> on failure.</returns>
         bool Close();
 
+        bool BeginTransaction();
+        void CommitTransaction();
+
         /// <summary>
         /// Creates a new interval for an arena group and makes it the "current" one.
         /// </summary>

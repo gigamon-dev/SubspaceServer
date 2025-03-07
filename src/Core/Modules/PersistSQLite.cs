@@ -17,6 +17,7 @@ namespace SS.Core.Modules
         private readonly ILogManager _logManager;
         private readonly IObjectPoolManager _objectPoolManager;
         private InterfaceRegistrationToken<IPersistDatastore>? _iPersistDatastoreToken;
+        private SqliteTransaction? _batch_transaction = null;
 
         private const string DatabasePath = "./data";
         private const string DatabaseFileName = "SS.Core.Modules.PersistSQLite.db";
@@ -198,6 +199,36 @@ namespace SS.Core.Modules
             return true;
         }
 
+        bool IPersistDatastore.BeginTransaction()
+        {
+            if (_connection is null)
+                return false;
+
+            if (_batch_transaction != null)
+                return false;
+
+            try
+            {
+                _batch_transaction = _connection.BeginTransaction();
+            }
+            catch (SqliteException ex)
+            {
+                LogException($"Error creating transaction.", ex);
+                return false;
+            }
+
+            return true;
+        }
+
+        void IPersistDatastore.CommitTransaction()
+        {
+            if (_batch_transaction != null)
+            {
+                _batch_transaction.Commit();
+                _batch_transaction = null;
+            }
+        }
+
         bool IPersistDatastore.CreateArenaGroupIntervalAndMakeCurrent(string arenaGroup, PersistInterval interval)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(arenaGroup);
@@ -262,9 +293,16 @@ namespace SS.Core.Modules
 
             try
             {
-                using SqliteTransaction transaction = _connection.BeginTransaction();
+                SqliteTransaction? transaction = _batch_transaction;
+                if (transaction is null)
+                {
+                    transaction = _connection.BeginTransaction();
+                }
+
                 DbSetPlayerData(transaction, player.Name!, arenaGroup, interval, key, inStream);
-                transaction.Commit();
+
+                if (_batch_transaction is null)
+                    transaction.Commit();
 
                 return true;
             }
@@ -289,9 +327,16 @@ namespace SS.Core.Modules
 
             try
             {
-                using SqliteTransaction transaction = _connection.BeginTransaction();
+                SqliteTransaction? transaction = _batch_transaction;
+                if (transaction is null)
+                {
+                    transaction = _connection.BeginTransaction();
+                }
+
                 DbDeletePlayerData(transaction, player.Name!, arenaGroup, interval, key);
-                transaction.Commit();
+
+                if (_batch_transaction is null)
+                    transaction.Commit();
 
                 return true;
             }
@@ -342,9 +387,16 @@ namespace SS.Core.Modules
 
             try
             {
-                using SqliteTransaction transaction = _connection.BeginTransaction();
+                SqliteTransaction? transaction = _batch_transaction;
+                if (transaction is null)
+                {
+                    transaction = _connection.BeginTransaction();
+                }
+
                 DbSetArenaData(transaction, arenaGroup, interval, key, inStream);
-                transaction.Commit();
+
+                if (_batch_transaction is null)
+                    transaction.Commit();
 
                 return true;
             }
@@ -367,9 +419,16 @@ namespace SS.Core.Modules
 
             try
             {
-                using SqliteTransaction transaction = _connection.BeginTransaction();
+                SqliteTransaction? transaction = _batch_transaction;
+                if (transaction is null)
+                {
+                    transaction = _connection.BeginTransaction();
+                }
+
                 DbDeleteArenaData(transaction, arenaGroup, interval, key);
-                transaction.Commit();
+
+                if (_batch_transaction is null)
+                    transaction.Commit();
 
                 return true;
             }
