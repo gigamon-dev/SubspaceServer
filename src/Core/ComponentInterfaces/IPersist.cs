@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -232,6 +233,14 @@ namespace SS.Core.ComponentInterfaces
     /// </summary>
     public interface IPersist : IComponentInterface
     {
+        /// <inheritdoc cref="RegisterPersistentDataAsync(PersistentData{Player})"/>
+        [Obsolete("Use RegisterPersistentDataAsync instead.")]
+        void RegisterPersistentData(PersistentData<Player> registration);
+
+        /// <inheritdoc cref="UnregisterPersistentDataAsync(PersistentData{Player})"/>
+        [Obsolete("Use UnregisterPersistentDataAsync instead.")]
+        void UnregisterPersistentData(PersistentData<Player> registration);
+
         /// <summary>
         /// Registers a slot of player persistent storage.
         /// </summary>
@@ -251,18 +260,28 @@ namespace SS.Core.ComponentInterfaces
         /// </para>
         /// </remarks>
         /// <param name="registration">The registration to add.</param>
-        void RegisterPersistentData(PersistentData<Player> registration);
+        /// <returns>A task the async operation.</returns>
+        Task RegisterPersistentDataAsync(PersistentData<Player> registration);
 
         /// <summary>
         /// Unregisters a previously registered player persistent storage slot.
         /// </summary>
         /// <param name="registration">The registration to remove.</param>
-        void UnregisterPersistentData(PersistentData<Player> registration);
+        /// <returns>A task the async operation.</returns>
+        Task UnregisterPersistentDataAsync(PersistentData<Player> registration);
 
         // TODO: Does registration of arena persistent data with PersistScope.Global make any sense?
         // Maybe arena registration shouldn't have scope as it should implicitly be PersistScope.PerArena?
         // When would the data be retrieved from the database?  When would the data be saved to the database?
         // For global data, the GetGeneric and PutGeneric methods would make sense.
+
+        /// <inheritdoc cref="RegisterPersistentDataAsync(PersistentData{Arena})"/>
+        [Obsolete("Use RegisterPersistentDataAsync instead.")]
+        void RegisterPersistentData(PersistentData<Arena> registration);
+
+        /// <inheritdoc cref="UnregisterPersistentDataAsync(PersistentData{Arena})"/>
+        [Obsolete("Use UnregisterPersistentDataAsync instead.")]
+        void UnregisterPersistentData(PersistentData<Arena> registration);
 
         /// <summary>
         /// Registers a slot of arena persistent storage.
@@ -271,13 +290,15 @@ namespace SS.Core.ComponentInterfaces
         /// ClearData/SetData will be called when an arena is being created; GetData will be called when an arena is being destroyed.
         /// </remarks>
         /// <param name="registration">The registration to add.</param>
-        void RegisterPersistentData(PersistentData<Arena> registration);
+        /// <returns>A task the async operation.</returns>
+        Task RegisterPersistentDataAsync(PersistentData<Arena> registration);
 
         /// <summary>
         /// Unregisters a previously registered arena persistent storage slot.
         /// </summary>
         /// <param name="registration">The registration to remove.</param>
-        void UnregisterPersistentData(PersistentData<Arena> registration);
+        /// <returns>A task the async operation.</returns>
+        Task UnregisterPersistentDataAsync(PersistentData<Arena> registration);
     }
 
     /// <summary>
@@ -363,7 +384,7 @@ namespace SS.Core.ComponentInterfaces
         #region EndInterval
 
         /// <summary>
-        /// Adds a request to ends an interval.
+        /// Adds a request to end an interval.
         /// </summary>
         /// <remarks>
         /// This method is for callers that are aware of arena groups.
@@ -430,6 +451,22 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <returns><see langword="true"/> on success. <see langword="false"/> on failure.</returns>
         bool Close();
+
+        /// <summary>
+        /// Begins a transaction.
+        /// </summary>
+        /// <remarks>
+        /// This can be useful for when there are multiple reads or writes, to batch them together into a single transaction.
+        /// For example, when saving multiple pieces of data for a player, or if saving for multiple players.
+        /// <para><see cref="CommitTransaction"/> must be called if this method returns <see langword="true"/>.</para>
+        /// </remarks>
+        /// <returns><see langword="true"/> if a transaction was created; Otherwise, <see langword="false"/>.</returns>
+        bool BeginTransaction() => false; // TODO: Remove default implementation on next major version; this here for backwards compatibility.
+
+        /// <summary>
+        /// Applies the changes made in the transaction that was created using <see cref="BeginTransaction"/>.
+        /// </summary>
+        void CommitTransaction() { } // TODO: Remove default implementation on next major version; this here for backwards compatibility.
 
         /// <summary>
         /// Creates a new interval for an arena group and makes it the "current" one.

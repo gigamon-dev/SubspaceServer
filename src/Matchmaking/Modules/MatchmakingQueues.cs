@@ -23,7 +23,7 @@ namespace SS.Matchmaking.Modules
     /// Other modules register queues through the <see cref="IMatchmakingQueues"/> interface.
     /// </remarks>
     [ModuleInfo("Manages matchmaking queues.")]
-    public class MatchmakingQueues : IModule, IMatchmakingQueues, IPlayerGroupAdvisor
+    public class MatchmakingQueues : IAsyncModule, IMatchmakingQueues, IPlayerGroupAdvisor
     {
         // required dependencies
         private readonly IComponentBroker _broker;
@@ -110,7 +110,7 @@ namespace SS.Matchmaking.Modules
 
         #region Module members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _help = broker.GetInterface<IHelp>();
             _persist = broker.GetInterface<IPersist>();
@@ -122,7 +122,7 @@ namespace SS.Matchmaking.Modules
             {
                 _persistRegistration = new DelegatePersistentData<Player>(
                     (int)Persist.PersistKey.MatchmakingQueuesPlayerData, PersistInterval.Forever, PersistScope.Global, Persist_GetData, Persist_SetData, Persist_ClearData);
-                _persist.RegisterPersistentData(_persistRegistration);
+                await _persist.RegisterPersistentDataAsync(_persistRegistration);
             }
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
@@ -138,7 +138,7 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        async Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             broker.UnregisterInterface(ref _iMatchmakingQueuesToken);
 
@@ -152,7 +152,7 @@ namespace SS.Matchmaking.Modules
             PlayerGroupDisbandedCallback.Unregister(broker, Callback_PlayerGroupDisbanded);
 
             if (_persist is not null && _persistRegistration is not null)
-                _persist.UnregisterPersistentData(_persistRegistration);
+                await _persist.UnregisterPersistentDataAsync(_persistRegistration);
 
             _playerData.FreePlayerData(ref _pdKey);
             _playerData.FreePlayerData(ref _puKey);
