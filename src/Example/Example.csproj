@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>$(MSBuildProjectName)</AssemblyName>
     <RootNamespace>$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
-    <VersionPrefix>2.0.0</VersionPrefix>
+    <VersionPrefix>2.1.0</VersionPrefix>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <OutDir>$(SolutionDir)SubspaceServer\Zone\bin\modules\$(MSBuildProjectName)</OutDir>
   </PropertyGroup>
