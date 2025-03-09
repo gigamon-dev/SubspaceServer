@@ -8,6 +8,8 @@ using SS.Utilities.Binary;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules.FlagGame
 {
@@ -16,7 +18,7 @@ namespace SS.Core.Modules.FlagGame
     /// In other words, flags that can't be carried, AKA "turf" style flags.
     /// </summary>
     [CoreModuleInfo]
-    public sealed class StaticFlags : IModule, IStaticFlagGame
+    public sealed class StaticFlags : IAsyncModule, IStaticFlagGame
     {
         /// <summary>
         /// The maximum # of static flags allowed.
@@ -63,7 +65,7 @@ namespace SS.Core.Modules.FlagGame
 
         #region Module members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
@@ -73,7 +75,7 @@ namespace SS.Core.Modules.FlagGame
                 _persistRegistration = new(
                     (int)PersistKey.StaticFlags, PersistInterval.ForeverNotShared, PersistScope.PerArena, Persist_GetOwners, Persist_SetOwners, null);
 
-                _persist.RegisterPersistentData(_persistRegistration);
+                await _persist.RegisterPersistentDataAsync(_persistRegistration);
             }
 
             _network.AddPacket(C2SPacketType.TouchFlag, Packet_TouchFlag);
@@ -84,7 +86,7 @@ namespace SS.Core.Modules.FlagGame
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        async Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
@@ -94,7 +96,7 @@ namespace SS.Core.Modules.FlagGame
             if (_persist != null)
             {
                 if (_persistRegistration != null)
-                    _persist.UnregisterPersistentData(_persistRegistration);
+                    await _persist.UnregisterPersistentDataAsync(_persistRegistration);
 
                 broker.ReleaseInterface(ref _persist);
             }

@@ -31,6 +31,7 @@ namespace SS.Core.Modules
 
         private readonly List<PersistentData<Player>> _playerRegistrations = [];
         private readonly List<PersistentData<Arena>> _arenaRegistrations = [];
+        private readonly SemaphoreSlim _registrationSemaphore = new(1, 1);
 
         private readonly Pool<PlayerWorkItem> _playerWorkItemPool;
         private readonly Pool<ArenaWorkItem> _arenaWorkItemPool;
@@ -42,13 +43,10 @@ namespace SS.Core.Modules
         private readonly BlockingCollection<PersistWorkItem> _workQueue = [];
         private Thread? _workerThread;
         private TimeSpan _syncTimeSpan;
-        private DateTime? _nextSync;
-        private readonly Lock _lock = new();
 
         private ArenaDataKey<ArenaData> _adKey;
 
-        private const int DefaultMaxRecordLength = PersistSettings.MaxRecordLength.Default;
-        private static int _maxRecordLength = DefaultMaxRecordLength;
+        private static int _maxRecordLength = PersistSettings.MaxRecordLength.Default;
 
         private readonly Action<PersistWorkItem> _mainloopWorkItem_ExecuteCallbacksAndDispose;
 
@@ -80,7 +78,7 @@ namespace SS.Core.Modules
 
         #region Module memebers
 
-        [ConfigHelp<int>("Persist", "SyncSeconds", ConfigScope.Global, Default = 180,
+        [ConfigHelp<int>("Persist", "SyncSeconds", ConfigScope.Global, Default = 180, Min = 10,
             Description = "The interval at which all persistent data is synced to the database.")]
         [ConfigHelp<int>("Persist", "MaxRecordLength", ConfigScope.Global, Default = 4096,
             Description = "The maximum # of bytes to store per record.")]
@@ -95,10 +93,11 @@ namespace SS.Core.Modules
             _syncTimeSpan = TimeSpan.FromSeconds(
                 _configManager.GetInt(_configManager.Global, "Persist", "SyncSeconds", PersistSettings.SyncSeconds.Default)).Duration();
 
-            if (_syncTimeSpan < TimeSpan.FromSeconds(10))
-                _syncTimeSpan = TimeSpan.FromSeconds(10);
+            TimeSpan minSyncTimeSpan = TimeSpan.FromSeconds(PersistSettings.SyncSeconds.Min);
+            if (_syncTimeSpan < minSyncTimeSpan)
+                _syncTimeSpan = minSyncTimeSpan;
 
-            _maxRecordLength = _configManager.GetInt(_configManager.Global, "Persist", "MaxRecordLength", DefaultMaxRecordLength);
+            _maxRecordLength = _configManager.GetInt(_configManager.Global, "Persist", "MaxRecordLength", PersistSettings.MaxRecordLength.Default);
 
             _workerThread = new Thread(PersistWorkerThread);
             _workerThread.Name = nameof(Persist);
@@ -135,35 +134,133 @@ namespace SS.Core.Modules
 
         void IPersist.RegisterPersistentData(PersistentData<Player> registration)
         {
-            lock (_lock)
+            ArgumentNullException.ThrowIfNull(registration);
+
+            _registrationSemaphore.Wait();
+
+            try
             {
                 // TODO: prevent adding a duplicate registration (same key + interval)?
                 _playerRegistrations.Add(registration);
+            }
+            finally
+            {
+                _registrationSemaphore.Release();
             }
         }
 
         void IPersist.UnregisterPersistentData(PersistentData<Player> registration)
         {
-            lock (_lock)
+            ArgumentNullException.ThrowIfNull(registration);
+
+            _registrationSemaphore.Wait();
+
+            try
             {
                 _playerRegistrations.Remove(registration);
+            }
+            finally
+            {
+                _registrationSemaphore.Release();
+            }
+        }
+
+        async Task IPersist.RegisterPersistentDataAsync(PersistentData<Player> registration)
+        {
+            ArgumentNullException.ThrowIfNull(registration);
+
+            await _registrationSemaphore.WaitAsync().ConfigureAwait(false);
+
+            try
+            {
+                // TODO: prevent adding a duplicate registration (same key + interval)?
+                _playerRegistrations.Add(registration);
+            }
+            finally
+            {
+                _registrationSemaphore.Release();
+            }
+        }
+
+        async Task IPersist.UnregisterPersistentDataAsync(PersistentData<Player> registration)
+        {
+            ArgumentNullException.ThrowIfNull(registration);
+
+            await _registrationSemaphore.WaitAsync().ConfigureAwait(false);
+
+            try
+            {
+                _playerRegistrations.Remove(registration);
+            }
+            finally
+            {
+                _registrationSemaphore.Release();
             }
         }
 
         void IPersist.RegisterPersistentData(PersistentData<Arena> registration)
         {
-            lock (_lock)
+            ArgumentNullException.ThrowIfNull(registration);
+
+            _registrationSemaphore.Wait();
+
+            try
             {
                 // TODO: prevent adding a duplicate registration (same key + interval)?
                 _arenaRegistrations.Add(registration);
+            }
+            finally
+            {
+                _registrationSemaphore.Release();
             }
         }
 
         void IPersist.UnregisterPersistentData(PersistentData<Arena> registration)
         {
-            lock (_lock)
+            ArgumentNullException.ThrowIfNull(registration);
+
+            _registrationSemaphore.Wait();
+
+            try
             {
                 _arenaRegistrations.Remove(registration);
+            }
+            finally
+            {
+                _registrationSemaphore.Release();
+            }
+        }
+
+        async Task IPersist.RegisterPersistentDataAsync(PersistentData<Arena> registration)
+        {
+            ArgumentNullException.ThrowIfNull(registration);
+
+            await _registrationSemaphore.WaitAsync().ConfigureAwait(false);
+
+            try
+            {
+                // TODO: prevent adding a duplicate registration (same key + interval)?
+                _arenaRegistrations.Add(registration);
+            }
+            finally
+            {
+                _registrationSemaphore.Release();
+            }
+        }
+
+        async Task IPersist.UnregisterPersistentDataAsync(PersistentData<Arena> registration)
+        {
+            ArgumentNullException.ThrowIfNull(registration);
+
+            await _registrationSemaphore.WaitAsync().ConfigureAwait(false);
+
+            try
+            {
+                _arenaRegistrations.Remove(registration);
+            }
+            finally
+            {
+                _registrationSemaphore.Release();
             }
         }
 
@@ -303,18 +400,13 @@ namespace SS.Core.Modules
 
         private void PersistWorkerThread()
         {
+            DateTime nextSync = DateTime.UtcNow + _syncTimeSpan;
+
             while (true)
             {
-                TimeSpan waitTimeSpan;
-
-                lock (_lock)
-                {
-                    _nextSync ??= DateTime.UtcNow + _syncTimeSpan;
-
-                    waitTimeSpan = _nextSync.Value - DateTime.UtcNow;
-                    if (waitTimeSpan < TimeSpan.Zero)
-                        waitTimeSpan = TimeSpan.Zero;
-                }
+                TimeSpan waitTimeSpan = nextSync - DateTime.UtcNow;
+                if (waitTimeSpan < TimeSpan.Zero)
+                    waitTimeSpan = TimeSpan.Zero;
 
                 if (!_workQueue.TryTake(out PersistWorkItem? workItem, waitTimeSpan))
                 {
@@ -331,10 +423,28 @@ namespace SS.Core.Modules
                         // Not signaled to shut down, which means we should do a full sync.
                         // The sync is done periodically so that if there were a server crash or power outage,
                         // we'd at least have the data that was saved since the last sync was committed.
-                        lock (_lock)
+                        _registrationSemaphore.Wait();
+
+                        try
                         {
-                            DoPutAll();
+                            bool startedTransaction = _persistDatastore.BeginTransaction();
+
+                            try
+                            {
+                                DoPutAll();
+                            }
+                            finally
+                            {
+                                if (startedTransaction)
+                                    _persistDatastore.CommitTransaction();
+                            }
                         }
+                        finally
+                        {
+                            _registrationSemaphore.Release();
+                        }
+
+                        nextSync = DateTime.UtcNow + _syncTimeSpan;
                     }
 
                     continue;
@@ -343,97 +453,89 @@ namespace SS.Core.Modules
                 PlayerWorkItem? playerWorkItem;
                 ArenaWorkItem? arenaWorkItem;
 
-                switch (workItem.Command)
+                _registrationSemaphore.Wait();
+
+                try
                 {
-                    case PersistCommand.Null:
-                        break;
+                    bool startedTransaction = _persistDatastore.BeginTransaction();
 
-                    case PersistCommand.GetPlayer:
-                        playerWorkItem = workItem as PlayerWorkItem;
-                        if (playerWorkItem != null)
+                    try
+                    {
+                        switch (workItem.Command)
                         {
-                            lock (_lock)
-                            {
-                                foreach (PersistentData<Player> registration in _playerRegistrations)
+                            case PersistCommand.Null:
+                                break;
+
+                            case PersistCommand.GetPlayer:
+                                playerWorkItem = workItem as PlayerWorkItem;
+                                if (playerWorkItem is not null && playerWorkItem.Player is not null)
                                 {
-                                    GetOnePlayer(registration, playerWorkItem.Player!, playerWorkItem.Arena);
+                                    GetOnePlayer(playerWorkItem.Player, playerWorkItem.Arena);
                                 }
-                            }
-                        }
-                        break;
+                                break;
 
-                    case PersistCommand.PutPlayer:
-                        playerWorkItem = workItem as PlayerWorkItem;
-                        if (playerWorkItem != null)
-                        {
-                            DoPutPlayer(playerWorkItem.Player!, playerWorkItem.Arena);
-                        }
-                        break;
-
-                    case PersistCommand.GetArena:
-                        arenaWorkItem = workItem as ArenaWorkItem;
-                        if (arenaWorkItem != null)
-                        {
-                            lock (_lock)
-                            {
-                                foreach (PersistentData<Arena> registration in _arenaRegistrations)
+                            case PersistCommand.PutPlayer:
+                                playerWorkItem = workItem as PlayerWorkItem;
+                                if (playerWorkItem is not null && playerWorkItem.Player is not null)
                                 {
-                                    GetOneArena(registration, arenaWorkItem.Arena!);
+                                    PutOnePlayer(playerWorkItem.Player, playerWorkItem.Arena);
                                 }
-                            }
-                        }
-                        break;
+                                break;
 
-                    case PersistCommand.PutArena:
-                        arenaWorkItem = workItem as ArenaWorkItem;
-                        if (arenaWorkItem != null)
-                        {
-                            lock (_lock)
-                            {
-                                foreach (PersistentData<Arena> registration in _arenaRegistrations)
+                            case PersistCommand.GetArena:
+                                arenaWorkItem = workItem as ArenaWorkItem;
+                                if (arenaWorkItem is not null)
                                 {
-                                    PutOneArena(registration, arenaWorkItem.Arena!);
+                                    GetOneArena(arenaWorkItem.Arena);
                                 }
-                            }
+                                break;
+
+                            case PersistCommand.PutArena:
+                                arenaWorkItem = workItem as ArenaWorkItem;
+                                if (arenaWorkItem is not null)
+                                {
+                                    PutOneArena(arenaWorkItem.Arena);
+                                }
+                                break;
+
+                            case PersistCommand.PutAll:
+                                DoPutAll();
+                                nextSync = DateTime.UtcNow + _syncTimeSpan;
+                                break;
+
+                            case PersistCommand.EndInterval:
+                                if (workItem is IntervalWorkItem intervalWorkItem && intervalWorkItem.ArenaGroup is not null)
+                                {
+                                    DoEndInterval(intervalWorkItem.Interval, intervalWorkItem.ArenaGroup);
+                                }
+                                break;
+
+                            case PersistCommand.ResetGameInterval:
+                                if (workItem is ResetGameIntervalWorkItem resetIntervalWorkItem && resetIntervalWorkItem.Arena is not null)
+                                {
+                                    DoResetGameInterval(resetIntervalWorkItem.Arena);
+                                }
+                                break;
+
+                            //case PersistCommand.GetGeneric:
+                            //    break;
+
+                            //case PersistCommand.PutGeneric:
+                            //    break;
+
+                            default:
+                                break;
                         }
-                        break;
-
-                    case PersistCommand.PutAll:
-                        lock (_lock)
-                        {
-                            DoPutAll();
-                        }
-                        break;
-
-                    case PersistCommand.EndInterval:
-                        if (workItem is IntervalWorkItem intervalWorkItem)
-                        {
-                            lock (_lock)
-                            {
-                                DoEndInterval(intervalWorkItem.Interval, intervalWorkItem.ArenaGroup!);
-                            }
-                        }
-                        break;
-
-                    case PersistCommand.ResetGameInterval:
-                        if (workItem is ResetGameIntervalWorkItem resetIntervalWorkItem)
-                        {
-                            lock (_lock)
-                            {
-                                DoResetGameInterval(resetIntervalWorkItem.Arena);
-                            }
-                        }
-
-                        break;
-
-                    //case PersistCommand.GetGeneric:
-                    //    break;
-
-                    //case PersistCommand.PutGeneric:
-                    //    break;
-
-                    default:
-                        break;
+                    }
+                    finally
+                    {
+                        if (startedTransaction)
+                            _persistDatastore.CommitTransaction();
+                    }
+                }
+                finally
+                {
+                    _registrationSemaphore.Release();
                 }
 
                 if (!_mainloop.QueueMainWorkItem(_mainloopWorkItem_ExecuteCallbacksAndDispose, workItem)
@@ -446,11 +548,8 @@ namespace SS.Core.Modules
                 }
             }
 
-            void DoResetGameInterval(Arena? arena)
+            void DoResetGameInterval(Arena arena)
             {
-                if (arena == null)
-                    return;
-
                 PlayerState minStatus = PlayerState.ArenaRespAndCBS;
                 PlayerState maxStatus = PlayerState.WaitArenaSync2;
 
@@ -547,7 +646,7 @@ namespace SS.Core.Modules
                         if (p.Status >= minStatus
                             && p.Status <= maxStatus
                             && (isGlobal
-                                || (arena != null && string.Equals(arenaGroup, GetArenaGroup(arena, interval), StringComparison.OrdinalIgnoreCase))))
+                                || (arena is not null && string.Equals(arenaGroup, GetArenaGroup(arena, interval), StringComparison.OrdinalIgnoreCase))))
                         {
                             foreach (PersistentData<Player> registration in _playerRegistrations)
                             {
@@ -624,31 +723,6 @@ namespace SS.Core.Modules
                 _persistDatastore.CreateArenaGroupIntervalAndMakeCurrent(arenaGroup, interval);
             }
 
-            void DoPutPlayer(Player player, Arena? arena)
-            {
-                if (player == null)
-                    return;
-
-                lock (_lock)
-                {
-                    foreach (PersistentData<Player> registration in _playerRegistrations)
-                    {
-                        PutOnePlayer(registration, player, arena);
-                    }
-                }
-            }
-
-            void DoPutArena(Arena? arena)
-            {
-                lock (_lock)
-                {
-                    foreach (PersistentData<Arena> registration in _arenaRegistrations)
-                    {
-                        PutOneArena(registration, arena);
-                    }
-                }
-            }
-
             void DoPutAll()
             {
                 // The following logic uses temporary, pooled collections of players and arenas since
@@ -662,8 +736,6 @@ namespace SS.Core.Modules
 
                 // Sync all players.
                 HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
-
-                _persistDatastore.BeginTransaction();
 
                 try
                 {
@@ -688,10 +760,10 @@ namespace SS.Core.Modules
                     // Process the players.
                     foreach (Player player in players)
                     {
-                        DoPutPlayer(player, null); // global player data
-                        if (player.Arena != null)
+                        PutOnePlayer(player, null); // global player data
+                        if (player.Arena is not null)
                         {
-                            DoPutPlayer(player, player.Arena); // per-arena player data
+                            PutOnePlayer(player, player.Arena); // per-arena player data
                         }
                     }
                 }
@@ -725,10 +797,7 @@ namespace SS.Core.Modules
                     // Process the arenas.
                     foreach (Arena arena in arenas)
                     {
-                        lock (_lock)
-                        {
-                            DoPutArena(arena); // per-arena arena data
-                        }
+                        PutOneArena(arena); // per-arena arena data
                     }
                 }
                 finally
@@ -737,22 +806,23 @@ namespace SS.Core.Modules
                 }
 
                 // Sync global data.
-                DoPutArena(null);
+                PutOneArena(null);
+            }
+        }
 
-                _persistDatastore.CommitTransaction();
-
-                _nextSync = DateTime.UtcNow + _syncTimeSpan;
+        private void PutOneArena(Arena? arena)
+        {
+            foreach (PersistentData<Arena> registration in _arenaRegistrations)
+            {
+                PutOneArena(registration, arena);
             }
         }
 
         private void PutOneArena(PersistentData<Arena> registration, Arena? arena)
         {
-            if (registration == null)
-                return;
-
             // Check correct scope.
-            if (registration.Scope == PersistScope.Global && arena != null
-                || registration.Scope == PersistScope.PerArena && arena == null)
+            if (registration.Scope == PersistScope.Global && arena is not null
+                || registration.Scope == PersistScope.PerArena && arena is null)
             {
                 return;
             }
@@ -781,14 +851,23 @@ namespace SS.Core.Modules
             }
         }
 
-        private void GetOneArena(PersistentData<Arena> registration, Arena arena)
+        /// <summary>
+        /// Gets data for one arena or global (zone-wide) data.
+        /// </summary>
+        /// <param name="arena">The arena to get data for, or <see cref="null"/> for global (zone-wide) data.</param>
+        private void GetOneArena(Arena? arena)
         {
-            if (registration == null)
-                return;
+            foreach (PersistentData<Arena> registration in _arenaRegistrations)
+            {
+                GetOneArena(registration, arena);
+            }
+        }
 
+        private void GetOneArena(PersistentData<Arena> registration, Arena? arena)
+        {
             // Check correct scope.
-            if (registration.Scope == PersistScope.Global && arena != null
-                || registration.Scope == PersistScope.PerArena && arena == null)
+            if (registration.Scope == PersistScope.Global && arena is not null
+                || registration.Scope == PersistScope.PerArena && arena is null)
             {
                 return;
             }
@@ -815,7 +894,7 @@ namespace SS.Core.Modules
 
         private void MainloopWorkItem_ExecuteCallbacksAndDispose(PersistWorkItem workItem)
         {
-            if (workItem == null)
+            if (workItem is null)
                 return;
 
             try
@@ -835,17 +914,19 @@ namespace SS.Core.Modules
             }
         }
 
+        private void PutOnePlayer(Player player, Arena? arena)
+        {
+            foreach (PersistentData<Player> registration in _playerRegistrations)
+            {
+                PutOnePlayer(registration, player, arena);
+            }
+        }
+
         private void PutOnePlayer(PersistentData<Player> registration, Player player, Arena? arena)
         {
-            if (registration == null)
-                return;
-
-            if (player == null)
-                return;
-
             // Check correct scope.
-            if ((registration.Scope == PersistScope.Global && arena != null)
-                || (registration.Scope == PersistScope.PerArena && arena == null))
+            if ((registration.Scope == PersistScope.Global && arena is not null)
+                || (registration.Scope == PersistScope.PerArena && arena is null))
             {
                 return;
             }
@@ -874,17 +955,24 @@ namespace SS.Core.Modules
             }
         }
 
+        /// <summary>
+        /// Gets one player's data. The data can be for a particular arena or global (zone-wide).
+        /// </summary>
+        /// <param name="player">The player to get data for.</param>
+        /// <param name="arena">The arena to get data for, or <see cref="null"/> for global (zone-wide) data.</param>
+        private void GetOnePlayer(Player player, Arena? arena)
+        {
+            foreach (PersistentData<Player> registration in _playerRegistrations)
+            {
+                GetOnePlayer(registration, player, arena);
+            }
+        }
+
         private void GetOnePlayer(PersistentData<Player> registration, Player player, Arena? arena)
         {
-            if (registration == null)
-                return;
-
-            if (player == null)
-                return;
-
             // Check correct scope.
-            if (registration.Scope == PersistScope.Global && arena != null
-                || registration.Scope == PersistScope.PerArena && arena == null)
+            if (registration.Scope == PersistScope.Global && arena is not null
+                || registration.Scope == PersistScope.PerArena && arena is null)
             {
                 return;
             }
@@ -911,7 +999,7 @@ namespace SS.Core.Modules
 
         private string GetArenaGroup(Arena? arena, PersistInterval interval)
         {
-            if (arena == null)
+            if (arena is null)
                 return Constants.ArenaGroup_Global;
 
             if (interval.IsShared()
@@ -925,7 +1013,7 @@ namespace SS.Core.Modules
             }
         }
 
-        public class ArenaData : IResettable
+        private class ArenaData : IResettable
         {
             /// <summary>
             /// For shared intervals.

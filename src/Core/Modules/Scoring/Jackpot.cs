@@ -6,6 +6,7 @@ using System;
 using System.Buffers.Binary;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace SS.Core.Modules.Scoring
 {
@@ -18,7 +19,7 @@ namespace SS.Core.Modules.Scoring
     /// </para>
     /// </summary>
     [CoreModuleInfo]
-    public sealed class Jackpot : IModule, IJackpot
+    public sealed class Jackpot : IAsyncModule, IJackpot
     {
         // required dependencies
         private readonly IArenaManager _arenaManager;
@@ -42,7 +43,7 @@ namespace SS.Core.Modules.Scoring
 
         #region Module members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
@@ -54,7 +55,7 @@ namespace SS.Core.Modules.Scoring
             if (_persist != null)
             {
                 _persistRegistration = new((int)PersistKey.Jackpot, PersistInterval.Game, PersistScope.PerArena, Persist_GetData, Persist_SetData, Persist_ClearData);
-                _persist.RegisterPersistentData(_persistRegistration);
+                await _persist.RegisterPersistentDataAsync(_persistRegistration);
             }
 
             _jackpotRegistrationToken = broker.RegisterInterface<IJackpot>(this);
@@ -62,7 +63,7 @@ namespace SS.Core.Modules.Scoring
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        async Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _jackpotRegistrationToken) != 0)
                 return false;
@@ -70,7 +71,7 @@ namespace SS.Core.Modules.Scoring
             if (_persist != null)
             {
                 if (_persistRegistration != null)
-                    _persist.UnregisterPersistentData(_persistRegistration);
+                    await _persist.UnregisterPersistentDataAsync(_persistRegistration);
 
                 broker.ReleaseInterface(ref _persist);
             }

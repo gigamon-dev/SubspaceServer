@@ -14,6 +14,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using ArenaSettings = SS.Core.ConfigHelp.Constants.Arena;
 using SSProto = SS.Core.Persist.Protobuf;
 
@@ -38,7 +39,7 @@ namespace SS.Core.Modules
         INetwork network,
         IObjectPoolManager objectPoolManager,
         IPlayerData playerData,
-        IPrng prng) : IModule, IGame
+        IPrng prng) : IAsyncModule, IGame
     {
         private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
@@ -74,7 +75,7 @@ namespace SS.Core.Modules
 
         #region IModule Members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _chatNetwork = broker.GetInterface<IChatNetwork>();
             _persist = broker.GetInterface<IPersist>();
@@ -99,7 +100,7 @@ namespace SS.Core.Modules
                 _persistRegistration = new(
                     (int)PersistKey.GameShipLock, PersistInterval.ForeverNotShared, PersistScope.PerArena, Persist_GetShipLockData, Persist_SetShipLockData, null);
 
-                _persist.RegisterPersistentData(_persistRegistration);
+                await _persist.RegisterPersistentDataAsync(_persistRegistration);
             }
 
             ArenaActionCallback.Register(_broker, Callback_ArenaAction);
@@ -129,7 +130,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        async Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iGameToken) != 0)
                 return false;
@@ -167,7 +168,7 @@ namespace SS.Core.Modules
             {
                 if (_persistRegistration is not null)
                 {
-                    _persist.UnregisterPersistentData(_persistRegistration);
+                    await _persist.UnregisterPersistentDataAsync(_persistRegistration);
                 }
 
                 broker.ReleaseInterface(ref _persist);

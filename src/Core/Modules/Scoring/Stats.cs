@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Threading;
+using System.Threading.Tasks;
 using SSProto = SS.Core.Persist.Protobuf;
 
 namespace SS.Core.Modules.Scoring
@@ -31,7 +32,7 @@ namespace SS.Core.Modules.Scoring
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public sealed class Stats : IModule, IGlobalPlayerStats, IArenaPlayerStats, IAllPlayerStats, IScoreStats, IStatsAdvisor
+    public sealed class Stats : IAsyncModule, IGlobalPlayerStats, IArenaPlayerStats, IAllPlayerStats, IScoreStats, IStatsAdvisor
     {
         private readonly IComponentBroker _broker;
         private readonly IChat _chat;
@@ -87,7 +88,7 @@ namespace SS.Core.Modules.Scoring
                 By default {nameof(Stats)} module tracks intervals: forever, reset, and game.
                 This setting allows tracking of additional intervals.
                 """)]
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
@@ -110,14 +111,14 @@ namespace SS.Core.Modules.Scoring
                 DelegatePersistentData<Player, (PersistInterval, PersistScope)> registration =
                     new((int)PersistKey.Stats, interval, PersistScope.PerArena, (interval, PersistScope.PerArena), GetPersistData, SetPersistData, ClearPersistData);
 
-                _persist.RegisterPersistentData(registration);
+                await _persist.RegisterPersistentDataAsync(registration);
                 _persistRegisteredList.Add(registration);
 
                 // global
                 registration =
                     new((int)PersistKey.Stats, interval, PersistScope.Global, (interval, PersistScope.Global), GetPersistData, SetPersistData, ClearPersistData);
 
-                _persist.RegisterPersistentData(registration);
+                await _persist.RegisterPersistentDataAsync(registration);
                 _persistRegisteredList.Add(registration);
             }
 
@@ -133,7 +134,7 @@ namespace SS.Core.Modules.Scoring
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        async Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iGlobalPlayerStatsToken) != 0)
                 return false;
@@ -154,7 +155,7 @@ namespace SS.Core.Modules.Scoring
 
             foreach (var registration in _persistRegisteredList)
             {
-                _persist.UnregisterPersistentData(registration);
+                await _persist.UnregisterPersistentDataAsync(registration);
             }
             _persistRegisteredList.Clear();
 

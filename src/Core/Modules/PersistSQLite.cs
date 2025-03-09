@@ -12,29 +12,23 @@ namespace SS.Core.Modules
     /// This implementation of <see cref="IPersistDatastore"/> uses a SQLite database as the storage mechanism.
     /// </summary>
     [CoreModuleInfo]
-    public sealed class PersistSQLite : IModule, IPersistDatastore, IDisposable
+    public sealed class PersistSQLite(
+        ILogManager logManager,
+        IObjectPoolManager objectPoolManager) : IModule, IPersistDatastore, IDisposable
     {
-        private readonly ILogManager _logManager;
-        private readonly IObjectPoolManager _objectPoolManager;
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
         private InterfaceRegistrationToken<IPersistDatastore>? _iPersistDatastoreToken;
-        private SqliteTransaction? _batch_transaction = null;
 
         private const string DatabasePath = "./data";
         private const string DatabaseFileName = "SS.Core.Modules.PersistSQLite.db";
         private const string ConnectionString = $"DataSource={DatabasePath}/{DatabaseFileName};Foreign Keys=True;Pooling=True";
 
-        private static SqliteConnection? _connection;
-        private static readonly Dictionary<string, SqliteCommand> _commandDictionary = [];
+        private SqliteConnection? _connection;
+        private SqliteTransaction? _batchTransaction;
+        private readonly Dictionary<string, SqliteCommand> _commandDictionary = [];
 
         private const string Error_NoConnection = "No connection. Use IPersistDatastore.Open first.";
-
-        public PersistSQLite(
-            ILogManager logManager,
-            IObjectPoolManager objectPoolManager)
-        {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
-        }
 
         #region Module methods
 
@@ -204,12 +198,12 @@ namespace SS.Core.Modules
             if (_connection is null)
                 return false;
 
-            if (_batch_transaction != null)
+            if (_batchTransaction is not null)
                 return false;
 
             try
             {
-                _batch_transaction = _connection.BeginTransaction();
+                _batchTransaction = _connection.BeginTransaction();
             }
             catch (SqliteException ex)
             {
@@ -222,10 +216,11 @@ namespace SS.Core.Modules
 
         void IPersistDatastore.CommitTransaction()
         {
-            if (_batch_transaction != null)
+            if (_batchTransaction is not null)
             {
-                _batch_transaction.Commit();
-                _batch_transaction = null;
+                _batchTransaction.Commit();
+                _batchTransaction.Dispose();
+                _batchTransaction = null;
             }
         }
 
@@ -238,11 +233,19 @@ namespace SS.Core.Modules
 
             try
             {
-                using SqliteTransaction transaction = _connection.BeginTransaction();
-                DbCreateArenaGroupIntervalAndSetCurrent(transaction, arenaGroup, interval);
-                transaction.Commit();
+                SqliteTransaction? localTransaction = null;
+                SqliteTransaction transaction = _batchTransaction ?? (localTransaction = _connection.BeginTransaction());
 
-                return true;
+                try
+                {
+                    DbCreateArenaGroupIntervalAndSetCurrent(transaction, arenaGroup, interval);
+                    localTransaction?.Commit();
+                    return true;
+                }
+                finally
+                {
+                    localTransaction?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -265,11 +268,19 @@ namespace SS.Core.Modules
 
             try
             {
-                using SqliteTransaction transaction = _connection.BeginTransaction();
-                bool ret = DbGetPlayerData(transaction, player.Name!, arenaGroup, interval, key, outStream);
-                transaction.Commit();
+                SqliteTransaction? localTransaction = null;
+                SqliteTransaction transaction = _batchTransaction ?? (localTransaction = _connection.BeginTransaction());
 
-                return ret;
+                try
+                {
+                    bool ret = DbGetPlayerData(transaction, player.Name!, arenaGroup, interval, key, outStream);
+                    localTransaction?.Commit();
+                    return ret;
+                }
+                finally
+                {
+                    localTransaction?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -293,18 +304,19 @@ namespace SS.Core.Modules
 
             try
             {
-                SqliteTransaction? transaction = _batch_transaction;
-                if (transaction is null)
+                SqliteTransaction? localTransaction = null;
+                SqliteTransaction transaction = _batchTransaction ?? (localTransaction = _connection.BeginTransaction());
+
+                try
                 {
-                    transaction = _connection.BeginTransaction();
+                    DbSetPlayerData(transaction, player.Name!, arenaGroup, interval, key, inStream);
+                    localTransaction?.Commit();
+                    return true;
                 }
-
-                DbSetPlayerData(transaction, player.Name!, arenaGroup, interval, key, inStream);
-
-                if (_batch_transaction is null)
-                    transaction.Commit();
-
-                return true;
+                finally
+                {
+                    localTransaction?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -327,18 +339,19 @@ namespace SS.Core.Modules
 
             try
             {
-                SqliteTransaction? transaction = _batch_transaction;
-                if (transaction is null)
+                SqliteTransaction? localTransaction = null;
+                SqliteTransaction transaction = _batchTransaction ?? (localTransaction = _connection.BeginTransaction());
+
+                try
                 {
-                    transaction = _connection.BeginTransaction();
+                    DbDeletePlayerData(transaction, player.Name!, arenaGroup, interval, key);
+                    localTransaction?.Commit();
+                    return true;
                 }
-
-                DbDeletePlayerData(transaction, player.Name!, arenaGroup, interval, key);
-
-                if (_batch_transaction is null)
-                    transaction.Commit();
-
-                return true;
+                finally
+                {
+                    localTransaction?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -361,11 +374,19 @@ namespace SS.Core.Modules
 
             try
             {
-                using SqliteTransaction transaction = _connection.BeginTransaction();
-                bool ret = DbGetArenaData(transaction, arenaGroup, interval, key, outStream);
-                transaction.Commit();
+                SqliteTransaction? localTransaction = null;
+                SqliteTransaction transaction = _batchTransaction ?? (localTransaction = _connection.BeginTransaction());
 
-                return ret;
+                try
+                {
+                    bool ret = DbGetArenaData(transaction, arenaGroup, interval, key, outStream);
+                    localTransaction?.Commit();
+                    return ret;
+                }
+                finally
+                {
+                    localTransaction?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -387,18 +408,19 @@ namespace SS.Core.Modules
 
             try
             {
-                SqliteTransaction? transaction = _batch_transaction;
-                if (transaction is null)
+                SqliteTransaction? localTransaction = null;
+                SqliteTransaction transaction = _batchTransaction ?? (localTransaction = _connection.BeginTransaction());
+
+                try
                 {
-                    transaction = _connection.BeginTransaction();
+                    DbSetArenaData(transaction, arenaGroup, interval, key, inStream);
+                    localTransaction?.Commit();
+                    return true;
                 }
-
-                DbSetArenaData(transaction, arenaGroup, interval, key, inStream);
-
-                if (_batch_transaction is null)
-                    transaction.Commit();
-
-                return true;
+                finally
+                {
+                    localTransaction?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -419,18 +441,19 @@ namespace SS.Core.Modules
 
             try
             {
-                SqliteTransaction? transaction = _batch_transaction;
-                if (transaction is null)
+                SqliteTransaction? localTransaction = null;
+                SqliteTransaction transaction = _batchTransaction ?? (localTransaction = _connection.BeginTransaction());
+
+                try
                 {
-                    transaction = _connection.BeginTransaction();
+                    DbDeleteArenaData(transaction, arenaGroup, interval, key);
+                    localTransaction?.Commit();
+                    return true;
                 }
-
-                DbDeleteArenaData(transaction, arenaGroup, interval, key);
-
-                if (_batch_transaction is null)
-                    transaction.Commit();
-
-                return true;
+                finally
+                {
+                    localTransaction?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -451,11 +474,19 @@ namespace SS.Core.Modules
 
             try
             {
-                using SqliteTransaction transaction = _connection.BeginTransaction();
-                DbResetGameInterval(transaction, arenaGroup);
-                transaction.Commit();
+                SqliteTransaction? localTransaction = null;
+                SqliteTransaction transaction = _batchTransaction ?? (localTransaction = _connection.BeginTransaction());
 
-                return true;
+                try
+                {
+                    DbResetGameInterval(transaction, arenaGroup);
+                    localTransaction?.Commit();
+                    return true;
+                }
+                finally
+                {
+                    localTransaction?.Dispose();
+                }
             }
             catch (Exception ex)
             {
@@ -480,7 +511,7 @@ namespace SS.Core.Modules
 
         #region Database procedures
 
-        private static int DbGetOrCreateArenaGroupId(SqliteTransaction transaction, string arenaGroup)
+        private int DbGetOrCreateArenaGroupId(SqliteTransaction transaction, string arenaGroup)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);
@@ -570,7 +601,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static int DbCreateArenaGroupIntervalAndSetCurrent(SqliteTransaction transaction, string arenaGroup, PersistInterval interval)
+        private int DbCreateArenaGroupIntervalAndSetCurrent(SqliteTransaction transaction, string arenaGroup, PersistInterval interval)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);
@@ -777,7 +808,7 @@ namespace SS.Core.Modules
             return arenaGroupIntervalId;
         }
 
-        private static int? DbGetCurrentArenaGroupIntervalId(SqliteTransaction transaction, string arenaGroup, PersistInterval interval)
+        private int? DbGetCurrentArenaGroupIntervalId(SqliteTransaction transaction, string arenaGroup, PersistInterval interval)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);
@@ -830,7 +861,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static int DbGetOrCreateCurrentArenaGroupIntervalId(SqliteTransaction transaction, string arenaGroup, PersistInterval interval)
+        private int DbGetOrCreateCurrentArenaGroupIntervalId(SqliteTransaction transaction, string arenaGroup, PersistInterval interval)
         {
             int? arenaGroupIntervalId = DbGetCurrentArenaGroupIntervalId(transaction, arenaGroup, interval);
             if (arenaGroupIntervalId != null)
@@ -839,7 +870,7 @@ namespace SS.Core.Modules
             return DbCreateArenaGroupIntervalAndSetCurrent(transaction, arenaGroup, interval);
         }
 
-        private static int DbGetOrCreatePersistPlayerId(SqliteTransaction transaction, string playerName)
+        private int DbGetOrCreatePersistPlayerId(SqliteTransaction transaction, string playerName)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);
@@ -929,7 +960,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static bool DbGetPlayerData(SqliteTransaction transaction, string playerName, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
+        private bool DbGetPlayerData(SqliteTransaction transaction, string playerName, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);
@@ -992,7 +1023,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static void DbSetPlayerData(SqliteTransaction transaction, string playerName, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
+        private void DbSetPlayerData(SqliteTransaction transaction, string playerName, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);
@@ -1065,7 +1096,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static void DbDeletePlayerData(SqliteTransaction transaction, string playerName, string arenaGroup, PersistInterval interval, int persistKey)
+        private void DbDeletePlayerData(SqliteTransaction transaction, string playerName, string arenaGroup, PersistInterval interval, int persistKey)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);
@@ -1116,7 +1147,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static bool DbGetArenaData(SqliteTransaction transaction, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
+        private bool DbGetArenaData(SqliteTransaction transaction, string arenaGroup, PersistInterval interval, int persistKey, Stream outStream)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);
@@ -1174,7 +1205,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static void DbSetArenaData(SqliteTransaction transaction, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
+        private void DbSetArenaData(SqliteTransaction transaction, string arenaGroup, PersistInterval interval, int persistKey, MemoryStream dataStream)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);
@@ -1241,7 +1272,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static void DbDeleteArenaData(SqliteTransaction transaction, string arenaGroup, PersistInterval interval, int persistKey)
+        private void DbDeleteArenaData(SqliteTransaction transaction, string arenaGroup, PersistInterval interval, int persistKey)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);
@@ -1287,7 +1318,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private static void DbResetGameInterval(SqliteTransaction transaction, string arenaGroup)
+        private void DbResetGameInterval(SqliteTransaction transaction, string arenaGroup)
         {
             if (_connection is null)
                 throw new InvalidOperationException(Error_NoConnection);

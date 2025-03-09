@@ -13,6 +13,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using GlobalChatSettings = SS.Core.ConfigHelp.Constants.Global.Chat;
 using SSProto = SS.Core.Persist.Protobuf;
 
@@ -43,7 +44,7 @@ namespace SS.Core.Modules
         IConfigManager configManager,
         ILogManager logManager,
         IObjectPoolManager objectPoolManager,
-        IPlayerData playerData) : IModule, IChat, IStringBuilderPoolProvider
+        IPlayerData playerData) : IAsyncModule, IChat, IStringBuilderPoolProvider
     {
         private const char CmdChar1 = '?';
         private const char CmdChar2 = '*';
@@ -76,7 +77,7 @@ namespace SS.Core.Modules
 
         #region Module Members
 
-        bool IModule.Load(IComponentBroker broker)
+        async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _network = broker.GetInterface<INetwork>();
             _chatNetwork = broker.GetInterface<IChatNetwork>();
@@ -98,7 +99,7 @@ namespace SS.Core.Modules
             {
                 _persistRegistration = new DelegatePersistentData<Player>(
                     (int)PersistKey.Chat, PersistInterval.ForeverNotShared, PersistScope.PerArena, Persist_GetData, Persist_SetData, Persist_ClearData);
-                _persist.RegisterPersistentData(_persistRegistration);
+                await _persist.RegisterPersistentDataAsync(_persistRegistration);
             }
 
             _cfg = new Config(_configManager);
@@ -114,7 +115,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        async Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iChatToken) != 0)
                 return false;
@@ -126,7 +127,7 @@ namespace SS.Core.Modules
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
 
             if (_persist is not null && _persistRegistration is not null)
-                _persist.UnregisterPersistentData(_persistRegistration);
+                await _persist.UnregisterPersistentDataAsync(_persistRegistration);
 
             _arenaManager.FreeArenaData(ref _adKey);
             _playerData.FreePlayerData(ref _pdKey);
