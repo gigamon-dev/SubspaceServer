@@ -1971,74 +1971,70 @@ namespace SS.Core.Modules
             }
 
             // Find out how many flags will get transferred to the killer.
-            short flagTransferCount = flagCount;
             ICarryFlagGame? carryFlagGame = arena.GetInterface<ICarryFlagGame>();
-            if (carryFlagGame != null)
+            try
             {
-                try
+                short flagTransferCount = (flagCount > 0 && carryFlagGame is not null)
+                    ? carryFlagGame.GetPlayerKillTransferCount(arena, player, killer)
+                    : (short)0;
+
+                // Send the S2C Kill packet.
+                NotifyKill(killer, player, points, flagTransferCount, green);
+
+                if (points > 0)
                 {
-                    flagTransferCount = carryFlagGame.TransferFlagsForPlayerKill(arena, player, killer);
+                    if (killer.Packet.FlagsCarried > 0
+                        && ad.FlaggerKillMultiplier > 0)
+                    {
+                        // This is purposely after NotifyKill because Flag:FlaggerKillMultiplier is a client setting.
+                        // Clients multiply the points from the S2C Kill packet that we just sent.
+                        points += (short)(points * ad.FlaggerKillMultiplier);
+                    }
+
+                    // Record the kill points on our side.
+                    IAllPlayerStats? allPlayerStats = _broker.GetInterface<IAllPlayerStats>();
+                    if (allPlayerStats != null)
+                    {
+                        try
+                        {
+                            allPlayerStats.IncrementStat(killer, StatCodes.KillPoints, null, points);
+                        }
+                        finally
+                        {
+                            _broker.ReleaseInterface(ref allPlayerStats);
+                        }
+                    }
                 }
-                finally
+
+                KillCallback.Fire(arena, arena, killer, player, bounty, flagTransferCount, points, green);
+
+                _logManager.LogA(LogLevel.Info, nameof(Game), arena, $"{player.Name} killed by {killer.Name} (bty={bounty},flags={flagTransferCount},pts={points})");
+
+                if (!player.Flags.SentWeaponPacket)
                 {
+                    if (player.TryGetExtraData(_pdkey, out PlayerData? pd))
+                    {
+                        if (pd.deathWithoutFiring++ == ad.MaxDeathWithoutFiring)
+                        {
+                            _logManager.LogP(LogLevel.Info, nameof(Game), player, "Specced for too many deaths without firing.");
+                            SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+                        }
+                    }
+                }
+
+                // reset this so we can accurately check deaths without firing
+                player.Flags.SentWeaponPacket = false;
+
+                // Perform the actual flag transfer.
+                // This is purposely done after sending the S2C Kill packet as it could trigger the end of a flag game (send the S2C flag reset packet).
+                if (flagCount > 0 && carryFlagGame is not null)
+                    carryFlagGame.TransferFlagsForPlayerKill(arena, player, killer);
+            }
+            finally
+            {
+                if (carryFlagGame is not null)
                     arena.ReleaseInterface(ref carryFlagGame);
-                }
             }
-
-            // Send the S2C Kill packet.
-            NotifyKill(killer, player, points, flagTransferCount, green);
-
-            if (points > 0)
-            {
-                if (killer.Packet.FlagsCarried > 0
-                    && ad.FlaggerKillMultiplier > 0)
-                {
-                    // This is purposely after NotifyKill because Flag:FlaggerKillMultiplier is a client setting.
-                    // Clients multiply the points from the S2C Kill packet that we just sent.
-                    points += (short)(points * ad.FlaggerKillMultiplier);
-                }
-
-                // Record the kill points on our side.
-                IAllPlayerStats? allPlayerStats = _broker.GetInterface<IAllPlayerStats>();
-                if (allPlayerStats != null)
-                {
-                    try
-                    {
-                        allPlayerStats.IncrementStat(killer, StatCodes.KillPoints, null, points);
-                    }
-                    finally
-                    {
-                        _broker.ReleaseInterface(ref allPlayerStats);
-                    }
-                }
-            }
-
-            FireKillEvent(arena, killer, player, bounty, flagTransferCount, points, green);
-
-            _logManager.LogA(LogLevel.Info, nameof(Game), arena, $"{player.Name} killed by {killer.Name} (bty={bounty},flags={flagTransferCount},pts={points})");
-
-            if (!player.Flags.SentWeaponPacket)
-            {
-                if (player.TryGetExtraData(_pdkey, out PlayerData? pd))
-                {
-                    if (pd.deathWithoutFiring++ == ad.MaxDeathWithoutFiring)
-                    {
-                        _logManager.LogP(LogLevel.Info, nameof(Game), player, "Specced for too many deaths without firing.");
-                        SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
-                    }
-                }
-            }
-
-            // reset this so we can accurately check deaths without firing
-            player.Flags.SentWeaponPacket = false;
-        }
-
-        private static void FireKillEvent(Arena arena, Player killer, Player killed, short bty, short flagCount, short pts, Prize green)
-        {
-            if (arena == null || killer == null || killed == null)
-                return;
-
-            KillCallback.Fire(arena, arena, killer, killed, bty, flagCount, pts, green);
         }
 
         private void NotifyKill(Player killer, Player killed, short pts, short flagCount, Prize green)

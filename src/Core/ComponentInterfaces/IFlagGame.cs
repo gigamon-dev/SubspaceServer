@@ -160,14 +160,29 @@ namespace SS.Core.ComponentInterfaces
         int GetFlagCount(Player player);
 
         /// <summary>
+        /// Gets the # of flags to transfer when a player is killed.
+        /// </summary>
+        /// <remarks>
+        /// This is called to get the value to send in the <see cref="Packets.Game.S2C_Kill"/> packet. This does not perform the actual flag transfer.
+        /// <see cref="TransferFlagsForPlayerKill(Arena, Player, Player)"/> performs the actual transfer and is called after sending the <see cref="Packets.Game.S2C_Kill"/> packet
+        /// because it can trigger a send of the <see cref="Packets.Game.S2C_FlagReset"/> packet which ends the flag game.
+        /// </remarks>
+        /// <param name="arena">The arena of the kill.</param>
+        /// <param name="killed">The player that was killed.</param>
+        /// <param name="killer">The player that made the kill.</param>
+        /// <returns>
+        /// The # of flags to transfer from the <paramref name="killed"/> player to the <paramref name="killer"/>.
+        /// </returns>
+        short GetPlayerKillTransferCount(Arena arena, Player killed, Player killer);
+
+        /// <summary>
         /// Performs flag transfer logic when a player is killed.
         /// </summary>
         /// <param name="arena">The arena the kill occured in.</param>
         /// <param name="killed">The player that was killed.</param>
-        /// <param name="killer">The player that got the kill.</param>
+        /// <param name="killer">The player that made the kill.</param>
         /// <returns>
         /// The # of flags that were transferred from the <paramref name="killed"/> player to the <paramref name="killer"/>.
-        /// This value will be sent in the <see cref="Packets.Game.S2C_Kill"/> packet.
         /// </returns>
         short TransferFlagsForPlayerKill(Arena arena, Player killed, Player killer); // TODO: maybe move this to a different interface, only meant for the Game module to call.
 
@@ -234,16 +249,26 @@ namespace SS.Core.ComponentInterfaces
         void SpawnFlags(Arena arena);
 
         /// <summary>
-        /// Called when a player is killed.
+        /// Called when a player is killed, before the <see cref="Packets.Game.S2C_Kill"/> packet is sent.
+        /// </summary>
+        /// <param name="arena">The arena.</param>
+        /// <param name="killed">The player that was killed.</param>
+        /// <param name="killer">The player that made the kill.</param>
+        /// <param name="flagIds">The flags carried by the <paramref name="killed"/> player.</param>
+        /// <returns>The # of flags to transfer. This is the value to be sent in the <see cref="Packets.Game.S2C_Kill"/> packet.</returns>
+        short GetPlayerKillTransferCount(Arena arena, Player killed, Player killer, ReadOnlySpan<short> flagIds);
+
+        /// <summary>
+        /// Called when a player is killed, after sending the S2C Kill packet.
         /// </summary>
         /// <remarks>
         /// An implementation should determine what should happen to any flags the <paramref name="killed"/> player was carrying.
-        /// Note: this happens prior to the <see cref="ComponentCallbacks.KillCallback"/>.
         /// </remarks>
         /// <param name="arena">The arena.</param>
         /// <param name="killed">The player that was killed.</param>
         /// <param name="killer">The player that made the kill.</param>
-        /// <returns>The # of flags transferred. This is the value to be sent in the <see cref="Packets.Game.S2C_Kill"/> packet.</returns>
+        /// <param name="flagIds">The flags carried by the <paramref name="killed"/> player.</param>
+        /// <returns>The # of flags transferred.</returns>
         short PlayerKill(Arena arena, Player killed, Player killer, ReadOnlySpan<short> flagIds);
 
         /// <summary>

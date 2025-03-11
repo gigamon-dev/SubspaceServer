@@ -43,10 +43,9 @@ namespace SS.Core.Modules.FlagGame
             int numFlags = _prng.Number(settings.MinFlags, settings.MaxFlags);
 
             // Add the flags.
-            short flagId = -1;
-            while (flagId < numFlags)
+            for (int x = 0; x < numFlags; x++)
             {
-                if (!_carryFlagGame.TryAddFlag(arena, out flagId))
+                if (!_carryFlagGame.TryAddFlag(arena, out short flagId))
                     break;
 
                 SpawnFlag(arena, flagId, settings.SpawnCoordinates, settings.SpawnRadius, -1);
@@ -78,7 +77,17 @@ namespace SS.Core.Modules.FlagGame
             }
         }
 
+        short ICarryFlagBehavior.GetPlayerKillTransferCount(Arena arena, Player killed, Player killer, ReadOnlySpan<short> flagIds)
+        {
+            return PlayerKill(arena, killed, killer, flagIds, false);
+        }
+
         short ICarryFlagBehavior.PlayerKill(Arena arena, Player killed, Player killer, ReadOnlySpan<short> flagIds)
+        {
+            return PlayerKill(arena, killed, killer, flagIds, true);
+        }
+
+        private short PlayerKill(Arena arena, Player killed, Player killer, ReadOnlySpan<short> flagIds, bool modify)
         {
             if (arena == null
                 || killed == null
@@ -126,8 +135,12 @@ namespace SS.Core.Modules.FlagGame
                 }
                 else if (killer.Packet.FlagsCarried < maxCanCarry)
                 {
-                    // Transfer the flag to the killer.
-                    _carryFlagGame.TrySetFlagCarried(arena, flagId, killer, FlagPickupReason.Kill); // don't send a FlagPickup packet, the transferCount will take care of it
+                    if (modify)
+                    {
+                        // Transfer the flag to the killer.
+                        _carryFlagGame.TrySetFlagCarried(arena, flagId, killer, FlagPickupReason.Kill); // don't send a FlagPickup packet, the transferCount will take care of it
+                    }
+
                     transferCount++;
                 }
                 else
@@ -137,14 +150,17 @@ namespace SS.Core.Modules.FlagGame
                 }
             }
 
-            if (teamKillFlagCount > 0)
+            if (modify)
             {
-                PlaceFlags(settings.TeamKillOwned, settings.TeamKillCenter, teamKillFlagIds[..teamKillFlagCount]);
-            }
+                if (teamKillFlagCount > 0)
+                {
+                    PlaceFlags(settings.TeamKillOwned, settings.TeamKillCenter, teamKillFlagIds[..teamKillFlagCount]);
+                }
 
-            if (cantCarryFlagCount > 0)
-            {
-                PlaceFlags(settings.DropOwned, settings.DropCenter, cantCarryFlagIds[..cantCarryFlagCount]);
+                if (cantCarryFlagCount > 0)
+                {
+                    PlaceFlags(settings.DropOwned, settings.DropCenter, cantCarryFlagIds[..cantCarryFlagCount]);
+                }
             }
 
             return transferCount;

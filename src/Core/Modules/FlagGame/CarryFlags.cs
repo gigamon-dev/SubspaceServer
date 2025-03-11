@@ -198,7 +198,17 @@ namespace SS.Core.Modules.FlagGame
             return count;
         }
 
+        short ICarryFlagGame.GetPlayerKillTransferCount(Arena arena, Player killed, Player killer)
+        {
+            return TransferFlagsForPlayerKill(arena, killed, killer, false);
+        }
+
         short ICarryFlagGame.TransferFlagsForPlayerKill(Arena arena, Player killed, Player killer)
+        {
+            return TransferFlagsForPlayerKill(arena, killed, killer, true);
+        }
+
+        private short TransferFlagsForPlayerKill(Arena arena, Player killed, Player killer, bool modify)
         {
             if (arena == null
                 || !arena.TryGetExtraData(_adKey, out ArenaData? ad)
@@ -217,24 +227,33 @@ namespace SS.Core.Modules.FlagGame
 
             for (short flagId = 0; flagId < ad.Flags.Count && flagCount < carried; flagId++)
             {
-                FlagInfo flagInfo = ad.Flags[flagId]; // TODO: call ICarryFlagGame.TryGetFlagInfo()
+                FlagInfo flagInfo = ad.Flags[flagId];
                 if (flagInfo.State == FlagState.Carried
                     && flagInfo.Carrier == killed)
                 {
                     flagIds[flagCount++] = flagId;
 
-                    killed.Packet.FlagsCarried--;
+                    if (modify)
+                    {
+                        killed.Packet.FlagsCarried--;
 
-                    flagInfo.State = FlagState.None;
-                    flagInfo.Carrier = null;
+                        flagInfo.State = FlagState.None;
+                        flagInfo.Carrier = null;
 
-                    FlagLostCallback.Fire(arena, arena, killed, flagId, FlagLostReason.Killed);
+                        FlagLostCallback.Fire(arena, arena, killed, flagId, FlagLostReason.Killed);
+                    }
                 }
             }
 
-            Debug.Assert(killed.Packet.FlagsCarried == 0);
+            if (modify)
+            {
+                Debug.Assert(killed.Packet.FlagsCarried == 0);
+            }
 
-            return ad.CarryFlagBehavior.PlayerKill(arena, killed, killer, flagIds);
+            if (modify)
+                return ad.CarryFlagBehavior.PlayerKill(arena, killed, killer, flagIds);
+            else
+                return ad.CarryFlagBehavior.GetPlayerKillTransferCount(arena, killed, killer, flagIds);
         }
 
         bool ICarryFlagGame.TryAddFlag(Arena arena, out short flagId)
