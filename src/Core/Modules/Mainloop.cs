@@ -482,14 +482,17 @@ namespace SS.Core.Modules
                     MainloopTimer timer = inProgress.Value;
                     timer.Stop = true;
 
-                    while (timer.Stopped == false)
-                        Monitor.Wait(_mainloopTimerLock);
+                    if (!((IMainloop)this).IsMainloop)
+                    {
+                        while (timer.Stopped == false)
+                            Monitor.Wait(_mainloopTimerLock);
 
-                    // The mainloop removed it for us.
-                    System.Diagnostics.Debug.Assert(inProgress.List == null);
-                    System.Diagnostics.Debug.Assert(inProgress.Previous == null);
-                    System.Diagnostics.Debug.Assert(inProgress.Next == null);
-                    System.Diagnostics.Debug.Assert(inProgress.Value != null);
+                        // The mainloop removed it for us.
+                        System.Diagnostics.Debug.Assert(inProgress.List == null);
+                        System.Diagnostics.Debug.Assert(inProgress.Previous == null);
+                        System.Diagnostics.Debug.Assert(inProgress.Next == null);
+                        System.Diagnostics.Debug.Assert(inProgress.Value != null);
+                    }
 
                     if (timerDisposedAction != null)
                     {
