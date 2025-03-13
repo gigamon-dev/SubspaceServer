@@ -64,7 +64,10 @@ namespace SS.Core.Modules
 
         private PlayerDataKey<PlayerData> _pdkey;
         private ArenaDataKey<ArenaData> _adkey;
+
         private readonly ClientSettingIdentifier[] _shipBombFireDelayIds = new ClientSettingIdentifier[8];
+        private ClientSettingIdentifier _flaggerBombFireDelayId;
+        private ClientSettingIdentifier _soccerUseFlaggerId;
 
         private DelegatePersistentData<Player>? _persistRegistration;
 
@@ -93,6 +96,18 @@ namespace SS.Core.Modules
                 }
 
                 _shipBombFireDelayIds[i] = id;
+            }
+
+            if (!_clientSettings.TryGetSettingsIdentifier("Flag", "FlaggerBombFireDelay", out _flaggerBombFireDelayId))
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Game), "Error getting ClientSettingIdentifier Flag:FlaggerBombFireDelay.");
+                return false;
+            }
+
+            if (!_clientSettings.TryGetSettingsIdentifier("Soccer", "UseFlagger", out _soccerUseFlaggerId))
+            {
+                _logManager.LogM(LogLevel.Error, nameof(Game), "Error getting ClientSettingIdentifier Soccer:UseFlagger.");
+                return false;
             }
 
             if (_persist is not null)
@@ -1107,9 +1122,27 @@ namespace SS.Core.Modules
                 {
                     if (ad.CheckFastBombing != CheckFastBombing.None
                         && pd.LastBomb != null)
-                    {
+                    { 
                         int bombDiff = Math.Abs(pos.Time - pd.LastBomb.Value);
-                        int minDiff = _clientSettings.GetSetting(player, _shipBombFireDelayIds[(int)player.Ship]) - ad.FastBombingThreshold;
+                        int minDiff = Math.Max(0, _clientSettings.GetSetting(player, _shipBombFireDelayIds[(int)player.Ship]) - ad.FastBombingThreshold);
+
+                        if (minDiff > 0)
+                        {
+                            // Carrying a flag or a ball can modify bomb fire delay.
+                            int flaggerBombFireDelay = _clientSettings.GetSetting(player, _flaggerBombFireDelayId);
+                            if (flaggerBombFireDelay > 0)
+                            {
+                                int flaggerMinDiff = Math.Max(0, flaggerBombFireDelay - ad.FastBombingThreshold);
+                                if (flaggerMinDiff > 0)
+                                {
+                                    if (player.Packet.FlagsCarried > 0
+                                        || (_clientSettings.GetSetting(player, _soccerUseFlaggerId) != 0 && IsCarryingBall(player, arena)))
+                                    {
+                                        minDiff = Math.Min(minDiff, flaggerMinDiff);
+                                    }
+                                }
+                            }
+                        }
 
                         if (bombDiff < minDiff)
                         {
@@ -1435,6 +1468,36 @@ namespace SS.Core.Modules
             }
 
             pd.PlayerPostitionPacket_LastShip = player.Ship;
+
+            // local function that checks if a player is carrying a ball
+            bool IsCarryingBall(Player player, Arena arena)
+            {
+                IBalls? balls = _broker.GetInterface<IBalls>();
+                if (balls is null)
+                    return false;
+
+                try
+                {
+                    if (!balls.TryGetBallSettings(arena, out BallSettings ballSettings))
+                        return false;
+
+                    int ballCount = ballSettings.BallCount;
+                    for (int ballId = 0; ballId < ballCount; ballId++)
+                    {
+                        if (!balls.TryGetBallData(arena, ballId, out BallData ballData))
+                            continue;
+
+                        if (ballData.State == BallState.Carried && ballData.Carrier == player)
+                            return true;
+                    }
+
+                    return false;
+                }
+                finally
+                {
+                    _broker.ReleaseInterface(ref balls);
+                }
+            }
         }
 
         private void UpdateRegions(Player player, short x, short y)
