@@ -224,5 +224,17 @@ The ASSS `koth` module uses a timer, which runs every 5 seconds, to check for a 
 ASSS does not have Speed Zone functionality. In Subspace Server .NET, speed functionality is provided by the `SS.Core.Modules.Scoring.SpeedGame` module. This includes use of the S2C 0x24 (Speed packet). Also, it persists a player's personal best score (?best command).
 
 ---
+## Flag games
+### Available modes
+ASSS only provides a Warzone style flag game (`fg_wz` module) and a Turf Zone style flag game (`fg_turf` module). 
+
+Subspace Server .NET includes additional logic to support Jackpot Zone, Running Zone, and Rabbit Zone style games as well. Also, for Warzone style games, it supports playing victory music (Misc:VictoryMusic).
+
+### Design difference - extensibility
+Flag games in Subspace Server .NET are implemented differently than in ASSS. ASSS has a single `flagcore` module. Instead, Subspace Server .NET has separate modules: a `CarryFlags` module for game modes where flags can be carried (Warzone, Jackpot, Running, Rabbit) and a `StaticFlags` module for flag games where flags are static, on the map (Turf). This allows each module to specialize in what they're for.
+
+The `CarryFlags` module includes an extensibility point via the `ICarryFlagsBehavior` interface. A default implementation is provided which includes the standard flag behavior that is expected for Warzone, Jackpot Zone, Running Zone, and Rabbit Zone. It is possible to create a custom `ICarryFlagsBehavior` implementation where flags behave differently. For example, it could be possible to build implement a behavior where flags act like those in the ThreeWave CTF mod for Quake (or Team Fortress's CTF where the flag is an intelligence briefcase), or a game mode like Quake 3 Team Arena's 'Harvester' mode.
+
+---
 ## ?laghist command
 ASSS tracks many statistics for lag data. This includes the distribution of ping times for C2S and reliable data. ASSS planned to include a `?laghist` command to output this data. However, it was never implemented. In Subspace Server .NET the `?laghist` command is implemented in a way that it's presumed to have been intended. By default, it prints C2S ping stats. With the `-r` argument it prints reliable ping stats.
