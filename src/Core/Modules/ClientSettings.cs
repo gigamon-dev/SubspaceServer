@@ -782,6 +782,15 @@ namespace SS.Core.Modules
                     if (cs.Int16Settings[i] == 0)
                         cs.Int16Settings[i] = 1;
                 }
+                else if (i == 26)
+                {
+                    Debug.Assert(string.Equals("Prize", ClientSettingsConfig.ShortNames[i].Section, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals("PrizeNegativeFactor", ClientSettingsConfig.ShortNames[i].Key, StringComparison.OrdinalIgnoreCase));
+
+                    // Prize:PrizeNegativeFactor of 0 will crash Continuum. Set it to 1, which means every prize is a negative prize. This will make it obvious when the setting is missing.
+                    if (cs.Int16Settings[i] == 0)
+                        cs.Int16Settings[i] = 1;
+                }
             }
 
             for (int i = 0; i < S2C_ClientSettings.ByteInlineArray.Length; i++)
