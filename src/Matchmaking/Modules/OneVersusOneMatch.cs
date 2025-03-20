@@ -7,6 +7,7 @@ using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
 using SS.Matchmaking.Queues;
+using SS.Packets.Game;
 using System.Diagnostics.CodeAnalysis;
 
 namespace SS.Matchmaking.Modules
@@ -184,11 +185,13 @@ namespace SS.Matchmaking.Modules
             {
                 KillCallback.Register(arena, Callback_Kill);
                 ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
+                PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
             }
             else if (action == ArenaAction.Destroy)
             {
                 KillCallback.Unregister(arena, Callback_Kill);
                 ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
+                PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
 
                 // Immediately end any ongoing matches in the arena.
                 if (_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData? arenaData))
@@ -341,12 +344,12 @@ namespace SS.Matchmaking.Modules
                 if (boxState.Player1 == killer && boxState.Player2 == killed)
                 {
                     boxState.Player2State = PlayerMatchmakingState.KnockedOut;
-                    QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                    QueueMatchCompletionCheck(boxState.MatchIdentifier, 2000); // TODO: make the delay a setting
                 }
                 else if (boxState.Player2 == killer && boxState.Player1 == killed)
                 {
                     boxState.Player1State = PlayerMatchmakingState.KnockedOut;
-                    QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                    QueueMatchCompletionCheck(boxState.MatchIdentifier, 2000); // TODO: make the delay a setting
                 }
             }
         }
@@ -399,6 +402,40 @@ namespace SS.Matchmaking.Modules
                     }
 
                     playerData.LastShip = newShip;
+                }
+            }
+        }
+
+        private void Callback_PlayerPositionPacket(Player player, ref readonly C2S_PositionPacket positionPacket, ref readonly ExtraPositionData extra, bool hasExtraPositionData)
+        {
+            if ((positionPacket.Status & PlayerPositionStatus.Safezone) == 0)
+                return;
+
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            if (!string.Equals(arena.BaseName, _arenaBaseName, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            if (!_arenaDataDictionary.TryGetValue(arena.Number, out ArenaData? arenaData))
+                return;
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData) || playerData.MatchIdentifier is null)
+                return;
+
+            BoxState boxState = arenaData.Boxes[playerData.MatchIdentifier.BoxId];
+            if (boxState.Status == BoxStatus.Playing)
+            {
+                if (boxState.Player1 == player)
+                {
+                    boxState.Player1State = PlayerMatchmakingState.KnockedOut;
+                    QueueMatchCompletionCheck(boxState.MatchIdentifier);
+                }
+                else if (boxState.Player2 == player)
+                {
+                    boxState.Player2State = PlayerMatchmakingState.KnockedOut;
+                    QueueMatchCompletionCheck(boxState.MatchIdentifier);
                 }
             }
         }
@@ -691,10 +728,10 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void QueueMatchCompletionCheck(MatchIdentifier matchIdentifier)
+        private void QueueMatchCompletionCheck(MatchIdentifier matchIdentifier, int delay = 0)
         {
             _mainloopTimer.ClearTimer<MatchIdentifier>(CheckMatchCompletion, matchIdentifier);
-            _mainloopTimer.SetTimer(CheckMatchCompletion, 2000, Timeout.Infinite, matchIdentifier, matchIdentifier);
+            _mainloopTimer.SetTimer(CheckMatchCompletion, delay, Timeout.Infinite, matchIdentifier, matchIdentifier);
 
             bool CheckMatchCompletion(MatchIdentifier matchIdentifier)
             {
