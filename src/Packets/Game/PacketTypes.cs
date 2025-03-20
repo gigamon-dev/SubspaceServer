@@ -110,7 +110,16 @@ namespace SS.Packets.Game
         /// </summary>
         Damage = 0x38,
 
-        // missing 39 3A
+        /// <summary>
+        /// One or multiple <see cref="SmallPosition">SmallPositions</see>.
+        /// </summary>
+        BatchedSmallPosition = 0x39,
+
+        /// <summary>
+        /// One or multiple <see cref="LargePosition">LargePositions</see>.
+        /// </summary>
+        BatchedLargePosition = 0x3A,
+
         Redirect = 0x3B,
     }
 

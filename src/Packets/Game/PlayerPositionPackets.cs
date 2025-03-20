@@ -40,7 +40,17 @@ namespace SS.Packets.Game
         /// <summary>
         /// whether the player is a ufo
         /// </summary>
-        Ufo = 64
+        Ufo = 64,
+
+        /// <summary>
+        /// <see langword="true"/> when are no forces influencing the ship.
+        /// <see langword="false"/> when there is a change in rotation (either to do user input or due to a warp) 
+        /// or a change in momentum due to applying thrust, bumping into a wall, or force from a wormhole, but not due to friction.
+        /// </summary>
+        /// <remarks>
+        /// When applying thrust at full speed and travelling perfectly straight, there is no change in momentum, and therefore the value is <see langword="true"/>.
+        /// </remarks>
+        Inert = 128,
     }
 
     public enum WeaponCodes : byte
@@ -402,6 +412,279 @@ namespace SS.Packets.Game
         {
             readonly get => LittleEndianConverter.Convert(xSpeed);
             set => xSpeed = LittleEndianConverter.Convert(value);
+        }
+
+        #endregion
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct S2C_BatchedSmallPositionSingle()
+    {
+        public byte Type = (byte)S2CPacketType.BatchedSmallPosition;
+        public SmallPosition Position;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct S2C_BatchedLargePositionSingle()
+    {
+        public byte Type = (byte)S2CPacketType.BatchedLargePosition;
+        public LargePosition Position;
+    }
+
+    /// <summary>
+    /// A single player's position, which a <see cref="S2CPacketType.BatchedSmallPosition"/> packet can contain many of.
+    /// </summary>
+    /// <remarks>
+    /// The actual packet is one byte, Type (<see cref="S2CPacketType.BatchedSmallPosition"/>), followed by one or more of these.
+    /// 
+    /// <para>
+    /// Limitations:
+    /// <list type="bullet">
+    ///     <item>This packet does not support weapons fire.</item>
+    ///     <item>PlayerId is 8 bits, so it can represent [0-255].</item>
+    ///     <item>This packet does not include a <see cref="PlayerPositionStatus"/>.</item>
+    ///     <item>This packet does not include bounty.</item>
+    ///     <item>This packet does not include energy.</item>
+    ///     <item>This packet does not include extra player data.</item>
+    /// </list>
+    /// </para>
+    /// 
+    /// <para>
+    /// A fully maxed out packet can contain 51 player positions: 1 byte for the header + (51 players * 10 bytes) = 511 bytes
+    /// </para>
+    /// </remarks>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct SmallPosition
+    {
+        public byte PlayerId;
+        private ushort bitField1; // rotation (6 bits), time (10 bits)
+        private uint bitField2; // x-speed (4 lowest bits of 14), Y (14 bits), X (14 bits)
+        private ushort bitField3; // x-speed (2 middle bits of 14), y-speed (14 bits)
+        private byte xSpeedHigh; // x-speed (8 highest bits of 14)
+
+        #region Helpers
+
+        private ushort BitField1
+        {
+            readonly get => LittleEndianConverter.Convert(bitField1);
+            set => bitField1 = LittleEndianConverter.Convert(value);
+        }
+
+        private uint BitField2
+        {
+            readonly get => LittleEndianConverter.Convert(bitField2);
+            set => bitField2 = LittleEndianConverter.Convert(value);
+        }
+
+        private ushort BitField3
+        {
+            readonly get => LittleEndianConverter.Convert(bitField3);
+            set => bitField3 = LittleEndianConverter.Convert(value);
+        }
+
+        // bitfield1 masks
+        private const ushort RotationMask = 0b_11111100_00000000;
+        private const ushort TimeMask = 0b_00000011_11111111;
+
+        // bitfield2 masks 
+        private const uint XSpeedLowMask = 0b_11110000_00000000_00000000_00000000;
+        private const uint YMask = 0b_00001111_11111111_11000000_00000000;
+        private const uint XMask = 0b_00000000_00000000_00111111_11111111;
+
+        // bitfield3 masks
+        private const ushort XSpeedMidMask = 0b_11000000_00000000;
+        private const ushort YSpeedMask = 0b_00111111_11111111;
+
+        public sbyte Rotation
+        {
+            readonly get => (sbyte)((BitField1 & RotationMask) >> 10);
+            set => BitField1 = (ushort)((BitField1 & ~RotationMask) | (value << 10 & RotationMask));
+        }
+
+        public ushort Time
+        {
+            readonly get => (ushort)((BitField1 & TimeMask));
+            set => BitField1 = (ushort)((BitField1 & ~TimeMask) | (value & TimeMask));
+        }
+
+        public short X
+        {
+            readonly get => (short)(BitField2 & XMask);
+            set => BitField2 = (uint)((BitField2 & ~XMask) | (value & XMask));
+        }
+
+        public short Y
+        {
+            readonly get => (short)(BitField2 & YMask >> 14);
+            set => BitField2 = (uint)((BitField2 & ~YMask) | (value << 14 & YMask));
+        }
+
+        private ushort XSpeedLow
+        {
+            set => BitField2 = (uint)((BitField2 & ~XSpeedLowMask) | (value << 28 & XSpeedLowMask));
+        }
+
+        private ushort XSpeedMid
+        {
+            set => BitField3 = (ushort)((BitField3 & ~XSpeedMidMask) | (value << 14 & XSpeedMidMask));
+        }
+
+        public short XSpeed
+        {
+            readonly get => (short)(((uint)xSpeedHigh << 6) | (((uint)BitField3 & XSpeedMidMask) >> 10) | ((BitField2 & XSpeedLowMask) >> 28));
+            set
+            {
+                uint val = (uint)value;
+                xSpeedHigh = (byte)((val & 0b_00111111_11000000) >> 6);
+                XSpeedMid = (ushort)((val & 0b_00000000_00110000) >> 4);
+                XSpeedLow = (ushort)(val & 0b_00000000_00001111);
+            }
+        }
+
+        public short YSpeed
+        {
+            readonly get => (short)(BitField3 & YSpeedMask);
+            set => BitField3 = (ushort)((BitField3 & ~YSpeedMask) | (value & YSpeedMask));
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// A single player's position, which a <see cref="S2CPacketType.BatchedLargePosition"/> packet can contain many of.
+    /// </summary>
+    /// <remarks>
+    /// The actual packet is one byte, Type (<see cref="S2CPacketType.BatchedLargePosition"/>), followed by one or more of these.
+    /// 
+    /// <para>
+    /// Limitations:
+    /// <list type="bullet">
+    ///     <item>This packet does not support weapons fire.</item>
+    ///     <item>PlayerId is 10 bits, so it can represent [0-1023].</item>
+    ///     <item>This packet does not include bounty.</item>
+    ///     <item>This packet does not include energy.</item>
+    ///     <item>This packet does not include extra player data.</item>
+    /// </list>
+    /// </para>
+    /// 
+    /// <para>
+    /// A fully maxed out packet can contain 47 player positions: 1 byte for the header + (47 players * 11 bytes) = 518 bytes
+    /// </para>
+    /// </remarks>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct LargePosition
+    {
+        private ushort bitField1; // player position status (6 bits), playerId (10 bits)
+        private ushort bitField2; // rotation (6 bits), time (10 bits)
+        private uint bitField3; // x-speed (4 lowest bits of 14), y (14 bits), x (14 bits)
+        private ushort bitField4; // x-speed (2 middle bits of 14), y-speed (14 bits)
+        private byte xSpeedHigh; // x-speed (8 highest bits of 14)
+
+        #region Helpers
+
+        private ushort BitField1
+        {
+            readonly get => LittleEndianConverter.Convert(bitField1);
+            set => bitField1 = LittleEndianConverter.Convert(value);
+        }
+
+        private ushort BitField2
+        {
+            readonly get => LittleEndianConverter.Convert(bitField2);
+            set => bitField2 = LittleEndianConverter.Convert(value);
+        }
+
+        private uint BitField3
+        {
+            readonly get => LittleEndianConverter.Convert(bitField3);
+            set => bitField3 = LittleEndianConverter.Convert(value);
+        }
+
+        private ushort BitField4
+        {
+            readonly get => LittleEndianConverter.Convert(bitField4);
+            set => bitField4 = LittleEndianConverter.Convert(value);
+        }
+
+        // bitField1 masks
+        private const ushort PositionStatusMask = 0b_11111100_00000000;
+        private const ushort PlayerIdMask       = 0b_00000011_11111111;
+
+        // bitField2 masks
+        private const ushort RotationMask = 0b_11111100_00000000;
+        private const ushort TimeMask     = 0b_00000011_11111111;
+
+        // bitField3 masks
+        private const uint XSpeedLowMask = 0b_11110000_00000000_00000000_00000000;
+        private const uint YMask         = 0b_00001111_11111111_11000000_00000000;
+        private const uint XMask         = 0b_00000000_00000000_00111111_11111111;
+
+        //bitField4 masks
+        private const ushort XSpeedMidMask = 0b_11000000_00000000;
+        private const ushort YSpeedMask    = 0b_00111111_11111111;
+
+        public PlayerPositionStatus Status
+        {
+            readonly get => (PlayerPositionStatus)((BitField1 & PositionStatusMask) >> 10);
+            set => BitField1 = (ushort)((BitField1 & ~PositionStatusMask) | ((int)value << 10 & PositionStatusMask));
+        }
+
+        public ushort PlayerId
+        {
+            readonly get => (ushort)(BitField1 & PlayerIdMask);
+            set => BitField1 = (ushort)((BitField1 & ~PlayerIdMask) | (value & PlayerIdMask));
+        }
+
+        public sbyte Rotation
+        {
+            readonly get => (sbyte)((BitField2 & RotationMask) >> 10);
+            set => BitField2 = (ushort)((BitField2 & ~RotationMask) | (value << 10 & RotationMask));
+        }
+
+        public ushort Time
+        {
+            readonly get => (ushort)(BitField2 & TimeMask);
+            set => BitField2 = (ushort)((BitField2 & ~TimeMask) | (value & TimeMask));
+        }
+
+        public short X
+        {
+            readonly get => (short)(BitField3 & XMask);
+            set => BitField3 = (uint)((BitField3 & ~XMask) | (value & XMask));
+        }
+
+        public short Y
+        {
+            readonly get => (short)((BitField3 & YMask) >> 14);
+            set => BitField3 = (uint)((BitField3 & ~YMask) | (value << 14 & YMask));
+        }
+
+        private ushort XSpeedLow
+        {
+            set => BitField3 = (uint)((BitField3 & ~XSpeedLowMask) | ((value << 28) & XSpeedLowMask));
+        }
+
+        private ushort XSpeedMid
+        {
+            set => BitField4 = (ushort)((BitField4 & ~XSpeedMidMask) | ((value << 14) & XSpeedMidMask));
+        }
+
+        public short XSpeed
+        {
+            readonly get => (short)(((uint)xSpeedHigh << 6) | (((uint)BitField4 & XSpeedMidMask) >> 10) | ((BitField3 & XSpeedLowMask) >> 28));
+            set
+            {
+                uint val = (uint)value;
+                xSpeedHigh = (byte)((val & 0b_00111111_11000000) >> 6);
+                XSpeedMid = (ushort)((val & 0b_00000000_00110000) >> 4);
+                XSpeedLow = (ushort)(val & 0b_00000000_00001111);
+            }
+        }
+
+        public short YSpeed
+        {
+            readonly get => (short)(BitField4 & YSpeedMask);
+            set => BitField4 = (ushort)((BitField4 & ~YSpeedMask) | (value & YSpeedMask));
         }
 
         #endregion
