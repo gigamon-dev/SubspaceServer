@@ -297,6 +297,9 @@ namespace SS.Matchmaking.Modules
             if (teamList.Count < 2)
                 return false;
 
+            if (_gameStatsRepository is null)
+                return false;
+
             // Get ratings of each player.
             Dictionary<string, int> playerRatingDictionary = new(StringComparer.OrdinalIgnoreCase); // TODO: pool
 
@@ -308,7 +311,7 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            await _gameStatsRepository!.GetPlayerRatingsAsync(matchConfiguration.GameTypeId, playerRatingDictionary);
+            await _gameStatsRepository.GetPlayerRatingsAsync(matchConfiguration.GameTypeId, playerRatingDictionary);
 
             // Create a list of player ratings sorted by rating.
             List<(string PlayerName, int Rating)> playerRatingList = []; // TODO: pool
