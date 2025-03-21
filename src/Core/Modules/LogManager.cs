@@ -85,7 +85,7 @@ namespace SS.Core.Modules
                 _rwLock.ExitWriteLock();
             }
 
-            _loggingTask = Task.Run(ProcessLogs);
+            Interlocked.Exchange(ref _loggingTask, Task.Run(ProcessLogs));
         }
 
         void IModuleLoaderAware.PreUnload(IComponentBroker broker)
@@ -109,7 +109,7 @@ namespace SS.Core.Modules
                 return false;
 
             _logChannel.Writer.Complete();
-            _loggingTask?.Wait();
+            Interlocked.Exchange(ref _loggingTask, null)?.Wait();
             return true;
         }
 
@@ -492,7 +492,14 @@ namespace SS.Core.Modules
 
         private void QueueOrWriteLog(ref LogEntry logEntry)
         {
-            if (!_logChannel.Writer.TryWrite(logEntry))
+            if (Interlocked.CompareExchange(ref _loggingTask, null, null) is null)
+            {
+                // There isn't a task for processing the logs asynchronously.
+                // This can happen during the initial load of modules, where PostLoad has not yet run.
+                // Write the log synchronously.
+                WriteLog(ref logEntry);
+            }
+            else if (!_logChannel.Writer.TryWrite(logEntry))
             {
                 WriteLog(ref logEntry);
             }
