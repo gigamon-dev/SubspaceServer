@@ -49,7 +49,7 @@ namespace SS.Matchmaking.Modules
         Manages team versus matches.
         Configuration: {nameof(TeamVersusMatch)}.conf
         """)]
-    public class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor
+    public class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IPlayerPositionAdvisor
     {
         private const string ConfigurationFileName = $"{nameof(TeamVersusMatch)}.conf";
 
@@ -382,8 +382,9 @@ namespace SS.Matchmaking.Modules
                 _commandManager.AddCommand(CommandNames.ShipChange, Command_sc, arena);
                 _commandManager.AddCommand(CommandNames.Items, Command_items, arena);
 
-                // Register advisor.
+                // Register advisors.
                 arenaData.IFreqManagerEnforcerAdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
+                arenaData.IPlayerPositionAdvisorToken = arena.RegisterAdvisor<IPlayerPositionAdvisor>(this);
 
                 // Fill in arena for associated matches.
                 foreach (MatchData matchData in _matchDataDictionary.Values)
@@ -401,8 +402,11 @@ namespace SS.Matchmaking.Modules
 
                 try
                 {
-                    // Unregister advisor.
+                    // Unregister advisors.
                     if (!arena.UnregisterAdvisor(ref arenaData.IFreqManagerEnforcerAdvisorToken))
+                        return;
+
+                    if (!arena.UnregisterAdvisor(ref arenaData.IPlayerPositionAdvisorToken))
                         return;
 
                     // Unregister callbacks.
@@ -1865,6 +1869,40 @@ namespace SS.Matchmaking.Modules
             }
 
             return true;
+        }
+
+        #endregion
+
+        #region IPlayerPositionAdvisor
+
+        bool IPlayerPositionAdvisor.EditIndividualPositionPacket(Player player, Player toPlayer, ref C2S_PositionPacket positionPacket, ref ExtraPositionData extra, ref int extraLength)
+        {
+            if (toPlayer.Ship == ShipType.Spec)
+            {
+                // Allow spectators to view any match.
+                return false;
+            }
+
+            if (!toPlayer.TryGetExtraData(_pdKey, out PlayerData? toPlayerData))
+                return false;
+
+            if (toPlayerData.AssignedSlot is null)
+            {
+                // Not playing in a match, do not limit position packets.
+                return false;
+            }
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return false;
+
+            if (toPlayerData.AssignedSlot.MatchData != playerData.AssignedSlot?.MatchData)
+            {
+                // Not playing in the same match, drop the packet.
+                positionPacket.X = positionPacket.Y = -1; 
+                return true;
+            }
+
+            return false;
         }
 
         #endregion
@@ -4608,11 +4646,13 @@ namespace SS.Matchmaking.Modules
         private class ArenaData : IResettable
         {
             public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor>? IFreqManagerEnforcerAdvisorToken;
+            public AdvisorRegistrationToken<IPlayerPositionAdvisor>? IPlayerPositionAdvisorToken;
             public readonly ShipSettings[] ShipSettings = new ShipSettings[8];
 
             bool IResettable.TryReset()
             {
                 IFreqManagerEnforcerAdvisorToken = null;
+                IPlayerPositionAdvisorToken = null;
                 Array.Clear(ShipSettings);
 
                 return true;
