@@ -78,6 +78,9 @@ namespace SS.Matchmaking.Modules
         private PlayerDataKey<PlayerData> _pdKey;
 
         private ClientSettingIdentifier _killEnterDelayClientSettingId;
+        private readonly ClientSettingIdentifier[] _spawnXClientSettingIds = new ClientSettingIdentifier[4];
+        private readonly ClientSettingIdentifier[] _spawnYClientSettingIds = new ClientSettingIdentifier[4];
+        private readonly ClientSettingIdentifier[] _spawnRadiusClientSettingIds = new ClientSettingIdentifier[4];
 
         private TimeSpan _abandonStartPenaltyDuration = TimeSpan.FromMinutes(5);
         private TimeSpan _notReadyStartPenaltyDuration = TimeSpan.FromMinutes(3);
@@ -193,6 +196,11 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
+            if (!GetSpawnClientSettingIdentifiers())
+            {
+                return false;
+            }
+
             if (!await LoadConfigurationAsync().ConfigureAwait(false))
             {
                 return false;
@@ -209,6 +217,33 @@ namespace SS.Matchmaking.Modules
 
             _iMatchmakingQueueAdvisorToken = broker.RegisterAdvisor<IMatchmakingQueueAdvisor>(this);
             return true;
+
+            bool GetSpawnClientSettingIdentifiers()
+            {
+                Span<char> xKey = stackalloc char["Team#-X".Length];
+                Span<char> yKey = stackalloc char["Team#-Y".Length];
+                Span<char> rKey = stackalloc char["Team#-Radius".Length];
+
+                "Team#-X".CopyTo(xKey);
+                "Team#-Y".CopyTo(yKey);
+                "Team#-Radius".CopyTo(rKey);
+
+                for (int i = 0; i < 4; i++)
+                {
+                    xKey[4] = yKey[4] = rKey[4] = (char)('0' + i);
+
+                    if (!_clientSettings.TryGetSettingsIdentifier("Spawn", xKey, out _spawnXClientSettingIds[i]))
+                        return false;
+
+                    if (!_clientSettings.TryGetSettingsIdentifier("Spawn", yKey, out _spawnYClientSettingIds[i]))
+                        return false;
+
+                    if (!_clientSettings.TryGetSettingsIdentifier("Spawn", rKey, out _spawnRadiusClientSettingIds[i]))
+                        return false;
+                }
+
+                return true;
+            }
         }
 
         Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
@@ -822,6 +857,13 @@ namespace SS.Matchmaking.Modules
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
+
+            // Spawn position overrides
+            if (newShip == ShipType.Spec && playerData.IsSpawnOverriden)
+            {
+                if (UnoverrideSpawnSettings(player, playerData))
+                    _clientSettings.SendClientSettings(player);
+            }
 
             // Extra position data (for tracking items)
             if (newShip != ShipType.Spec
@@ -2077,14 +2119,14 @@ namespace SS.Matchmaking.Modules
 
             return matchConfiguration;
 
-            bool LoadMatchBoxesConfiguration(ConfigHandle ch, string matchIdentifier, MatchConfiguration matchConfiguration)
+            bool LoadMatchBoxesConfiguration(ConfigHandle ch, string matchType, MatchConfiguration matchConfiguration)
             {
                 List<TileCoordinates> tempCoordList = [];
 
                 for (int boxIdx = 0; boxIdx < matchConfiguration.Boxes.Length; boxIdx++)
                 {
                     int boxNumber = boxIdx + 1; // configuration is 1 based
-                    string boxSection = $"{matchIdentifier}-Box{boxNumber}";
+                    string boxSection = $"{matchType}-Box{boxNumber}";
 
                     string? playAreaMapRegion = _configManager.GetStr(ch, boxSection, "PlayAreaMapRegion");
 
@@ -2094,6 +2136,7 @@ namespace SS.Matchmaking.Modules
                         PlayAreaMapRegion = playAreaMapRegion,
                     };
 
+                    // Start locations
                     for (int teamIdx = 0; teamIdx < matchConfiguration.NumTeams; teamIdx++)
                     {
                         int teamNumber = teamIdx + 1;
@@ -2107,7 +2150,7 @@ namespace SS.Matchmaking.Modules
                         {
                             if (!TileCoordinates.TryParse(coordStr, out TileCoordinates coordinates))
                             {
-                                _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Invalid starting location for Match '{matchIdentifier}', Box:{boxNumber}, Team:{teamNumber}, #:{coordId}.");
+                                _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Invalid starting location for Match '{matchType}', Box:{boxNumber}, Team:{teamNumber}, #:{coordId}.");
                                 continue;
                             }
                             else
@@ -2120,17 +2163,71 @@ namespace SS.Matchmaking.Modules
 
                         if (tempCoordList.Count <= 0)
                         {
-                            _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Missing starting location for Match '{matchIdentifier}', Box:{boxNumber}, Team:{teamNumber}.");
+                            _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Missing starting location for Match '{matchType}', Box:{boxNumber}, Team:{teamNumber}.");
                             return false;
                         }
 
                         boxConfiguration.TeamStartLocations[teamIdx] = [.. tempCoordList];
                     }
 
+                    // Spawn overrides
+                    if (!LoadSpawnOverrides(matchType, boxNumber, boxSection, boxConfiguration))
+                        return false;
+
                     matchConfiguration.Boxes[boxIdx] = boxConfiguration;
                 }
 
                 return true;
+
+                bool LoadSpawnOverrides(string matchType, int boxNumber, string boxSection, MatchBoxConfiguration boxConfiguration)
+                {
+                    Span<char> xKey = stackalloc char["Spawn-Team#-X".Length];
+                    Span<char> yKey = stackalloc char["Spawn-Team#-Y".Length];
+                    Span<char> rKey = stackalloc char["Spawn-Team#-Radius".Length];
+
+                    "Spawn-Team#-X".CopyTo(xKey);
+                    "Spawn-Team#-Y".CopyTo(yKey);
+                    "Spawn-Team#-Radius".CopyTo(rKey);
+
+                    for (int freqIdx = 0; freqIdx < 4; freqIdx++)
+                    {
+                        xKey[10] = yKey[10] = rKey[10] = (char)('0' + freqIdx);
+
+                        int x = _configManager.GetInt(ch, boxSection, xKey, -1);
+                        int y = _configManager.GetInt(ch, boxSection, yKey, -1);
+                        int r = _configManager.GetInt(ch, boxSection, rKey, -1);
+
+                        if (x == -1 || y == -1 || r == -1)
+                        {
+                            boxConfiguration.SpawnPositions[freqIdx] = null;
+                            continue;
+                        }
+
+                        if (!IsValidValue(boxSection, xKey, x, 0, 1023))
+                            return false;
+
+                        if (!IsValidValue(boxSection, yKey, y, 0, 1023))
+                            return false;
+
+                        if (!IsValidValue(boxSection, rKey, r, 0, 511))
+                            return false;
+
+                        boxConfiguration.SpawnPositions[freqIdx] = new() { X = (ushort)x, Y = (ushort)y, Radius = (ushort)r };
+                    }
+
+                    return true;
+
+                    bool IsValidValue(ReadOnlySpan<char> section, ReadOnlySpan<char> key, int value, int min, int max)
+                    {
+                        if (value < min || value > max)
+                        {
+                            _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid spawn setting {section}:{key} (value={value}, Min={min}, Max={max}).");
+                            return false;
+                        }
+
+                        return true;
+                    }
+                }
             }
         }
 
@@ -3537,6 +3634,9 @@ namespace SS.Matchmaking.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
+            // Override spawn settings if needed.
+            SendSpawnOverrides(player, playerData, slot);
+
             ShipType ship;
             if (isRefill)
             {
@@ -3572,6 +3672,41 @@ namespace SS.Matchmaking.Modules
             // Remove any existing timers for the slot.
             _mainloopTimer.ClearTimer<PlayerSlot>(MainloopTimer_ProcessInactiveSlot, slot);
 
+            void SendSpawnOverrides(Player player, PlayerData playerData, PlayerSlot slot)
+            {
+                Arena? arena = player.Arena;
+                if (arena is null)
+                    return;
+
+                MatchData matchData = slot.MatchData;
+                bool changed = false;
+
+                // Remove any existing overrides.
+                changed = UnoverrideSpawnSettings(player, playerData);
+
+                MatchBoxConfiguration boxConfiguration = matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx];
+
+                // Add overrides if there are any configured.
+                for (int i = 0; i < 4; i++)
+                {
+                    ref SpawnPosition? spawnPosition = ref boxConfiguration.SpawnPositions[i];
+                    if (spawnPosition is null)
+                        break;
+
+                    _clientSettings.OverrideSetting(player, _spawnXClientSettingIds[i], spawnPosition.Value.X);
+                    _clientSettings.OverrideSetting(player, _spawnYClientSettingIds[i], spawnPosition.Value.Y);
+                    _clientSettings.OverrideSetting(player, _spawnRadiusClientSettingIds[i], spawnPosition.Value.Radius);
+
+                    playerData.IsSpawnOverriden = true;
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    _clientSettings.SendClientSettings(player);
+                }
+            }
+
             void SetRemainingItems(PlayerSlot slot)
             {
                 Player? player = slot.Player;
@@ -3600,6 +3735,33 @@ namespace SS.Matchmaking.Modules
                     _game.GivePrize(player, (Prize)(-(short)prize), adjustAmount);
                 }
             }
+        }
+
+        /// <summary>
+        /// Unoverrides a player's spawn settings.
+        /// </summary>
+        /// <remarks>
+        /// This method does not send any setting changes to the player.
+        /// It is the caller's responsiblity to call <see cref="IClientSettings.SendClientSettings(Player)"/>
+        /// since the caller may be updating other setting overrides as well.
+        /// </remarks>
+        /// <param name="player">The player to unoverride settings for.</param>
+        /// <param name="playerData">The player's extra data.</param>
+        /// <returns><see langword="true"/> if an settings override change was made; otherwise, <see langword="false"/>.</returns>
+        private bool UnoverrideSpawnSettings(Player player, PlayerData playerData)
+        {
+            if (!playerData.IsSpawnOverriden)
+                return false;
+
+            for (int i = 0; i < 4; i++)
+            {
+                _clientSettings.UnoverrideSetting(player, _spawnXClientSettingIds[i]);
+                _clientSettings.UnoverrideSetting(player, _spawnYClientSettingIds[i]);
+                _clientSettings.UnoverrideSetting(player, _spawnRadiusClientSettingIds[i]);
+            }
+
+            playerData.IsSpawnOverriden = false;
+            return true;
         }
 
         /// <summary>
@@ -3998,6 +4160,14 @@ namespace SS.Matchmaking.Modules
             public required TileCoordinates[][] TeamStartLocations;
 
             public string? PlayAreaMapRegion { get; init; }
+
+            /// <summary>
+            /// Spawn position overrides
+            /// </summary>
+            /// <remarks>
+            /// When set, these can override the arena.conf [Spawn] settings.
+            /// </remarks>
+            public readonly SpawnPosition?[] SpawnPositions = new SpawnPosition?[4];
         }
 
         /// <summary>
@@ -4366,6 +4536,11 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public bool IsWatchingExtraPositionData = false;
 
+            /// <summary>
+            /// Whether the player has overriden spawn position settings.
+            /// </summary>
+            public bool IsSpawnOverriden = false;
+
             #region Match startup
 
             /// <summary>
@@ -4394,6 +4569,7 @@ namespace SS.Matchmaking.Modules
                 IsReturning = false;
                 IsInitialConnect = false;
                 IsWatchingExtraPositionData = false;
+                IsSpawnOverriden = false;
                 IsReadyToStart = false;
                 LastRotation = null;
                 return true;

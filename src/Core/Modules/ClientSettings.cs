@@ -601,67 +601,67 @@ namespace SS.Core.Modules
         [ConfigHelp<int>("All", "SeeBombLevel", ConfigScope.Arena, Min = 0, Max = 4, Description = "If ship can see bombs on radar (0=Disabled, 1=All, 2=L2 and up, 3=L3 and up, 4=L4 bombs only)")]
         [ConfigHelp<bool>("All", "DisableFastShooting", ConfigScope.Arena, Description = "If firing bullets, bombs, or thors is disabled after using afterburners (1=enabled) (Cont .36+)")]
         [ConfigHelp<int>("All", "Radius", ConfigScope.Arena, Default = 14, Min = 0, Max = 255, Description = "The ship's radius from center to outside, in pixels. (Cont .37+)")]
-        [ConfigHelp<ushort>("Spawn", "Team0-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team0-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1023,
             Description = """
                 If set to a value, this is the X coordinate for the center point
                 where freq 0 will start. (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team1-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team1-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1023,
             Description = """
                 If set to a value, this is the X coordinate for the center point
                 where freq 1 will start. (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team2-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team2-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1023,
             Description = """
                 If set to a value, this is the X coordinate for the center point
                 where freq 2 will start. NOTE: if the Team2 settings are 0, Team0
                 will apply to evens and Team1 will apply to odds. (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team3-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024
-            , Description = """
+        [ConfigHelp<ushort>("Spawn", "Team3-X", ConfigScope.Arena, Default = 0, Min = 0, Max = 1023,
+            Description = """
                 If set to a value, this is the X coordinate for the center point
                 where freq 3 will start. NOTE: Repeats, freq 4 will use Team0's,
                 freq 5 will use Team1's, etc. (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team0-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team0-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1023,
             Description = """
                 If set to a value, this is the Y coordinate for the center point
                 where freq 0 will start. (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team1-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team1-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1023,
             Description = """
                 If set to a value, this is the Y coordinate for the center point
                 where freq 1 will start. (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team2-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team2-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1023,
             Description = """
                 If set to a value, this is the Y coordinate for the center point
                 where freq 2 will start. NOTE: if the Team2 settings are 0, Team0
                 will apply to evens and Team1 will apply to odds. (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team3-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team3-Y", ConfigScope.Arena, Default = 0, Min = 0, Max = 1023,
             Description = """
                 If set to a value, this is the Y coordinate for the center point
                 where freq 3 will start. NOTE: Repeats, freq 4 will use Team0's,
                 freq 5 will use Team1's, etc. (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team0-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team0-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 511,
             Description = """
                 How large of a circle from the center point freq 0 can start.
                 (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team1-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team1-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 511,
             Description = """
                 How large of a circle from the center point freq 1 can start.
                 (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team2-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team2-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 511,
             Description = """
                 How large of a circle from the center point freq 2 can start.
                 NOTE: if the Team2 settings are 0, Team0 will apply to evens and 
                 Team1 will apply to odds. (Cont .38+)
                 """)]
-        [ConfigHelp<ushort>("Spawn", "Team3-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 1024,
+        [ConfigHelp<ushort>("Spawn", "Team3-Radius", ConfigScope.Arena, Default = 0, Min = 0, Max = 511,
             Description = """
                 How large of a circle from the center point freq 3 can start.
                 NOTE: Repeats, freq 4 will use Team0's, freq 5 will use Team1's, 
