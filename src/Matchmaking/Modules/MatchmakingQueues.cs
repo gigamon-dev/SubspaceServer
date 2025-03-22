@@ -1489,6 +1489,11 @@ namespace SS.Matchmaking.Modules
 
                     if (removed)
                     {
+                        if (targetPlayer.TryGetExtraData(_puKey, out UsageData? usageData))
+                        {
+                            usageData.UnsetPlaying(out _);
+                        }
+
                         _chat.SendMessage(player, $"{NextHoldCommandName}: Removed hold from {targetPlayer.Name}.");
                         return;
                     }
@@ -1502,11 +1507,11 @@ namespace SS.Matchmaking.Modules
 
                 if (duration > TimeSpan.Zero)
                 {
-                    _chat.SendMessage(player, $"{NextHoldCommandName}: {(targetPlayer == player ? "You" : player.Name)} will be able to use ?{NextCommandName} after: {duration}");
+                    _chat.SendMessage(player, $"{NextHoldCommandName}: {(targetPlayer == player ? "You" : targetPlayer.Name)} will be able to use ?{NextCommandName} after: {duration}");
                 }
                 else
                 {
-                    _chat.SendMessage(player, $"{NextHoldCommandName}: There is no hold on {(targetPlayer == player ? "you" : player.Name)}.");
+                    _chat.SendMessage(player, $"{NextHoldCommandName}: There is no hold on {(targetPlayer == player ? "you" : targetPlayer.Name)}.");
                 }
             }
         }
