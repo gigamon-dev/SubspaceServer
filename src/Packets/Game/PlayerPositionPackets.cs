@@ -445,7 +445,7 @@ namespace SS.Packets.Game
     ///     <item>This packet does not include a <see cref="PlayerPositionStatus"/>.</item>
     ///     <item>This packet does not include bounty.</item>
     ///     <item>This packet does not include energy.</item>
-    ///     <item>This packet does not include extra player data.</item>
+    ///     <item>This packet does not include extra player data, including energy.</item>
     /// </list>
     /// </para>
     /// 
@@ -563,7 +563,7 @@ namespace SS.Packets.Game
     ///     <item>PlayerId is 10 bits, so it can represent [0-1023].</item>
     ///     <item>This packet does not include bounty.</item>
     ///     <item>This packet does not include energy.</item>
-    ///     <item>This packet does not include extra player data.</item>
+    ///     <item>This packet does not include extra player data, including energy.</item>
     /// </list>
     /// </para>
     /// 

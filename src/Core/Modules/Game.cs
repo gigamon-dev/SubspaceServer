@@ -1029,12 +1029,16 @@ namespace SS.Core.Modules
             }
 
             bool isNewer = pos.Time > pd.pos.Time;
+            bool isSafeZoneTransition = false;
+            bool sendBounty = player.Position.Bounty != pos.Bounty // the player's bounty changed
+                || pd.BountyLastSent is null || (gtc - pd.BountyLastSent > 200); // bounty not sent in the last 2 seconds
 
             // only copy if the new one is later
             if (isNewer || isFake)
             {
                 // Safe zone
-                if (((pos.Status ^ pd.pos.Status) & PlayerPositionStatus.Safezone) == PlayerPositionStatus.Safezone && !isFake)
+                isSafeZoneTransition = ((pos.Status ^ pd.pos.Status) & PlayerPositionStatus.Safezone) == PlayerPositionStatus.Safezone;
+                if (isSafeZoneTransition && !isFake)
                 {
                     SafeZoneCallback.Fire(arena, player, pos.X, pos.Y, (pos.Status & PlayerPositionStatus.Safezone) == PlayerPositionStatus.Safezone);
                 }
@@ -1213,12 +1217,6 @@ namespace SS.Core.Modules
                 NetSendFlags nflags = NetSendFlags.Unreliable | NetSendFlags.Droppable |
                     (pos.Weapon.Type != WeaponCodes.Null ? NetSendFlags.PriorityP5 : NetSendFlags.PriorityP3);
 
-                // there are several reasons to send a weapon packet (05) instead of just a position one (28)
-                bool sendWeapon = (
-                    (pos.Weapon.Type != WeaponCodes.Null) // a real weapon
-                    || (pos.Bounty > byte.MaxValue) // bounty over 255
-                    || (player.Id > byte.MaxValue)); //pid over 255
-
                 // TODO: for arenas designed for a small # of players (e.g. 4v4 league), a way to always send to all? or is boosting weapon range settings to max good enough?
                 bool sendToAll = false;
 
@@ -1250,16 +1248,22 @@ namespace SS.Core.Modules
                     sendToAll = true;
                 }
 
-                // send safe zone enters to everyone, reliably
-                // TODO: why? proposed send damage protocol? what about safe zone exits?
-                if (((pos.Status & PlayerPositionStatus.Safezone) != 0)
-                    && ((player.Position.Status & PlayerPositionStatus.Safezone) == 0))
+                // Send safe zone transitions to everyone, reliably.
+                // Sending when a player enters a safe zone signals to clear that player's weapons (especially mines).
+                // Also, knowing whether a player is in a safe zone helps to keep scores in sync.
+                // Certain events (flag game victory, periodic reward, ball goal) can add points to a team.
+                // The client knows to not add points to players that are in a safe zone.
+                if (isSafeZoneTransition)
                 {
                     sendToAll = true;
                     nflags = NetSendFlags.Reliable;
                 }
 
-                // send flashes to everyone, reliably
+                // Send flashes to everyone, reliably.
+                // TODO: Review this, does it need to be sent reliably? probably better to send urgently (portal usage)
+                // Why send to all? Possibly as an easy way to send it to players in the previous location. So this probably can be enhanced to only send to those that need to know.
+                // If we really want to try to ensure that the flash is seen, maybe send one packet urgently, and a duplicate reliably.
+                // I'm not sure if Continuum will just ignore the dup reliable packet? or if it would flash again? Would need to test.
                 if ((pos.Status & PlayerPositionStatus.Flash) != 0)
                 {
                     sendToAll = true;
@@ -1268,11 +1272,15 @@ namespace SS.Core.Modules
 
                 C2S_PositionPacket posCopy = new();
                 ExtraPositionData extraCopy = new();
+                S2C_BatchedSmallPositionSingle smallSingle = new();
+                S2C_BatchedLargePositionSingle largeSingle = new();
                 S2C_WeaponsPacket wpn = new();
                 S2C_PositionPacket sendpos = new();
 
                 // ensure that all packets get build before use
                 bool modified = true;
+                bool smallDirty = true;
+                bool largeDirty = true;
                 bool wpnDirty = true;
                 bool posDirty = true;
 
@@ -1303,8 +1311,8 @@ namespace SS.Core.Modules
                             int range;
 
                             // determine the packet range
-                            if (sendWeapon && pos.Weapon.Type != WeaponCodes.Null)
-                                range = ad.wpnRange[(int)pos.Weapon.Type];
+                            if (pos.Weapon.Type != WeaponCodes.Null)
+                                range = Math.Max(ad.wpnRange[(int)pos.Weapon.Type], i.Xres + i.Yres);
                             else
                                 range = i.Xres + i.Yres;
 
@@ -1375,19 +1383,70 @@ namespace SS.Core.Modules
                                     }
                                 }
 
-                                wpnDirty = wpnDirty || modified;
-                                posDirty = posDirty || modified;
-
                                 if (!drop)
                                 {
-                                    if ((!modified && sendWeapon)
-                                        || posCopy.Weapon.Type > 0
-                                        || (posCopy.Bounty & 0xFF00) != 0
-                                        || (player.Id & 0xFF00) != 0)
+                                    if (i.Type == ClientType.Continuum
+                                        && posCopy.Weapon.Type == WeaponCodes.Null
+                                        && !sendBounty
+                                        && posCopy.Status == 0
+                                        && extralen == 0 // no energy or extra data
+                                        && ((uint)player.Id & 0xFFFF_FF00) == 0 // PlayerId [0-255]
+                                        && posCopy.XSpeed >= -8192 && posCopy.XSpeed <= 8191
+                                        && posCopy.YSpeed >= -8192 && posCopy.YSpeed <= 8191
+                                        && posCopy.X >= 0 && posCopy.X <= 16383
+                                        && posCopy.Y >= 0 && posCopy.Y <= 16383)
                                     {
-                                        int length = S2C_WeaponsPacket.Length + extralen;
+                                        // 0x39 Small
+                                        if (smallDirty || modified)
+                                        {
+                                            ref SmallPosition small = ref smallSingle.Position;
+                                            small.PlayerId = (byte)player.Id;
+                                            small.Rotation = posCopy.Rotation;
+                                            small.Time = (ushort)(gtc - latency);
+                                            small.X = posCopy.X;
+                                            small.Y = posCopy.Y;
+                                            small.XSpeed = posCopy.XSpeed;
+                                            small.YSpeed = posCopy.YSpeed;
 
-                                        if (wpnDirty)
+                                            smallDirty = modified;
+                                        }
+
+                                        _network.SendToOne(i, ref smallSingle, nflags);
+                                    }
+                                    else if (i.Type == ClientType.Continuum
+                                        && posCopy.Weapon.Type == WeaponCodes.Null
+                                        && !sendBounty
+                                        && extralen == 0 // no energy or extra data
+                                        && ((uint)player.Id & 0xFFFF_FC00) == 0 // PlayerId [0-1023]
+                                        && posCopy.XSpeed >= -8192 && posCopy.XSpeed <= 8191
+                                        && posCopy.YSpeed >= -8192 && posCopy.YSpeed <= 8191
+                                        && posCopy.X >= 0 && posCopy.X <= 16383
+                                        && posCopy.Y >= 0 && posCopy.Y <= 16383)
+                                    {
+                                        // 0x3A Large
+                                        if (largeDirty || modified)
+                                        {
+                                            ref LargePosition large = ref largeSingle.Position;
+                                            large.Status = posCopy.Status;
+                                            large.PlayerId = (ushort)player.Id;
+                                            large.Rotation = posCopy.Rotation;
+                                            large.Time = (ushort)(gtc - latency);
+                                            large.X = posCopy.X;
+                                            large.Y = posCopy.Y;
+                                            large.XSpeed = posCopy.XSpeed;
+                                            large.YSpeed = posCopy.YSpeed;
+
+                                            largeDirty = modified;
+                                        }
+
+                                        _network.SendToOne(i, ref largeSingle, nflags);
+                                    }
+                                    else if (posCopy.Weapon.Type > 0 // has weapon fire
+                                        || (posCopy.Bounty & 0xFF00) != 0 // bounty over 255
+                                        || ((uint)player.Id & 0xFFFF_FF00) != 0) // PlayerId over 255
+                                    {
+                                        // 0x05 Weapon
+                                        if (wpnDirty || modified)
                                         {
                                             wpn.Type = (byte)S2CPacketType.Weapon;
                                             wpn.Rotation = posCopy.Rotation;
@@ -1418,6 +1477,7 @@ namespace SS.Core.Modules
                                         }
 
                                         ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref wpn, 1));
+                                        int length = S2C_WeaponsPacket.Length + extralen;
                                         if (data.Length > length)
                                             data = data[..length];
 
@@ -1425,9 +1485,8 @@ namespace SS.Core.Modules
                                     }
                                     else
                                     {
-                                        int length = S2C_PositionPacket.Length + extralen;
-
-                                        if (posDirty)
+                                        // 0x28 Position
+                                        if (posDirty || modified)
                                         {
                                             sendpos.Type = (byte)S2CPacketType.Position;
                                             sendpos.Rotation = posCopy.Rotation;
@@ -1449,6 +1508,7 @@ namespace SS.Core.Modules
                                         }
 
                                         ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref sendpos, 1));
+                                        int length = S2C_PositionPacket.Length + extralen;
                                         if (data.Length > length)
                                             data = data[..length];
 
@@ -1468,6 +1528,11 @@ namespace SS.Core.Modules
             }
 
             pd.PlayerPostitionPacket_LastShip = player.Ship;
+
+            if (sendBounty)
+            {
+                pd.BountyLastSent = gtc;
+            }
 
             // local function that checks if a player is carrying a ball
             bool IsCarryingBall(Player player, Arena arena)
@@ -2648,6 +2713,11 @@ namespace SS.Core.Modules
             /// </summary>
             public ServerTick? LastBomb;
 
+            /// <summary>
+            /// When the a position packet was last sent containing the player's bounty.
+            /// </summary>
+            public ServerTick? BountyLastSent;
+
             public bool TryReset()
             {
                 pos = new();
@@ -2665,6 +2735,7 @@ namespace SS.Core.Modules
                 LastRegionSet = [];
                 PlayerPostitionPacket_LastShip = null;
                 LastBomb = null;
+                BountyLastSent = null;
                 return true;
             }
         }
