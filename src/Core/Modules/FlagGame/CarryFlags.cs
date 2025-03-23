@@ -668,7 +668,7 @@ namespace SS.Core.Modules.FlagGame
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
-            if (action == PlayerAction.EnterArena)
+            if (action == PlayerAction.EnterGame)
             {
                 if (!arena!.TryGetExtraData(_adKey, out ArenaData? ad))
                     return;
