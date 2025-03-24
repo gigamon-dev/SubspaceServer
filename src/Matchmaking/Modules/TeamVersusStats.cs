@@ -1173,7 +1173,6 @@ namespace SS.Matchmaking.Modules
                 {
                     writer.WriteStartObject(); // team object
                     writer.WriteNumber("freq"u8, teamStats.Team!.Freq);
-                    writer.WriteBoolean("is_premade"u8, teamStats.Team.IsPremade); // TODO: change the database to use premade_group on a member instead
                     writer.WriteBoolean("is_winner"u8, teamStats.Team == winnerTeam);
                     writer.WriteNumber("score"u8, teamStats.Team.Score);
                     writer.WriteStartArray("player_slots"u8); // player_slots array

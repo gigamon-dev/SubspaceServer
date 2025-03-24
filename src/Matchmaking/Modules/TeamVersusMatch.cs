@@ -2707,9 +2707,14 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
+            bool isSub = false;
+
             if (slot.PlayerName is not null && !string.Equals(slot.PlayerName, player.Name, StringComparison.OrdinalIgnoreCase))
             {
-                // The slot was previously assigned to another player. Send a notification.
+                // The slot was previously assigned to another player.
+                isSub = true;
+
+                // Send a notification.
                 HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
                 try
                 {
@@ -2758,6 +2763,9 @@ namespace SS.Matchmaking.Modules
             // Clear fields now that the slot is newly assigned.
             slot.LagOuts = 0;
             slot.IsSubRequested = false;
+
+            if (isSub)
+                slot.PremadeGroupId = null;
         }
 
         private void UnassignSlot(PlayerSlot slot)
@@ -4382,8 +4390,6 @@ namespace SS.Matchmaking.Modules
             public readonly PlayerSlot[] Slots;
             private readonly ReadOnlyCollection<IPlayerSlot> _readOnlySlots;
             ReadOnlyCollection<IPlayerSlot> ITeam.Slots => _readOnlySlots;
-
-            public bool IsPremade { get; set; }
 
             public short Score { get; set; }
         }

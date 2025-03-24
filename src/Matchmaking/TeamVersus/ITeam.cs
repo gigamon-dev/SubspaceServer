@@ -25,11 +25,6 @@ namespace SS.Matchmaking.TeamVersus
         ReadOnlyCollection<IPlayerSlot> Slots { get; }
 
         /// <summary>
-        /// Whether the team was filled with players using a premade <see cref="IPlayerGroup"/>.
-        /// </summary>
-        bool IsPremade { get; }
-
-        /// <summary>
         /// The team's score.
         /// </summary>
         short Score { get; }
