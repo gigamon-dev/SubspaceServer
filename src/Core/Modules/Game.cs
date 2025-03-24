@@ -1402,7 +1402,7 @@ namespace SS.Core.Modules
                                             ref SmallPosition small = ref smallSingle.Position;
                                             small.PlayerId = (byte)player.Id;
                                             small.Rotation = posCopy.Rotation;
-                                            small.Time = (ushort)(gtc - latency);
+                                            small.Time = (ushort)(gtc - (uint)latency);
                                             small.X = posCopy.X;
                                             small.Y = posCopy.Y;
                                             small.XSpeed = posCopy.XSpeed;
@@ -1430,7 +1430,7 @@ namespace SS.Core.Modules
                                             large.Status = posCopy.Status;
                                             large.PlayerId = (ushort)player.Id;
                                             large.Rotation = posCopy.Rotation;
-                                            large.Time = (ushort)(gtc - latency);
+                                            large.Time = (ushort)(gtc - (uint)latency);
                                             large.X = posCopy.X;
                                             large.Y = posCopy.Y;
                                             large.XSpeed = posCopy.XSpeed;
