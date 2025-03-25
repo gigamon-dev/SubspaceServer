@@ -179,11 +179,12 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (!_arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Reset, out long killPoints)
-                || !_arenaPlayerStats.TryGetStat(player, StatCodes.FlagPoints, PersistInterval.Reset, out long flagPoints)
-                || killPoints + flagPoints < cost)
+            _arenaPlayerStats.TryGetStat(player, StatCodes.KillPoints, PersistInterval.Reset, out long killPoints);
+            _arenaPlayerStats.TryGetStat(player, StatCodes.FlagPoints, PersistInterval.Reset, out long flagPoints);
+
+            if(killPoints + flagPoints < cost)
             {
-                _chat.SendMessage(player, "You don't have enough points to purchase that item.");
+                _chat.SendMessage(player, $"You don't have enough points ({cost}) to purchase that item.");
                 return;
             }
 
