@@ -420,6 +420,12 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_BatchedSmallPositionSingle()
     {
+        #region Static members
+
+        public const int Length = 1 + SmallPosition.Length;
+
+        #endregion
+
         public byte Type = (byte)S2CPacketType.BatchedSmallPosition;
         public SmallPosition Position;
     }
@@ -427,6 +433,12 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_BatchedLargePositionSingle()
     {
+        #region Static members
+
+        public const int Length = 1 + LargePosition.Length;
+
+        #endregion
+
         public byte Type = (byte)S2CPacketType.BatchedLargePosition;
         public LargePosition Position;
     }
@@ -456,6 +468,12 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct SmallPosition
     {
+        #region Static members
+
+        public const int Length = 10;
+
+        #endregion
+
         public byte PlayerId;
         private ushort bitField1; // rotation (6 bits), time (10 bits)
         private uint bitField2; // x-speed (4 lowest bits of 14), Y (14 bits), X (14 bits)
@@ -574,6 +592,12 @@ namespace SS.Packets.Game
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct LargePosition
     {
+        #region Static members
+
+        public const int Length = 11;
+
+        #endregion
+
         private ushort bitField1; // player position status (6 bits), playerId (10 bits)
         private ushort bitField2; // rotation (6 bits), time (10 bits)
         private uint bitField3; // x-speed (4 lowest bits of 14), y (14 bits), x (14 bits)

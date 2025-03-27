@@ -27,13 +27,16 @@ namespace SS.Core.ComponentInterfaces
         void Iter(long asOf);
 
         /// <summary>
-        /// Checks if <paramref name="bytes"/> bytes at priority <paramref name="priority"/> can be sent.
-        /// If they can be sent, modifies stats and returns true, otherwise returns false.
+        /// Checks if a number of <paramref name="bytes"/> can be sent for a given <paramref name="priority"/>.
         /// </summary>
+        /// <remarks>
+        /// Stats are modified if the <paramref name="bytes"/> can be sent and <paramref name="modify"/> is <see langword="true"/>.
+        /// </remarks>
         /// <param name="bytes">The number of bytes of the data.</param>
         /// <param name="priority">The priority of the data.</param>
-        /// <returns>True if the data should be sent. Otherwise, false.</returns>
-        bool Check(int bytes, BandwidthPriority priority);
+        /// <param name="modify">Whether to modify the stats.</param>
+        /// <returns><see langword="true"/> if the data should be sent; otherwise, <see langword="false"/>.</returns>
+        bool Check(int bytes, BandwidthPriority priority, bool modify);
 
         /// <summary>
         /// Adjusts stats for when an ACK is received.

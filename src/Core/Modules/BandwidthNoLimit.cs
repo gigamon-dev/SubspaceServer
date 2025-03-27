@@ -64,7 +64,7 @@ namespace SS.Core.Modules
             {
             }
 
-            public bool Check(int bytes, BandwidthPriority priority)
+            public bool Check(int bytes, BandwidthPriority priority, bool modify)
             {
                 return true;
             }

@@ -240,7 +240,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            public bool Check(int bytes, BandwidthPriority priority)
+            public bool Check(int bytes, BandwidthPriority priority, bool modify)
             {
                 if (bytes <= 0)
                     return true;
@@ -256,8 +256,12 @@ namespace SS.Core.Modules
                 {
                     if (availCopy[pri] >= bytes)
                     {
-                        availCopy[pri] -= bytes;
-                        availCopy.CopyTo(_avail);
+                        if (modify)
+                        {
+                            availCopy[pri] -= bytes;
+                            availCopy.CopyTo(_avail);
+                        }
+
                         return true;
                     }
                     else
@@ -267,7 +271,11 @@ namespace SS.Core.Modules
                     }
                 }
 
-                _hitLimit = true;
+                if (modify)
+                {
+                    _hitLimit = true;
+                }
+
                 return false;
             }
 

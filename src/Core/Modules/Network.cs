@@ -3168,6 +3168,98 @@ namespace SS.Core.Modules
                         }
                     }
 
+                    // Batch position packets
+                    if (conn is PlayerConnection) // game protocol only
+                    {
+                        // Only certain types of position packets can be batched.
+                        S2CPacketType packetType = (S2CPacketType)buf.Bytes[0];
+                        if (packetType == S2CPacketType.BatchedSmallPosition || packetType == S2CPacketType.BatchedLargePosition)
+                        {
+                            int itemLength = packetType == S2CPacketType.BatchedSmallPosition ? SmallPosition.Length : LargePosition.Length;
+
+                            if ((buf.NumBytes - 1) % itemLength == 0)
+                            {
+                                // The data is a position packet that can be batched together (1 byte for the packet type, followed by 1 or more position items).
+                                //
+                                // Also, notice that the bandwidth checks done in this section do not modify the bandwidth stats (modify = false on the method calls).
+                                // It does this to guarantee that there will be enough bandwidth available when the packet is sent.
+
+                                Span<byte> remainingBytes;
+
+                                int grouperRemainingLength = Math.Min(
+                                    packetGrouper.RemainingLength, 
+                                    1 + Constants.MaxGroupedPacketItemLength); // +1 for the byte that tells the grouped item's length
+
+                                // To batch the position packet, we need to know whether we're trying to stuff it into an existing grouped packet
+                                // or create a full sized packet to send separately.
+                                if (packetGrouper.Count > 1 
+                                    && grouperRemainingLength - 1 >= buf.NumBytes) // data will fit into the grouper, -1 for the byte that tells the grouped item's length
+                                {
+                                    if (conn.BandwidthLimiter.Check(1 + buf.NumBytes, (BandwidthPriority)pri, false))
+                                    {
+                                        // We'll try to create a batch that fits into the grouped packet.
+                                        remainingBytes = buf.Bytes.AsSpan(buf.NumBytes, grouperRemainingLength - buf.NumBytes);
+                                    }
+                                    else
+                                    {
+                                        // No more bandwidth left to send this data.
+                                        remainingBytes = [];
+                                    }
+                                }
+                                else
+                                {
+                                    if (conn.BandwidthLimiter.Check(_config.PerPacketOverhead + buf.NumBytes, (BandwidthPriority)pri, false))
+                                    {
+                                        // We'll try to create a batch that fits into a full sized packet.
+                                        remainingBytes = buf.Bytes.AsSpan(buf.NumBytes, Constants.MaxPacket - buf.NumBytes);
+                                    }
+                                    else
+                                    {
+                                        // No more bandwidth left to send this data.
+                                        remainingBytes = [];
+                                    }
+                                }
+
+                                // Search for additional position packets of the same type that can be combined with the current one.
+                                LinkedListNode<SubspaceBuffer>? posNode = node.Next;
+                                while (posNode is not null
+                                    && remainingBytes.Length >= itemLength // there's room for another item
+                                    && conn.BandwidthLimiter.Check(buf.NumBytes + itemLength, (BandwidthPriority)pri, false)) // there's enough bandwidth for another item
+                                {
+                                    LinkedListNode<SubspaceBuffer>? nextPosNode = posNode.Next;
+
+                                    SubspaceBuffer posBuffer = posNode.Value;
+                                    if (posBuffer.Bytes[0] == (byte)packetType // same packet type as the initial packet we're trying to add to
+                                        && (posBuffer.NumBytes - 1) % itemLength == 0)
+                                    {
+                                        Span<byte> posData = posBuffer.Bytes.AsSpan(1, posBuffer.NumBytes - 1);
+                                        if (remainingBytes.Length >= posData.Length // enough room to fit the data
+                                            && conn.BandwidthLimiter.Check(buf.NumBytes + posData.Length, (BandwidthPriority)pri, false))
+                                        {
+                                            // Add it into the batch.
+                                            posData.CopyTo(remainingBytes);
+                                            remainingBytes = remainingBytes[posData.Length..];
+                                            buf.NumBytes += posData.Length;
+
+                                            if (nextNode == posNode)
+                                            {
+                                                // The change affects the next node to process after the one we just combined data into.
+                                                nextNode = nextPosNode;
+                                            }
+
+                                            // Remove the node that we just combined the data from.
+                                            outlist.Remove(posNode);
+                                            _bufferNodePool.Return(posNode);
+                                            posBuffer.Dispose();
+                                        }
+                                    }
+
+                                    posNode = nextPosNode;
+                                }
+                            }
+                        }
+                    }
+
                     // At this point, there's only one more check to determine if we're sending this packet now: bandwidth limiting.
 
                     int checkBytes = buf.NumBytes;
@@ -3183,7 +3275,7 @@ namespace SS.Core.Modules
                     // In which case, when it gets flushed, it will send the individual packet, not grouped.
                     // This means we'd have told the bandwidth limiter 3 bytes more than we actually send, but that's negligible.
 
-                    if (!conn.BandwidthLimiter.Check(checkBytes, (BandwidthPriority)pri))
+                    if (!conn.BandwidthLimiter.Check(checkBytes, (BandwidthPriority)pri, true))
                     {
                         // try dropping it, if we can
                         if ((buf.SendFlags & NetSendFlags.Droppable) != 0)
@@ -4359,7 +4451,7 @@ namespace SS.Core.Modules
                     if ((flags & (NetSendFlags.Urgent | NetSendFlags.Reliable)) == NetSendFlags.Urgent)
                     {
                         // urgent and not reliable
-                        if (conn.BandwidthLimiter!.Check(len + _config.PerPacketOverhead, pri))
+                        if (conn.BandwidthLimiter!.Check(len + _config.PerPacketOverhead, pri, true))
                         {
                             SendRaw(conn, data);
                             return true;
@@ -6140,6 +6232,7 @@ namespace SS.Core.Modules
             private readonly Network _network;
             private readonly Span<byte> _bufferSpan;
             private Span<byte> _remainingSpan;
+            public readonly int RemainingLength => _remainingSpan.Length;
             private int _count;
             public readonly int Count => _count;
             private int _numBytes;
