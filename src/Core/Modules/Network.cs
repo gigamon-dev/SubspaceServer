@@ -337,7 +337,7 @@ namespace SS.Core.Modules
 
 
             [ConfigHelp<int>("Net", "InternalClientPort", ConfigScope.Global, Default = 0,
-                Description = "The bind port for the internal client socket (used to communicate with biller and dirserver).")]
+                Description = "The bind port for the internal client socket (used to communicate with billing servers).")]
             bool InitializeSockets()
             {
                 //
@@ -363,7 +363,7 @@ namespace SS.Core.Modules
                 }
 
                 //
-                // Client socket (for communicating with the biller and directory server)
+                // Client socket (for communicating with billing servers)
                 //
 
                 int bindPort = _configManager.GetInt(_configManager.Global, "Net", "InternalClientPort", NetSettings.InternalClientPort.Default);
