@@ -75,6 +75,7 @@ namespace SS.Matchmaking.Modules
         private PlayerDataKey<PlayerData> _pdKey;
 
         private string? _zoneServerName;
+        private string? _subspaceStatsWebUrl;
 
         #region Client Setting Identifiers
 
@@ -230,6 +231,9 @@ namespace SS.Matchmaking.Modules
                     broker.ReleaseInterface(ref _gameStatsRepository);
                     return false;
                 }
+
+                // Optionally, a URL to the subspace-stats-web site can be configured.
+                _subspaceStatsWebUrl = _configManager.GetStr(_configManager.Global, "SS.Matchmaking", "SubspaceStatsWebUrl")?.TrimEnd('/');
             }
 
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
@@ -2289,6 +2293,11 @@ namespace SS.Matchmaking.Modules
                 if (matchStats.GameId is not null)
                 {
                     sb.Append($" -- Game ID: {matchStats.GameId.Value}");
+
+                    if (!string.IsNullOrWhiteSpace(_subspaceStatsWebUrl))
+                    {
+                        sb.Append($"  Web: {_subspaceStatsWebUrl}/Game/{matchStats.GameId.Value}");
+                    }
                 }
 
                 _chat.SendSetMessage(notifySet, $"{(reason is not null ? "Final" : "Current")} {matchStats.MatchData!.MatchIdentifier.MatchType} Score: {sb}");
