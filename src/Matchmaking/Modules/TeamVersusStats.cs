@@ -896,48 +896,67 @@ namespace SS.Matchmaking.Modules
                 {
                     GetPlayersToNotify(matchStats, notifySet);
 
-                    StringBuilder gameTimeBuilder = _objectPoolManager.StringBuilderPool.Get();
                     StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
                     try
                     {
                         TimeSpan gameTime = matchData.Started is not null ? timestamp - matchData.Started.Value : TimeSpan.Zero;
-                        gameTimeBuilder.AppendFriendlyTimeSpan(gameTime);
 
                         // Kill notification
-                        int assistCount = 0;
-                        foreach ((string playerName, int damage) in damageList)
+                        sb.Append($"{killedPlayerName} kb {killerPlayerName}");
+
+                        StringBuilder assistBuilder = _objectPoolManager.StringBuilderPool.Get();
+                        try
                         {
-                            if (string.Equals(killerPlayerName, playerName, StringComparison.OrdinalIgnoreCase))
-                                continue;
+                            int assistCount = 0;
+                            foreach ((string playerName, int damage) in damageList)
+                            {
+                                if (string.Equals(killerPlayerName, playerName, StringComparison.OrdinalIgnoreCase))
+                                    continue;
 
-                            if (sb.Length > 0)
-                                sb.Append(", ");
+                                if (assistBuilder.Length > 0)
+                                    assistBuilder.Append(", ");
 
-                            sb.Append($"{playerName} ({damage})");
-                            assistCount++;
+                                assistBuilder.Append($"{playerName} ({damage})");
+                                assistCount++;
+                            }
+
+                            if (assistCount > 0)
+                            {
+                                sb.Append($" -- {(assistCount == 1 ? "Assist" : "Assists")}: ");
+                                sb.Append(assistBuilder);
+                            }
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(assistBuilder);
                         }
 
-                        if (assistCount > 0)
-                            _chat.SendSetMessage(notifySet, $"{killedPlayerName} kb {killerPlayerName} -- {(assistCount == 1 ? "Assist" : "Assists")}: {sb}");
-                        else
-                            _chat.SendSetMessage(notifySet, $"{killedPlayerName} kb {killerPlayerName}");
-
+                        _chat.SendSetMessage(notifySet, sb);
                         sb.Clear();
 
                         // Remaining lives notification
                         // TODO: A way to not duplicate this logic which is also in TeamVersusMatch
                         if (isKnockout)
                         {
-                            _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killedPlayerName} is OUT! [{gameTimeBuilder}]");
+                            sb.Append($"{killedPlayerName} is OUT!");
                         }
                         else
                         {
-                            _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killedPlayerName} has {killedMemberStats.SlotStats!.Slot!.Lives} {(killedMemberStats.SlotStats.Slot.Lives > 1 ? "lives" : "life")} remaining [{gameTimeBuilder}]");
+                            sb.Append($"{killedPlayerName} has {killedMemberStats.SlotStats!.Slot!.Lives} {(killedMemberStats.SlotStats.Slot.Lives > 1 ? "lives" : "life")} remaining");
                         }
+
+                        sb.Append(" [");
+                        sb.AppendFriendlyTimeSpan(gameTime);
+                        sb.Append(']');
+
+                        _chat.SendSetMessage(notifySet, sb);
+                        sb.Clear();
 
                         // Score notification
                         // TODO: A way to not duplicate this logic which is also in TeamVersusMatch
+                        sb.Append("Score: ");
+
                         StringBuilder remainingBuilder = _objectPoolManager.StringBuilderPool.Get();
 
                         try
@@ -948,7 +967,7 @@ namespace SS.Matchmaking.Modules
 
                             foreach (var team in matchData.Teams)
                             {
-                                if (sb.Length > 0)
+                                if (sb.Length > "Score: ".Length)
                                 {
                                     sb.Append('-');
                                     remainingBuilder.Append('v');
@@ -988,17 +1007,23 @@ namespace SS.Matchmaking.Modules
                                 sb.Append(" TIE");
                             }
 
-                            _chat.SendSetMessage(notifySet, $"Score: {sb} -- {remainingBuilder} -- [{gameTimeBuilder}]");
+                            sb.Append(" -- ");
+                            sb.Append(remainingBuilder);
                         }
                         finally
                         {
                             _objectPoolManager.StringBuilderPool.Return(remainingBuilder);
                         }
+
+                        sb.Append(" -- [");
+                        sb.AppendFriendlyTimeSpan(gameTime);
+                        sb.Append(']');
+
+                        _chat.SendSetMessage(notifySet, sb);
                     }
                     finally
                     {
                         _objectPoolManager.StringBuilderPool.Return(sb);
-                        _objectPoolManager.StringBuilderPool.Return(gameTimeBuilder);
                     }
                 }
                 finally
@@ -2257,14 +2282,26 @@ namespace SS.Matchmaking.Modules
 
             try
             {
-                foreach (TeamStats teamStats in matchStats.Teams.Values)
+                sb.Append($"{(reason is not null ? "Final" : "Current")} {matchStats.MatchData!.MatchIdentifier.MatchType} Score: ");
+
+                StringBuilder scoreBuilder = _objectPoolManager.StringBuilderPool.Get();
+                try
                 {
-                    if (sb.Length > 0)
-                        sb.Append('-');
+                    foreach (TeamStats teamStats in matchStats.Teams.Values)
+                    {
+                        if (scoreBuilder.Length > 0)
+                            scoreBuilder.Append('-');
 
-                    sb.Append(teamStats.Team!.Score);
+                        scoreBuilder.Append(teamStats.Team!.Score);
+                    }
+
+                    sb.Append(scoreBuilder);
                 }
-
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(scoreBuilder);
+                }
+                
                 if (reason is not null)
                 {
                     switch (reason.Value)
@@ -2300,7 +2337,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                _chat.SendSetMessage(notifySet, $"{(reason is not null ? "Final" : "Current")} {matchStats.MatchData!.MatchIdentifier.MatchType} Score: {sb}");
+                _chat.SendSetMessage(notifySet, sb);
             }
             finally
             {

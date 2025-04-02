@@ -722,13 +722,11 @@ namespace SS.Matchmaking.Modules
                 // This means we have to send basic notifications ourself.
 
                 StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-                StringBuilder gameTimeBuilder = _objectPoolManager.StringBuilderPool.Get();
                 HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
 
                 try
                 {
                     TimeSpan gameTime = matchData.Started is not null ? now - matchData.Started.Value : TimeSpan.Zero;
-                    gameTimeBuilder.AppendFriendlyTimeSpan(gameTime);
 
                     GetPlayersToNotify(matchData, notifySet);
 
@@ -738,14 +736,23 @@ namespace SS.Matchmaking.Modules
                     // Remaining lives notification
                     if (isKnockout)
                     {
-                        _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killedName} is OUT! [{gameTimeBuilder}]");
+                        sb.Append($"{killedName} is OUT!");
                     }
                     else
                     {
-                        _chat.SendSetMessage(notifySet, CultureInfo.InvariantCulture, $"{killedName} has {killedPlayerSlot.Lives} {(killedPlayerSlot.Lives > 1 ? "lives" : "life")} remaining [{gameTimeBuilder}]");
+                        sb.Append($"{killedName} has {killedPlayerSlot.Lives} {(killedPlayerSlot.Lives > 1 ? "lives" : "life")} remaining");
                     }
 
+                    sb.Append(" [");
+                    sb.AppendFriendlyTimeSpan(gameTime);
+                    sb.Append(']');
+
+                    _chat.SendSetMessage(notifySet, sb);
+                    sb.Clear();
+
                     // Score notification
+                    sb.Append("Score: ");
+
                     StringBuilder remainingBuilder = _objectPoolManager.StringBuilderPool.Get();
 
                     try
@@ -756,7 +763,7 @@ namespace SS.Matchmaking.Modules
 
                         foreach (var team in matchData.Teams)
                         {
-                            if (sb.Length > 0)
+                            if (sb.Length > "Score: ".Length)
                             {
                                 sb.Append('-');
                                 remainingBuilder.Append('v');
@@ -796,17 +803,23 @@ namespace SS.Matchmaking.Modules
                             sb.Append(" TIE");
                         }
 
-                        _chat.SendSetMessage(notifySet, $"Score: {sb} -- {remainingBuilder} -- [{gameTimeBuilder}]");
+                        sb.Append(" -- ");
+                        sb.Append(remainingBuilder);
                     }
                     finally
                     {
                         _objectPoolManager.StringBuilderPool.Return(remainingBuilder);
                     }
+
+                    sb.Append(" -- [");
+                    sb.AppendFriendlyTimeSpan(gameTime);
+                    sb.Append(']');
+
+                    _chat.SendSetMessage(notifySet, sb);
                 }
                 finally
                 {
                     _objectPoolManager.PlayerSetPool.Return(notifySet);
-                    _objectPoolManager.StringBuilderPool.Return(gameTimeBuilder);
                     _objectPoolManager.StringBuilderPool.Return(sb);
                 }
             }
@@ -2723,19 +2736,24 @@ namespace SS.Matchmaking.Modules
 
                     if (players.Count > 0)
                     {
-                        StringBuilder gameTimeBuilder = _objectPoolManager.StringBuilderPool.Get();
+                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
                         try
                         {
+                            sb.Append($"{player.Name} in for {slot.PlayerName} -- {slot.Lives} {(slot.Lives == 1 ? "life" : "lives")}");
+
                             MatchData matchData = slot.MatchData;
                             TimeSpan gameTime = matchData.Started is not null ? DateTime.UtcNow - matchData.Started.Value : TimeSpan.Zero;
-                            gameTimeBuilder.AppendFriendlyTimeSpan(gameTime);
 
-                            _chat.SendSetMessage(players, $"{player.Name} in for {slot.PlayerName} -- {slot.Lives} {(slot.Lives == 1 ? "life" : "lives")} [{gameTime}]");
+                            sb.Append(" [");
+                            sb.AppendFriendlyTimeSpan(gameTime);
+                            sb.Append(']');
+
+                            _chat.SendSetMessage(players, sb);
                         }
                         finally
                         {
-                            _objectPoolManager.StringBuilderPool.Return(gameTimeBuilder);
+                            _objectPoolManager.StringBuilderPool.Return(sb);
                         }
                     }
                 }
