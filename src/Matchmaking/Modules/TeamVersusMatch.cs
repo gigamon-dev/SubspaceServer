@@ -375,10 +375,10 @@ namespace SS.Matchmaking.Modules
                 _commandManager.AddCommand(CommandNames.Sub, Command_sub, arena);
                 _commandManager.AddCommand(CommandNames.CancelSub, Command_cancelsub, arena);
                 _commandManager.AddCommand(CommandNames.Return, Command_return, arena);
-                _commandManager.AddCommand(CommandNames.Restart, Command_restart, arena);
-                _commandManager.AddCommand(CommandNames.Randomize, Command_randomize, arena);
-                _commandManager.AddCommand(CommandNames.End, Command_end, arena);
-                _commandManager.AddCommand(CommandNames.Draw, Command_draw, arena);
+                //_commandManager.AddCommand(CommandNames.Restart, Command_restart, arena);
+                //_commandManager.AddCommand(CommandNames.Randomize, Command_randomize, arena);
+                //_commandManager.AddCommand(CommandNames.End, Command_end, arena);
+                //_commandManager.AddCommand(CommandNames.Draw, Command_draw, arena);
                 _commandManager.AddCommand(CommandNames.ShipChange, Command_sc, arena);
                 _commandManager.AddCommand(CommandNames.Items, Command_items, arena);
 
@@ -422,10 +422,10 @@ namespace SS.Matchmaking.Modules
                     _commandManager.RemoveCommand(CommandNames.Sub, Command_sub, arena);
                     _commandManager.RemoveCommand(CommandNames.CancelSub, Command_cancelsub, arena);
                     _commandManager.RemoveCommand(CommandNames.Return, Command_return, arena);
-                    _commandManager.RemoveCommand(CommandNames.Restart, Command_restart, arena);
-                    _commandManager.RemoveCommand(CommandNames.Randomize, Command_randomize, arena);
-                    _commandManager.RemoveCommand(CommandNames.End, Command_end, arena);
-                    _commandManager.RemoveCommand(CommandNames.Draw, Command_draw, arena);
+                    //_commandManager.RemoveCommand(CommandNames.Restart, Command_restart, arena);
+                    //_commandManager.RemoveCommand(CommandNames.Randomize, Command_randomize, arena);
+                    //_commandManager.RemoveCommand(CommandNames.End, Command_end, arena);
+                    //_commandManager.RemoveCommand(CommandNames.Draw, Command_draw, arena);
                     _commandManager.RemoveCommand(CommandNames.ShipChange, Command_sc, arena);
                     _commandManager.RemoveCommand(CommandNames.Items, Command_items, arena);
                 }
@@ -506,7 +506,7 @@ namespace SS.Matchmaking.Modules
                         playerData.IsReturning = false;
                         ReturnToMatch(player, playerData);
                     }
-                    else
+                    else if (CanReturnToMatch(player, playerData, false))
                     {
                         _chat.SendMessage(player, $"Use ?{CommandNames.Return} to return to you match.");
                     }
@@ -1575,25 +1575,18 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
+            if (!CanReturnToMatch(player, playerData, true))
+            {
+                return;
+            }
+
             PlayerSlot? slot = playerData.AssignedSlot;
             if (slot is null)
             {
-                _chat.SendMessage(player, $"You are not in a match.");
                 return;
             }
 
             MatchData matchData = slot.MatchData;
-            if (matchData.Status != MatchStatus.Initializing && matchData.Status != MatchStatus.InProgress)
-            {
-                return;
-            }
-
-            if (slot.LagOuts >= matchData.Configuration.MaxLagOuts)
-            {
-                _chat.SendMessage(player, $"You cannot return to the match because you have exceeded the maximum # of LagOuts: {matchData.Configuration.MaxLagOuts}.");
-                return;
-            }
-
             if (player.Arena is null || !string.Equals(player.Arena.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase))
             {
                 // Send the player to the proper arena.
@@ -1614,9 +1607,12 @@ namespace SS.Matchmaking.Modules
             if (player is null || playerData is null)
                 return;
 
+            if (!CanReturnToMatch(player, playerData, true))
+                return;
+
             PlayerSlot? slot = playerData.AssignedSlot;
             if (slot is null)
-                return; // Another player may have subbed in.
+                return;
 
             // Update participation record.
             MatchData matchData = slot.MatchData;
@@ -1658,6 +1654,53 @@ namespace SS.Matchmaking.Modules
             {
                 CancelSubInProgress(slot, true);
             }
+        }
+
+        private bool CanReturnToMatch(Player player, PlayerData playerData, bool notify)
+        {
+            PlayerSlot? slot = playerData.AssignedSlot;
+            if (slot is null)
+            {
+                if (notify)
+                {
+                    _chat.SendMessage(player, "You are not assigned to a slot in a match.");
+                }
+
+                return false;
+            }
+
+            MatchData matchData = slot.MatchData;
+            if (matchData.Status != MatchStatus.Initializing && matchData.Status != MatchStatus.InProgress)
+            {
+                return false;
+            }
+
+            if (slot.Status != PlayerSlotStatus.Waiting)
+            {
+                if (notify)
+                {
+                    if (slot.Status == PlayerSlotStatus.Playing)
+                        _chat.SendMessage(player, "You cannot return to the match because the slot is already filled");
+                    else if (slot.Status == PlayerSlotStatus.KnockedOut)
+                        _chat.SendMessage(player, "You cannot return to the match because the slot has been knocked out.");
+                    else
+                        _chat.SendMessage(player, "You cannot return to the match.");
+                }
+
+                return false;
+            }
+
+            if (slot.LagOuts >= matchData.Configuration.MaxLagOuts)
+            {
+                if (notify)
+                {
+                    _chat.SendMessage(player, $"You cannot return to the match because you have exceeded the maximum # of LagOuts: {matchData.Configuration.MaxLagOuts}.");
+                }
+
+                return false;
+            }
+
+            return true;
         }
 
         [CommandHelp(
