@@ -29,6 +29,7 @@ namespace SS.Core.Modules
 
         // Optional dependencies
         private IBilling? _billing;
+        private IIdle? _idle;
 
         private AdvisorRegistrationToken<IChatAdvisor>? _chatAdvisorToken;
 
@@ -98,6 +99,7 @@ namespace SS.Core.Modules
         bool IModule.Load(IComponentBroker broker)
         {
             _billing = broker.GetInterface<IBilling>();
+            _idle = broker.GetInterface<IIdle>();
 
             ReadConfig();
 
@@ -136,6 +138,11 @@ namespace SS.Core.Modules
             if (_billing is not null)
             {
                 broker.ReleaseInterface(ref _billing);
+            }
+
+            if (_idle is not null)
+            {
+                broker.ReleaseInterface(ref _idle);
             }
 
             return true;
@@ -197,6 +204,24 @@ namespace SS.Core.Modules
                 targetPlayer = player;
             }
 
+            string proxy = _network.GetProxyUsage(targetPlayer) switch
+            {
+                ProxyUsage.NoProxy => "Not using proxy",
+                ProxyUsage.SOCKS5 => "SOCKS5 proxy",
+                ProxyUsage.LocalProxy => "Using proxy at localhost",
+                ProxyUsage.CustomProxy => "Using custom proxy",
+                ProxyUsage.NAT => "Using NAT",
+                ProxyUsage.NotConfigured => "Listen:BindAddress is not set in global.conf",
+                ProxyUsage.Undetermined or _ => "Undetermined",
+            };
+
+            int? drift = null;
+
+            if (targetPlayer.IsStandard)
+            {
+                drift = _lagQuery.QueryTimeSyncDrift(targetPlayer);
+            }
+
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
             try
@@ -209,25 +234,10 @@ namespace SS.Core.Modules
                 }
                 else
                 {
-                    sb.Append("n/a");
+                    sb.Append("-1");
                 }
 
-                // TODO: Proxy, Idle
-                sb.Append($"  Res: {targetPlayer.Xres}x{targetPlayer.Yres}  Client: {targetPlayer.ClientName}  Proxy: (unknown)  Idle: (unknown)");
-
-                if (targetPlayer.IsStandard)
-                {
-                    int? drift = _lagQuery.QueryTimeSyncDrift(targetPlayer);
-                    sb.Append($"  Timer drift: ");
-                    if (drift is not null)
-                    {
-                        sb.Append(drift.Value);
-                    }
-                    else
-                    {
-                        sb.Append("n/a");
-                    }
-                }
+                sb.Append($"  Res: {targetPlayer.Xres}x{targetPlayer.Yres}  Client: {targetPlayer.ClientName}  Proxy: {proxy}  Idle: {(_idle is not null ? (long)_idle.GetIdle(targetPlayer).TotalSeconds : -1)} s  Timer drift: {(drift is not null ? drift.Value : 0)}");
 
                 _chat.SendMessage(player, sb);
             }
@@ -325,7 +335,7 @@ namespace SS.Core.Modules
             int high = Math.Max(Math.Max(positionPing.Max, clientPing.Max), reliablePing.Max);
 
             // TODO: TimeZoneBias, TypedName
-            _chat.SendMessage(player, $"IP:{player.IPAddress}  TimeZoneBias:0  Freq:{player.Freq}  TypedName:{player.Name}  Demo:0  MachineId:{player.MacId}");
+            _chat.SendMessage(player, $"IP:{targetPlayer.IPAddress}  TimeZoneBias:{targetPlayer.TimeZoneBias}  Freq:{targetPlayer.Freq}  TypedName:{targetPlayer.Name}  Demo:0  MachineId:{targetPlayer.MacId}");
 
             _chat.SendMessage(player, $"Ping:{current}ms  LowPing:{low}ms  HighPing:{high}ms  AvePing:{average}ms");
 
@@ -335,7 +345,7 @@ namespace SS.Core.Modules
             _chat.SendMessage(player, $"C2S CURRENT: Slow:0 Fast:0 0.0%   TOTAL: Slow:0 Fast:0 0.0%");
             _chat.SendMessage(player, $"S2C CURRENT: Slow:{clientPing.S2CSlowCurrent} Fast:{clientPing.S2CFastCurrent} 0.0%   TOTAL: Slow:{clientPing.S2CSlowTotal} Fast:{clientPing.S2CFastTotal} 0.0%");
 
-            TimeSpan sessionDuration = DateTime.UtcNow - player.ConnectTime;
+            TimeSpan sessionDuration = DateTime.UtcNow - targetPlayer.ConnectTime;
             if (_billing is null || !_billing.TryGetUsage(targetPlayer, out TimeSpan usage, out DateTime? firstLoginTimestamp))
             {
                 usage = sessionDuration;
@@ -349,7 +359,7 @@ namespace SS.Core.Modules
             firstLoginTimestamp ??= DateTime.MinValue;
 
             _chat.SendMessage(player, $"TIME: Session:{(int)sessionDuration.TotalHours,5:D}:{sessionDuration:mm\\:ss}  Total:{(int)usage.TotalHours,5:D}:{usage:mm\\:ss}  Created: {firstLoginTimestamp:yyyy-MM-dd HH:mm:ss}");
-            _chat.SendMessage(player, $"Bytes/Sec:{stats.BytesSent / sessionDuration.TotalSeconds:F0}  LowBandwidth:0  MessageLogging:0  ConnectType:Unknown");
+            _chat.SendMessage(player, $"Bytes/Sec:{stats.BytesSent / sessionDuration.TotalSeconds:F0}  LowBandwidth:0  MessageLogging:0  ConnectType:{targetPlayer.ConnectionType}");
         }
 
         private void Command_sg_lag(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -369,7 +379,7 @@ namespace SS.Core.Modules
             int low = Math.Min(Math.Min(positionPing.Min, clientPing.Min), reliablePing.Min);
             int high = Math.Max(Math.Max(positionPing.Max, clientPing.Max), reliablePing.Max);
 
-            _chat.SendMessage(player, $"PING Current:{current} ms  Average:{average} ms  Low:{low} ms  High:{high} ms  S2C:{packetloss.S2C * 100d,4:F1}%  C2S:{packetloss.C2S * 100d,4:F1}%");
+            _chat.SendMessage(player, $"PING Current:{current} ms  Average:{average} ms  Low:{low} ms  High:{high} ms  S2C:{packetloss.S2C * 100d,4:F1}%  C2S:{packetloss.C2S * 100d,4:F1}%  S2CWeapons:{packetloss.S2CWeapon * 100d,4:F1}%");
         }
 
         private void Command_sg_spec(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)

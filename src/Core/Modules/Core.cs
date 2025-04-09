@@ -691,8 +691,12 @@ namespace SS.Core.Modules
                 pkt.Password[^1] = 0;
 
                 // fill misc data
+                player.ConnectionType = (ConnectionType)pkt.ConnectionType;
+                player.TimeZoneBias = pkt.TimeZoneBias;
                 player.MacId = pkt.MacId;
                 player.PermId = pkt.D2;
+                player.ClientReportedServerIPv4Address = pkt.ServerIPv4Address;
+                player.ClientReportedBoundPort = pkt.ClientPort;
 
                 if (player.Type == ClientType.VIE)
                     player.ClientName = $"<ss/vie client, v. {pkt.CVersion}>";

@@ -100,6 +100,12 @@ cmd_setcm
 privcmd_getcm
 privcmd_setcm
 
+; Idle module
+privcmd_notavailable
+privcmd_nav
+privcmd_available
+privcmd_av
+
 ; Matchmaking (PlayerGroups module)
 seeplayergroupdetails
 privcmd_nexthold

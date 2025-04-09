@@ -79,6 +79,14 @@ cmd_packetloss
 cmd_zone
 cmd_find
 
+; Idle module
+cmd_notavailable
+cmd_nav
+cmd_available
+cmd_av
+cmd_idles
+cmd_actives
+
 cmd_speedstats
 cmd_best
 privcmd_best

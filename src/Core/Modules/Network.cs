@@ -1103,6 +1103,65 @@ namespace SS.Core.Modules
             GetConnectionStats(conn, ref stats);
         }
 
+        ProxyUsage INetwork.GetProxyUsage(Player player)
+        {
+            if (!player.IsStandard)
+                return ProxyUsage.Undetermined;
+
+            if (player.ClientReportedServerIPv4Address == 0 || player.ClientReportedBoundPort == 0)
+            {
+                return ProxyUsage.SOCKS5;
+            }
+            else if ((player.ClientReportedServerIPv4Address & 0xFF000000) == 0x7F000000) // 127.x.x.x
+            {
+                return ProxyUsage.LocalProxy;
+            }
+            else
+            {
+                if (!player.TryGetExtraData(_connKey, out PlayerConnection? connection))
+                    return ProxyUsage.Undetermined;
+
+                Span<byte> ipSpan = stackalloc byte[4];
+                uint? listenSocketIPv4Address = null;
+
+                foreach (ListenData listenData in _listenDataList)
+                {
+                    if (listenData.GameSocket == connection.SendSocket)
+                    {
+                        if (listenData.GameSocket.LocalEndPoint is not IPEndPoint localIPEndPoint)
+                            return ProxyUsage.Undetermined;
+
+                        IPAddress ipAddress = localIPEndPoint.Address;
+                        if (ipAddress.AddressFamily == AddressFamily.InterNetwork) // IPv4
+                        {
+                            if (ipAddress.TryWriteBytes(ipSpan, out int bytesWritten) && bytesWritten == 4)
+                            {
+                                listenSocketIPv4Address = BinaryPrimitives.ReadUInt32BigEndian(ipSpan);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (listenSocketIPv4Address is null || listenSocketIPv4Address.Value == 0) // 0 is IPAddress.Any
+                {
+                    return ProxyUsage.NotConfigured;
+                }
+                else if (listenSocketIPv4Address != player.ClientReportedServerIPv4Address)
+                {
+                    return ProxyUsage.CustomProxy;
+                }
+                else if (connection.RemoteEndpoint!.Port != player.ClientReportedBoundPort)
+                {
+                    return ProxyUsage.NAT;
+                }
+                else
+                {
+                    return ProxyUsage.NoProxy;
+                }
+            }
+        }
+
         TimeSpan INetwork.GetLastReceiveTimeSpan(Player player)
         {
             ArgumentNullException.ThrowIfNull(player);

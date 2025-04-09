@@ -257,6 +257,15 @@ namespace SS.Core
         TimeWait
     };
 
+    public enum ConnectionType
+    {
+        Unknown = 0,
+        SlowModem = 1,
+        FastModem = 2,
+        UnknownModem = 3,
+        UnknownNotRAS = 4,
+    }
+
     /// <summary>
     /// A key for accessing "extra data" per-player.
     /// </summary>
@@ -530,6 +539,16 @@ namespace SS.Core
         public readonly PlayerPosition Position = new();
 
         /// <summary>
+        /// The connection type reported by client.
+        /// </summary>
+        public ConnectionType ConnectionType { get; internal set; }
+
+        /// <summary>
+        /// The # of minutes from UTC.
+        /// </summary>
+        public short TimeZoneBias { get; internal set; }
+
+        /// <summary>
         /// The player's machine id, for standard clients, from the <see cref="LoginPacket"/>.
         /// </summary>
         public uint MacId { get; internal set; }
@@ -538,6 +557,16 @@ namespace SS.Core
         /// Another identifier (like <see cref="MacId"/>), for standard clients, from the <see cref="LoginPacket"/>.
         /// </summary>
         public uint PermId { get; internal set; }
+
+        /// <summary>
+        /// The IPv4 address of the server, reported by the client.
+        /// </summary>
+        public uint ClientReportedServerIPv4Address;
+
+        /// <summary>
+        /// The port that the client says it's using.
+        /// </summary>
+        public ushort ClientReportedBoundPort;
 
         /// <summary>
         /// IP address the player is connecting from.
@@ -736,8 +765,12 @@ namespace SS.Core
             ConnectTime = DateTime.UtcNow;
             ConnectAs = null;
             Position.Initialize();
+            ConnectionType = ConnectionType.Unknown;
+            TimeZoneBias = 0;
             MacId = 0;
             PermId = 0;
+            ClientReportedServerIPv4Address = 0;
+            ClientReportedBoundPort = 0;
             IPAddress = IPAddress.None;
             ConnectAs = null;
             ClientName = null;

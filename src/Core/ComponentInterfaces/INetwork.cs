@@ -195,6 +195,44 @@ namespace SS.Core.ComponentInterfaces
         public StringBuilder BandwidthLimitInfo { get; init; }
     }
 
+    public enum ProxyUsage
+    {
+        /// <summary>
+        /// Unable to determine proxy usage
+        /// </summary>
+        Undetermined = 0,
+
+        /// <summary>
+        /// No proxy detected
+        /// </summary>
+        NoProxy,
+
+        /// <summary>
+        /// Using a SOCKS5 proxy
+        /// </summary>
+        SOCKS5,
+
+        /// <summary>
+        /// Using a proxy on localhost
+        /// </summary>
+        LocalProxy,
+
+        /// <summary>
+        /// Using a custom proxy
+        /// </summary>
+        CustomProxy,
+
+        /// <summary>
+        /// Network Address Translation
+        /// </summary>
+        NAT,
+
+        /// <summary>
+        /// Listen:BindAddress is not configured
+        /// </summary>
+        NotConfigured,
+    }
+
     public interface INetwork : IComponentInterface
     {
         /// <summary>
@@ -381,6 +419,18 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="stats">The information to populate.</param>
         /// <exception cref="ArgumentNullException"><paramref name="player"/> is null.</exception>
         void GetConnectionStats(Player player, ref NetConnectionStats stats);
+
+        /// <summary>
+        /// Get proxy usage for a player.
+        /// </summary>
+        /// <remarks>
+        /// This takes a best guess at whether a player is using a proxy to connect.
+        /// Also, obviously, there is no way to detect use of a VPN.
+        /// Therefore, this has very limited usefulness, but is provided for completeness.
+        /// </remarks>
+        /// <param name="player">The player to get information about.</param>
+        /// <returns>The player's proxy usage info.</returns>
+        ProxyUsage GetProxyUsage(Player player);
 
         /// <summary>
         /// Gets how long it has been since a packet was received from a specified player.
