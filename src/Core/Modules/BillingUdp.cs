@@ -68,6 +68,7 @@ namespace SS.Core.Modules
         private readonly AutoResetEvent _disconnectedAutoResetEvent = new(false);
         private DateTime _lastEvent;
         private byte[]? _identity = null;
+        private int _identityLength = 0;
         private readonly Dictionary<int, S2B_UserBanner> _bannerUploadDictionary = new(32);
         private int _bannerUploadPendingCount = 0;
         private readonly Lock _lock = new();
@@ -252,11 +253,23 @@ namespace SS.Core.Modules
             }
         }
 
-        ReadOnlySpan<byte> IBilling.GetIdentity()
+        bool IBilling.TryGetIdentity(Span<byte> buffer, out int bytesWritten)
         {
             lock (_lock)
             {
-                return _identity ?? ReadOnlySpan<byte>.Empty;
+                if (_state == BillingState.LoggedIn
+                    && _identityLength > 0
+                    && _identityLength <= buffer.Length)
+                {
+                    new ReadOnlySpan<byte>(_identity, 0, _identityLength).CopyTo(buffer);
+                    bytesWritten = _identityLength;
+                    return true;
+                }
+                else
+                {
+                    bytesWritten = 0;
+                    return false;
+                }
             }
         }
 
@@ -1820,7 +1833,17 @@ namespace SS.Core.Modules
             }
 
             data = data[1..];
-            _identity = data.IsEmpty ? null : data.ToArray();
+
+            // NOTE: The _lock is already held before calling into this method.
+
+            int length = data.Length;
+            if (_identity is null || length > _identity.Length)
+            {
+                _identity = new byte[length];
+            }
+
+            data.CopyTo(_identity);
+            _identityLength = length;
         }
 
         private void ProcessUserMulticastChannelChat(Span<byte> data)

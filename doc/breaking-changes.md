@@ -1,5 +1,9 @@
 # Breaking Changes in Subspace Server .NET releases
 
+## v4.0.0
+
+- The BillingUdp module was updated to reduce memory allocations. This includes a modification to the `IBilling` interface. Encryption module binaries from earlier releases are no longer compatible.
+
 ## v3.0.0
 
 - Persist

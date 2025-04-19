@@ -35,10 +35,15 @@ namespace SS.Core.ComponentInterfaces
         BillingStatus GetStatus();
 
         /// <summary>
-        /// Gets identity information about the billing server, if the server provided it.
+        /// Gets the identity data, if the billing server provided one.
         /// </summary>
-        /// <returns>The identity data, or <see cref="ReadOnlySpan{byte}.Empty"/> is no identity data was provided.</returns>
-        ReadOnlySpan<byte> GetIdentity();
+        /// <param name="buffer">A buffer to fill with the identity data. This needs to be large enough to hold all the bytes of an identity. 256 bytes should be sufficient.</param>
+        /// <param name="bytesWritten">When this method returns, contains the number of bytes that were written to <paramref name="buffer"/>.</param>
+        /// <returns>
+        /// <see langword="true"/> if there was an identity and the entirety of its data was written in to <paramref name="buffer"/>.
+        /// <see langword="false"/> if there was no identity or <paramref name="buffer"/> was not large enough to store the whole identity.
+        /// </returns>
+        bool TryGetIdentity(Span<byte> buffer, out int bytesWritten);
 
         /// <summary>
         /// Gets the user database id of a player.
