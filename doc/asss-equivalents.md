@@ -52,7 +52,7 @@ This document provides an overview of the various server parts and their relatio
 | game | SS.Core.Modules.Game | |
 | game_timer | SS.Core.Modules.GameTimer | |
 | help | SS.Core.Modules.Help | |
-| idle | - | No plans to add it. |
+| idle | SS.Core.Modules.Idle | |
 | scoring:jackpot | SS.Core.Modules.Scoring.Jackpot | |
 | koth | SS.Core.Modules.Crowns<br>SS.Core.Modules.Scoring.Koth | |
 | lagaction | SS.Core.Modules.LagAction | |
@@ -134,7 +134,7 @@ This document provides an overview of the various server parts and their relatio
 | Igame | SS.Core.ComponentInterfaces.IGame | |
 | - | SS.Core.ComponentInterfaces.IGameTimer | |
 | Igroupman | SS.Core.ComponentInterfaces.IGroupManager | |
-| Iidle | - | |
+| Iidle | SS.Core.ComponentInterfaces.IIdle | |
 | Ijackpot | SS.Core.ComponentInterfaces.IJackpot | |
 | Ikillgreen | SS.Core.ComponentInterfaces.IKillGreen | |
 | Ilagquery | SS.Core.ComponentInterfaces.ILagQuery | |
