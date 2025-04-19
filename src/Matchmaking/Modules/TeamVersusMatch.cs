@@ -1942,23 +1942,18 @@ namespace SS.Matchmaking.Modules
             if (!toPlayer.TryGetExtraData(_pdKey, out PlayerData? toPlayerData))
                 return false;
 
-            if (toPlayerData.AssignedSlot is null)
-            {
-                // Not playing in a match, do not limit position packets.
-                return false;
-            }
-
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return false;
 
-            if (toPlayerData.AssignedSlot.MatchData != playerData.AssignedSlot?.MatchData)
+            if (toPlayerData.AssignedSlot?.MatchData == playerData.AssignedSlot?.MatchData)
             {
-                // Not playing in the same match, drop the packet.
-                positionPacket.X = positionPacket.Y = -1; 
-                return true;
+                // Both players are in the same match or both players are not in a match.
+                return false;
             }
 
-            return false;
+            // Not playing in the same match, drop the packet.
+            positionPacket.X = positionPacket.Y = -1;
+            return true;
         }
 
         #endregion
