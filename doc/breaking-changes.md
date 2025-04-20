@@ -3,6 +3,7 @@
 ## v4.0.0
 
 - The BillingUdp module was updated to reduce memory allocations. This includes a modification to the `IBilling` interface. Encryption module binaries from earlier releases are no longer compatible.
+- The `IPeriodicRewardPoints.GetRewardPoints` was modified to reduce memory allocations. It previously had an IReadOnlyDictionary parameter which would have its enumerator boxed.
 
 ## v3.0.0
 

@@ -41,35 +41,56 @@ namespace SS.Core.ComponentInterfaces
         public interface ISettings
         {
             /// <summary>
-            /// Periodic:RewardPoints - For determining how many points to award.
+            /// The minimum players necessary in the arena to give out periodic rewards.
             /// </summary>
+            /// <remarks>
+            /// Periodic:RewardMinimumPlayers
+            /// </remarks>
+            int RewardMinimumPlayers { get; }
+
+            /// <summary>
+            /// For determining how many points to award.
+            /// </summary>
+            /// <remarks>
+            /// Periodic:RewardPoints
+            /// </remarks>
             int RewardPoints { get; }
 
             /// <summary>
-            /// Periodic:SplitPoints - Whether points should be split among members of a team.
+            /// Whether points are divided among players on a team.
             /// </summary>
+            /// <remarks>
+            /// Periodic:SplitPoints
+            /// </remarks>
             bool SplitPoints { get; }
 
             /// <summary>
-            /// Periodic:SendZeroRewards - Whether rewards with 0 points should be sent.
+            /// Whether frequencies with zero points will still get a reward notification during the ding.
             /// </summary>
+            /// <remarks>
+            /// Periodic:SendZeroRewards
+            /// </remarks>
             bool SendZeroRewards { get; }
-        }
-
-        /// <summary>
-        /// Data about a team which can be used to determine the team's reward.
-        /// </summary>
-        public interface ITeamData
-        {
-            /// <summary>
-            /// The players on a team, based on periodic reward rules.
-            /// </summary>
-            public IReadOnlySet<Player> Players { get; }
 
             /// <summary>
-            /// The # of flags the team owns.
+            /// Whether players in spectator mode affect reward calcuations.
+            /// This only affects whether the player is included in player counts.
+            /// Players in spectator mode are never awarded points.
             /// </summary>
-            public int FlagCount { get; }
+            /// <remarks>
+            /// Periodic:IncludeSpectators
+            /// </remarks>
+            bool IncludeSpectators { get; }
+
+            /// <summary>
+            /// Whether players in safe zones affect reward calculations.
+            /// This only affects whether the player is included in player counts.
+            /// Players in a safe zone are never awarded points.
+            /// </summary>
+            /// <remarks>
+            /// Periodic:IncludeSafeZones
+            /// </remarks>
+            bool IncludeSafeZones { get; }
         }
 
         /// <summary>
@@ -77,14 +98,10 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena to get reward info for.</param>
         /// <param name="settings">The settings for the arena.</param>
-        /// <param name="totalPlayerCount">The total # of players, based on periodic reward rules.</param>
-        /// <param name="teams">A dictionary containing data about the teams. Key = freq, Value = Data about the team.</param>
         /// <param name="freqPoints">The dictionary to populate with reward info. Key = freq, Value = # of points to award.</param>
         void GetRewardPoints(
             Arena arena,
             ISettings settings,
-            int totalPlayerCount,
-            IReadOnlyDictionary<short, ITeamData> teams,
-            IDictionary<short, short> freqPoints);
+            Dictionary<short, short> freqPoints);
     }
 }

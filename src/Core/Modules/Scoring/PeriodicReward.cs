@@ -14,42 +14,30 @@ namespace SS.Core.Modules.Scoring
     /// Module for rewarding players periodically for flag games.
     /// </summary>
     [CoreModuleInfo]
-    public sealed class PeriodicReward : IModule, IPeriodicReward, IPeriodicRewardPoints
+    public sealed class PeriodicReward(
+        IAllPlayerStats allPlayerStats,
+        IArenaManager arenaManager,
+        IChat chat,
+        ICommandManager commandManager,
+        IConfigManager configManager,
+        IMainloopTimer mainloopTimer,
+        INetwork network,
+        IPlayerData playerData) : IModule, IPeriodicReward, IPeriodicRewardPoints
     {
-        private readonly IAllPlayerStats _allPlayerStats;
-        private readonly IArenaManager _arenaManager;
-        private readonly IChat _chat;
-        private readonly ICommandManager _commandManager;
-        private readonly IConfigManager _configManager;
-        private readonly IMainloopTimer _mainloopTimer;
-        private readonly INetwork _network;
-        private readonly IPlayerData _playerData;
+        private readonly IAllPlayerStats _allPlayerStats = allPlayerStats ?? throw new ArgumentNullException(nameof(allPlayerStats));
+        private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly IMainloopTimer _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
+        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
         private ArenaDataKey<ArenaData> _adKey;
 
         private readonly DefaultObjectPool<TeamData> _teamDataPool = new(new DefaultPooledObjectPolicy<TeamData>(), Constants.TargetPlayerCount);
-        private readonly DefaultObjectPool<Dictionary<short, IPeriodicRewardPoints.ITeamData>> _freqTeamDataDictionaryPool = new(new DictionaryPooledObjectPolicy<short, IPeriodicRewardPoints.ITeamData>() { InitialCapacity = Constants.TargetPlayerCount });
+        private readonly DefaultObjectPool<Dictionary<short, TeamData>> _freqTeamDataDictionaryPool = new(new DictionaryPooledObjectPolicy<short, TeamData>() { InitialCapacity = Constants.TargetPlayerCount });
         private readonly DefaultObjectPool<Dictionary<short, short>> _freqPointsDictionaryPool = new(new DictionaryPooledObjectPolicy<short, short>() { InitialCapacity = Constants.TargetPlayerCount });
-
-        public PeriodicReward(
-            IAllPlayerStats allPlayerStats,
-            IArenaManager arenaManager,
-            IChat chat,
-            ICommandManager commandManager,
-            IConfigManager configManager,
-            IMainloopTimer mainloopTimer,
-            INetwork network,
-            IPlayerData playerData)
-        {
-            _allPlayerStats = allPlayerStats ?? throw new ArgumentNullException(nameof(allPlayerStats));
-            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-        }
 
         #region Module members
 
@@ -105,27 +93,89 @@ namespace SS.Core.Modules.Scoring
         void IPeriodicRewardPoints.GetRewardPoints(
             Arena arena,
             IPeriodicRewardPoints.ISettings settings,
-            int totalPlayerCount,
-            IReadOnlyDictionary<short, IPeriodicRewardPoints.ITeamData> teams,
-            IDictionary<short, short> freqPoints)
+            Dictionary<short, short> freqPoints)
         {
-            if (arena == null || settings == null || teams == null || freqPoints == null)
+            if (arena is null || settings is null || freqPoints is null)
                 return;
 
-            // PERF: This probably boxes the enumerator, but it's important that the teams dictionary is read only.
-            foreach ((short freq, IPeriodicRewardPoints.ITeamData freqData) in teams)
+            Dictionary<short, TeamData> teams = _freqTeamDataDictionaryPool.Get();
+
+            try
             {
-                short points = (settings.RewardPoints > 0)
-                    ? (short)(freqData.FlagCount * settings.RewardPoints)
-                    : (short)(freqData.FlagCount * (-settings.RewardPoints) * totalPlayerCount);
+                int totalPlayerCount = 0;
 
-                if (settings.SplitPoints && freqData.Players.Count > 0)
-                    points = (short)(points / freqData.Players.Count);
+                IFlagGame? flagGame = arena.GetInterface<IFlagGame>();
 
-                if (points > 0 || settings.SendZeroRewards)
+                // Get the total player count, player count for each team, and flag count for each team.
+                try
                 {
-                    freqPoints[freq] = points;
+                    _playerData.Lock();
+
+                    try
+                    {
+                        foreach (Player player in _playerData.Players)
+                        {
+                            if (player.Arena != arena)
+                                continue;
+
+                            if (!settings.IncludeSpectators && player.Ship == ShipType.Spec)
+                                continue;
+
+                            if (!settings.IncludeSafeZones && ((player.Position.Status & PlayerPositionStatus.Safezone) != 0))
+                                continue;
+
+                            short freq = player.Freq;
+
+                            if (!teams.TryGetValue(freq, out TeamData? teamData))
+                            {
+                                teamData = _teamDataPool.Get();
+                                teamData.FlagCount = flagGame is not null ? flagGame.GetFlagCount(arena, freq) : 0;
+
+                                teams.Add(freq, teamData);
+                            }
+
+                            teamData.PlayerCount++;
+                            totalPlayerCount++;
+                        }
+                    }
+                    finally
+                    {
+                        _playerData.Unlock();
+                    }
                 }
+                finally
+                {
+                    if (flagGame is not null)
+                        arena.ReleaseInterface(ref flagGame);
+                }
+
+                if (totalPlayerCount < settings.RewardMinimumPlayers)
+                    return; // not enough players for rewards
+
+                // Calculate how much to award each team.
+                foreach ((short freq, TeamData freqData) in teams)
+                {
+                    short points = (settings.RewardPoints > 0)
+                        ? (short)(freqData.FlagCount * settings.RewardPoints)
+                        : (short)(freqData.FlagCount * (-settings.RewardPoints) * totalPlayerCount);
+
+                    if (settings.SplitPoints && freqData.PlayerCount > 0)
+                        points = (short)(points / freqData.PlayerCount);
+
+                    if (points > 0 || settings.SendZeroRewards)
+                    {
+                        freqPoints[freq] = points;
+                    }
+                }
+            }
+            finally
+            {
+                foreach (TeamData teamData in teams.Values)
+                {
+                    _teamDataPool.Return(teamData);
+                }
+
+                _freqTeamDataDictionaryPool.Return(teams);
             }
         }
 
@@ -135,7 +185,7 @@ namespace SS.Core.Modules.Scoring
 
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (action == ArenaAction.Create || action == ArenaAction.ConfChanged)
@@ -198,7 +248,7 @@ namespace SS.Core.Modules.Scoring
 
         private bool MainloopTimer_Reward(Arena arena)
         {
-            if (arena == null)
+            if (arena is null)
                 return false;
 
             Reward(arena);
@@ -207,7 +257,7 @@ namespace SS.Core.Modules.Scoring
 
         private void StartTimer(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad) || ad.Settings is null)
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad) || ad.Settings is null)
                 return;
 
             StopTimer(arena);
@@ -221,7 +271,7 @@ namespace SS.Core.Modules.Scoring
 
         private void StopTimer(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
             if (ad.TimerRunning)
@@ -233,19 +283,70 @@ namespace SS.Core.Modules.Scoring
 
         private void Reward(Arena arena)
         {
-            if (arena == null || !arena.TryGetExtraData(_adKey, out ArenaData? ad) || ad.Settings is null)
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad) || ad.Settings is null)
                 return;
 
-            Dictionary<short, IPeriodicRewardPoints.ITeamData> teams = _freqTeamDataDictionaryPool.Get();
+            Dictionary<short, short> freqPoints = _freqPointsDictionaryPool.Get();
 
             try
             {
-                int totalPlayerCount = 0;
+                //
+                // Find out how many points to award to each team.
+                //
 
-                IFlagGame? flagGame = arena.GetInterface<IFlagGame>();
+                IPeriodicRewardPoints? periodicRewardPoints = arena.GetInterface<IPeriodicRewardPoints>() ?? this;
 
                 try
                 {
+                    periodicRewardPoints.GetRewardPoints(arena, ad.Settings, freqPoints);
+                }
+                finally
+                {
+                    if (periodicRewardPoints != this)
+                        arena.ReleaseInterface(ref periodicRewardPoints);
+                }
+
+                if (freqPoints.Count > 0)
+                {
+                    //
+                    // Send the reward packet.
+                    //
+
+                    const int MaxPacketLength = 513; // The maximum accepted by Continuum
+                    int maxItems = (MaxPacketLength - 1) / PeriodicRewardItem.Length;
+
+                    Span<byte> packet = stackalloc byte[1 + int.Min(freqPoints.Count, maxItems) * PeriodicRewardItem.Length];
+                    packet[0] = (byte)S2CPacketType.PeriodicReward;
+
+                    Span<PeriodicRewardItem> rewards = MemoryMarshal.Cast<byte, PeriodicRewardItem>(packet[1..]);
+                    int index = 0;
+                    foreach ((short freq, short points) in freqPoints)
+                    {
+                        rewards[index++] = new(freq, points);
+
+                        if (index >= rewards.Length)
+                        {
+                            // We have the maximum #  of items that can be sent in a packet. Send it.
+                            _network.SendToArena(arena, null, packet, NetSendFlags.Reliable);
+                            index = 0;
+                        }
+                    }
+
+                    if (index > 0)
+                    {
+                        _network.SendToArena(arena, null, packet[..(1 + (index * PeriodicRewardItem.Length))], NetSendFlags.Reliable);
+                    }
+
+                    // The client does not reward players that are in spectator mode.
+                    // The client does not reward players that it thinks are in a safe zone (based on the last known position of that player).
+                    // The server sends safe zone enter/leave position packets reliably in an attempt to keep clients in sync. Though, likely it is not perfect.
+                    // For example, when reward is being processed, a player might have moved into or out of a safe zone, but the position packet has not made it
+                    // to the server yet. That player will receive the 0x23 (Periodic Reward) packet and their score will get out of sync with the server and all other players.
+
+                    //
+                    // Record player stats.
+                    //
+
                     _playerData.Lock();
 
                     try
@@ -255,30 +356,16 @@ namespace SS.Core.Modules.Scoring
                             if (player.Arena != arena)
                                 continue;
 
-                            if (!ad.Settings.IncludeSpectators && player.Ship == ShipType.Spec)
+                            // The 0x23 (PeriodicReward) packet was sent to the arena.
+                            // The game clients (Continuum and VIE) know to only increment points for players that are playing (in a ship and not in a safe zone).
+                            // We must do the same, or it will get out of sync with the game clients.
+                            if (player.Ship == ShipType.Spec || (player.Position.Status & PlayerPositionStatus.Safezone) != 0)
                                 continue;
 
-                            // Note: Players in safe zones are considered as part of the team,
-                            // even though they might not be eligible to receive points.
-
-                            totalPlayerCount++;
-
-                            short freq = player.Freq;
-
-                            TeamData teamData;
-                            if (!teams.TryGetValue(freq, out IPeriodicRewardPoints.ITeamData? iTeamData))
+                            if (freqPoints.TryGetValue(player.Freq, out short points))
                             {
-                                teamData = _teamDataPool.Get();
-                                teamData.FlagCount = flagGame != null ? flagGame.GetFlagCount(arena, freq) : 0;
-
-                                teams.Add(freq, teamData);
+                                _allPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, points);
                             }
-                            else
-                            {
-                                teamData = (TeamData)iTeamData;
-                            }
-
-                            teamData.Players.Add(player);
                         }
                     }
                     finally
@@ -286,105 +373,10 @@ namespace SS.Core.Modules.Scoring
                         _playerData.Unlock();
                     }
                 }
-                finally
-                {
-                    if (flagGame != null)
-                        arena.ReleaseInterface(ref flagGame);
-                }
-
-                if (totalPlayerCount < ad.Settings.RewardMinimumPlayers)
-                    return; // not enough players for rewards
-
-                Dictionary<short, short> freqPoints = _freqPointsDictionaryPool.Get();
-
-                try
-                {
-                    //
-                    // Find out how many points to award to each team.
-                    //
-
-                    IPeriodicRewardPoints? periodicRewardPoints = arena.GetInterface<IPeriodicRewardPoints>() ?? this;
-
-                    try
-                    {
-                        periodicRewardPoints.GetRewardPoints(arena, ad.Settings, totalPlayerCount, teams, freqPoints);
-                    }
-                    finally
-                    {
-                        if (periodicRewardPoints != this)
-                            arena.ReleaseInterface(ref periodicRewardPoints);
-                    }
-
-                    if (freqPoints.Count > 0)
-                    {
-                        //
-                        // Send the reward packet.
-                        //
-
-                        const int MaxPacketLength = 513; // The maximum accepted by Continuum
-                        int maxItems = (MaxPacketLength - 1) / PeriodicRewardItem.Length;
-
-                        Span<byte> packet = stackalloc byte[1 + int.Min(freqPoints.Count, maxItems) * PeriodicRewardItem.Length];
-                        packet[0] = (byte)S2CPacketType.PeriodicReward;
-
-                        Span<PeriodicRewardItem> rewards = MemoryMarshal.Cast<byte, PeriodicRewardItem>(packet[1..]);
-                        int index = 0;
-                        foreach ((short freq, short points) in freqPoints)
-                        {
-                            rewards[index++] = new(freq, points);
-
-                            if (index >= rewards.Length)
-                            {
-                                // We have the maximum #  of items that can be sent in a packet. Send it.
-                                _network.SendToArena(arena, null, packet, NetSendFlags.Reliable);
-                                index = 0;
-                            }
-                        }
-
-                        if (index > 0)
-                        {
-                            _network.SendToArena(arena, null, packet[..(1 + (index * PeriodicRewardItem.Length))], NetSendFlags.Reliable);
-                        }
-
-                        // The client does not reward players that are in spectator mode.
-                        // The client does not reward players that it thinks are in a safe zone (based on the last known position of that player).
-                        // TODO: The safe-zone check likely could cause clients to get de-sync'd on points. How to handle this?
-
-                        //
-                        // Record player stats.
-                        //
-
-                        foreach ((short freq, IPeriodicRewardPoints.ITeamData iTeamData) in teams)
-                        {
-                            TeamData teamData = (TeamData)iTeamData;
-
-                            foreach (Player player in teamData.Players)
-                            {
-                                if (!ad.Settings.IncludeSafeZones && ((player.Position.Status & PlayerPositionStatus.Safezone) != 0))
-                                    continue; // player is in a safe zone, not eligible to receive points
-
-                                if (freqPoints.TryGetValue(player.Freq, out short points))
-                                {
-                                    _allPlayerStats.IncrementStat(player, StatCodes.FlagPoints, null, points);
-                                }
-                            }
-                        }
-                    }
-                }
-                finally
-                {
-                    _freqPointsDictionaryPool.Return(freqPoints);
-                }
             }
             finally
             {
-                foreach (IPeriodicRewardPoints.ITeamData iTeamData in teams.Values)
-                {
-                    TeamData teamData = (TeamData)iTeamData;
-                    _teamDataPool.Return(teamData);
-                }
-
-                _freqTeamDataDictionaryPool.Return(teams);
+                _freqPointsDictionaryPool.Return(freqPoints);
             }
         }
 
@@ -426,7 +418,7 @@ namespace SS.Core.Modules.Scoring
             [ConfigHelp<int>("Periodic", "RewardPoints", ConfigScope.Arena, Default = 0,
                 Description = """
                     Periodic rewards are calculated as follows: If this setting is
-                    positive, you get this many points per flag.If it's negative,
+                    positive, you get this many points per flag. If it's negative,
                     you get it's absolute value points per flag, times the number of
                     players in the arena.
                     """)]
@@ -435,9 +427,17 @@ namespace SS.Core.Modules.Scoring
             [ConfigHelp<bool>("Periodic", "SendZeroRewards", ConfigScope.Arena, Default = true,
                 Description = "Whether frequencies with zero points will still get a reward notification during the ding.")]
             [ConfigHelp<bool>("Periodic", "IncludeSpectators", ConfigScope.Arena, Default = false,
-                Description = "Whether players in spectator mode receive rewards.")]
+                Description = """
+                    Whether players in spectator mode affect reward calculations.
+                    This only affects whether the player is included in player counts.
+                    Players in spectator mode are never awarded points.
+                    """)]
             [ConfigHelp<bool>("Periodic", "IncludeSafeZones", ConfigScope.Arena, Default = false,
-                Description = "Whether players in safe zones receive rewards.")]
+                Description = """
+                    Whether players in safe zones affect reward calculations.
+                    This only affects whether the player is included in player counts.
+                    Players in a safe zone are never awarded points.
+                    """)]
             public Settings(IConfigManager configManager, ConfigHandle ch)
             {
                 ArgumentNullException.ThrowIfNull(configManager);
@@ -453,18 +453,14 @@ namespace SS.Core.Modules.Scoring
             }
         }
 
-        private class TeamData : IPeriodicRewardPoints.ITeamData, IResettable
+        private class TeamData : IResettable
         {
-            public readonly HashSet<Player> Players = new(64);
+            public int PlayerCount = 0;
             public int FlagCount = 0;
-
-            IReadOnlySet<Player> IPeriodicRewardPoints.ITeamData.Players => Players;
-
-            int IPeriodicRewardPoints.ITeamData.FlagCount => FlagCount;
 
             public bool TryReset()
             {
-                Players.Clear();
+                PlayerCount = 0;
                 FlagCount = 0;
                 return true;
             }
