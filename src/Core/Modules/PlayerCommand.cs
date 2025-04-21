@@ -10,7 +10,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -2710,26 +2709,29 @@ namespace SS.Core.Modules
                 path = parameters[(index + 1)..].Trim().Trim("\"\'").ToString();
             }
 
-            LoadModuleAsync(player.Name!, moduleTypeName, path);
-        }
+            LoadModuleAsync(player, moduleTypeName, path);
 
-        // This purposely takes the player's name and not the player object,
-        // since the player object's state can change (e.g. disconnect) by the time the continuation executes.
-        private async void LoadModuleAsync(string playerName, string moduleTypeName, string? path)
-        {
-            if (_mm is null)
-                return;
+            // async local function (since the command handler can't be made async)
+            async void LoadModuleAsync(Player? player, string moduleTypeName, string? path)
+            {
+                if (_mm is null || player is null)
+                    return;
 
-            bool success = await _mm.LoadModuleAsync(moduleTypeName, path).ConfigureAwait(false);
+                // Remember the player's name so that we can check the player object's state after the await.
+                string playerName = player.Name!;
 
-            Player? player = _playerData.FindPlayer(playerName);
-            if (player is null)
-                return;
+                bool success = await _mm.LoadModuleAsync(moduleTypeName, path).ConfigureAwait(false);
 
-            if (success)
-                _chat.SendMessage(player, $"Module '{moduleTypeName}' loaded.");
-            else
-                _chat.SendMessage(player, $"Failed to load module '{moduleTypeName}'.");
+                // The player object's state could have changed (e.g. disconnect) by the time the continuation executes.
+                player = _playerData.FindPlayer(playerName);
+                if (player is null)
+                    return;
+
+                if (success)
+                    _chat.SendMessage(player, $"Module '{moduleTypeName}' loaded.");
+                else
+                    _chat.SendMessage(player, $"Failed to load module '{moduleTypeName}'.");
+            }
         }
 
         [CommandHelp(
@@ -2741,26 +2743,29 @@ namespace SS.Core.Modules
             if (parameters.IsWhiteSpace())
                 return;
 
-            UnloadModuleAsync(player.Name!, parameters.ToString());
-        }
+            UnloadModuleAsync(player, parameters.ToString());
 
-        // This purposely takes the player's name and not the player object,
-        // since the player object's state can change (e.g. disconnect) by the time the continuation executes.
-        private async void UnloadModuleAsync(string playerName, string moduleTypeName)
-        {
-            if (_mm is null)
-                return;
+            // async local function (since the command handler can't be made async)
+            async void UnloadModuleAsync(Player? player, string moduleTypeName)
+            {
+                if (_mm is null || player is null)
+                    return;
 
-            int unloadCount = await _mm.UnloadModuleAsync(moduleTypeName).ConfigureAwait(false);
+                // Remember the player's name so that we can check the player object's state after the await.
+                string playerName = player.Name!;
 
-            Player? player = _playerData.FindPlayer(playerName);
-            if (player is null)
-                return;
+                int unloadCount = await _mm.UnloadModuleAsync(moduleTypeName).ConfigureAwait(false);
 
-            if (unloadCount > 0)
-                _chat.SendMessage(player, $"Module '{moduleTypeName}' unloaded.");
-            else
-                _chat.SendMessage(player, $"Failed to unload module '{moduleTypeName}'.");
+                // The player object's state could have changed (e.g. disconnect) by the time the continuation executes.
+                player = _playerData.FindPlayer(playerName);
+                if (player is null)
+                    return;
+
+                if (unloadCount > 0)
+                    _chat.SendMessage(player, $"Module '{moduleTypeName}' unloaded.");
+                else
+                    _chat.SendMessage(player, $"Failed to unload module '{moduleTypeName}'.");
+            }
         }
 
         [CommandHelp(
@@ -3378,63 +3383,63 @@ namespace SS.Core.Modules
         private void Command_mapinfo(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             PrintMapInfoAsync(player);
-        }
 
-        // async void since the command handler can't be made async
-        private async void PrintMapInfoAsync(Player? player)
-        {
-            if (player is null)
-                return;
-
-            Arena? arena = player.Arena;
-            if (arena is null)
-                return;
-
-            // Save the player before the await, so that we can check if the player object after the await.
-            string playerName = player.Name!;
-
-            string? fileName = await _mapData!.GetMapFilenameAsync(arena, null).ConfigureAwait(true); // Resume execution on the mainloop thread.
-
-            // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
-            if (player != _playerData.FindPlayer(playerName))
-                return;
-
-            // The arena's state could have changed too (player could have switched arenas or the original arena could have even been destroyed).
-            // Check that the arena is still valid.
-            if (arena != player.Arena)
-                return;
-
-            _chat.SendMessage(player, $"LVL file loaded from '{(!string.IsNullOrWhiteSpace(fileName) ? fileName : "<nowhere>")}'.");
-
-            const string NotSet = "<not set>";
-
-            _chat.SendMessage(player,
-                $"name: {_mapData.GetAttribute(arena, MapAttributeKeys.Name) ?? NotSet}, " +
-                $"version: {_mapData.GetAttribute(arena, MapAttributeKeys.Version) ?? NotSet}");
-
-            _chat.SendMessage(player,
-                $"map creator: {_mapData.GetAttribute(arena, MapAttributeKeys.MapCreator) ?? NotSet}, " +
-                $"tileset creator: {_mapData.GetAttribute(arena, MapAttributeKeys.TilesetCreator) ?? NotSet}, " +
-                $"program: {_mapData.GetAttribute(arena, MapAttributeKeys.Program) ?? NotSet}");
-
-            var errors = _mapData.GetErrors(arena);
-
-            _chat.SendMessage(player,
-                $"tiles: {_mapData.GetTileCount(arena)}  " +
-                $"flags: {_mapData.GetFlagCount(arena)}  " +
-                $"regions: {_mapData.GetRegionCount(arena)}  " +
-                $"errors: {errors.Count}");
-
-            if (errors.Count > 0 && _capabilityManager!.HasCapability(player, Constants.Capabilities.IsStaff))
+            // async local function (since the command handler can't be made async)
+            async void PrintMapInfoAsync(Player? player)
             {
-                _chat.SendMessage(player, "Error details:");
-                for (int i = 0; i < errors.Count; i++)
-                {
-                    _chat.SendMessage(player, $"- {errors[i]}");
-                }
-            }
+                if (player is null)
+                    return;
 
-            // TODO: estimated memory stats
+                Arena? arena = player.Arena;
+                if (arena is null)
+                    return;
+
+                // Save the player before the await, so that we can check if the player object after the await.
+                string playerName = player.Name!;
+
+                string? fileName = await _mapData!.GetMapFilenameAsync(arena, null).ConfigureAwait(true); // Resume execution on the mainloop thread.
+
+                // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                if (player != _playerData.FindPlayer(playerName))
+                    return;
+
+                // The arena's state could have changed too (player could have switched arenas or the original arena could have even been destroyed).
+                // Check that the arena is still valid.
+                if (arena != player.Arena)
+                    return;
+
+                _chat.SendMessage(player, $"LVL file loaded from '{(!string.IsNullOrWhiteSpace(fileName) ? fileName : "<nowhere>")}'.");
+
+                const string NotSet = "<not set>";
+
+                _chat.SendMessage(player,
+                    $"name: {_mapData.GetAttribute(arena, MapAttributeKeys.Name) ?? NotSet}, " +
+                    $"version: {_mapData.GetAttribute(arena, MapAttributeKeys.Version) ?? NotSet}");
+
+                _chat.SendMessage(player,
+                    $"map creator: {_mapData.GetAttribute(arena, MapAttributeKeys.MapCreator) ?? NotSet}, " +
+                    $"tileset creator: {_mapData.GetAttribute(arena, MapAttributeKeys.TilesetCreator) ?? NotSet}, " +
+                    $"program: {_mapData.GetAttribute(arena, MapAttributeKeys.Program) ?? NotSet}");
+
+                var errors = _mapData.GetErrors(arena);
+
+                _chat.SendMessage(player,
+                    $"tiles: {_mapData.GetTileCount(arena)}  " +
+                    $"flags: {_mapData.GetFlagCount(arena)}  " +
+                    $"regions: {_mapData.GetRegionCount(arena)}  " +
+                    $"errors: {errors.Count}");
+
+                if (errors.Count > 0 && _capabilityManager!.HasCapability(player, Constants.Capabilities.IsStaff))
+                {
+                    _chat.SendMessage(player, "Error details:");
+                    for (int i = 0; i < errors.Count; i++)
+                    {
+                        _chat.SendMessage(player, $"- {errors[i]}");
+                    }
+                }
+
+                // TODO: estimated memory stats
+            }
         }
 
         /// <summary>
@@ -3457,7 +3462,7 @@ namespace SS.Core.Modules
 
             DownloadMapImageAsync(player, parametersArray, parameters.Length);
 
-            // local function that is async
+            // async local function (since the command handler can't be made async)
             async void DownloadMapImageAsync(Player player, char[] parameters, int parametersLength)
             {
                 try
