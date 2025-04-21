@@ -478,7 +478,7 @@ namespace SS.Core.Modules
 
         #region Packet handlers
 
-        private void Packet_PickupBall(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_PickupBall(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (data.Length != C2S_PickupBall.Length)
             {
@@ -499,7 +499,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ref C2S_PickupBall c2s = ref MemoryMarshal.AsRef<C2S_PickupBall>(data);
+            ref readonly C2S_PickupBall c2s = ref MemoryMarshal.AsRef<C2S_PickupBall>(data);
 
             if (player.Flags.NoFlagsBalls)
             {
@@ -588,7 +588,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_ShootBall(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_ShootBall(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (data.Length != BallPacket.Length)
             {
@@ -612,7 +612,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
-            ref BallPacket c2s = ref MemoryMarshal.AsRef<BallPacket>(data);
+            ref readonly BallPacket c2s = ref MemoryMarshal.AsRef<BallPacket>(data);
             byte ballId = c2s.BallId;
 
             lock (ad.Lock)
@@ -683,7 +683,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Goal(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Goal(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (data.Length != C2S_Goal.Length)
             {
@@ -707,7 +707,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
-            ref C2S_Goal c2s = ref MemoryMarshal.AsRef<C2S_Goal>(data);
+            ref readonly C2S_Goal c2s = ref MemoryMarshal.AsRef<C2S_Goal>(data);
             int ballId = c2s.BallId;
 
             lock (ad.Lock)

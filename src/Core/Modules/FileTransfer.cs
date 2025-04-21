@@ -425,7 +425,7 @@ namespace SS.Core.Modules
 
         // The data either fit into a regular sized packet OR it was sent to us using big data packets (0x00 0x08 and 0x00 0x09).
         // Regular packet handlers such as this one are executed on the mainloop thread.
-        private void Packet_UploadFile(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_UploadFile(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player is null || !player.TryGetExtraData(_udKey, out UploadDataContext? ud))
                 return;

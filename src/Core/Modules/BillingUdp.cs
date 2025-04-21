@@ -537,7 +537,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_RegData(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_RegData(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;

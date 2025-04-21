@@ -306,7 +306,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Brick(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Brick(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             Arena? arena = player.Arena;
 
@@ -325,7 +325,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adKey, out ArenaBrickData? abd))
                 return;
 
-            ref C2S_Brick c2sBrick = ref MemoryMarshal.AsRef<C2S_Brick>(data);
+            ref readonly C2S_Brick c2sBrick = ref MemoryMarshal.AsRef<C2S_Brick>(data);
 
             ExpireBricks(arena);
 

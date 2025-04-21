@@ -617,7 +617,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_Login(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Login(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player is null || !player.TryGetExtraData(_pdkey, out PlayerData? playerData))
                 return;
@@ -642,12 +642,12 @@ namespace SS.Core.Modules
             }
             else
             {
-                ref LoginPacket pkt = ref MemoryMarshal.AsRef<LoginPacket>(data);
+                ref readonly LoginPacket login = ref MemoryMarshal.AsRef<LoginPacket>(data);
 
 #if !CFG_RELAX_LENGTH_CHECKS
                 // VIE clients can only have one version. 
                 // Continuum clients will need to ask for an update.
-                if (player.Type == ClientType.VIE && pkt.CVersion != ClientVersion_VIE)
+                if (player.Type == ClientType.VIE && login.CVersion != ClientVersion_VIE)
                 {
                     FailLoginWith(player, AuthCode.LockedOut, null, "Bad VIE client version");
                     return;
@@ -668,7 +668,7 @@ namespace SS.Core.Modules
                 playerData.AuthRequest = _authRequestPool.Get();
                 playerData.AuthRequest.SetRequestInfo(player, data, _authDone);
 
-                pkt = ref MemoryMarshal.AsRef<LoginPacket>(playerData.AuthRequest.LoginBytes);
+                ref LoginPacket pkt = ref MemoryMarshal.AsRef<LoginPacket>(playerData.AuthRequest.LoginBytes);
 
                 // name
                 ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)pkt.Name).SliceNullTerminated();
@@ -1314,7 +1314,7 @@ namespace SS.Core.Modules
             public AuthResult Result => _result;
             IAuthResult IAuthRequest.Result => _result;
 
-            public void SetRequestInfo(Player player, Span<byte> loginBytes, Action<Player> doneCallback)
+            public void SetRequestInfo(Player player, ReadOnlySpan<byte> loginBytes, Action<Player> doneCallback)
             {
                 Player = player ?? throw new ArgumentNullException(nameof(player));
 

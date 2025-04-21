@@ -195,7 +195,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Damage(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Damage(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player.Status != PlayerState.Playing)
                 return;
@@ -213,8 +213,8 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ref C2S_WatchDamageHeader c2sHeader = ref MemoryMarshal.AsRef<C2S_WatchDamageHeader>(data);
-            Span<DamageData> c2sDamageSpan = MemoryMarshal.Cast<byte, DamageData>(data[C2S_WatchDamageHeader.Length..]);
+            ref readonly C2S_WatchDamageHeader c2sHeader = ref MemoryMarshal.AsRef<C2S_WatchDamageHeader>(data);
+            ReadOnlySpan<DamageData> c2sDamageSpan = MemoryMarshal.Cast<byte, DamageData>(data[C2S_WatchDamageHeader.Length..]);
 
             if (pd.PlayersWatching.Count > 0)
             {

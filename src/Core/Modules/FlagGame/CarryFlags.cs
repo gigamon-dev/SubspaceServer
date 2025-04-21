@@ -482,7 +482,7 @@ namespace SS.Core.Modules.FlagGame
 
         #region Packet handlers
 
-        private void Packet_TouchFlag(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_TouchFlag(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (data.Length != C2S_TouchFlag.Length)
             {
@@ -527,7 +527,7 @@ namespace SS.Core.Modules.FlagGame
                 return;
             }
 
-            ref C2S_TouchFlag packet = ref MemoryMarshal.AsRef<C2S_TouchFlag>(data);
+            ref readonly C2S_TouchFlag packet = ref MemoryMarshal.AsRef<C2S_TouchFlag>(data);
             short flagId = packet.FlagId;
             if (flagId < 0 || flagId >= ad.Flags.Count)
             {
@@ -547,7 +547,7 @@ namespace SS.Core.Modules.FlagGame
             ad.CarryFlagBehavior?.TouchFlag(arena, player, flagId);
         }
 
-        private void Packet_DropFlags(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_DropFlags(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player == null)
                 return;

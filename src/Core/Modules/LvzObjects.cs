@@ -869,7 +869,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_Rebroadcast(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Rebroadcast(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             Arena? arena = player.Arena;
             if (arena is null)
@@ -910,7 +910,7 @@ namespace SS.Core.Modules
                     if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                         return;
 
-                    Span<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(data[4..]);
+                    ReadOnlySpan<LvzObjectToggle> toggleSpan = MemoryMarshal.Cast<byte, LvzObjectToggle>(data[4..]);
 
                     lock (arenaData.Lock)
                     {
@@ -934,11 +934,11 @@ namespace SS.Core.Modules
                     if (!arena.TryGetExtraData(_adKey, out ArenaData? arenaData))
                         return;
 
-                    Span<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(data[4..]);
+                    ReadOnlySpan<LvzObjectChange> changeSpan = MemoryMarshal.Cast<byte, LvzObjectChange>(data[4..]);
 
                     lock (arenaData.Lock)
                     {
-                        foreach (ref LvzObjectChange change in changeSpan)
+                        foreach (ref readonly LvzObjectChange change in changeSpan)
                         {
                             LvzData? lvzData = arenaData.GetObjectData(change.Data.Id);
                             if (lvzData is null)

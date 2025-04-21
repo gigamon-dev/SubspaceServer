@@ -453,7 +453,7 @@ namespace SS.Replay
 
         #endregion
 
-        private void Packet_Position(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Position(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             Debug.Assert(_mainloop.IsMainloop);
 
@@ -474,7 +474,7 @@ namespace SS.Replay
             if (ad.RecorderQueue!.IsAddingCompleted) // only the mainloop thread changes this, so it can't happen between here the Add method call since this is the mainloop
                 return;
 
-            ref C2S_PositionPacket c2sPosition = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
+            ref readonly C2S_PositionPacket c2sPosition = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
 
             byte[] buffer = _recordBufferPool.Rent(EventHeader.Length + length);
             ref Position position = ref MemoryMarshal.AsRef<Position>(buffer);
@@ -484,7 +484,7 @@ namespace SS.Replay
 
             if (length == C2S_PositionPacket.LengthWithExtra)
             {
-                ref ExtraPositionData extra = ref MemoryMarshal.AsRef<ExtraPositionData>(data.Slice(C2S_PositionPacket.Length, ExtraPositionData.Length));
+                ref readonly ExtraPositionData extra = ref MemoryMarshal.AsRef<ExtraPositionData>(data.Slice(C2S_PositionPacket.Length, ExtraPositionData.Length));
                 ref PositionWithExtra positionWithExtra = ref MemoryMarshal.AsRef<PositionWithExtra>(buffer);
                 positionWithExtra.ExtraPositionData = extra;
             }

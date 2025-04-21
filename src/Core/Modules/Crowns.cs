@@ -193,7 +193,7 @@ namespace SS.Core.Modules
 
         #endregion
 
-        private void Packet_CrownExpired(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_CrownExpired(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (data.Length != 1)
             {

@@ -159,12 +159,12 @@ namespace SS.Core.Modules
 
         #region Packet handlers, chat handlers, callbacks
 
-        private void Packet_NotIdle(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_NotIdle(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             ResetIdle(player);
         }
 
-        private void Packet_Position(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Position(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
@@ -175,7 +175,7 @@ namespace SS.Core.Modules
             if (data.Length != C2S_PositionPacket.Length && data.Length != C2S_PositionPacket.LengthWithExtra)
                 return;
 
-            ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
+            ref readonly C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
             if ((pos.Status & PlayerPositionStatus.Inert) == 0 || pos.Weapon.Type != WeaponCodes.Null)
             {
                 ResetIdle(player);

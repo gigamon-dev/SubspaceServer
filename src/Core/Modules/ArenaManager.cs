@@ -778,7 +778,7 @@ namespace SS.Core.Modules
 
         [ConfigHelp<bool>("Chat", "ForceFilter", ConfigScope.Global, Default = false,
             Description = "If true, players will always start with the obscenity filter on by default. If false, use their preference.")]
-        private void Packet_GotoArena(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_GotoArena(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
@@ -789,7 +789,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ref C2S_GoArenaVIE go = ref MemoryMarshal.AsRef<C2S_GoArenaVIE>(data);
+            ref readonly C2S_GoArenaVIE go = ref MemoryMarshal.AsRef<C2S_GoArenaVIE>(data);
 
             if (go.ShipType > (byte)ShipType.Spec)
             {
@@ -888,7 +888,7 @@ namespace SS.Core.Modules
             bool optionalGraphics = false;
             if (data.Length >= C2S_GoArenaContinuum.Length)
             {
-                ref C2S_GoArenaContinuum goContinuum = ref MemoryMarshal.AsRef<C2S_GoArenaContinuum>(data);
+                ref readonly C2S_GoArenaContinuum goContinuum = ref MemoryMarshal.AsRef<C2S_GoArenaContinuum>(data);
                 optionalGraphics = goContinuum.OptionalGraphics != 0;
             }
 
@@ -925,7 +925,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_LeaveArena(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_LeaveArena(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
 #if !CFG_RELAX_LENGTH_CHECKS
             if (data.Length != 1)

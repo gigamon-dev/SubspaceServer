@@ -964,7 +964,7 @@ namespace SS.Core.Modules
             _network.SendToOne(t, specBytes, NetSendFlags.Reliable);
         }
 
-        private void Packet_Position(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Position(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (data.Length != C2S_PositionPacket.Length && data.Length != C2S_PositionPacket.LengthWithExtra)
             {
@@ -972,17 +972,17 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ref C2S_PositionPacket pos = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
+            C2S_PositionPacket posCopy = MemoryMarshal.AsRef<C2S_PositionPacket>(data);
 
             if (data.Length >= C2S_PositionPacket.LengthWithExtra)
             {
-                ref ExtraPositionData extra = ref MemoryMarshal.AsRef<ExtraPositionData>(data.Slice(C2S_PositionPacket.Length, ExtraPositionData.Length));
-                HandlePositionPacket(player, ref pos, ref extra, true, false);
+                ExtraPositionData extraCopy = MemoryMarshal.AsRef<ExtraPositionData>(data.Slice(C2S_PositionPacket.Length, ExtraPositionData.Length));
+                HandlePositionPacket(player, ref posCopy, ref extraCopy, true, false);
             }
             else
             {
-                ExtraPositionData dummyExtra = new();
-                HandlePositionPacket(player, ref pos, ref dummyExtra, false, false);
+                ExtraPositionData extraDummy = new();
+                HandlePositionPacket(player, ref posCopy, ref extraDummy, false, false);
             }
         }
 
@@ -1607,7 +1607,7 @@ namespace SS.Core.Modules
             pd.LastRegionSet = newRegions;
         }
 
-        private void Packet_SpecRequest(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_SpecRequest(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (data.Length != C2S_SpecRequest.Length)
             {
@@ -1621,7 +1621,7 @@ namespace SS.Core.Modules
             if (!player.TryGetExtraData(_pdkey, out PlayerData? pd))
                 return;
 
-            ref C2S_SpecRequest packet = ref MemoryMarshal.AsRef<C2S_SpecRequest>(data[..C2S_SpecRequest.Length]);
+            ref readonly C2S_SpecRequest packet = ref MemoryMarshal.AsRef<C2S_SpecRequest>(data[..C2S_SpecRequest.Length]);
             int targetPlayerId = packet.PlayerId;
 
             lock (_specLock)
@@ -1637,7 +1637,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SetShip(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_SetShip(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
@@ -1726,7 +1726,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_SetFreq(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_SetFreq(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
@@ -1741,7 +1741,7 @@ namespace SS.Core.Modules
             }
             else
             {
-                ref C2S_SetFreq packet = ref MemoryMarshal.AsRef<C2S_SetFreq>(data);
+                ref readonly C2S_SetFreq packet = ref MemoryMarshal.AsRef<C2S_SetFreq>(data);
                 FreqChangeRequest(player, packet.Freq);
             }
         }
@@ -1980,7 +1980,7 @@ namespace SS.Core.Modules
             Description = "Whether to use a special prize for teamkills. Prize:TeamkillPrize specifies the prize #.")]
         [ConfigHelp<int>("Prize", "TeamkillPrize", ConfigScope.Arena, Default = 0,
             Description = "The prize # to give for a teamkill, if Prize:UseTeamkillPrize=1.")]
-        private void Packet_Die(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Die(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -2001,7 +2001,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return;
 
-            ref C2S_Die packet = ref MemoryMarshal.AsRef<C2S_Die>(data[..C2S_Die.Length]);
+            ref readonly C2S_Die packet = ref MemoryMarshal.AsRef<C2S_Die>(data[..C2S_Die.Length]);
             short bounty = packet.Bounty;
 
             Player? killer = _playerData.PidToPlayer(packet.Killer);
@@ -2179,7 +2179,7 @@ namespace SS.Core.Modules
             _chatNetwork?.SendToArena(arena, null, $"KILL:{killer.Name}:{killed.Name}:{pts:D}:{flagCount:D}");
         }
 
-        private void Packet_Green(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Green(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -2200,7 +2200,7 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adkey, out ArenaData? ad))
                 return;
 
-            ref C2S_Green c2s = ref MemoryMarshal.AsRef<C2S_Green>(data);
+            ref readonly C2S_Green c2s = ref MemoryMarshal.AsRef<C2S_Green>(data);
             Prize prize = c2s.Prize;
 
             // don't forward non-shared prizes
@@ -2208,7 +2208,7 @@ namespace SS.Core.Modules
                 && !(prize == Prize.Burst && (ad.PersonalGreen & PersonalGreen.Burst) == PersonalGreen.Burst)
                 && !(prize == Prize.Brick && (ad.PersonalGreen & PersonalGreen.Brick) == PersonalGreen.Brick))
             {
-                S2C_Green s2c = new(ref c2s, (short)player.Id);
+                S2C_Green s2c = new(in c2s, (short)player.Id);
                 _network.SendToArena(arena, player, ref s2c, NetSendFlags.Unreliable);
             }
 
@@ -2268,7 +2268,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_AttachTo(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_AttachTo(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player == null)
                 return;
@@ -2286,7 +2286,7 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            ref C2S_AttachTo packet = ref MemoryMarshal.AsRef<C2S_AttachTo>(data[..C2S_AttachTo.Length]);
+            ref readonly C2S_AttachTo packet = ref MemoryMarshal.AsRef<C2S_AttachTo>(data[..C2S_AttachTo.Length]);
             short pid2 = packet.PlayerId;
 
             Player? to = null;
@@ -2310,7 +2310,7 @@ namespace SS.Core.Modules
             Attach(player, to);
         }
 
-        private void Packet_TurretKickoff(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_TurretKickoff(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (data.Length != 1)
             {

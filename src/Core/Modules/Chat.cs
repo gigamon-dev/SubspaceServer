@@ -757,7 +757,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Chat(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Chat(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
@@ -779,10 +779,10 @@ namespace SS.Core.Modules
             if (arena is null || player.Status != PlayerState.Playing)
                 return;
 
-            ref ChatPacket from = ref MemoryMarshal.AsRef<ChatPacket>(data);
+            ref readonly ChatPacket from = ref MemoryMarshal.AsRef<ChatPacket>(data);
 
             // Determine which bytes are part of the message.
-            Span<byte> messageBytes = ChatPacket.GetMessageBytes(data);
+            ReadOnlySpan<byte> messageBytes = ChatPacket.GetMessageBytes(data);
 
             // Decode the bytes.
             Span<char> text = stackalloc char[StringUtils.DefaultEncoding.GetMaxCharCount(messageBytes.Length)];

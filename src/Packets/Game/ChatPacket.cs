@@ -73,7 +73,7 @@ namespace SS.Packets.Game
         /// </summary>
         /// <param name="packetBytes">The full chat packet to get the message bytes of.</param>
         /// <returns>A slice of <paramref name="packetBytes"/> containing the message bytes.</returns>
-        public static Span<byte> GetMessageBytes(Span<byte> packetBytes)
+        public static ReadOnlySpan<byte> GetMessageBytes(ReadOnlySpan<byte> packetBytes)
         {
             if (packetBytes.Length <= HeaderLength)
                 return [];

@@ -343,7 +343,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_UpdateRequest(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_UpdateRequest(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;
@@ -376,7 +376,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_MapNewsRequest(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_MapNewsRequest(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (player is null)
                 return;

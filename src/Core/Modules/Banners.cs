@@ -206,7 +206,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void Packet_Banner(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_Banner(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (data.Length != C2S_Banner.Length)
             {
@@ -244,7 +244,7 @@ namespace SS.Core.Modules
                 pd.LastSetByPlayer = DateTime.UtcNow;
             }
 
-            ref C2S_Banner pkt = ref MemoryMarshal.AsRef<C2S_Banner>(data);
+            ref readonly C2S_Banner pkt = ref MemoryMarshal.AsRef<C2S_Banner>(data);
             SetBanner(player, in pkt.Banner, true);
             _logManager.LogP(LogLevel.Drivel, nameof(Banners), player, "Set banner.");
         }

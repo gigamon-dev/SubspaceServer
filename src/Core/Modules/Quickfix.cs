@@ -69,7 +69,7 @@ namespace SS.Core.Modules
             return true;
         }
 
-        private void Packet_SettingChange(Player player, Span<byte> data, NetReceiveFlags flags)
+        private void Packet_SettingChange(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
             if (!_capabilityManager.HasCapability(player, Constants.Capabilities.ChangeSettings))
             {

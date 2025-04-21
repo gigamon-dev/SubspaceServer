@@ -74,7 +74,7 @@ namespace SS.Core.ComponentInterfaces
     /// <param name="player">The player that sent the packet.</param>
     /// <param name="data">The buffer containing the packet data that was received.</param>
     /// <param name="flags">Flags indicating how the data was received.</param>
-    public delegate void PacketHandler(Player player, Span<byte> data, NetReceiveFlags flags);
+    public delegate void PacketHandler(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags);
 
     /// <summary>
     /// Delegate for a handler to an incoming sized data packet.
@@ -250,7 +250,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">The player to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags specifying options for the send.</param>
-        void SendToOne<TData>(Player player, ref TData data, NetSendFlags flags) where TData : struct;
+        void SendToOne<TData>(Player player, ref readonly TData data, NetSendFlags flags) where TData : struct;
 
         /// <summary>
         /// Sends data to players in a specific arena or all arenas,
@@ -271,7 +271,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="except">The player to exclude from the send.  <see langword="null"/> for no exclusion.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags specifying options for the send.</param>
-        void SendToArena<TData>(Arena? arena, Player? except, ref TData data, NetSendFlags flags) where TData : struct;
+        void SendToArena<TData>(Arena? arena, Player? except, ref readonly TData data, NetSendFlags flags) where TData : struct;
 
         /// <summary>
         /// To send data to a set of players.
@@ -288,7 +288,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="set">The players to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flag(s) specifying options for the send.</param>
-        void SendToSet<TData>(HashSet<Player> set, ref TData data, NetSendFlags flags) where TData : struct;
+        void SendToSet<TData>(HashSet<Player> set, ref readonly TData data, NetSendFlags flags) where TData : struct;
 
         /// <summary>
         /// Sends data to a target of players
@@ -305,7 +305,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="target">The target describing which players to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="flags">Flags specifying options for the send.</param>
-        void SendToTarget<TData>(ITarget target, ref TData data, NetSendFlags flags) where TData : struct;
+        void SendToTarget<TData>(ITarget target, ref readonly TData data, NetSendFlags flags) where TData : struct;
 
         /// <summary>
         /// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
@@ -330,7 +330,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">The player to send data to.</param>
         /// <param name="data">The data to send.</param>
         /// <param name="callback">The callback to invoke after the data has been sent.</param>
-        void SendWithCallback<TData>(Player player, ref TData data, ReliableDelegate callback) where TData : struct;
+        void SendWithCallback<TData>(Player player, ref readonly TData data, ReliableDelegate callback) where TData : struct;
 
         /// <summary>
         /// Reliably sends <paramref name="data"/> to a <paramref name="player"/> and invokes a <paramref name="callback"/> 
@@ -359,7 +359,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="data">The data to send.</param>
         /// <param name="callback">The callback to invoke after the data has been sent.</param>
         /// <param name="state">The state to pass when invoking the callback.</param>
-        void SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState state) where TData : struct;
+        void SendWithCallback<TData, TState>(Player player, ref readonly TData data, ReliableDelegate<TState> callback, TState state) where TData : struct;
 
         /// <summary>
         /// Queues up a job to send 'sized' data to a player.

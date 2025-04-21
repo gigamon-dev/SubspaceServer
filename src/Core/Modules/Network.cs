@@ -845,9 +845,9 @@ namespace SS.Core.Modules
             SendToOne(player, data, flags);
         }
 
-        void INetwork.SendToOne<TData>(Player player, ref TData data, NetSendFlags flags) where TData : struct
+        void INetwork.SendToOne<TData>(Player player, ref readonly TData data, NetSendFlags flags) where TData : struct
         {
-            ((INetwork)this).SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
+            ((INetwork)this).SendToOne(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in data, 1)), flags);
         }
 
         void INetwork.SendToArena(Arena? arena, Player? except, ReadOnlySpan<byte> data, NetSendFlags flags)
@@ -887,9 +887,9 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.SendToArena<TData>(Arena? arena, Player? except, ref TData data, NetSendFlags flags) where TData : struct
+        void INetwork.SendToArena<TData>(Arena? arena, Player? except, ref readonly TData data, NetSendFlags flags) where TData : struct
         {
-            ((INetwork)this).SendToArena(arena, except, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
+            ((INetwork)this).SendToArena(arena, except, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in data, 1)), flags);
         }
 
         void INetwork.SendToSet(HashSet<Player> set, ReadOnlySpan<byte> data, NetSendFlags flags)
@@ -897,9 +897,9 @@ namespace SS.Core.Modules
             SendToSet(set, data, flags);
         }
 
-        void INetwork.SendToSet<TData>(HashSet<Player> set, ref TData data, NetSendFlags flags) where TData : struct
+        void INetwork.SendToSet<TData>(HashSet<Player> set, ref readonly TData data, NetSendFlags flags) where TData : struct
         {
-            ((INetwork)this).SendToSet(set, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
+            ((INetwork)this).SendToSet(set, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in data, 1)), flags);
         }
 
         void INetwork.SendWithCallback(Player player, ReadOnlySpan<byte> data, ReliableDelegate callback)
@@ -912,9 +912,9 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.SendWithCallback<TData>(Player player, ref TData data, ReliableDelegate callback)
+        void INetwork.SendWithCallback<TData>(Player player, ref readonly TData data, ReliableDelegate callback)
         {
-            ((INetwork)this).SendWithCallback(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback);
+            ((INetwork)this).SendWithCallback(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in data, 1)), callback);
         }
 
         void INetwork.SendWithCallback<TState>(Player player, ReadOnlySpan<byte> data, ReliableDelegate<TState> callback, TState state)
@@ -927,9 +927,9 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.SendWithCallback<TData, TState>(Player player, ref TData data, ReliableDelegate<TState> callback, TState state)
+        void INetwork.SendWithCallback<TData, TState>(Player player, ref readonly TData data, ReliableDelegate<TState> callback, TState state)
         {
-            ((INetwork)this).SendWithCallback(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), callback, state);
+            ((INetwork)this).SendWithCallback(player, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in data, 1)), callback, state);
         }
 
         void INetwork.SendToTarget(ITarget target, ReadOnlySpan<byte> data, NetSendFlags flags)
@@ -950,9 +950,9 @@ namespace SS.Core.Modules
             }
         }
 
-        void INetwork.SendToTarget<TData>(ITarget target, ref TData data, NetSendFlags flags)
+        void INetwork.SendToTarget<TData>(ITarget target, ref readonly TData data, NetSendFlags flags)
         {
-            ((INetwork)this).SendToTarget(target, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref data, 1)), flags);
+            ((INetwork)this).SendToTarget(target, MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in data, 1)), flags);
         }
 
         bool INetwork.SendSized<T>(Player player, int len, GetSizedSendDataDelegate<T> requestCallback, T state)
