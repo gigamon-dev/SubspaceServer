@@ -132,39 +132,6 @@ namespace SS.Core.Modules
 
         #region IPersist members
 
-        void IPersist.RegisterPersistentData(PersistentData<Player> registration)
-        {
-            ArgumentNullException.ThrowIfNull(registration);
-
-            _registrationSemaphore.Wait();
-
-            try
-            {
-                // TODO: prevent adding a duplicate registration (same key + interval)?
-                _playerRegistrations.Add(registration);
-            }
-            finally
-            {
-                _registrationSemaphore.Release();
-            }
-        }
-
-        void IPersist.UnregisterPersistentData(PersistentData<Player> registration)
-        {
-            ArgumentNullException.ThrowIfNull(registration);
-
-            _registrationSemaphore.Wait();
-
-            try
-            {
-                _playerRegistrations.Remove(registration);
-            }
-            finally
-            {
-                _registrationSemaphore.Release();
-            }
-        }
-
         async Task IPersist.RegisterPersistentDataAsync(PersistentData<Player> registration)
         {
             ArgumentNullException.ThrowIfNull(registration);
@@ -191,39 +158,6 @@ namespace SS.Core.Modules
             try
             {
                 _playerRegistrations.Remove(registration);
-            }
-            finally
-            {
-                _registrationSemaphore.Release();
-            }
-        }
-
-        void IPersist.RegisterPersistentData(PersistentData<Arena> registration)
-        {
-            ArgumentNullException.ThrowIfNull(registration);
-
-            _registrationSemaphore.Wait();
-
-            try
-            {
-                // TODO: prevent adding a duplicate registration (same key + interval)?
-                _arenaRegistrations.Add(registration);
-            }
-            finally
-            {
-                _registrationSemaphore.Release();
-            }
-        }
-
-        void IPersist.UnregisterPersistentData(PersistentData<Arena> registration)
-        {
-            ArgumentNullException.ThrowIfNull(registration);
-
-            _registrationSemaphore.Wait();
-
-            try
-            {
-                _arenaRegistrations.Remove(registration);
             }
             finally
             {

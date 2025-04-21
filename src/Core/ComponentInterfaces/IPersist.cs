@@ -233,14 +233,6 @@ namespace SS.Core.ComponentInterfaces
     /// </summary>
     public interface IPersist : IComponentInterface
     {
-        /// <inheritdoc cref="RegisterPersistentDataAsync(PersistentData{Player})"/>
-        [Obsolete("Use RegisterPersistentDataAsync instead.")]
-        void RegisterPersistentData(PersistentData<Player> registration);
-
-        /// <inheritdoc cref="UnregisterPersistentDataAsync(PersistentData{Player})"/>
-        [Obsolete("Use UnregisterPersistentDataAsync instead.")]
-        void UnregisterPersistentData(PersistentData<Player> registration);
-
         /// <summary>
         /// Registers a slot of player persistent storage.
         /// </summary>
@@ -274,14 +266,6 @@ namespace SS.Core.ComponentInterfaces
         // Maybe arena registration shouldn't have scope as it should implicitly be PersistScope.PerArena?
         // When would the data be retrieved from the database?  When would the data be saved to the database?
         // For global data, the GetGeneric and PutGeneric methods would make sense.
-
-        /// <inheritdoc cref="RegisterPersistentDataAsync(PersistentData{Arena})"/>
-        [Obsolete("Use RegisterPersistentDataAsync instead.")]
-        void RegisterPersistentData(PersistentData<Arena> registration);
-
-        /// <inheritdoc cref="UnregisterPersistentDataAsync(PersistentData{Arena})"/>
-        [Obsolete("Use UnregisterPersistentDataAsync instead.")]
-        void UnregisterPersistentData(PersistentData<Arena> registration);
 
         /// <summary>
         /// Registers a slot of arena persistent storage.
