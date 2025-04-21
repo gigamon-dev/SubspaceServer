@@ -3456,119 +3456,95 @@ namespace SS.Core.Modules
             parameters.CopyTo(parametersArray);
 
             DownloadMapImageAsync(player, parametersArray, parameters.Length);
-        }
 
-        private async void DownloadMapImageAsync(Player player, char[] parameters, int parametersLength)
-        {
-            ArgumentNullException.ThrowIfNull(player);
-            ArgumentNullException.ThrowIfNull(parameters);
-
-            try
+            // local function that is async
+            async void DownloadMapImageAsync(Player player, char[] parameters, int parametersLength)
             {
-                if (!player.IsStandard)
+                try
                 {
-                    _chat.SendMessage(player, "Your client does not support file transfers.");
-                    return;
-                }
+                    if (!player.IsStandard)
+                    {
+                        _chat.SendMessage(player, "Your client does not support file transfers.");
+                        return;
+                    }
 
-                Arena? arena = player.Arena;
-                if (arena is null)
-                    return;
+                    if (_mapData is null)
+                        return;
 
-                // Save the player name before any await, so that we can check the player object after the await.
-                string playerName = player.Name!;
+                    Arena? arena = player.Arena;
+                    if (arena is null)
+                        return;
 
-                string? mapPath = await _mapData!.GetMapFilenameAsync(arena, null).ConfigureAwait(true); // Resume execution on the mainloop thread.
-                if (string.IsNullOrWhiteSpace(mapPath))
-                    return;
+                    // Save the player name before any await, so that we can check the player object after the await.
+                    string playerName = player.Name!;
 
-                // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
-                if (player != _playerData.FindPlayer(playerName))
-                    return;
+                    string? mapPath = await _mapData.GetMapFilenameAsync(arena, null).ConfigureAwait(true); // Resume execution on the mainloop thread.
+                    if (string.IsNullOrWhiteSpace(mapPath))
+                        return;
 
-                // The arena's state could have changed too (player could have switched arenas or the original arena could have even been destroyed).
-                // Check that the arena is still valid.
-                if (arena != player.Arena)
-                    return;
+                    // The player's state could have changed (e.g. disconnect) by the time the await continuation executes. Check that the player is still valid.
+                    if (player != _playerData.FindPlayer(playerName))
+                        return;
 
-                ReadOnlyMemory<char> parametersMemory = parameters.AsMemory(0, parametersLength);
-                parametersMemory = parametersMemory.Trim().Trim('.');
-                foreach (char c in Path.GetInvalidFileNameChars())
-                {
-                    if (parametersMemory.Span.Contains(c))
+                    // The arena's state could have changed too (player could have switched arenas or the original arena could have even been destroyed).
+                    // Check that the arena is still valid.
+                    if (arena != player.Arena)
+                        return;
+
+                    ReadOnlySpan<char> extension = parameters.AsSpan(0, parametersLength).Trim().Trim('.');
+                    if (extension.ContainsAny(Path.GetInvalidFileNameChars()))
                     {
                         _chat.SendMessage(player, "Invalid image file extension.");
                         return;
                     }
-                }
 
-                ReadOnlyMemory<char> extension = !parametersMemory.Span.IsWhiteSpace() ? parameters : DefaultMapImageFormat.AsMemory();
+                    if (extension.IsWhiteSpace())
+                        extension = DefaultMapImageFormat;
 
-                MemoryStream stream = new();
+                    MemoryStream stream = new();
+                    bool disposeStream = true;
 
-                // Create the image of the map.
-                try
-                {
-                    _mapData.SaveImage(arena, stream, extension.Span);
-                    stream.Position = 0;
-                }
-                catch (Exception ex)
-                {
-                    stream.Dispose();
-                    _chat.SendMessage(player, $"Error saving image.");
-                    _chat.SendWrappedText(player, ex.Message);
-                    return;
-                }
-
-                // Create image file name.
-                if (!TryGetImageFileName(mapPath, extension.Span, out char[]? imageFileName, out int imageFileNameLength))
-                    return;
-
-                // TODO: C# 13 allows ref in async methods (not crossing an await boundary). It eliminates the need for the char[] renting.
-                //ReadOnlySpan<char> fileNameWithoutExtension = Path.GetFileNameWithoutExtension(mapPath.AsSpan());
-                //Span<char> imageFileName = stackalloc char[fileNameWithoutExtension.Length + 1 + extension.Length];
-                //if (!imageFileName.TryWrite($"{fileNameWithoutExtension}.{extension}", out int charsWritten) || imageFileName.Length != charsWritten)
-                //    return;
-
-                // The char array is rented, so it'll need to be returned to the pool when done.
-                try
-                {
-                    // Send the image.
-                    if (!_fileTransfer!.SendFile(player, stream, imageFileName.AsSpan(0, imageFileNameLength)))
+                    try
                     {
-                        stream.Dispose();
-                        _chat.SendMessage(player, $"Error sending image.");
-                        return;
+                        // Create the image of the map.
+                        try
+                        {
+                            _mapData.SaveImage(arena, stream, extension);
+                            stream.Position = 0;
+                        }
+                        catch (Exception ex)
+                        {
+                            _chat.SendMessage(player, "Error saving image.");
+                            _chat.SendWrappedText(player, ex.Message);
+                            return;
+                        }
+
+                        // Create image file name.
+                        ReadOnlySpan<char> fileNameWithoutExtension = Path.GetFileNameWithoutExtension(mapPath.AsSpan());
+                        Span<char> imageFileName = stackalloc char[fileNameWithoutExtension.Length + 1 + extension.Length];
+                        if (!imageFileName.TryWrite($"{fileNameWithoutExtension}.{extension}", out int charsWritten) || imageFileName.Length != charsWritten)
+                            return;
+
+                        // Send the image.
+                        if (!_fileTransfer!.SendFile(player, stream, imageFileName))
+                        {
+                            _chat.SendMessage(player, "Error sending image.");
+                            return;
+                        }
+
+                        // The stream will be disposed by the IFileTransfer service since the call to SendFile was a success.
+                        disposeStream = false;
+                    }
+                    finally
+                    {
+                        if (disposeStream)
+                            await stream.DisposeAsync();
                     }
                 }
                 finally
                 {
-                    ArrayPool<char>.Shared.Return(imageFileName);
+                    ArrayPool<char>.Shared.Return(parameters, true);
                 }
-
-                // The stream will be disposed by the IFileTransfer service since the call to SendFile was a success.
-            }
-            finally
-            {
-                ArrayPool<char>.Shared.Return(parameters, true);
-            }
-
-            static bool TryGetImageFileName(ReadOnlySpan<char> mapPath, ReadOnlySpan<char> extension, [MaybeNullWhen(false)] out char[] buffer, out int bufferLength)
-            {
-                ReadOnlySpan<char> fileNameWithoutExtension = Path.GetFileNameWithoutExtension(mapPath);
-
-                int numChars = fileNameWithoutExtension.Length + 1 + extension.Length;
-                buffer = ArrayPool<char>.Shared.Rent(numChars);
-                if (!buffer.AsSpan().TryWrite($"{fileNameWithoutExtension}.{extension}", out int charsWritten) || numChars != charsWritten)
-                {
-                    ArrayPool<char>.Shared.Return(buffer);
-                    buffer = null;
-                    bufferLength = 0;
-                    return false;
-                }
-
-                bufferLength = charsWritten;
-                return true;
             }
         }
 
