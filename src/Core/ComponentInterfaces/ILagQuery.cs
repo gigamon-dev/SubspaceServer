@@ -19,6 +19,13 @@ namespace SS.Core.ComponentInterfaces
         public double S2C, C2S, S2CWeapon;
     }
 
+    public struct PacketlossDetails
+    {
+        public uint ServerPacketsSent, ClientPacketsReceived;
+        public uint ClientPacketsSent, ServerPacketsReceived;
+        public uint WeaponSentCount, WeaponReceiveCount;
+    }
+
     public record struct TimeSyncRecord()
     {
         public required uint ServerTime;
@@ -59,11 +66,19 @@ namespace SS.Core.ComponentInterfaces
         void QueryReliablePing(Player player, out PingSummary ping);
 
         /// <summary>
-        /// Gets a player's packetloss info.
+        /// Gets a <paramref name="player"/>'s packetloss <paramref name="summary"/>.
         /// </summary>
         /// <param name="player">The player to get data about.</param>
-        /// <param name="packetloss">The data</param>
-        void QueryPacketloss(Player player, out PacketlossSummary packetloss);
+        /// <param name="summary">The packetloss summary.</param>
+        void QueryPacketloss(Player player, out PacketlossSummary summary);
+
+        /// <summary>
+        /// Gets a <paramref name="player"/>'s packetloss <paramref name="summary"/> and <paramref name="details"/>.
+        /// </summary>
+        /// <param name="player">The player to get data about.</param>
+        /// <param name="summary">The packetloss summary.</param>
+        /// <param name="details">The packetloss details.</param>
+        void QueryPacketloss(Player player, out PacketlossSummary summary, out PacketlossDetails details);
 
         /// <summary>
         /// Gets a player's reliable lag info.

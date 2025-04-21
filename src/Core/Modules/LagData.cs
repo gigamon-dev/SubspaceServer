@@ -170,6 +170,19 @@ namespace SS.Core.Modules
                 packetloss = default;
         }
 
+        void ILagQuery.QueryPacketloss(Player player, out PacketlossSummary summary, out PacketlossDetails details)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+            {
+                lagStats.QueryPacketloss(out summary, out details);
+            }
+            else
+            {
+                summary = default;
+                details = default;
+            }
+        }
+
         void ILagQuery.QueryReliableLag(Player player, out ReliableLagData data)
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
@@ -517,6 +530,21 @@ namespace SS.Core.Modules
                     // The difference between sent and received is signed. This allows for negative packetloss.
                     // The rest is unsigned, which allows for use of the full range of 32-bit values.
                     return sent > PacketlossMinPackets ? (double)((int)sent - (int)received) / sent : 0.0;
+                }
+            }
+
+            public void QueryPacketloss(out PacketlossSummary summary, out PacketlossDetails details)
+            {
+                lock (_lock)
+                {
+                    QueryPacketloss(out summary);
+
+                    details.ServerPacketsSent = Packetloss.ServerPacketsSent;
+                    details.ClientPacketsReceived = Packetloss.ClientPacketsReceived;
+                    details.ClientPacketsSent = Packetloss.ClientPacketsSent;
+                    details.ServerPacketsReceived = Packetloss.ServerPacketsReceived;
+                    details.WeaponSentCount = WeaponSentCount;
+                    details.WeaponReceiveCount = WeaponReceiveCount;
                 }
             }
 
