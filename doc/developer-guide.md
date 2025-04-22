@@ -86,6 +86,8 @@ To create a module, simply create a class and have it implement the `SS.Core.IMo
 using SS.Core;
 using SS.Core.ComponentInterfaces;
 
+namespace Example.ModuleLifeCycleExamples;
+
 /// <summary>
 /// This is an example of the simplest form of loading and unloading a module.
 /// </summary>
@@ -110,9 +112,9 @@ As you may have guessed from the name, `Load` is called when the server wants to
 
 To load the `ExampleModule` module on startup, you'd simply edit the Modules.config with:
 ```xml
-<module type="Example.ExampleModule" path="bin/modules/Example/Example.dll" />
+<module type="Example.ModuleLifeCycleExamples.ExampleModule" path="bin/modules/Example/Example.dll" />
 ```
-That is, you want the server to create an instance of the `ExampleModule` class in the  `SS.Example` namespace of your `SS.Example.dll` assembly which is in the "bin/modules/Example" folder.
+That is, you want the server to create an instance of the `ExampleModule` class in the  `Example.ModuleLifeCycleExamples` namespace of your `Example.dll` assembly which is in the "bin/modules/Example" folder.
 
 > **Fun fact:** Modules can also be manually loaded or unloaded using in-game commands <nobr>`?insmod`</nobr> and <nobr>`?rmmod`</nobr> respectively.
 
@@ -873,7 +875,9 @@ The server extensively uses `Span<char>` and `ReadOnlySpan<char>`, many times in
 
 Additionally, `IChat` and `ILogManager` provide method overloads with interpolated string handlers. Underneath the scenes, the interpolated string handlers use pooled `StringBuilder` objects. Therefore, when you call those methods with an interpolated string, there are no string allocations.
 
-The `SS.Utilties.Trie` and `SS.Utilties.Trie<TValue>` classes provide a replacement for where a string keyed `Dictionary` would normally have been used. There currently is no way to search a string keyed `Dictionary` with a `ReadOnlySpan<char>`; a string object is required. The `SS.Utilties.Trie` and `SS.Utilties.Trie<TValue>` classes provide similar functionality as a string keyed `Dictionary`, but with methods that accept `ReadOnlySpan<char>`. As their name implies, they use an implementation of the trie data structure.
+When accessing a string keyed `HashSet<T>` or `Dictionary<TKey, TValue>`, avoid allocating a string to by using the `GetAlternateLookup` mechanism added in .NET 9.
+
+> Prior to .NET 9, to get around string allocations for `HashSet` and `Dictionary` lookups, the `SS.Utilties.Trie` and `SS.Utilties.Trie<TValue>` classes provided a workaround. As their name implies, they use an implementation of the trie data structure. The downside was that they used a lot of memory upfront. The `GetAlternateLookup` mechanism has mostly replaced their use. However, they are still useful when you need a collection that can quickly search for keys that start with a given substring.
 
 ## Object Pooling
 Object pooling is a technique in which objects can be reused. The basic idea behind it is that a pool of objects is maintained. This pool is used such that when an object is needed, it will try to get one from the pool, rather than allocate a new one. And when an object is no longer needed, it can be returned to the pool so that it can be reused later on.
@@ -922,6 +926,7 @@ Here are some recommendations when writing code for Subspace Server .NET. I've t
 - Try to avoid allocating strings
   + Use a pooled `StringBuilder` from `IObjectPoolManager.StringBuilderPool`
   + Consider using `Span<char>` when possible.
+  + Use the `GetAlternateLookup` mechanism when accessing a string keyed `HashSet`, `Dictionary`, etc...
   + When writing a chat or log message, use interpolated strings, so that it uses the interpolated string handler overloads.
 - Try to avoid using LINQ, especially in hot spots (memory allocations).
 - Use nullable reference types (why not?).
