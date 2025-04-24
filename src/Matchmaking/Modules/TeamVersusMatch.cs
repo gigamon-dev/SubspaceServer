@@ -1999,8 +1999,9 @@ namespace SS.Matchmaking.Modules
                             continue;
 
                         // TODO: for now only allowing groups of the exact size needed (for simplified matching)
-                        if (queue.Options.MinGroupSize != matchConfiguration.PlayersPerTeam
-                            || queue.Options.MaxGroupSize != matchConfiguration.PlayersPerTeam)
+                        if (queue.Options.AllowGroups
+                            && (queue.Options.MinGroupSize != matchConfiguration.PlayersPerTeam
+                                || queue.Options.MaxGroupSize != matchConfiguration.PlayersPerTeam))
                         {
                             _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Unsupported configuration for match '{matchConfiguration.MatchType}'. Queue '{queueName}' can't be used (must only allow groups of exactly {matchConfiguration.PlayersPerTeam} players).");
                             continue;
