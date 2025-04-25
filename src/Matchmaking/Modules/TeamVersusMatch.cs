@@ -273,20 +273,20 @@ namespace SS.Matchmaking.Modules
         ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder? errorMessage)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
-                return ShipMask.None;
+                return ShipMask.All;
 
             // When in a match, allow a player to do a normal ship change instead of using ?sc
             // If during a period they can ship change (start of the match or after death), then allow (ShipMask.All).
             // If during a period they cannot ship change, but have additional lives, don't allow, but set their next ship.
 
             PlayerSlot? playerSlot = playerData.AssignedSlot;
-            if (playerSlot is null || (playerSlot is not null // player is in a match
+            if (playerSlot is not null // player is in a match
                 && player.Arena is not null // player is in an arena
                 && player.Arena == playerSlot.MatchData.Arena // player is in the match's arena
                 && (IsStartingPhase(playerSlot.MatchData.Status)
                     || (playerSlot.MatchData.Status == MatchStatus.InProgress
                         && playerSlot.AllowShipChangeExpiration is not null && playerSlot.AllowShipChangeExpiration > DateTime.UtcNow
-                    ))  // is within the period that ship changes are allowed (e.g. starting phase or after a death)
+                    )  // is within the period that ship changes are allowed (e.g. starting phase or after a death)
                 ))
             {
                 return ShipMask.All;
