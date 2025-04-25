@@ -280,13 +280,13 @@ namespace SS.Matchmaking.Modules
             // If during a period they cannot ship change, but have additional lives, don't allow, but set their next ship.
 
             PlayerSlot? playerSlot = playerData.AssignedSlot;
-            if (playerSlot is not null // player is in a match
+            if (playerSlot is null || (playerSlot is not null // player is in a match
                 && player.Arena is not null // player is in an arena
                 && player.Arena == playerSlot.MatchData.Arena // player is in the match's arena
                 && (IsStartingPhase(playerSlot.MatchData.Status)
                     || (playerSlot.MatchData.Status == MatchStatus.InProgress
                         && playerSlot.AllowShipChangeExpiration is not null && playerSlot.AllowShipChangeExpiration > DateTime.UtcNow
-                    )  // is within the period that ship changes are allowed (e.g. starting phase or after a death)
+                    ))  // is within the period that ship changes are allowed (e.g. starting phase or after a death)
                 ))
             {
                 return ShipMask.All;
