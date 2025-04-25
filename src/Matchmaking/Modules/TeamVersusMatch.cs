@@ -298,7 +298,7 @@ namespace SS.Matchmaking.Modules
                 _chat.SendMessage(player, $"Your next ship will be a {ship}.");
             }
 
-            return player.Ship.GetShipMask(); // Only allow the current ship. In other words, no change allowed.
+            return ShipMask.All; // Only allow the current ship. In other words, no change allowed.
         }
 
         bool IFreqManagerEnforcerAdvisor.CanChangeToFreq(Player player, short newFreq, StringBuilder? errorMessage)
