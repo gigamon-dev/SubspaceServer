@@ -3870,10 +3870,11 @@ namespace SS.Matchmaking.Modules
 
                 void AdjustItem(Player player, Prize prize, byte initial)
                 {
-                    if (initial == 0)
+                    short adjustAmount = (short)(0 - initial);
+                    if (adjustAmount >= 0)
                         return;
 
-                    _game.GivePrize(player, (Prize)(-(short)prize), 0);
+                    _game.GivePrize(player, (Prize)(-(short)prize), adjustAmount);
                 }
             }
         }
