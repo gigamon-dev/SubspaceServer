@@ -3484,10 +3484,13 @@ namespace SS.Matchmaking.Modules
 
                     // All players are ready!
 
-                    // Reset ships
+                    // Reset ships if match settings dont specify burned items
                     foreach (Player player in readyPlayers)
                     {
-                        _game.ShipReset(player);
+                        if (!matchData.Configuration.BurnItemsOnSpawn)
+                        {
+                            _game.ShipReset(player);
+                        }
                     }
 
                     // Start the next phase.
