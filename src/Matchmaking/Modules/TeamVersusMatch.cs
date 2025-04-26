@@ -1515,7 +1515,7 @@ namespace SS.Matchmaking.Modules
             // Do the actual sub in.
             string? subOutPlayerName = slot.PlayerName;
             AssignSlot(slot, player);
-            SetShipAndFreq(slot, true, null);
+            SetShipAndFreq(slot, true, null, false);
 
             TeamVersusMatchPlayerSubbedCallback.Fire(arena, slot, subOutPlayerName);
         }
@@ -1625,7 +1625,7 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            SetShipAndFreq(slot, true, null);
+            SetShipAndFreq(slot, true, null, false);
 
             HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
             try
@@ -1746,7 +1746,6 @@ namespace SS.Matchmaking.Modules
 
             // To the opposing team (vote failed)
             //_chat.SendMessage(, $"Your opponents chose not to surrender. Show no mercy!");
-
 
             // To the player's team (voting begin)
             //_chat.SendMessage(, $"Your teammate, {player.Name}, has requested to surrender with honor. Vote using: ?end [y|n]");
@@ -2177,6 +2176,8 @@ namespace SS.Matchmaking.Modules
 
             ItemsCommandOption itemsCommandOption = _configManager.GetEnum(ch, matchType, "ItemsCommandOption", ItemsCommandOption.None);
 
+            bool burnItemsOnSpawn = _configManager.GetBool(ch, matchType, "BurnItemsOnSpawn", false);
+
             MatchConfiguration matchConfiguration = new()
             {
                 MatchType = matchType,
@@ -2198,6 +2199,7 @@ namespace SS.Matchmaking.Modules
                 AllowShipChangeAfterDeathDuration = allowShipChangeAfterDeathDuration,
                 InactiveSlotAvailableDelay = inactiveSlotAvailableDelay,
                 ItemsCommandOption = itemsCommandOption,
+                BurnItemsOnSpawn = burnItemsOnSpawn,
                 Boxes = new MatchBoxConfiguration[numBoxes],
             };
 
@@ -3308,6 +3310,9 @@ namespace SS.Matchmaking.Modules
                         int startLocationIdx = startLocations.Length == 1 ? 0 : _prng.Number(0, startLocations.Length - 1);
                         TileCoordinates startLocation = startLocations[startLocationIdx];
 
+                        // Burn Items if configured in match settings (overrides item refill)
+                        bool burnItems = matchData.Configuration.BurnItemsOnSpawn;
+
                         foreach (PlayerSlot playerSlot in team.Slots)
                         {
                             Player player = playerSlot.Player!;
@@ -3318,7 +3323,7 @@ namespace SS.Matchmaking.Modules
                             playerSlot.LagOuts = 0;
                             playerSlot.AllowShipChangeExpiration = null;
 
-                            SetShipAndFreq(playerSlot, false, startLocation);
+                            SetShipAndFreq(playerSlot, false, startLocation, burnItems);
                         }
                     }
 
@@ -3731,7 +3736,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void SetShipAndFreq(PlayerSlot slot, bool isRefill, TileCoordinates? startLocation)
+        private void SetShipAndFreq(PlayerSlot slot, bool isRefill, TileCoordinates? startLocation, bool isBurned)
         {
             Player? player = slot.Player;
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
@@ -3766,7 +3771,12 @@ namespace SS.Matchmaking.Modules
                 _game.WarpTo(player, startLocation.Value.X, startLocation.Value.Y);
             }
 
-            if (isRefill)
+            if (isBurned)
+            {
+                // Adjust the player's items to nothing (to override defaults or for certain conditions).
+                RemoveAllItems(slot);
+            }
+            else if (isRefill)
             {
                 // Adjust the player's items to the prior remaining amounts.
                 SetRemainingItems(slot);
@@ -3838,7 +3848,37 @@ namespace SS.Matchmaking.Modules
                     _game.GivePrize(player, (Prize)(-(short)prize), adjustAmount);
                 }
             }
+
+            void RemoveAllItems(PlayerSlot slot)
+            {
+                Player? player = slot.Player;
+                if (player is null)
+                    return;
+
+                Arena? arena = player.Arena;
+                if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                    return;
+
+                ref ShipSettings shipSettings = ref arenaData.ShipSettings[(int)slot.Ship];
+                AdjustItem(player, Prize.Burst, shipSettings.InitialBurst);
+                AdjustItem(player, Prize.Repel, shipSettings.InitialRepel);
+                AdjustItem(player, Prize.Thor, shipSettings.InitialThor);
+                AdjustItem(player, Prize.Brick, shipSettings.InitialBrick);
+                AdjustItem(player, Prize.Decoy, shipSettings.InitialDecoy);
+                AdjustItem(player, Prize.Rocket, shipSettings.InitialRocket);
+                AdjustItem(player, Prize.Portal, shipSettings.InitialPortal);
+
+                void AdjustItem(Player player, Prize prize, byte initial)
+                {
+                    if (initial == 0)
+                        return;
+
+                    _game.GivePrize(player, (Prize)(-(short)prize), 0);
+                }
+            }
         }
+
+
 
         /// <summary>
         /// Unoverrides a player's spawn settings.
@@ -4249,6 +4289,8 @@ namespace SS.Matchmaking.Modules
             public required TimeSpan AllowShipChangeAfterDeathDuration { get; init; }
             public required TimeSpan InactiveSlotAvailableDelay { get; init; }
             public ItemsCommandOption ItemsCommandOption { get; init; } = ItemsCommandOption.None;
+
+            public required bool BurnItemsOnSpawn { get; init; }
 
             public required MatchBoxConfiguration[] Boxes;
 
