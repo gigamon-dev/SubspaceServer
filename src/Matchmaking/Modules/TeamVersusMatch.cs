@@ -1096,6 +1096,7 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_Spawn(Player player, SpawnCallback.SpawnReason reasons)
         {
+
             if (player is null)
                 return;
 
@@ -1118,6 +1119,13 @@ namespace SS.Matchmaking.Modules
                 // Change the player to that ship.
                 _game.SetShip(player, playerData.NextShip.Value); // this will trigger another Spawn callback
             }
+
+            // Ensure ships are burned on spawn if in a match and match type is configured to burn items.
+            if (slot.MatchData.Configuration.BurnItemsOnSpawn)
+            {
+                RemoveAllItems(slot);
+            }
+
         }
 
         #endregion
@@ -3851,38 +3859,44 @@ namespace SS.Matchmaking.Modules
                     _game.GivePrize(player, (Prize)(-(short)prize), adjustAmount);
                 }
             }
-
-            void RemoveAllItems(PlayerSlot slot)
-            {
-                Player? player = slot.Player;
-                if (player is null)
-                    return;
-
-                Arena? arena = player.Arena;
-                if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
-                    return;
-
-                ref ShipSettings shipSettings = ref arenaData.ShipSettings[(int)slot.Ship];
-                AdjustItem(player, Prize.Burst, shipSettings.InitialBurst);
-                AdjustItem(player, Prize.Repel, shipSettings.InitialRepel);
-                AdjustItem(player, Prize.Thor, shipSettings.InitialThor);
-                AdjustItem(player, Prize.Brick, shipSettings.InitialBrick);
-                AdjustItem(player, Prize.Decoy, shipSettings.InitialDecoy);
-                AdjustItem(player, Prize.Rocket, shipSettings.InitialRocket);
-                AdjustItem(player, Prize.Portal, shipSettings.InitialPortal);
-
-                void AdjustItem(Player player, Prize prize, byte initial)
-                {
-                    short adjustAmount = (short)(0 - initial);
-                    if (adjustAmount >= 0)
-                        return;
-
-                    _game.GivePrize(player, (Prize)(-(short)prize), adjustAmount);
-                }
-            }
         }
 
 
+        /// <summary>
+        /// Overrides initial shipSetting items
+        /// </summary>
+        /// <remarks>
+        /// This is used to burn ships for various purposes..
+        /// </remarks>
+        /// <param name="slot">The player slot to remove items for.</param>
+        private void RemoveAllItems(PlayerSlot slot)
+        {
+            Player? player = slot.Player;
+            if (player is null)
+                return;
+
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            ref ShipSettings shipSettings = ref arenaData.ShipSettings[(int)slot.Ship];
+            AdjustItem(player, Prize.Burst, shipSettings.InitialBurst);
+            AdjustItem(player, Prize.Repel, shipSettings.InitialRepel);
+            AdjustItem(player, Prize.Thor, shipSettings.InitialThor);
+            AdjustItem(player, Prize.Brick, shipSettings.InitialBrick);
+            AdjustItem(player, Prize.Decoy, shipSettings.InitialDecoy);
+            AdjustItem(player, Prize.Rocket, shipSettings.InitialRocket);
+            AdjustItem(player, Prize.Portal, shipSettings.InitialPortal);
+
+            void AdjustItem(Player player, Prize prize, byte initial)
+            {
+                short adjustAmount = (short)(0 - initial);
+                if (adjustAmount >= 0)
+                    return;
+
+                _game.GivePrize(player, (Prize)(-(short)prize), adjustAmount);
+            }
+        }
 
         /// <summary>
         /// Unoverrides a player's spawn settings.
