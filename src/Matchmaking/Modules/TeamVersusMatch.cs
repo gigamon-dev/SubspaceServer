@@ -1846,13 +1846,14 @@ namespace SS.Matchmaking.Modules
             if (matchData is null)
             {
                 // TODO: Check if the player is spectating a player in a match
+                return;
             }
 
-            if (matchData is null)
-                return;
-
             if (matchData.Status != MatchStatus.InProgress)
+            {
+                _chat.SendMessage(player, $"Match has not started.");
                 return;
+            }
 
             switch (matchData.Configuration.ItemsCommandOption)
             {
@@ -1870,9 +1871,9 @@ namespace SS.Matchmaking.Modules
                                     continue;
 
                                 if (slotsBuilder.Length > 0)
-                                    teamBuilder.Append("  ");
+                                    slotsBuilder.Append(", ");
 
-                                teamBuilder.Append($"{slot.PlayerName}: {slot.Repels}/{slot.Rockets}");
+                                slotsBuilder.Append($"{slot.PlayerName} {slot.Repels}/{slot.Rockets}");
                             }
 
                             if (slotsBuilder.Length <= 0)
