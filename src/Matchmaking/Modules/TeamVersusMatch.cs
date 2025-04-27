@@ -280,13 +280,15 @@ namespace SS.Matchmaking.Modules
             // If during a period they cannot ship change, but have additional lives, don't allow, but set their next ship.
 
             PlayerSlot? playerSlot = playerData.AssignedSlot;
-            if (playerSlot is null || (playerSlot is not null // player is in a match
-                && player.Arena is not null // player is in an arena
-                && player.Arena == playerSlot.MatchData.Arena // player is in the match's arena
-                && (IsStartingPhase(playerSlot.MatchData.Status)
-                    || (playerSlot.MatchData.Status == MatchStatus.InProgress
-                        && playerSlot.AllowShipChangeExpiration is not null && playerSlot.AllowShipChangeExpiration > DateTime.UtcNow
-                    ))  // is within the period that ship changes are allowed (e.g. starting phase or after a death)
+            if (playerSlot is null // not in a match
+                || (playerSlot is not null // player is in a match
+                    && player.Arena is not null // player is in an arena
+                    && player.Arena == playerSlot.MatchData.Arena // player is in the match's arena
+                    && (IsStartingPhase(playerSlot.MatchData.Status)
+                        || (playerSlot.MatchData.Status == MatchStatus.InProgress
+                            && (playerSlot.AllowShipChangeExpiration is not null && playerSlot.AllowShipChangeExpiration > DateTime.UtcNow)
+                        )
+                    ) // is within the period that ship changes are allowed (e.g. starting phase or after a death)
                 ))
             {
                 return ShipMask.All;
@@ -303,15 +305,70 @@ namespace SS.Matchmaking.Modules
 
         bool IFreqManagerEnforcerAdvisor.CanChangeToFreq(Player player, short newFreq, StringBuilder? errorMessage)
         {
-            // Manual freq changes are not allowed.
-            return true;
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return false;
+
+            PlayerSlot? playerSlot = playerData.AssignedSlot;
+            if (playerSlot is null)
+            {
+                // Not in a match. 
+                if (player.Arena is null || !_arenaDataDictionary.TryGetValue(player.Arena, out ArenaData? arenaData))
+                    return false;
+
+                if (arenaData.PublicPlayEnabled)
+                {
+                    bool result = newFreq >= 0 && newFreq <= 9;
+
+                    if (!result)
+                    {
+                        errorMessage?.Append("Only frequencies 0-9 are available for public play.");
+                    }
+
+                    return result;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                // In a match, manual freq changes are not allowed.
+                return newFreq == playerSlot.Team.Freq;
+            }
         }
 
         bool IFreqManagerEnforcerAdvisor.CanEnterGame(Player player, StringBuilder? errorMessage)
         {
-            // Entering the game manually is not allowed.
-            // Players need to use the matchmaking system commands: ?next, ?sub, ?return
-            return true;
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return false;
+
+            PlayerSlot? playerSlot = playerData.AssignedSlot;
+            if (playerSlot is null)
+            {
+                // Not in a match. Can enter public play if the arena is configured for it.
+                bool result = player.Arena is not null
+                    && _arenaDataDictionary.TryGetValue(player.Arena, out ArenaData? arenaData)
+                    && arenaData.PublicPlayEnabled;
+
+                if (!result)
+                {
+                    errorMessage?.Append($"This arena does not support public play. Use ?{_matchmakingQueues.NextCommandName} to search for a match to play in.");
+                }
+
+                return result;
+            }
+            else
+            {
+                if (player.Ship == ShipType.Spec)
+                {
+                    // Allow returning to match using regular ship selection, rather than having to use ?return.
+                    // This is pretty hacky, as it's trying to fit into the existing FreqManager's use of IFreqManagerEnforcerAdvisor to tie in.
+                    ReturnToMatch(player, playerData);
+                }
+
+                return false;
+            }
         }
 
         bool IFreqManagerEnforcerAdvisor.IsUnlocked(Player player, StringBuilder? errorMessage)
@@ -323,6 +380,8 @@ namespace SS.Matchmaking.Modules
 
         #region Callbacks
 
+        [ConfigHelp<bool>("SS.Matchmaking.TeamVersusMatch", "PublicPlayEanbled", ConfigScope.Arena, Default = false,
+            Description = "Whether to allow players into ships without being in a match.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             bool isRegisteredArena = false;
@@ -340,6 +399,7 @@ namespace SS.Matchmaking.Modules
 
             if (action == ArenaAction.Create)
             {
+                ConfigHandle ch = arena.Cfg!;
                 ArenaData arenaData = _arenaDataPool.Get();
                 _arenaDataDictionary.Add(arena, arenaData);
 
@@ -347,8 +407,6 @@ namespace SS.Matchmaking.Modules
                 string[] shipNames = Enum.GetNames<ShipType>();
                 for (int i = 0; i < 8; i++)
                 {
-                    ConfigHandle ch = arena.Cfg!;
-
                     arenaData.ShipSettings[i] = new ShipSettings()
                     {
                         InitialBurst = (byte)_configManager.GetInt(ch, shipNames[i], "InitialBurst", 0),
@@ -361,6 +419,8 @@ namespace SS.Matchmaking.Modules
                         MaximumEnergy = (short)_configManager.GetInt(ch, shipNames[i], "MaximumEnergy", 0),
                     };
                 }
+
+                arenaData.PublicPlayEnabled = _configManager.GetBool(ch, "SS.Matchmaking.TeamVersusMatch", "PublicPlayEnabled", false);
 
                 // Register callbacks.
                 KillCallback.Register(arena, Callback_Kill);
@@ -1096,7 +1156,6 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_Spawn(Player player, SpawnCallback.SpawnReason reasons)
         {
-
             if (player is null)
                 return;
 
@@ -1125,7 +1184,6 @@ namespace SS.Matchmaking.Modules
             {
                 RemoveAllItems(slot);
             }
-
         }
 
         #endregion
@@ -1851,7 +1909,7 @@ namespace SS.Matchmaking.Modules
 
             if (matchData.Status != MatchStatus.InProgress)
             {
-                _chat.SendMessage(player, $"Match has not started.");
+                _chat.SendMessage(player, "Match has not started.");
                 return;
             }
 
@@ -3494,9 +3552,9 @@ namespace SS.Matchmaking.Modules
                     // All players are ready!
 
                     // Reset ships if match settings dont specify burned items
-                    foreach (Player player in readyPlayers)
+                    if (!matchData.Configuration.BurnItemsOnSpawn)
                     {
-                        if (!matchData.Configuration.BurnItemsOnSpawn)
+                        foreach (Player player in readyPlayers)
                         {
                             _game.ShipReset(player);
                         }
@@ -4756,7 +4814,8 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// For assigning freqs to <see cref="MatchData"/>.
             /// </summary>
-            public short NextFreq = 0;
+            /// <remarks>Freqs 0-9 reserved for public play. Therefore, starts at 10.</remarks>
+            public short NextFreq = 10;
 
             /// <summary>
             /// The default queue, so that player can just type ?next (without a queue name).
@@ -4773,11 +4832,17 @@ namespace SS.Matchmaking.Modules
             public AdvisorRegistrationToken<IPlayerPositionAdvisor>? IPlayerPositionAdvisorToken;
             public readonly ShipSettings[] ShipSettings = new ShipSettings[8];
 
+            /// <summary>
+            /// Whether arenas of this support public play in addition to team versus matches.
+            /// </summary>
+            public bool PublicPlayEnabled = false;
+
             bool IResettable.TryReset()
             {
                 IFreqManagerEnforcerAdvisorToken = null;
                 IPlayerPositionAdvisorToken = null;
                 Array.Clear(ShipSettings);
+                PublicPlayEnabled = false;
 
                 return true;
             }
