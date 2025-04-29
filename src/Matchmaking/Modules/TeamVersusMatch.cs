@@ -3938,7 +3938,7 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
                 return;
 
-            ref ShipSettings shipSettings = ref arenaData.ShipSettings[(int)slot.Ship];
+            ref ShipSettings shipSettings = ref arenaData.ShipSettings[(int)player.Ship];
             AdjustItem(player, Prize.Burst, shipSettings.InitialBurst);
             AdjustItem(player, Prize.Repel, shipSettings.InitialRepel);
             AdjustItem(player, Prize.Thor, shipSettings.InitialThor);
