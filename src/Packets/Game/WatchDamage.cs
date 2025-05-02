@@ -16,7 +16,7 @@ namespace SS.Packets.Game
         public readonly WeaponData WeaponData;
         private readonly short energy;
         private readonly short damage;
-        private readonly byte unknown;
+        private readonly byte timestampOffset;
 
         #region Helper Properties
 
@@ -40,6 +40,14 @@ namespace SS.Packets.Game
         /// This can be greater than <see cref="Energy"/> if it's the killing blow or if the player self-inflicted damage.
         /// </remarks>
         public short Damage => LittleEndianConverter.Convert(damage);
+
+        /// <summary>
+        /// The difference from the timestamp in the packet header (<see cref="C2S_WatchDamageHeader.Timestamp"/> or <see cref="S2C_WatchDamageHeader.Timestamp"/>).
+        /// </summary>
+        /// <remarks>
+        /// The client (Continuum) can buffer damage events before it is sent. In such cases, this can be used to determine the order in which the damage was taken.
+        /// </remarks>
+        public byte TimestampOffset => timestampOffset;
 
         #endregion
     }
