@@ -4,6 +4,7 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities.Collections;
+using SS.Utilities.ObjectPool;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -28,6 +29,10 @@ namespace SS.Core.Modules
         private const string ArenasDirectoryName = "arenas";
 
         private static readonly SearchValues<char> s_permanentArenasDelimiters = SearchValues.Create(',', ' ', '\t', '\n');
+        private static readonly SearchValues<char> s_attachModulesDelimiters = SearchValues.Create(' ', '\t', ':', ';');
+
+        private static readonly StringPool s_moduleTypeNameStringPool = new(128);
+        private static readonly ObjectPool<List<string>> s_stringListPool = new DefaultObjectPool<List<string>>(new ListPooledObjectPolicy<string>() { InitialCapacity = 32 }, Constants.TargetArenaCount);
 
         /// <summary>
         /// the read-write lock for the global arena list
@@ -1194,15 +1199,31 @@ namespace SS.Core.Modules
                 """)]
             async Task DoAttachAsync(Arena arena)
             {
-                string? attachMods = _configManager.GetStr(arena.Cfg!, "Modules", "AttachModules");
-                if (string.IsNullOrWhiteSpace(attachMods))
+                ReadOnlySpan<char> attachMods = _configManager.GetStr(arena.Cfg!, "Modules", "AttachModules");
+                if (attachMods.IsEmpty || attachMods.IsWhiteSpace())
                     return;
 
-                string[] attachModsArray = attachMods.Split(" \t:;".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
-
-                foreach (string moduleToAttach in attachModsArray)
+                List<string> moduleTypeNameList = s_stringListPool.Get();
+                try
                 {
-                    await _moduleManager.AttachModuleAsync(moduleToAttach, arena);
+                    foreach (Range range in attachMods.SplitAny(s_attachModulesDelimiters))
+                    {
+                        ReadOnlySpan<char> moduleTypeNameSpan = attachMods[range].Trim();
+                        if (moduleTypeNameSpan.IsEmpty)
+                            continue;
+
+                        string moduleTypeName = s_moduleTypeNameStringPool.GetOrAdd(moduleTypeNameSpan);
+                        moduleTypeNameList.Add(moduleTypeName);
+                    }
+
+                    foreach (string moduleTypeName in moduleTypeNameList)
+                    {
+                        await _moduleManager.AttachModuleAsync(moduleTypeName, arena);
+                    }
+                }
+                finally
+                {
+                    s_stringListPool.Return(moduleTypeNameList);
                 }
             }
         }
