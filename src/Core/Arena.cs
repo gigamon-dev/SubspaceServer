@@ -66,8 +66,14 @@ namespace SS.Core
     public enum ArenaState
     {
         /// <summary>
-        /// The arena was just created. Either someone wants to enter the arena or it's a permanent arena.
+        /// The arena was just constructed.
+        /// </summary>
+        Uninitialized,
+
+        /// <summary>
+        /// The arena is being initialized. Either someone wants to enter the arena or it's a permanent arena.
         /// The arena.conf file is loaded and made available on the arena, <see cref="Arena.Cfg"/>.
+        /// If it fails to load the arena.conf, it transitions to <see cref="Destroyed"/>.
         /// When the arena.conf loading is complete, it transitions to <see cref="WaitHolds0"/>
         /// and the <see cref="ComponentCallbacks.ArenaActionCallback"/> (<see cref="ArenaAction.PreCreate"/>) is called.
         /// </summary>
@@ -122,7 +128,7 @@ namespace SS.Core
 
         /// <summary>
         /// The arena is being reaped (torn down).
-        /// If persist module is loaded (<see cref="IPersist"/> available), it transitions to <see cref="WaitSync2"/> and tell the persist module to save persistent data for the arena.
+        /// If persist module is loaded (<see cref="IPersist"/> available), it transitions to <see cref="WaitSync2"/> and tells the persist module to save persistent data for the arena.
         /// Otherwise, it transitions to <see cref="DoDestroy1"/>.
         /// </summary>
         DoWriteData,
@@ -148,9 +154,14 @@ namespace SS.Core
         /// Detaches modules that were attached to the arena.
         /// When detaching of modules is complete, the <see cref="ComponentCallbacks.ArenaActionCallback"/> (<see cref="ArenaAction.PostDestroy"/>) is called.
         /// If the arena was being recycled, it will transition back to <see cref="DoInit0"/>.
-        /// Otherwise, the arena is finally removed.
+        /// Otherwise, the arena is finally removed and is transitioned to <see cref="Destroyed"/>.
         /// </summary>
-        DoDestroy2
+        DoDestroy2,
+
+        /// <summary>
+        /// The arena has been destroyed.
+        /// </summary>
+        Destroyed,
     }
 
     /// <summary>
@@ -188,6 +199,8 @@ namespace SS.Core
 
         private static readonly char[] _digitChars = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
+        private ArenaState _status = ArenaState.Uninitialized;
+
         /// <summary>
         /// The arena's state.
         /// </summary>
@@ -195,7 +208,15 @@ namespace SS.Core
         /// The <see cref="ArenaManager"/> transitions an arena through various states.
         /// Most modules will just care if the arena's is <see cref="ArenaState.Running"/>.
         /// </remarks>
-        public ArenaState Status { get; internal set; } = ArenaState.DoInit0;
+        public ArenaState Status
+        {
+            get => _status;
+            internal set
+            {
+                _status = value;
+                Manager.ProcessStateChange(this);
+            }
+        }
 
         internal readonly ArenaManager Manager;
 
