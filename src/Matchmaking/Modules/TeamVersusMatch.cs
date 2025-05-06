@@ -695,7 +695,11 @@ namespace SS.Matchmaking.Modules
             DateTime now = DateTime.UtcNow;
 
             killedPlayerSlot.Lives--;
-            killerPlayerSlot.Team.Score++;
+
+            if (killerPlayerSlot.Team != killedPlayerSlot.Team)
+            {
+                killerPlayerSlot.Team.Score++;
+            }
 
             bool isKnockout = killedPlayerSlot.Lives <= 0;
 
