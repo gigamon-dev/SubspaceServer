@@ -745,18 +745,20 @@ namespace SS.Core.Modules
             Description = "Whether players can reset their own scores using ?scorereset.")]
         private void Command_scorereset(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            if (_configManager is null || _scoreStats is null)
+                return;
+
             // For now, only reset PersistInterval.Reset scores, since those are the only ones the client sees.
             if (target.TryGetArenaTarget(out Arena? arena))
             {
-                if (_configManager!.GetBool(arena.Cfg!, "Misc", "SelfScoreReset", ConfigHelp.Constants.Arena.Misc.SelfScoreReset.Default))
+                if (_configManager.GetBool(arena.Cfg!, "Misc", "SelfScoreReset", ConfigHelp.Constants.Arena.Misc.SelfScoreReset.Default))
                 {
-                    _scoreStats!.ScoreReset(player, PersistInterval.Reset);
-                    _scoreStats.SendUpdates(arena, null);
-                    _chat.SendMessage(player, $"Your score has been reset.");
+                    _scoreStats.ScoreReset(player, PersistInterval.Reset);
+                    _chat.SendMessage(player, "Your score has been reset.");
                 }
                 else
                 {
-                    _chat.SendMessage(player, $"This arena doesn't allow you to reset your own scores.");
+                    _chat.SendMessage(player, "This arena doesn't allow you to reset your own scores.");
                 }
             }
             else if (target.TryGetPlayerTarget(out Player? otherPlayer))
@@ -765,8 +767,7 @@ namespace SS.Core.Modules
 
                 if (arena != null)
                 {
-                    _scoreStats!.ScoreReset(otherPlayer, PersistInterval.Reset);
-                    _scoreStats.SendUpdates(arena, null);
+                    _scoreStats.ScoreReset(otherPlayer, PersistInterval.Reset);
                     _chat.SendMessage(player, $"Player {otherPlayer.Name} has had their score reset.");
                 }
             }

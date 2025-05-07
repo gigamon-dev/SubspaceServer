@@ -424,37 +424,27 @@ namespace SS.Core.Modules
 
         private void Command_sg_scorereset(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetArenaTarget(out Arena? arena)
-                && !target.TryGetTeamTarget(out arena, out _))
+            if (target.TryGetArenaTarget(out Arena? arena))
             {
-                if (target.TryGetPlayerTarget(out Player? otherPlayer))
-                {
-                    arena = otherPlayer.Arena;
-                }
+                _scoreStats.ScoreReset(arena, PersistInterval.Reset);
             }
-
-            if (arena is null)
-                return;
-
-            HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
-
-            try
+            else
             {
-                _playerData.TargetToSet(target, players);
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
 
-                if (players.Count > 0)
-                    return;
-
-                foreach (Player otherPlayer in players)
+                try
                 {
-                    _scoreStats.ScoreReset(otherPlayer, PersistInterval.Reset);
-                }
+                    _playerData.TargetToSet(target, players);
 
-                _scoreStats.SendUpdates(arena, null);
-            }
-            finally
-            {
-                _objectPoolManager.PlayerSetPool.Return(players);
+                    foreach (Player otherPlayer in players)
+                    {
+                        _scoreStats.ScoreReset(otherPlayer, PersistInterval.Reset);
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
             }
         }
 

@@ -267,7 +267,7 @@ namespace SS.Core.ComponentInterfaces
         void GetScores(Player player, out int killPoints, out int flagPoints, out ushort kills, out ushort deaths);
 
         /// <summary>
-        /// Looks players with dirty score stats (basic score stats only, i.e., kill points, flag points, kills, deaths).
+        /// Looks for players with dirty score stats (basic score stats only, i.e., kill points, flag points, kills, deaths).
         /// <para>
         /// For players that have dirty stats:
         /// the stat is set as no longer dirty,
@@ -280,10 +280,23 @@ namespace SS.Core.ComponentInterfaces
         void SendUpdates(Arena? arena, Player? exclude);
 
         /// <summary>
-        /// Resets all of a player's stats for an interval.
+        /// Resets all stats of a <paramref name="player"/> for an <paramref name="interval"/>.
         /// </summary>
+        /// <remarks>
+        /// When resetting <see cref="PersistInterval.Reset"/>, a <see cref="Packets.Game.S2CPacketType.ScoreReset"/> packet is sent to the arena.
+        /// </remarks>
         /// <param name="player">The player to reset the stats of.</param>
         /// <param name="interval">The interval to reset stats for.</param>
         void ScoreReset(Player player, PersistInterval interval);
+
+        /// <summary>
+        /// Resets all stats of all players in an <paramref name="arena"/> for an <paramref name="interval"/>.
+        /// </summary>
+        /// <remarks>
+        /// When resetting <see cref="PersistInterval.Reset"/>, a <see cref="Packets.Game.S2CPacketType.ScoreReset"/> packet is sent to the arena.
+        /// </remarks>
+        /// <param name="arena">The arena to reset the stats of.</param>
+        /// <param name="interval">The interval to reset stats for.</param>
+        void ScoreReset(Arena arena, PersistInterval interval);
     }
 }

@@ -28,7 +28,7 @@ namespace SS.Packets.Game
         // subspace client does no operation with 0x17
         Security = 0x18,
         RequestForFile = 0x19,
-        TimedGame = 0x1A,
+        ScoreReset = 0x1A,
 
         /// <summary>
         /// just 1 byte, tells client they need to reset their ship
@@ -141,6 +141,7 @@ namespace SS.Packets.Game
         RelayVoice = 0x0E,
         SetFreq = 0x0F,
         AttachTo = 0x10,
+        // missing 11
         // missing 12 : appears to be disabled in subgame
         TouchFlag = 0x13,
         TurretKickOff = 0x14,

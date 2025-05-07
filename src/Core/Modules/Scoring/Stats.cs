@@ -343,10 +343,55 @@ namespace SS.Core.Modules.Scoring
 
         void IScoreStats.ScoreReset(Player player, PersistInterval interval)
         {
-            if (player == null || !player.TryGetExtraData(_pdKey, out PlayerData? pd))
+            if (player is null)
                 return;
 
-            DateTime now = DateTime.UtcNow;
+            _playerData.Lock();
+            try
+            {
+                ScoreReset(player, interval, DateTime.UtcNow, true);
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+        }
+
+        void IScoreStats.ScoreReset(Arena arena, PersistInterval interval)
+        {
+            if (arena is null)
+                return;
+
+            DateTime asOf = DateTime.UtcNow;
+
+            _playerData.Lock();
+            try
+            {
+                foreach (Player player in _playerData.Players)
+                {
+                    if (player.Arena != arena)
+                        continue;
+
+                    ScoreReset(player, interval, asOf, false);
+                }
+
+                if (interval == PersistInterval.Reset)
+                {
+                    // Tell all clients in the arena to reset scores (kill points, flag points, kills, deaths).
+                    S2C_ScoreReset scoreReset = new(-1); // -1 means all players in the arena
+                    _network.SendToArena(arena, null, ref scoreReset, NetSendFlags.Reliable);
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+        }
+
+        private void ScoreReset(Player player, PersistInterval interval, DateTime asOf, bool sendPacket)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
+                return;
 
             lock (pd.Lock)
             {
@@ -354,21 +399,37 @@ namespace SS.Core.Modules.Scoring
                 if (stats == null)
                     return;
 
-                foreach (BaseStatInfo statInfo in stats.Values)
+                foreach ((int statId, BaseStatInfo statInfo) in stats)
                 {
                     if (statInfo is TimerStatInfo timerStatInfo)
                     {
                         // Keep timers running.
                         // If the timer was running while this happens, only the time from this point will be counted.
                         // The time from the timer start to this point will be discarded.
-                        timerStatInfo.Set(TimeSpan.Zero, now);
+                        timerStatInfo.Set(TimeSpan.Zero, asOf);
                     }
                     else
                     {
                         statInfo.Clear();
                     }
 
-                    statInfo.IsDirty = true;
+                    statInfo.IsDirty = !(interval == PersistInterval.Reset
+                        && (statId == StatCodes.KillPoints.StatId
+                            || statId == StatCodes.FlagPoints.StatId
+                            || statId == StatCodes.Kills.StatId
+                            || statId == StatCodes.Deaths.StatId
+                        ));
+                }
+
+                if (interval == PersistInterval.Reset && sendPacket)
+                {
+                    Arena? arena = player.Arena;
+                    if (arena is null)
+                        return;
+
+                    // Tell all clients in the arena to reset scores (kill points, flag points, kills, deaths).
+                    S2C_ScoreReset scoreReset = new((short)player.Id);
+                    _network.SendToArena(arena, null, ref scoreReset, NetSendFlags.Reliable);
                 }
             }
         }
