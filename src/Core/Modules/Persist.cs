@@ -198,6 +198,21 @@ namespace SS.Core.Modules
             }
         }
 
+        string IPersist.GetScoreGroup(Arena arena)
+        {
+            ArgumentNullException.ThrowIfNull(arena);
+
+            string? group = null;
+
+            if (arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                group = ad.ArenaGroup;
+
+            if (string.IsNullOrWhiteSpace(group))
+                group = arena.BaseName;
+
+            return group;
+        }
+
         #endregion
 
         #region IPersistExecutor

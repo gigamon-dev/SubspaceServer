@@ -283,6 +283,16 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="registration">The registration to remove.</param>
         /// <returns>A task the async operation.</returns>
         Task UnregisterPersistentDataAsync(PersistentData<Arena> registration);
+
+        /// <summary>
+        /// Gets the arena group of an arena for score purposes.
+        /// </summary>
+        /// <remarks>
+        /// The arena group of an arena is usually <see cref="Arena.BaseName"/>. However, it can be overridden with the General:ScoreGroup setting.
+        /// </remarks>
+        /// <param name="arena">The arena to get the arena group for.</param>
+        /// <returns>The arena group.</returns>
+        string GetScoreGroup(Arena arena);
     }
 
     /// <summary>

@@ -35,6 +35,7 @@ namespace SS.Core.Modules.Scoring
     public sealed class Stats : IAsyncModule, IGlobalPlayerStats, IArenaPlayerStats, IAllPlayerStats, IScoreStats, IStatsAdvisor
     {
         private readonly IComponentBroker _broker;
+        private readonly IArenaManager _arenaManager;
         private readonly IChat _chat;
         private readonly ICommandManager _commandManager;
         private readonly IConfigManager _configManager;
@@ -63,6 +64,7 @@ namespace SS.Core.Modules.Scoring
 
         public Stats(
             IComponentBroker broker,
+            IArenaManager arenaManager,
             IChat chat,
             ICommandManager commandManager,
             IConfigManager configManager,
@@ -72,6 +74,7 @@ namespace SS.Core.Modules.Scoring
             IPlayerData playerData)
         {
             _broker = broker;
+            _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
@@ -299,13 +302,13 @@ namespace SS.Core.Modules.Scoring
 
                         if (isDirty)
                         {
-                            // update the player's 0x03 PlayerEnter packet
+                            // Update the player's 0x03 PlayerEnter packet.
                             player.Packet.KillPoints = killPoints;
                             player.Packet.FlagPoints = flagPoints;
                             player.Packet.Wins = kills;
                             player.Packet.Losses = deaths;
 
-                            // send and update to the arena
+                            // Send the update to the arena.
                             S2C_ScoreUpdate packet = new(
                                 (short)player.Id,
                                 killPoints,
@@ -377,7 +380,7 @@ namespace SS.Core.Modules.Scoring
 
                 if (interval == PersistInterval.Reset)
                 {
-                    // Tell all clients in the arena to reset scores (kill points, flag points, kills, deaths).
+                    // Tell all clients in the arena to reset scores (kill points, flag points, kills, deaths) of all players.
                     S2C_ScoreReset scoreReset = new(-1); // -1 means all players in the arena
                     _network.SendToArena(arena, null, ref scoreReset, NetSendFlags.Reliable);
                 }
@@ -421,15 +424,24 @@ namespace SS.Core.Modules.Scoring
                         ));
                 }
 
-                if (interval == PersistInterval.Reset && sendPacket)
+                if (interval == PersistInterval.Reset)
                 {
-                    Arena? arena = player.Arena;
-                    if (arena is null)
-                        return;
+                    // Update the player's 0x03 PlayerEnter packet.
+                    player.Packet.KillPoints = 0;
+                    player.Packet.FlagPoints = 0;
+                    player.Packet.Wins = 0;
+                    player.Packet.Losses = 0;
 
-                    // Tell all clients in the arena to reset scores (kill points, flag points, kills, deaths).
-                    S2C_ScoreReset scoreReset = new((short)player.Id);
-                    _network.SendToArena(arena, null, ref scoreReset, NetSendFlags.Reliable);
+                    if (sendPacket)
+                    {
+                        Arena? arena = player.Arena;
+                        if (arena is null)
+                            return;
+
+                        // Tell all clients in the arena to reset scores (kill points, flag points, kills, deaths) of the player.
+                        S2C_ScoreReset scoreReset = new((short)player.Id);
+                        _network.SendToArena(arena, null, ref scoreReset, NetSendFlags.Reliable);
+                    }
                 }
             }
         }
@@ -1293,7 +1305,23 @@ namespace SS.Core.Modules.Scoring
         {
             if (interval == PersistInterval.Reset)
             {
-                ((IScoreStats)this).SendUpdates(null, null);
+                bool allArenas = string.Equals(arenaGroup, Constants.ArenaGroup_Global);
+
+                _arenaManager.Lock();
+                try
+                {
+                    foreach (Arena arena in _arenaManager.Arenas)
+                    {
+                        if (allArenas || string.Equals(arenaGroup, _persist.GetScoreGroup(arena), StringComparison.OrdinalIgnoreCase))
+                        {
+                            ((IScoreStats)this).ScoreReset(arena, interval);
+                        }
+                    }
+                }
+                finally
+                {
+                    _arenaManager.Unlock();
+                }
             }
         }
 
