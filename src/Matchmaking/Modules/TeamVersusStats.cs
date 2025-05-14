@@ -791,7 +791,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                if (!hasAssist)
+                if (!isTeamKill && !hasAssist)
                 {
                     killerMemberStats.SoloKills++;
                 }
