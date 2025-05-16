@@ -699,9 +699,15 @@ namespace SS.Core.Modules
                 player.ClientReportedBoundPort = pkt.ClientPort;
 
                 if (player.Type == ClientType.VIE)
+                {
                     player.ClientName = $"<ss/vie client, v. {pkt.CVersion}>";
+                    player.ClientFeatures = pkt.ClientFeatures;
+                }
                 else if (player.Type == ClientType.Continuum)
+                {
                     player.ClientName = $"<continuum, v. {pkt.CVersion}>";
+                    player.ClientFeatures = ClientFeatures.Continuum | pkt.ClientFeatures;
+                }
 
                 // set up status
                 _playerData.WriteLock();

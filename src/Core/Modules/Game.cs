@@ -224,8 +224,18 @@ namespace SS.Core.Modules
         {
             ArgumentNullException.ThrowIfNull(target);
 
-            S2C_WarpTo warpTo = new(x, y);
-            _network.SendToTarget(target, ref warpTo, NetSendFlags.Reliable | NetSendFlags.Urgent);
+            HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+            try
+            {
+                _playerData.TargetToSet(target, players, static player => (player.ClientFeatures & ClientFeatures.WarpTo) != 0);
+
+                S2C_WarpTo warpTo = new(x, y);
+                _network.SendToSet(players, ref warpTo, NetSendFlags.Reliable | NetSendFlags.Urgent);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(players);
+            }
         }
 
         void IGame.GivePrize(ITarget target, Prize prize, short count)
@@ -1385,7 +1395,7 @@ namespace SS.Core.Modules
 
                                 if (!drop)
                                 {
-                                    if (i.Type == ClientType.Continuum
+                                    if ((i.ClientFeatures & ClientFeatures.BatchPositions) != 0
                                         && posCopy.Weapon.Type == WeaponCodes.Null
                                         && !sendBounty
                                         && posCopy.Status == 0
@@ -1413,7 +1423,7 @@ namespace SS.Core.Modules
 
                                         _network.SendToOne(i, ref smallSingle, nflags);
                                     }
-                                    else if (i.Type == ClientType.Continuum
+                                    else if ((i.ClientFeatures & ClientFeatures.BatchPositions) != 0
                                         && posCopy.Weapon.Type == WeaponCodes.Null
                                         && !sendBounty
                                         && extralen == 0 // no energy or extra data

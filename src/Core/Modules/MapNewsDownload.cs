@@ -152,7 +152,7 @@ namespace SS.Core.Modules
 
             // allow vie clients that specifically ask for them to get all the
             // lvz data, to support bots.
-            if (player.Type == ClientType.Continuum || player.Flags.WantAllLvz)
+            if ((player.ClientFeatures & ClientFeatures.Lvz) != 0 || player.Flags.WantAllLvz)
             {
                 int idx = 0;
 

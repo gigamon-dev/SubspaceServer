@@ -346,6 +346,11 @@ namespace SS.Core
         public ClientType Type { get; internal set; } = ClientType.Unknown;
 
         /// <summary>
+        /// Which additional non-VIE client features the client supports.
+        /// </summary>
+        public ClientFeatures ClientFeatures { get; internal set; }
+
+        /// <summary>
         /// The player's state.
         /// Core modules use this to transition a player between various stages.
         /// Other modules will mostly just care whether the player is <see cref="PlayerState.Playing"/>.
@@ -754,6 +759,7 @@ namespace SS.Core
             Freq = -1;
             Attached = -1;
             Type = ClientType.Unknown;
+            ClientFeatures = ClientFeatures.None;
             Status = PlayerState.Uninitialized;
             WhenLoggedIn = PlayerState.Uninitialized;
             Arena = null;

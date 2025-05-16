@@ -255,9 +255,9 @@ namespace SS.Core.Modules
             }
             else if (target.TryGetPlayerTarget(out Player? targetPlayer))
             {
-                if (targetPlayer.Type != ClientType.Continuum)
+                if ((targetPlayer.ClientFeatures & ClientFeatures.WatchDamage) == 0)
                 {
-                    _chat.SendMessage(player, $"Watchdamage requires {targetPlayer.Name} to use Continuum.");
+                    _chat.SendMessage(player, $"Watchdamage requires {targetPlayer.Name} to use a client that supports it, such as Continuum.");
                     return;
                 }
 
@@ -294,7 +294,7 @@ namespace SS.Core.Modules
 
         private void ToggleWatch(Player player, bool on)
         {
-            if (player.Type == ClientType.Continuum)
+            if ((player.ClientFeatures & ClientFeatures.WatchDamage) != 0)
             {
                 Span<byte> packet = [(byte)S2CPacketType.ToggleDamage, on ? (byte)1 : (byte)0];
                 _network.SendToOne(player, packet, NetSendFlags.Reliable | NetSendFlags.PriorityN1);

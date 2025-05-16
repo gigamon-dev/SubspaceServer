@@ -6,6 +6,70 @@ using System.Runtime.InteropServices;
 
 namespace SS.Packets.Game
 {
+    /// <summary>
+    /// Identifies additional features that a client can support.
+    /// </summary>
+    /// <remarks>
+    /// Bots that login using VIE authentication can use this to tell the server which additional features they support.
+    /// </remarks>
+    [Flags]
+    public enum ClientFeatures : ushort
+    {
+        /// <summary>
+        /// No extra features (VIE client).
+        /// </summary>
+        None = 0,
+
+        /// <summary>
+        /// Whether the client supports watch damage functionality.
+        /// </summary>
+        /// <remarks>
+        /// The client supports receiving <see cref="S2CPacketType.Damage"/> and sending <see cref="C2SPacketType.Damage"/>.
+        /// </remarks>
+        WatchDamage = 1,
+
+        /// <summary>
+        /// Supports the batch position packets.
+        /// </summary>
+        /// <remarks>
+        /// The client supports receiving the <see cref="S2CPacketType.BatchedSmallPosition"/> and <see cref="S2CPacketType.BatchedLargePosition"/> position packets.
+        /// </remarks>
+        BatchPositions = 2,
+
+        /// <summary>
+        /// Supports the ability to be told where to warp to.
+        /// </summary>
+        /// <remarks>
+        /// Supports the <see cref="S2CPacketType.WarpTo"/> packet.
+        /// </remarks>
+        WarpTo = 4,
+
+        /// <summary>
+        /// Supports LVZ functionality.
+        /// </summary>
+        /// <remarks>
+        /// The client supports the <see cref="S2CPacketType.ToggleLVZ"/> and <see cref="S2CPacketType.ChangeLVZ"/> packets.
+        /// Also, the extended version of the <see cref="S2CPacketType.MapFilename"/> which includes the additional size field and the ability to have up to 16 additional files (LVZs).
+        /// </remarks>
+        Lvz = 8,
+
+        /// <summary>
+        /// Supports redirects to another zone.
+        /// </summary>
+        /// <remarks>
+        /// The client supports the <see cref="S2CPacketType.Redirect"/> packet.
+        /// </remarks>
+        Redirect = 16,
+
+        /// <summary>
+        /// The features that the Continuum client supports.
+        /// </summary>
+        /// <remarks>
+        /// Continuum supports <see cref="WatchDamage"/>, <see cref="BatchPositions"/>, <see cref="WarpTo"/>, and <see cref="Lvz"/>.
+        /// </remarks>
+        Continuum = (WatchDamage | BatchPositions | WarpTo | Lvz | Redirect),
+    }
+
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct LoginPacket
     {
@@ -31,7 +95,8 @@ namespace SS.Packets.Game
         private short timeZoneBias;
         private ushort unk1;
         private ushort cVersion;
-        private int field444;
+        private short field444;
+        private ushort clientFeature;
         private int field555;
         private uint d2;
         private uint serverIPv4Address;
@@ -65,6 +130,15 @@ namespace SS.Packets.Game
         {
             readonly get => LittleEndianConverter.Convert(cVersion);
             set => cVersion = LittleEndianConverter.Convert(value);
+        }
+
+        /// <summary>
+        /// For clients (usually bots) that login with VIE authentication to tell the server which additional features it supports.
+        /// </summary>
+        public ClientFeatures ClientFeatures
+        {
+            readonly get => (ClientFeatures)LittleEndianConverter.Convert(clientFeature);
+            set => clientFeature = LittleEndianConverter.Convert((ushort)value);
         }
 
         public uint D2

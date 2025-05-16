@@ -868,7 +868,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (player.Type == ClientType.Continuum)
+            if ((player.ClientFeatures & ClientFeatures.Redirect) != 0)
             {
                 // Peer redirects
                 IPeer? peer = Broker.GetInterface<IPeer>();
