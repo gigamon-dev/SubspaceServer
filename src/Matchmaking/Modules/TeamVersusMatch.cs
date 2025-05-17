@@ -3390,6 +3390,9 @@ namespace SS.Matchmaking.Modules
                             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                                 continue;
 
+                            // The next phase will check if the player is ready to start.
+                            playerData.IsReadyToStart = false;
+
                             playerSlot.Lives = matchData.Configuration.LivesPerPlayer;
                             playerSlot.LagOuts = 0;
                             playerSlot.AllowShipChangeExpiration = null;
