@@ -903,6 +903,10 @@ namespace SS.Matchmaking.Modules
         // This is called synchronously when the Game module sets a player's ship/freq.
         private void Callback_PreShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
@@ -910,11 +914,21 @@ namespace SS.Matchmaking.Modules
             if (slot is null)
                 return;
 
+            if (arena != slot.MatchData.Arena || newFreq != slot.Team.Freq)
+                return;
+
+            ShipType slotOldShip = slot.Ship;
+
+            if (newShip != ShipType.Spec)
+            {
+                // Keep track of the ship for the slot, for when a player wants to ?return or ?sub in.
+                slot.Ship = newShip;
+            }
+
             if (slot.MatchData.Status == MatchStatus.InProgress
-                && newShip != ShipType.Spec
-                && oldShip != ShipType.Spec
-                && newShip != oldShip
-                && newFreq == oldFreq)
+                && slotOldShip != ShipType.Spec
+                && slot.Ship != ShipType.Spec
+                && slotOldShip != slot.Ship)
             {
                 // Send ship change notification.
                 HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
@@ -931,6 +945,8 @@ namespace SS.Matchmaking.Modules
                 {
                     _objectPoolManager.PlayerSetPool.Return(players);
                 }
+
+                TeamVersusMatchPlayerShipChangedCallback.Fire(arena, slot, slotOldShip, slot.Ship);
             }
         }
 
@@ -1585,9 +1601,12 @@ namespace SS.Matchmaking.Modules
             // Do the actual sub in.
             string? subOutPlayerName = slot.PlayerName;
             AssignSlot(slot, player);
-            SetShipAndFreq(slot, true, null, false);
 
+            // Fire the callback, purposely before setting the player's freq and ship as we want this event to occur before the ship change event.
             TeamVersusMatchPlayerSubbedCallback.Fire(arena, slot, subOutPlayerName);
+
+            // Finally, get the sub-in player into the game (on the correct freq and in the proper ship).
+            SetShipAndFreq(slot, true, null, false);
         }
 
         [CommandHelp(
@@ -2921,6 +2940,9 @@ namespace SS.Matchmaking.Modules
 
         private void SetSlotInactive(PlayerSlot slot, SlotInactiveReason reason)
         {
+            if (slot.MatchData.Status != MatchStatus.InProgress)
+                return;
+
             if (slot.Status != PlayerSlotStatus.Playing)
                 return;
 
@@ -2929,6 +2951,12 @@ namespace SS.Matchmaking.Modules
             slot.LagOuts++;
 
             MatchData matchData = slot.MatchData;
+
+            Arena? arena = matchData.Arena;
+            if (arena is not null) // This should always be true
+            {
+                TeamVersusMatchPlayerLagOutCallback.Fire(arena, slot, reason);
+            }
 
             if (slot.SubPlayer is null)
             {
@@ -3826,6 +3854,13 @@ namespace SS.Matchmaking.Modules
             if (isRefill)
             {
                 ship = slot.Ship;
+
+                if (ship == ShipType.Spec)
+                {
+                    // The ship should not be spectator mode when the slot is being refilled, but handle it just to be safe.
+                    ship = ShipType.Warbird;
+                }
+
                 playerData.NextShip ??= ship;
             }
             else
@@ -4284,7 +4319,7 @@ namespace SS.Matchmaking.Modules
                     slot.Lives = 0;
 
                     // ship and items
-                    slot.Ship = ShipType.Warbird;
+                    slot.Ship = ShipType.Spec;
                     slot.Bursts = 0;
                     slot.Repels = 0;
                     slot.Thors = 0;
@@ -4867,19 +4902,6 @@ namespace SS.Matchmaking.Modules
             public const string Draw = "draw";
             public const string ShipChange = "sc";
             public const string Items = "items";
-        }
-
-        private enum SlotInactiveReason
-        {
-            /// <summary>
-            /// The player has changed to spectator mode.
-            /// </summary>
-            ChangedToSpec,
-
-            /// <summary>
-            /// The player has left the arena.
-            /// </summary>
-            LeftArena,
         }
 
         #endregion

@@ -12,7 +12,7 @@ namespace SS.Matchmaking.Callbacks
         /// Delegate for when a player is subbed in for a team versus match.
         /// </summary>
         /// <param name="playerSlot">The slot the player was subbed in to.</param>
-        /// <param name="subOutPlayerName">The name of the player that was subbed out.</param>
+        /// <param name="subOutPlayerName">The name of the player that was subbed out. <see langword="null"/> for a prevously unassigned slot.</param>
         public delegate void TeamVersusPlayerSlotSubbedDelegate(IPlayerSlot playerSlot, string? subOutPlayerName);
 
         public static void Register(IComponentBroker broker, TeamVersusPlayerSlotSubbedDelegate handler)

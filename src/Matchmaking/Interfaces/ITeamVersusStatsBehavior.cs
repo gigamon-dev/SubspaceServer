@@ -11,7 +11,7 @@ namespace SS.Matchmaking.Interfaces
     /// The original design for statistics was to just listen to callback events and gather data.
     /// However, it eventually became apparent that the statistics logic would need to influence the 
     /// <see cref="Modules.TeamVersusMatch"/> module. For example, when a player is killed, it made more
-    /// sense for the statistics module to send notificaitons to players as it would have more information,
+    /// sense for the statistics module to send notifications to players as it would have more information,
     /// such as damage stats which could be used to display assists.
     /// Also, when a match ends, the statistics module might want to save information about the match to
     /// the database. Saving to the database would need to be done asynchronously, but that would require
@@ -38,11 +38,11 @@ namespace SS.Matchmaking.Interfaces
 
         /// <summary>
         /// Called after a match has just started.
-        /// This allows the stats module to do additional initializtion and database work.
+        /// This allows the stats module to do additional initialization and database work.
         /// </summary>
         /// <param name="matchData">The match that started.</param>
         /// <returns></returns>
-        ValueTask MatchStartedAsync(IMatchData matchData);
+        Task MatchStartedAsync(IMatchData matchData);
 
         //ValueTask PlayerSubbedAsync(IPlayerSlot playerSlot, string subOutPlayerName);
 
@@ -60,7 +60,7 @@ namespace SS.Matchmaking.Interfaces
         /// <param name="killerSlot">The slot of the player that made the kill.</param>
         /// <param name="isKnockout">Whether the kill was a knock out (killed player has no more lives left).</param>
         /// <returns><see langword="true"/> if chat notifications were sent. Otherwise, <see langword="false"/>.</returns>
-        ValueTask<bool> PlayerKilledAsync(
+        Task<bool> PlayerKilledAsync(
             ServerTick timestampTick,
             DateTime timestamp,
             IMatchData matchData,
@@ -79,6 +79,6 @@ namespace SS.Matchmaking.Interfaces
         /// <param name="reason">The reason the match ended.</param>
         /// <param name="winnerTeam">The team that won. <see langword="null"/> for no winner.</param>
         /// <returns><see langword="true"/> if chat notifications were sent. Otherwise, <see langword="false"/>.</returns>
-        ValueTask<bool> MatchEndedAsync(IMatchData matchData, MatchEndReason reason, ITeam? winnerTeam);
+        Task<bool> MatchEndedAsync(IMatchData matchData, MatchEndReason reason, ITeam? winnerTeam);
     }
 }
