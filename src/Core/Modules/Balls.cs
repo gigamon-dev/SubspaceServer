@@ -1142,7 +1142,7 @@ namespace SS.Core.Modules
                     _network.SendToOne(extraInfo.LastKiller, bpBytes, NetSendFlags.Unreliable | BallSendFlags);
                 }
 
-                BallPacketSentCallback.Fire(arena, arena, in bp);
+                BallPacketSentCallback.Fire(arena, arena, ref bp);
             }
         }
 

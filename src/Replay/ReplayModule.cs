@@ -320,7 +320,7 @@ namespace SS.Replay
             }
         }
 
-        private void Callback_BallPacketSent(Arena arena, in BallPacket ballPacket)
+        private void Callback_BallPacketSent(Arena arena, ref readonly BallPacket ballPacket)
         {
             Debug.Assert(_mainloop.IsMainloop);
 

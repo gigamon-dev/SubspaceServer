@@ -10,7 +10,7 @@ namespace SS.Core.ComponentCallbacks
         /// </summary>
         /// <param name="arena">The arena.</param>
         /// <param name="ballPacket">The packet.</param>
-        public delegate void BallPacketSentDelegate(Arena arena, in BallPacket ballPacket);
+        public delegate void BallPacketSentDelegate(Arena arena, ref readonly BallPacket ballPacket);
 
         public static void Register(IComponentBroker broker, BallPacketSentDelegate handler)
         {
@@ -22,7 +22,7 @@ namespace SS.Core.ComponentCallbacks
             broker?.UnregisterCallback(handler);
         }
 
-        public static void Fire(IComponentBroker broker, Arena arena, in BallPacket ballPacket)
+        public static void Fire(IComponentBroker broker, Arena arena, ref readonly BallPacket ballPacket)
         {
             broker?.GetCallback<BallPacketSentDelegate>()?.Invoke(arena, in ballPacket);
 

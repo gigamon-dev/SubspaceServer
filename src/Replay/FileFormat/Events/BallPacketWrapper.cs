@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 namespace SS.Replay.FileFormat.Events
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct BallPacketWrapper(ServerTick ticks, in BallPacket ballPacket)
+    public struct BallPacketWrapper(ServerTick ticks, ref readonly BallPacket ballPacket)
     {
         #region Static members
 
