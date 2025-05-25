@@ -1712,8 +1712,6 @@ namespace SS.Core.Modules
                 return;
             }
 
-            _logManager.LogP(LogLevel.Drivel, nameof(Game), player, $"Spec request");
-
             if (player is null || player.Status != PlayerState.Playing || player.Ship != ShipType.Spec)
                 return;
 
