@@ -4019,14 +4019,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                try
-                {
-                    handler(player, data, flags);
-                }
-                catch (Exception ex)
-                {
-                    _logManager.LogP(LogLevel.Error, nameof(Network), player, $"Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
-                }
+                InvokeHandler(handler, player, data, flags);
             }
             else if (conn is ClientConnection clientConnection)
             {
@@ -4055,6 +4048,29 @@ namespace SS.Core.Modules
             else
             {
                 _logManager.LogM(LogLevel.Drivel, nameof(Network), $"Unknown connection type, but got packet type [0x{packetType:X2}] of length {data.Length}.");
+            }
+
+            // local helper (for recursion)
+            void InvokeHandler(PacketHandler handlers, Player player, Span<byte> data, NetReceiveFlags flags)
+            {
+                if (handlers.HasSingleTarget)
+                {
+                    try
+                    {
+                        handlers(player, data, flags);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logManager.LogP(LogLevel.Error, nameof(Network), player, $"Handler for packet type 0x{packetType:X2} threw an exception! {ex}.");
+                    }
+                }
+                else
+                {
+                    foreach (PacketHandler handler in Delegate.EnumerateInvocationList(handlers))
+                    {
+                        InvokeHandler(handler, player, data, flags);
+                    }
+                }
             }
         }
 
