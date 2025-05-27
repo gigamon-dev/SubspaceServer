@@ -1,11 +1,10 @@
-﻿using SS.Core.ComponentInterfaces;
-
-namespace SS.Core.ComponentCallbacks
+﻿namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="StaticFlagClaimedDelegate"/> callback.
     /// </summary>
-    public static class StaticFlagClaimedCallback
+    [CallbackHelper]
+    public static partial class StaticFlagClaimedCallback
     {
         /// <summary>
         /// Delegate for when a flag is claimed in a static flag game.
@@ -16,23 +15,5 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="oldFreq">The team that previously owned the flag.</param>
         /// <param name="newFreq">The team that took ownership of the flag.</param>
         public delegate void StaticFlagClaimedDelegate(Arena arena, Player player, short flagId, short oldFreq, short newFreq);
-
-        public static void Register(IComponentBroker broker, StaticFlagClaimedDelegate handler)
-        {
-            broker?.RegisterCallback(handler);
-        }
-
-        public static void Unregister(IComponentBroker broker, StaticFlagClaimedDelegate handler)
-        {
-            broker?.UnregisterCallback(handler);
-        }
-
-        public static void Fire(IComponentBroker broker, Arena arena, Player player, short flagId, short oldFreq, short newFreq)
-        {
-            broker?.GetCallback<StaticFlagClaimedDelegate>()?.Invoke(arena, player, flagId, oldFreq, newFreq);
-
-            if (broker?.Parent != null)
-                Fire(broker.Parent, arena, player, flagId, oldFreq, newFreq);
-        }
     }
 }

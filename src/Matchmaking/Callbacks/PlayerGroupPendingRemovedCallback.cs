@@ -1,5 +1,4 @@
 ﻿using SS.Core;
-using SS.Core.ComponentInterfaces;
 
 namespace SS.Matchmaking.Callbacks
 {
@@ -34,26 +33,9 @@ namespace SS.Matchmaking.Callbacks
     /// <summary>
     /// Callback for when a pending invite is removed from a <see cref="IPlayerGroup"/>.
     /// </summary>
-    public static class PlayerGroupPendingRemovedCallback
+    [CallbackHelper]
+    public static partial class PlayerGroupPendingRemovedCallback
     {
         public delegate void PlayerGroupPendingRemovedDelegate(IPlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason);
-
-        public static void Register(IComponentBroker broker, PlayerGroupPendingRemovedDelegate handler)
-        {
-            broker?.RegisterCallback(handler);
-        }
-
-        public static void Unregister(IComponentBroker broker, PlayerGroupPendingRemovedDelegate handler)
-        {
-            broker?.UnregisterCallback(handler);
-        }
-
-        public static void Fire(IComponentBroker broker, IPlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason)
-        {
-            broker?.GetCallback<PlayerGroupPendingRemovedDelegate>()?.Invoke(group, player, reason);
-
-            if (broker?.Parent != null)
-                Fire(broker.Parent, group, player, reason);
-        }
     }
 }

@@ -38,7 +38,7 @@ namespace SS.SourceGeneration.Tests
                 }
                 """;
 
-            return TestHelper.VerifyConfigHelpValuesGenerator(source);
+            return TestHelper.VerifyConfigHelpConstantsGenerator(source);
         }
 
         [Fact]
@@ -72,7 +72,7 @@ namespace SS.SourceGeneration.Tests
                 }
                 """;
 
-            return TestHelper.VerifyConfigHelpValuesGenerator(source);
+            return TestHelper.VerifyConfigHelpConstantsGenerator(source);
         }
 
         [Fact]
@@ -106,7 +106,7 @@ namespace SS.SourceGeneration.Tests
                 }
                 """;
 
-            return TestHelper.VerifyConfigHelpValuesGenerator(source);
+            return TestHelper.VerifyConfigHelpConstantsGenerator(source);
         }
 
         [Fact]
@@ -130,7 +130,7 @@ namespace SS.SourceGeneration.Tests
                 }
                 """;
 
-            return TestHelper.VerifyConfigHelpValuesGenerator(source);
+            return TestHelper.VerifyConfigHelpConstantsGenerator(source);
         }
 
         [Fact]
@@ -156,7 +156,7 @@ namespace SS.SourceGeneration.Tests
                 }
                 """;
 
-            return TestHelper.VerifyConfigHelpValuesGenerator(source);
+            return TestHelper.VerifyConfigHelpConstantsGenerator(source);
         }
 
         [Fact]
@@ -183,7 +183,7 @@ namespace SS.SourceGeneration.Tests
                 }
                 """;
 
-            return TestHelper.VerifyConfigHelpValuesGenerator(source);
+            return TestHelper.VerifyConfigHelpConstantsGenerator(source);
         }
 
         [Fact]
@@ -208,7 +208,7 @@ namespace SS.SourceGeneration.Tests
                 }
                 """;
 
-            return TestHelper.VerifyConfigHelpValuesGenerator(source);
+            return TestHelper.VerifyConfigHelpConstantsGenerator(source);
         }
     }
 }

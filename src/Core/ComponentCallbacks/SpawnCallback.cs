@@ -1,12 +1,12 @@
-﻿using SS.Core.ComponentInterfaces;
-using System;
+﻿using System;
 
 namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="SpawnDelegate"/> callback.
     /// </summary>
-    public static class SpawnCallback
+    [CallbackHelper]
+    public static partial class SpawnCallback
     {
         /// <summary>
         /// The reason a player spawned.
@@ -49,23 +49,5 @@ namespace SS.Core.ComponentCallbacks
         /// There can be multiple reasons at the same time, use the bitwise & operator to determine which flags are set.
         /// </param>
         public delegate void SpawnDelegate(Player player, SpawnReason reason);
-
-        public static void Register(IComponentBroker broker, SpawnDelegate handler)
-        {
-            broker?.RegisterCallback(handler);
-        }
-
-        public static void Unregister(IComponentBroker broker, SpawnDelegate handler)
-        {
-            broker?.UnregisterCallback(handler);
-        }
-
-        public static void Fire(IComponentBroker broker, Player player, SpawnReason reason)
-        {
-            broker?.GetCallback<SpawnDelegate>()?.Invoke(player, reason);
-
-            if (broker?.Parent != null)
-                Fire(broker.Parent, player, reason);
-        }
     }
 }

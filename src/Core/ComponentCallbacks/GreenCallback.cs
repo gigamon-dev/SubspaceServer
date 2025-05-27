@@ -1,12 +1,12 @@
-﻿using SS.Core.ComponentInterfaces;
-using SS.Packets.Game;
+﻿using SS.Packets.Game;
 
 namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Helper class for the <see cref="GreenDelegate"/> callback.
     /// </summary>
-    public static class GreenCallback
+    [CallbackHelper]
+    public static partial class GreenCallback
     {
         /// <summary>
         /// Delegate for a callback that is invoked when a <see cref="Player"/> picks up a "green" (prize).
@@ -16,23 +16,5 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="y">The y-coordinate.</param>
         /// <param name="prize">The type of prize picked up.</param>
         public delegate void GreenDelegate(Player player, int x, int y, Prize prize);
-
-        public static void Register(IComponentBroker broker, GreenDelegate handler)
-        {
-            broker?.RegisterCallback(handler);
-        }
-
-        public static void Unregister(IComponentBroker broker, GreenDelegate handler)
-        {
-            broker?.UnregisterCallback(handler);
-        }
-
-        public static void Fire(IComponentBroker broker, Player player, int x, int y, Prize prize)
-        {
-            broker?.GetCallback<GreenDelegate>()?.Invoke(player, x, y, prize);
-
-            if (broker?.Parent != null)
-                Fire(broker.Parent, player, x, y, prize);
-        }
     }
 }

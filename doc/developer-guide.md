@@ -589,58 +589,45 @@ public class ArenaRegistrationExample(IChat chat) : IModule, IArenaAttachableMod
 > View the full example code at: [ArenaRegistrationExample](../src/Example/CallbackExamples/ArenaRegistrationExample.cs)
 
 ### Creating a new Component Callback
-To create a new Component Callback, the bare minimum needed is to define a delegate. However, as mentioned earlier, it's nicer to wrap it all up in a static helper class. Here's an example of how to do that.
+To create a new Component Callback, the bare minimum needed is to define a delegate. However, as mentioned earlier, it's nicer to wrap it all up in a static helper class and use the provided source generator. To use the source generator add a reference to your plug-in project's .csproj file. It'll look like this:
+```XML
+<ProjectReference Include="..\SourceGeneration\SourceGeneration.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+```
+> Note: Your path may differ based on where your plug-in project is in relation to the source generator project. The above is from the Example project which is on the same directory level as the SourceGeneration project.
 
-> On the helper class, there's no requirement that the names of the methods be `Register`, `Unregister`, and `Fire`. However, it is easy to understand and so it's recommended to just stick with those names as a convention.
+Here's an example of using the source generator to create the static helper class:
 
 ```C#
+using SS.Core;
+
 /// <summary>
 /// A static helper class to assist with firing the Component Callback.
+/// It uses a source generator to generate the <see cref="Register"/>, <see cref="Unregister"/>, and <see cref="Fire"/> methods.
+/// Using the source generator is not necessary, but it helps write the methods for us.
+/// <para>
+/// To use the source generator the class:
+/// <list type="bullet">
+/// <item>is decorated with the <see cref="CallbackHelperAttribute"/></item>
+/// <item>is given the <see langword="partial"/> modifier so that the source generator can add methods for us</item>
+/// <item>is given a name ending with "Callback" (required by the source generator)</item>
+/// </list>
+/// </para>
 /// </summary>
-public static class MyExampleCallback
+[CallbackHelper]
+public static partial class MyExampleCallback
 {
     // Here is the delegate itself.
-    //
-    // It can be any delegate, 
-    // and doesn't have to be nested in the class, 
-    // but I've found it nice to just put it inside.
+    // Since we're using the source generator, the delegate must be named after the class and be public.
+    // So, since the class is named MyExampleCallback, the delegate is named MyExampleDelegate.
+    // The source generator expects this naming convention. If not followed, it will not generate code.
     // 
-    // It's just a normal delegate, 
-    // so it can have whatever signature you want.
-    // Here's an example of one that takes with 3 parameters.
+    // The delegate is just a regular delegate, so it can have whatever signature you want.
+    // Callbacks normally do not return values, as they act like events, and therefore have a void return type.
+    // The source generator expects the return type to be void.
+    // Note: If you think you need a return type, you probably want to use an Advisor instead of a Callback.
+    //
+    // Here's an example of a delegate that takes with 3 parameters.
     public delegate void MyExampleDelegate(int foo, string bar, bool baz);
-
-    // This is the helper method for registering.
-    // It just wraps the call to the ComponentBroker.
-    public static void Register(IComponentBroker broker, MyExampleDelegate handler)
-    {
-        broker?.RegisterCallback(handler);
-    }
-
-    // This is the helper method for unregistering.
-    // It just wraps the call to the ComponentBroker.
-    public static void Unregister(IComponentBroker broker, MyExampleDelegate handler)
-    {
-        broker?.UnregisterCallback(handler);
-    }
-
-    // This is the helper method for firing (invoking) the callback.
-    // This is where the helper really shines.
-    // It wraps the call to the ComponentBroker and 
-    // a recursive call to the parent broker too.
-    // That means if your broker was an Arena, then 
-    // it will invoke the delegate on the arena-level first.
-    // Next, it will go to the the parent, which is the root
-    // broker, and do the same there.
-    public static void Fire(IComponentBroker broker, int foo, string bar, bool baz)
-    {
-        // Invoke it on the broker.
-        broker?.GetCallback<MyExampleDelegate>()?.Invoke(foo, bar, baz);
-
-        // Recursively fire it on the parent of the broker (if there is a parent).
-        if (broker?.Parent != null)
-            Fire(broker.Parent, foo, bar, baz);
-    }
 }
 ```
 
@@ -659,7 +646,7 @@ MyExampleCallback.Fire(arena, 123, "Hello single arena!", true);
 
 > View the full example code at: [CustomExample](../src/Example/CallbackExamples/CustomExample.cs)
 
-Of course, you are not limited to only firing callbacks you defined. You can also fire any of the built-in callbacks if it makes sense for your use case. However, most likely, you'll be firing callbacks that you defined.
+Of course, you are not limited to only firing callbacks you've created. You can also fire any of the built-in callbacks if it makes sense for your use case. However, most likely, you'll be firing your own callbacks.
 
 ## Component Advisors
 Advisors are interfaces that are expected to have more than one implementation. The `ComponentBroker` just keeps track of a collection of instances for each advisor interface type.

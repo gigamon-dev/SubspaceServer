@@ -1,5 +1,4 @@
 ﻿using SS.Core;
-using SS.Core.ComponentInterfaces;
 
 namespace SS.Matchmaking.Callbacks
 {
@@ -24,26 +23,9 @@ namespace SS.Matchmaking.Callbacks
     /// <summary>
     /// Callback for when a 1v1 match ends.
     /// </summary>
-    public static class OneVersusOneMatchEndedCallback
+    [CallbackHelper]
+    public static partial class OneVersusOneMatchEndedCallback
     {
         public delegate void OneVersusOneMatchEndedDelegate(Arena arena, int boxId, OneVersusOneMatchEndReason reason, string? winnerPlayerName);
-
-        public static void Register(IComponentBroker broker, OneVersusOneMatchEndedDelegate handler)
-        {
-            broker?.RegisterCallback(handler);
-        }
-
-        public static void Unregister(IComponentBroker broker, OneVersusOneMatchEndedDelegate handler)
-        {
-            broker?.UnregisterCallback(handler);
-        }
-
-        public static void Fire(IComponentBroker broker, Arena arena, int boxId, OneVersusOneMatchEndReason reason, string? winnerPlayerName)
-        {
-            broker?.GetCallback<OneVersusOneMatchEndedDelegate>()?.Invoke(arena, boxId, reason, winnerPlayerName);
-
-            if (broker?.Parent != null)
-                Fire(broker.Parent, arena, boxId, reason, winnerPlayerName);
-        }
     }
 }

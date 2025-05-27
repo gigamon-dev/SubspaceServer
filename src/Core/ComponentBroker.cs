@@ -43,6 +43,26 @@ namespace SS.Core
     {
     }
 
+    /// <summary>
+    /// Attribute that instructs the source generator to write helper methods for registering, unregistering, and firing callbacks.
+    /// </summary>
+    /// <remarks>
+    /// The class that is marked with this attribute must be static and partial.
+    /// The class name must end with Callback (e.g. FooCallback).
+    /// In the class, a public delegate must be declared with the same name as the class, with name ending with "Delegate" (e.g. if the class was FooCallback, it must contain FooDelegate).
+    /// <code>
+    /// [GenerateCallbackHelper]
+    /// public static partial class FooCallback
+    /// {
+    ///     public delegate void FooDelegate(int x, string y, readonly ref MyLargeStruct z);
+    /// }
+    /// </code>
+    /// The generator will create the Register, Unregister, and Fire methods.
+    /// </remarks>
+    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
+    public class CallbackHelperAttribute : Attribute
+    {
+    }
 
     /// <summary>
     /// A service that functions as an intermediary between components by managing interfaces, callbacks, and advisors.

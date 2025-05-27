@@ -33,6 +33,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\Packets\Packets.csproj" />
     <ProjectReference Include="..\SourceGeneration\SourceGeneration.csproj" />
   </ItemGroup>
 

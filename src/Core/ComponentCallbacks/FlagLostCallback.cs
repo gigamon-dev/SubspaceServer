@@ -46,7 +46,8 @@ namespace SS.Core.ComponentCallbacks
     /// <summary>
     /// Helper class for the <see cref="FlagLostDelegate"/> callback.
     /// </summary>
-    public class FlagLostCallback
+    [CallbackHelper]
+    public static partial class FlagLostCallback
     {
         /// <summary>
         /// Delegate for when a flag is lost in a carry flag game.
@@ -56,23 +57,5 @@ namespace SS.Core.ComponentCallbacks
         /// <param name="flagId">The ID of the flag that was lost.</param>
         /// <param name="reason">The reason the flag was lost.</param>
         public delegate void FlagLostDelegate(Arena arena, Player player, short flagId, FlagLostReason reason);
-
-        public static void Register(IComponentBroker broker, FlagLostDelegate handler)
-        {
-            broker?.RegisterCallback(handler);
-        }
-
-        public static void Unregister(IComponentBroker broker, FlagLostDelegate handler)
-        {
-            broker?.UnregisterCallback(handler);
-        }
-
-        public static void Fire(IComponentBroker broker, Arena arena, Player player, short flagId, FlagLostReason reason)
-        {
-            broker?.GetCallback<FlagLostDelegate>()?.Invoke(arena, player, flagId, reason);
-
-            if (broker?.Parent != null)
-                Fire(broker.Parent, arena, player, flagId, reason);
-        }
     }
 }

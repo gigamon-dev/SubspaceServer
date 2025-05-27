@@ -1,6 +1,4 @@
-﻿using SS.Core.ComponentInterfaces;
-
-namespace SS.Core.ComponentCallbacks
+﻿namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
     /// Callback for when a player:
@@ -12,26 +10,9 @@ namespace SS.Core.ComponentCallbacks
     /// </list>
     /// </summary>
     // TODO: Maybe rename this to BallPosessionLostCallback?
-    public static class BallShootCallback
+    [CallbackHelper]
+    public static partial class BallShootCallback
     {
         public delegate void BallShootDelegate(Arena arena, Player player, byte ballId);
-
-        public static void Register(IComponentBroker broker, BallShootDelegate handler)
-        {
-            broker?.RegisterCallback(handler);
-        }
-
-        public static void Unregister(IComponentBroker broker, BallShootDelegate handler)
-        {
-            broker?.UnregisterCallback(handler);
-        }
-
-        public static void Fire(IComponentBroker broker, Arena arena, Player player, byte ballId)
-        {
-            broker?.GetCallback<BallShootDelegate>()?.Invoke(arena, player, ballId);
-
-            if (broker?.Parent != null)
-                Fire(broker.Parent, arena, player, ballId);
-        }
     }
 }

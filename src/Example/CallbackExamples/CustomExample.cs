@@ -7,51 +7,32 @@ namespace Example.CallbackExamples;
 
 /// <summary>
 /// A static helper class to assist with firing the Component Callback.
+/// It uses a source generator to generate the <see cref="Register"/>, <see cref="Unregister"/>, and <see cref="Fire"/> methods.
+/// Using the source generator is not necessary, but it helps write the methods for us.
+/// <para>
+/// To use the source generator the class:
+/// <list type="bullet">
+/// <item>is decorated with the <see cref="CallbackHelperAttribute"/></item>
+/// <item>is given the <see langword="partial"/> modifier so that the source generator can add methods for us</item>
+/// <item>is given a name ending with "Callback" (required by the source generator)</item>
+/// </list>
+/// </para>
 /// </summary>
-public static class MyExampleCallback
+[CallbackHelper]
+public static partial class MyExampleCallback
 {
     // Here is the delegate itself.
-    //
-    // It can be any delegate, 
-    // and doesn't have to be nested in the class, 
-    // but I've found it nice to just put it inside.
+    // Since we're using the source generator, the delegate must be named after the class and be public.
+    // So, since the class is named MyExampleCallback, the delegate is named MyExampleDelegate.
+    // The source generator expects this naming convention. If not followed, it will not generate code.
     // 
-    // It's just a normal delegate, 
-    // so it can have whatever signature you want.
-    // Here's an example of one that takes with 3 parameters.
+    // The delegate is just a regular delegate, so it can have whatever signature you want.
+    // Callbacks normally do not return values, as they act like events, and therefore have a void return type.
+    // The source generator expects the return type to be void.
+    // Note: If you think you need a return type, you probably want to use an Advisor instead of a Callback.
+    //
+    // Here's an example of a delegate that takes with 3 parameters.
     public delegate void MyExampleDelegate(int foo, string bar, bool baz);
-
-    // This is the helper method for registering.
-    // It just wraps the call to the ComponentBroker.
-    public static void Register(IComponentBroker broker, MyExampleDelegate handler)
-    {
-        broker?.RegisterCallback(handler);
-    }
-
-    // This is the helper method for unregistering.
-    // It just wraps the call to the ComponentBroker.
-    public static void Unregister(IComponentBroker broker, MyExampleDelegate handler)
-    {
-        broker?.UnregisterCallback(handler);
-    }
-
-    // This is the helper method for firing (invoking) the callback.
-    // This is where the helper really shines.
-    // It wraps the call to the ComponentBroker and 
-    // a recursive call to the parent broker too.
-    // That means if your broker was an Arena, then 
-    // it will invoke the delegate on the arena-level first.
-    // Next, it will go to the the parent, which is the root
-    // broker, and do the same there.
-    public static void Fire(IComponentBroker broker, int foo, string bar, bool baz)
-    {
-        // Invoke it on the broker.
-        broker?.GetCallback<MyExampleDelegate>()?.Invoke(foo, bar, baz);
-
-        // Recursively fire it on the parent of the broker (if there is a parent).
-        if (broker?.Parent != null)
-            Fire(broker.Parent, foo, bar, baz);
-    }
 }
 
 public class CustomExample : IModule, IArenaAttachableModule
