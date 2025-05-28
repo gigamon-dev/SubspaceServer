@@ -3042,9 +3042,11 @@ namespace SS.Core.Modules
         private void SendOutgoing(ConnData conn, ref PacketGrouper packetGrouper, BandwidthPriority? priorityFilter = null)
         {
             long now = Stopwatch.GetTimestamp();
-            bool isPlayerConnection = conn is PlayerConnection;
+            PlayerConnection? playerConnection = conn as PlayerConnection;
 
-            if (isPlayerConnection // game protocol only
+            if (playerConnection is not null // game protocol only
+                && playerConnection.Player is not null
+                && playerConnection.Player.Status == PlayerState.Playing
                 && Stopwatch.GetElapsedTime(Interlocked.Read(ref conn.LastSendTimestamp), now) > _config.PlayerKeepAliveThreshold)
             {
                 // Check if there is any pending outgoing data.
@@ -3258,7 +3260,7 @@ namespace SS.Core.Modules
                     }
 
                     // Batch position packets
-                    if (isPlayerConnection) // game protocol only
+                    if (playerConnection is not null) // game protocol only
                     {
                         // Only certain types of position packets can be batched.
                         S2CPacketType packetType = (S2CPacketType)buf.Bytes[0];
