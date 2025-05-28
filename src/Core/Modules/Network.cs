@@ -3042,6 +3042,36 @@ namespace SS.Core.Modules
         private void SendOutgoing(ConnData conn, ref PacketGrouper packetGrouper, BandwidthPriority? priorityFilter = null)
         {
             long now = Stopwatch.GetTimestamp();
+            bool isPlayerConnection = conn is PlayerConnection;
+
+            if (isPlayerConnection // game protocol only
+                && Stopwatch.GetElapsedTime(Interlocked.Read(ref conn.LastSendTimestamp), now) > _config.PlayerKeepAliveThreshold)
+            {
+                // Check if there is any pending outgoing data.
+                bool hasPendingOutgoing = false;
+
+                if (conn.UnsentRelOutList.Count > 0)
+                {
+                    hasPendingOutgoing = true;
+                }
+                else
+                {
+                    for (int pri = conn.OutList.Length - 1; pri >= 0; pri--)
+                    {
+                        if (conn.OutList[pri].Count > 0)
+                        {
+                            hasPendingOutgoing = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!hasPendingOutgoing)
+                {
+                    // Queue a keep alive packet to be sent the player.
+                    SendToOne(conn, [(byte)S2CPacketType.KeepAlive], NetSendFlags.Unreliable);
+                }
+            }
 
             // use an estimate of the average round-trip time to figure out when to resend a packet
             uint timeout = Math.Clamp((uint)(conn.AverageRoundTripTime + (4 * conn.AverageRoundTripDeviation)), 250, 2000);
@@ -3228,7 +3258,7 @@ namespace SS.Core.Modules
                     }
 
                     // Batch position packets
-                    if (conn is PlayerConnection) // game protocol only
+                    if (isPlayerConnection) // game protocol only
                     {
                         // Only certain types of position packets can be batched.
                         S2CPacketType packetType = (S2CPacketType)buf.Bytes[0];
@@ -4400,6 +4430,7 @@ namespace SS.Core.Modules
                 }
             }
 
+            Interlocked.Exchange(ref conn.LastSendTimestamp, Stopwatch.GetTimestamp());
             Interlocked.Add(ref conn.BytesSent, (ulong)length);
             Interlocked.Increment(ref conn.PacketsSent);
             Interlocked.Add(ref _globalStats.BytesSent, (ulong)length);
@@ -4833,7 +4864,15 @@ namespace SS.Core.Modules
             public string? EncryptorName;
 
             /// <summary>
-            /// Time the last packet was received.
+            /// Timestamp that data was last sent.
+            /// </summary>
+            /// <remarks>
+            /// Synchronized using <see cref="Interlocked"/> methods.
+            /// </remarks>
+            public long LastSendTimestamp;
+
+            /// <summary>
+            /// Timestamp that data was last received.
             /// </summary>
             /// <remarks>
             /// Synchronized using <see cref="Interlocked"/> methods.
@@ -5133,7 +5172,9 @@ namespace SS.Core.Modules
 
             protected void Initialize()
             {
-                Interlocked.Exchange(ref LastReceiveTimestamp, Stopwatch.GetTimestamp());
+                long timestamp = Stopwatch.GetTimestamp();
+                Interlocked.Exchange(ref LastSendTimestamp, timestamp);
+                Interlocked.Exchange(ref LastReceiveTimestamp, timestamp);
 
                 Interlocked.Exchange(ref SizedSendQueuedCount, 0);
 
@@ -5162,6 +5203,7 @@ namespace SS.Core.Modules
                 RemoteEndpoint = null;
                 SendSocket = null;
 
+                Interlocked.Exchange(ref LastSendTimestamp, 0);
                 Interlocked.Exchange(ref LastReceiveTimestamp, 0);
                 Interlocked.Exchange(ref PacketsSent, 0);
                 Interlocked.Exchange(ref PacketsReceived, 0);
@@ -6047,6 +6089,11 @@ namespace SS.Core.Modules
             public int MaxOutlistSize { get; private set; }
 
             /// <summary>
+            /// How long after not having sent data to a player connection, to send a <see cref="Packets.Game.S2CPacketType.KeepAlive"/> packet (game protocol).
+            /// </summary>
+            public TimeSpan PlayerKeepAliveThreshold { get; private set; }
+
+            /// <summary>
             /// The maximum number of incoming reliable packets to buffer for a player connection.
             /// </summary>
             public int PlayerReliableReceiveWindowSize { get; private set; }
@@ -6133,6 +6180,7 @@ namespace SS.Core.Modules
                 SimplePingPopulationMode = configManager.GetEnum(configManager.Global, "Net", "SimplePingPopulationMode", PingPopulationMode.Total);
 
                 // (deliberately) undocumented settings
+                PlayerKeepAliveThreshold = TimeSpan.FromMilliseconds(10 * configManager.GetInt(configManager.Global, "Net", "PlayerKeepAliveThreshold", 500));
                 PlayerReliableReceiveWindowSize = configManager.GetInt(configManager.Global, "Net", "PlayerReliableReceiveWindowSize", Constants.PlayerReliableReceiveWindowSize);
                 ClientConnectionReliableReceiveWindowSize = configManager.GetInt(configManager.Global, "Net", "ClientConnectionReliableReceiveWindowSize", Constants.ClientConnectionReliableReceiveWindowSize);
                 MaxRetries = configManager.GetInt(configManager.Global, "Net", "MaxRetries", 15);

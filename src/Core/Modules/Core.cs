@@ -127,7 +127,6 @@ namespace SS.Core.Modules
             _chatNetwork?.AddHandler("LOGIN", ChatHandler_Login);
 
             _mainloopTimer.SetTimer(MainloopTimer_ProcessPlayerStates, 100, 100, null);
-            _mainloopTimer.SetTimer(MainloopTimer_SendKeepAlive, 5000, 5000, null); // every 5 seconds
 
             // register default interface which may be replaced later
             _iAuthToken = broker.RegisterInterface<IAuth>(this);
@@ -165,7 +164,6 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iAuthToken) != 0)
                 return Task.FromResult(false);
 
-            _mainloopTimer.ClearTimer(MainloopTimer_SendKeepAlive, null);
             _mainloopTimer.ClearTimer(MainloopTimer_ProcessPlayerStates, null);
 
             _network?.RemovePacket(C2SPacketType.Login, Packet_Login);
@@ -602,17 +600,6 @@ namespace SS.Core.Modules
 
                 return true;
             }
-        }
-
-        private bool MainloopTimer_SendKeepAlive()
-        {
-            if (_network != null)
-            {
-                ReadOnlySpan<byte> keepAlive = [(byte)S2CPacketType.KeepAlive];
-                _network.SendToArena(null, null, keepAlive, NetSendFlags.Reliable);
-            }
-
-            return true;
         }
 
         #endregion
