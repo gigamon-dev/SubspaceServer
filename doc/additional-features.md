@@ -238,3 +238,19 @@ The `CarryFlags` module includes an extensibility point via the `ICarryFlagsBeha
 ---
 ## ?laghist command
 ASSS tracks many statistics for lag data. This includes the distribution of ping times for C2S and reliable data. ASSS planned to include a `?laghist` command to output this data. However, it was never implemented. In Subspace Server .NET the `?laghist` command is implemented in a way that it's presumed to have been intended. By default, it prints C2S ping stats. With the `-r` argument it prints reliable ping stats.
+
+---
+## Reduced size S2C position packets (0x39 and 0x3A)
+The S2C 0x39 and 0x3A packets (added in the Continuum client) greatly reduce the amount of bandwidth needed to send player position data. The `Game` module fully supports sending these packets, and the `Network` includes the ability to send them in batches to even further reduce the amount size of data.
+
+---
+## Select Box packet (0x3C)
+The `SelectBox` module and associated `ISelectBox` interface provide support for displaying the select box to players. The `SelectBoxItemSelectedCallback` provides a way to handle when a user selects a choice.
+
+---
+## Ability for clients to declare extended feature support
+Clients can tell the server which additional features they support by sending additional flags in a previously unused portion of the 0x09 and 0x24 (Login) packets (2 highest order bytes from the 444 field). This allows bots connecting as VIE clients (VIE authentication), to tell the server what features beyond the original VIE client they support. For example, the [ZeroBot](https://github.com/plushmonkey/zero) supports: reduced size S2C position packets, lvz, and watch damage. Clients that identify as Continuum clients (Continuum encryption) are assumed to support all of the Continuum client's extended features.
+
+---
+## Smarter use of S2C 0x27 (Keep Alive)
+Both ASSS and subgame send the keep alive packet every 5 seconds, no matter what. Instead, logic was added to only send the packet if data has not been recently sent to a game client. This slightly reduces the amount of data and datagrams sent. Also, the packet is sent unreliably. ASSS sends it reliably, which means the client additionally needs to send an ACK back to the server. Subgame sends it unreliably too.

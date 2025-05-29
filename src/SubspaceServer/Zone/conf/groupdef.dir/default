@@ -63,6 +63,9 @@ cmd_local_password
 cmd_sheep
 cmd_owner
 
+; SelectBox module
+cmd_select
+
 privcmd_sendfile
 cmd_cancelfile
 cmd_acceptfile

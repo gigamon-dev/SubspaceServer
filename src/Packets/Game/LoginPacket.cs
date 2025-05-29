@@ -62,12 +62,20 @@ namespace SS.Packets.Game
         Redirect = 16,
 
         /// <summary>
+        /// Supports displaying the UI for selecting from a set of choices.
+        /// </summary>
+        /// <remarks>
+        /// The client supports the <see cref="S2CPacketType.SelectBox"/> packet.
+        /// </remarks>
+        SelectBox = 32,
+
+        /// <summary>
         /// The features that the Continuum client supports.
         /// </summary>
         /// <remarks>
         /// Continuum supports <see cref="WatchDamage"/>, <see cref="BatchPositions"/>, <see cref="WarpTo"/>, and <see cref="Lvz"/>.
         /// </remarks>
-        Continuum = (WatchDamage | BatchPositions | WarpTo | Lvz | Redirect),
+        Continuum = (WatchDamage | BatchPositions | WarpTo | Lvz | Redirect | SelectBox),
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

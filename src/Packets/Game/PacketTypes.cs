@@ -121,6 +121,11 @@ namespace SS.Packets.Game
         BatchedLargePosition = 0x3A,
 
         Redirect = 0x3B,
+
+        /// <summary>
+        /// Opens the select box UI, similar to the arena selection box.
+        /// </summary>
+        SelectBox = 0x3C
     }
 
     public enum C2SPacketType
