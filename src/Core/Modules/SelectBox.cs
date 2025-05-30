@@ -68,7 +68,7 @@ namespace SS.Core.Modules
 
         #region ISelectBox
 
-        void ISelectBox.Open(ITarget target, ReadOnlySpan<char> title, IReadOnlyList<(short, ReadOnlyMemory<char>)> items)
+        void ISelectBox.Open(ITarget target, ReadOnlySpan<char> title, IReadOnlyList<SelectBoxItem> items)
         {
             title = StringUtils.TruncateForEncodedByteLimit(title, MaxTitleLength - 1); // -1 for the null-terminator
 
@@ -175,7 +175,7 @@ namespace SS.Core.Modules
             if (!short.TryParse(parameters[tokens[0]], out short itemValue))
                 return;
 
-            ReadOnlySpan<char> itemText = tokenCount == 2 ? parameters[tokens[1]] : ReadOnlySpan<char>.Empty;
+            ReadOnlySpan<char> itemText = tokenCount == 2 ? parameters[tokens[1]] : [];
 
             SelectBoxItemSelectedCallback.Fire(arena, player, itemValue, itemText);
         }

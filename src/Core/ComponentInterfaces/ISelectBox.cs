@@ -4,6 +4,13 @@ using System.Collections.Generic;
 namespace SS.Core.ComponentInterfaces
 {
     /// <summary>
+    /// An item for displaying in a select box.
+    /// </summary>
+    /// <param name="Value">The value of the item.</param>
+    /// <param name="Text">The text to display to the player.</param>
+    public readonly record struct SelectBoxItem(short Value, ReadOnlyMemory<char> Text);
+
+    /// <summary>
     /// Interface for a service for displaying a UI for player(s) to choose from a list of options.
     /// </summary>
     /// <remarks>
@@ -37,6 +44,6 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="target">A target representing which player(s) to display the select box to.</param>
         /// <param name="title">The title.</param>
         /// <param name="items">The items. The values of items are usually unique, but are not required to be.</param>
-        void Open(ITarget target, ReadOnlySpan<char> title, IReadOnlyList<(short, ReadOnlyMemory<char>)> items);
-    }   
+        void Open(ITarget target, ReadOnlySpan<char> title, IReadOnlyList<SelectBoxItem> items);
+    }
 }
