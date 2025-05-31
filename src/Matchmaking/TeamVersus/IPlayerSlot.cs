@@ -20,12 +20,12 @@ namespace SS.Matchmaking.TeamVersus
         int SlotIdx { get; }
 
         /// <summary>
-        /// The name of the player that currently fills the slot.
+        /// The name of the player that is currently assigned to the slot.
         /// </summary>
         string? PlayerName { get; }
 
         /// <summary>
-        /// The player that currently fills the slot.
+        /// The player that currently is currently assigned to the slot.
         /// </summary>
         /// <remarks>
         /// <see langword="null"/> if the player disconnected.

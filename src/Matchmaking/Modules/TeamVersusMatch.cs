@@ -16,7 +16,6 @@ using System.Buffers;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.Text;
 
 namespace SS.Matchmaking.Modules
@@ -275,32 +274,34 @@ namespace SS.Matchmaking.Modules
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return ShipMask.None;
 
-            // When in a match, allow a player to do a normal ship change instead of using ?sc
-            // If during a period they can ship change (start of the match or after death), then allow (ShipMask.All).
-            // If during a period they cannot ship change, but have additional lives, don't allow, but set their next ship.
-
             PlayerSlot? playerSlot = playerData.AssignedSlot;
-            if (playerSlot is null // not in a match
-                || (playerSlot is not null // player is in a match
-                    && player.Arena is not null // player is in an arena
-                    && player.Arena == playerSlot.MatchData.Arena // player is in the match's arena
-                    && (IsStartingPhase(playerSlot.MatchData.Status)
-                        || (playerSlot.MatchData.Status == MatchStatus.InProgress
-                            && (playerSlot.AllowShipChangeExpiration is not null && playerSlot.AllowShipChangeExpiration > DateTime.UtcNow)
-                        )
-                    ) // is within the period that ship changes are allowed (e.g. starting phase or after a death)
-                ))
+            if (playerSlot is null)
             {
+                // The player is not in a match.
+                // Allow changing to any ship.
                 return ShipMask.All;
             }
-
-            if (ship != ShipType.Spec) // should not possible to be spec, but checking just in case
+            else
             {
-                playerData.NextShip = ship;
-                _chat.SendMessage(player, $"Your next ship will be a {ship}.");
-            }
+                // The player is in a match.
+                if (CanShipChangeNow(player, playerData))
+                {
+                    // Set the player's next ship.
+                    SetNextShip(player, playerData, ship, false);
 
-            return player.Ship.GetShipMask(); // Only allow the current ship. In other words, no change allowed.
+                    // Allow changing to any ship.
+                    return ShipMask.All;
+                }
+                else
+                {
+                    // Not allowed to change ships right now.
+                    // Set the player's next ship.
+                    SetNextShip(player, playerData, ship, true);
+
+                    // Only allow the current ship. In other words, no change allowed.
+                    return player.Ship.GetShipMask();
+                }
+            }
         }
 
         bool IFreqManagerEnforcerAdvisor.CanChangeToFreq(Player player, short newFreq, StringBuilder? errorMessage)
@@ -736,11 +737,6 @@ namespace SS.Matchmaking.Modules
 
                 _mainloopTimer.SetTimer(MainloopTimer_ProcessKnockOut, (int)koDelay.TotalMilliseconds, Timeout.Infinite, killedPlayerSlot, matchData);
             }
-            else
-            {
-                // The slot still has lives, allow the player to ship change (after death) for a limited amount of time.
-                killedPlayerSlot.AllowShipChangeExpiration = now + matchData.Configuration.AllowShipChangeAfterDeathDuration; // TODO: maybe limit how many changes a player can make?
-            }
 
             // Regardless of if it was a knockout, we need to check for a win condition.
             // We don't want to do the check immediately, since there's a chance for a double kill.
@@ -891,7 +887,7 @@ namespace SS.Matchmaking.Modules
 
             bool MainloopTimer_ProcessKnockOut(PlayerSlot slot)
             {
-                if (slot.Player is not null && slot.Player.Ship != ShipType.Spec)
+                if (slot.Player is not null && slot.Player.Ship != ShipType.Spec && slot.Player.Freq == slot.Team.Freq)
                 {
                     _game.SetShip(slot.Player, ShipType.Spec);
                 }
@@ -1183,20 +1179,34 @@ namespace SS.Matchmaking.Modules
                 return;
 
             PlayerSlot? slot = playerData.AssignedSlot;
-            if (slot is null || slot.Status != PlayerSlotStatus.Playing)
+            if (slot is null
+                || slot.Status != PlayerSlotStatus.Playing
+                || player.Arena is null
+                || player.Arena != slot.MatchData.Arena
+                || player.Freq != slot.Team.Freq)
+            {
                 return;
+            }
 
             bool isAfterDeath = (reasons & SpawnCallback.SpawnReason.AfterDeath) == SpawnCallback.SpawnReason.AfterDeath;
             bool isShipChange = (reasons & SpawnCallback.SpawnReason.ShipChange) == SpawnCallback.SpawnReason.ShipChange;
 
-            if (isAfterDeath
-                && !isShipChange
-                && playerData.NextShip is not null
-                && player.Ship != playerData.NextShip)
+            if (isAfterDeath)
             {
-                // The player respawned after dying and has a different ship set as their next one.
-                // Change the player to that ship.
-                _game.SetShip(player, playerData.NextShip.Value); // this will trigger another Spawn callback
+                // Allow the player to ship change after respawning from a death for a limited amount of time.
+                TimeSpan allowShipChangeAfterDeathDuration = slot.MatchData.Configuration.AllowShipChangeAfterDeathDuration;
+                slot.AllowShipChangeExpiration = allowShipChangeAfterDeathDuration != TimeSpan.Zero
+                    ? DateTime.UtcNow + allowShipChangeAfterDeathDuration
+                    : null;
+    
+                if (!isShipChange
+                    && playerData.NextShip is not null
+                    && player.Ship != playerData.NextShip)
+                {
+                    // The player respawned after dying and has a different ship set as their next one.
+                    // Change the player to that ship.
+                    _game.SetShip(player, playerData.NextShip.Value); // this will trigger another Spawn callback
+                }
             }
 
             // Ensure ships are burned on spawn if in a match and match type is configured to burn items.
@@ -1860,53 +1870,51 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<ship #>",
-            Description = "Request a ship change. It will be allowed after death. Otherwise, it sets the next ship to use upon death.")]
+            Description = """
+                Requests a ship change (which ship to use next in a match).
+                When in a match, it will immediately change a player's current ship 
+                if allowed (during match startup or the short period after death,
+                and the player is at full energy).
+                """)]
         private void Command_sc(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
+            if (!TryParseShip(player, parameters, out ShipType ship))
+            {
+                _chat.SendMessage(player, "Invalid ship type specified.");
+                return;
+            }
+
             PlayerSlot? playerSlot = playerData.AssignedSlot;
-            if (playerSlot is null)
+            if (playerSlot is not null // is in a match
+                && CanShipChangeNow(player, playerData)
+                // Additionally make sure the player is at full energy (don't want this command to have abilities above that of a regular ship change)
+                && player.Arena is not null
+                && _arenaDataDictionary.TryGetValue(player.Arena, out ArenaData? arenaData)
+                && player.Position.Energy >= arenaData.ShipSettings[(int)player.Ship].MaximumEnergy)
             {
-                _chat.SendMessage(player, "You're not playing in a match.");
-                return;
+                // Set the player's next ship and change the ship now.
+                SetNextShip(player, playerData, ship, false);
+                SetShipAndFreq(playerSlot, false, null, false);
+            }
+            else
+            {
+                // Just set the next ship.
+                SetNextShip(player, playerData, ship, true);
             }
 
-            if (player.Arena is null
-                || !string.Equals(player.Arena.Name, playerSlot.MatchData.ArenaName, StringComparison.OrdinalIgnoreCase))
+            // local function that parses input for ship selection
+            static bool TryParseShip(Player player, ReadOnlySpan<char> s, out ShipType ship)
             {
-                _chat.SendMessage(player, $"Your match is in a different arena: ?go {playerSlot.MatchData.ArenaName}");
-                return;
-            }
-
-            if (playerSlot.AllowShipChangeExpiration is not null && playerSlot.AllowShipChangeExpiration > DateTime.UtcNow)
-            {
-                if (!TryParseShipNumber(player, parameters, out int shipNumber))
-                    return;
-
-                ShipType ship = (ShipType)(shipNumber - 1);
-                _game.SetShip(player, ship);
-            }
-            else if (playerSlot.Lives > 0)
-            {
-                if (!TryParseShipNumber(player, parameters, out int shipNumber))
-                    return;
-
-                ShipType ship = (ShipType)(shipNumber - 1);
-                playerData.NextShip = ship;
-
-                _chat.SendMessage(player, $"Your next ship will be a {ship}.");
-            }
-
-            bool TryParseShipNumber(Player player, ReadOnlySpan<char> s, out int shipNumber)
-            {
-                if (!int.TryParse(s, out shipNumber) || shipNumber < 1 || shipNumber > 8)
+                if (!int.TryParse(s, out int shipNumber) || shipNumber < 1 || shipNumber > 8)
                 {
-                    _chat.SendMessage(player, "Invalid ship type specified.");
+                    ship = ShipType.Spec;
                     return false;
                 }
 
+                ship = (ShipType)(shipNumber - 1);
                 return true;
             }
         }
@@ -3841,6 +3849,44 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        private static bool CanShipChangeNow(Player player, PlayerData playerData)
+        {
+            PlayerSlot? playerSlot = playerData.AssignedSlot;
+
+            return playerSlot is null
+                || (player.Arena is not null // player is in an arena
+                    && player.Arena == playerSlot.MatchData.Arena // player is in the match's arena
+                    && player.Freq == playerSlot.Team.Freq // player is on the team's freq
+                    && (IsStartingPhase(playerSlot.MatchData.Status)
+                        || (playerSlot.MatchData.Status == MatchStatus.InProgress
+                            && (playerSlot.AllowShipChangeExpiration is not null && playerSlot.AllowShipChangeExpiration.Value > DateTime.UtcNow)
+                        )
+                    ) // is within a period that ship changes are allowed (e.g. starting phase or after a death))
+                );
+        }
+
+        private void SetNextShip(Player player, PlayerData playerData, ShipType ship, bool notify)
+        {
+            if (ship == ShipType.Spec)
+                return;
+
+            playerData.NextShip = ship;
+
+            if (notify)
+            {
+                bool isForCurrentMatch = playerData.AssignedSlot is not null && playerData.AssignedSlot.Lives > 1;
+
+                if (isForCurrentMatch)
+                {
+                    _chat.SendMessage(player, $"Your next ship will be a {ship}.");
+                }
+                else
+                {
+                    _chat.SendMessage(player, $"Your next ship will be a {ship} for your next match.");
+                }
+            }
+        }
+
         private void SetShipAndFreq(PlayerSlot slot, bool isRefill, TileCoordinates? startLocation, bool isBurned)
         {
             Player? player = slot.Player;
@@ -3961,7 +4007,6 @@ namespace SS.Matchmaking.Modules
                 }
             }
         }
-
 
         /// <summary>
         /// Overrides initial shipSetting items
