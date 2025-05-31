@@ -1190,6 +1190,16 @@ namespace SS.Matchmaking.Modules
 
             bool isAfterDeath = (reasons & SpawnCallback.SpawnReason.AfterDeath) == SpawnCallback.SpawnReason.AfterDeath;
             bool isShipChange = (reasons & SpawnCallback.SpawnReason.ShipChange) == SpawnCallback.SpawnReason.ShipChange;
+            bool isInitial = (reasons & SpawnCallback.SpawnReason.Initial) == SpawnCallback.SpawnReason.Initial;
+
+            MatchData matchData = slot.MatchData;
+            if (isShipChange && !isInitial && IsStartingPhase(matchData.Status))
+            {
+                // Return the player to their team's starting location.
+                Team team = slot.Team;
+                TileCoordinates startLocation = matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx].TeamStartLocations[team.TeamIdx][team.StartLocationIdx];
+                _game.WarpTo(player, startLocation.X, startLocation.Y);
+            }
 
             if (isAfterDeath)
             {
@@ -3414,8 +3424,8 @@ namespace SS.Matchmaking.Modules
                     foreach (Team team in matchData.Teams)
                     {
                         TileCoordinates[] startLocations = matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx].TeamStartLocations[team.TeamIdx];
-                        int startLocationIdx = startLocations.Length == 1 ? 0 : _prng.Number(0, startLocations.Length - 1);
-                        TileCoordinates startLocation = startLocations[startLocationIdx];
+                        team.StartLocationIdx = startLocations.Length == 1 ? 0 : _prng.Number(0, startLocations.Length - 1);
+                        TileCoordinates startLocation = startLocations[team.StartLocationIdx];
 
                         // Burn Items if configured in match settings (overrides item refill)
                         bool burnItems = matchData.Configuration.BurnItemsOnSpawn;
@@ -4655,6 +4665,8 @@ namespace SS.Matchmaking.Modules
             ReadOnlyCollection<IPlayerSlot> ITeam.Slots => _readOnlySlots;
 
             public short Score { get; set; }
+
+            public int StartLocationIdx;
         }
 
         private enum PlayerSlotStatus
