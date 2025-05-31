@@ -1916,6 +1916,9 @@ namespace SS.Core.Modules
 
         private void SetShipAndFreq(Player player, ShipType ship, short freq)
         {
+            if (freq < 0 || freq > 9999 || ship < 0 || ship > ShipType.Spec)
+                return;
+
             Arena? arena = player.Arena;
             if (arena is null)
                 return;
@@ -1923,18 +1926,17 @@ namespace SS.Core.Modules
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            ShipType oldShip = player.Ship;
-            short oldFreq = player.Freq;
-            SpawnCallback.SpawnReason flags = SpawnCallback.SpawnReason.ShipChange;
-
             if (player.Type == ClientType.Chat && ship != ShipType.Spec)
             {
                 _logManager.LogP(LogLevel.Warn, nameof(Game), player, "Attempted to force a chat client into a playing ship.");
                 return;
             }
 
-            if (freq < 0 || freq > 9999 || ship < 0 || ship > ShipType.Spec)
-                return;
+            ShipType oldShip = player.Ship;
+            short oldFreq = player.Freq;
+
+            // Before we set the ship and/or freq, allow other modules to do something other than changing ship or freq.
+            BeforeShipFreqChangeCallback.Fire(arena, player, ship, oldShip, freq, oldFreq);
 
             lock (_freqShipLock)
             {
@@ -1983,6 +1985,7 @@ namespace SS.Core.Modules
             // now setup for the CB_SPAWN callback
             _playerData.Lock();
 
+            SpawnCallback.SpawnReason flags = SpawnCallback.SpawnReason.ShipChange;
             try
             {
                 if (player.Flags.IsDead)
