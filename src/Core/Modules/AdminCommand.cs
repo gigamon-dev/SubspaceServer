@@ -26,6 +26,11 @@ namespace SS.Core.Modules
     {
         private const string MapUploadDirectory = "maps/upload";
 
+        /// <summary>
+        /// The maximum # of lines of chat messages to send at once before delaying to send more.
+        /// </summary>
+        private const int MaxChatMessagesAtOnce = 20;
+
         private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
         private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
         private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
@@ -42,6 +47,7 @@ namespace SS.Core.Modules
         bool IModule.Load(IComponentBroker broker)
         {
             _commandManager.AddCommand("admlogfile", Command_admlogfile);
+            _commandManager.AddCommand("ls", Command_ls);
             _commandManager.AddCommand("getfile", Command_getfile);
             _commandManager.AddCommand("putfile", Command_putFileOrZip);
             _commandManager.AddCommand("putzip", Command_putFileOrZip);
@@ -59,6 +65,7 @@ namespace SS.Core.Modules
         bool IModule.Unload(IComponentBroker broker)
         {
             _commandManager.RemoveCommand("admlogfile", Command_admlogfile);
+            _commandManager.RemoveCommand("ls", Command_ls);
             _commandManager.RemoveCommand("getfile", Command_getfile);
             _commandManager.RemoveCommand("putfile", Command_putFileOrZip);
             _commandManager.RemoveCommand("putzip", Command_putFileOrZip);
@@ -109,6 +116,93 @@ namespace SS.Core.Modules
             void ThreadPoolWorkItem_Reopen(object? dummy)
             {
                 _logFile.Reopen();
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<server path>",
+            Description = """
+                List directory contents of a server-side working directory
+                The path is relative to the current working directory.
+                """)]
+        private void Command_ls(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            string? workingDir = _fileTransfer.GetWorkingDirectory(player);
+            if (workingDir is null)
+                return;
+
+            string path = Path.Join(workingDir, parameters);
+            string fullPath = Path.GetFullPath(path);
+            string currentDir = Directory.GetCurrentDirectory();
+
+            if (!IsWithinBasePath(fullPath, currentDir))
+            {
+                _chat.SendMessage(player, "Invalid path.");
+                return;
+            }
+
+            ListAsync(player.Name!, fullPath);
+
+            // async local function since the command handler can't be made async
+            async void ListAsync(string playerName, string path)
+            {
+                try
+                {
+                    DirectoryInfo directory = await Task.Run(() => new DirectoryInfo(path)).ConfigureAwait(false);
+                    int lineCount = 0;
+
+                    // List subdirectories.
+                    using (var enumerator = await Task.Run(() => directory.EnumerateDirectories().GetEnumerator()).ConfigureAwait(false))
+                    {
+                        while (await Task.Run(() => enumerator.MoveNext()).ConfigureAwait(false))
+                        {
+                            // Add a delay to prevent sending too many messages at once (max outgoing limit in the Network module).
+                            if (++lineCount % MaxChatMessagesAtOnce == 0)
+                                await Task.Delay(500).ConfigureAwait(false);
+
+                            // The player could have disconnected.
+                            Player? player = _playerData.FindPlayer(playerName);
+                            if (player is null)
+                                return;
+
+                            _chat.SendMessage(player, $"[{enumerator.Current.Name}]");
+                        }
+                    }
+
+                    // List files.
+                    using (var enumerator = await Task.Run(() => directory.EnumerateFiles().GetEnumerator()).ConfigureAwait(false))
+                    {
+                        while (await Task.Run(() => enumerator.MoveNext()).ConfigureAwait(false))
+                        {
+                            // Add a delay to prevent sending too many messages at once (max outgoing limit in the Network module).
+                            if (++lineCount % MaxChatMessagesAtOnce == 0)
+                                await Task.Delay(500).ConfigureAwait(false);
+
+                            // The player could have disconnected.
+                            Player? player = _playerData.FindPlayer(playerName);
+                            if (player is null)
+                                return;
+
+                            _chat.SendMessage(player, enumerator.Current.Name);
+                        }
+                    }
+
+                    _chat.SendMessage(player, $"total {lineCount}");
+                }
+                catch (Exception ex)
+                {
+                    Player? player = _playerData.FindPlayer(playerName);
+                    if (player is not null)
+                    {
+                        _logManager.LogP(LogLevel.Warn, nameof(AdminCommand), player, $"Command_ls exception: {ex}");
+                        _chat.SendMessage(player, $"ls: {ex.Message}");
+                    }
+                    else
+                    {
+                        _logManager.LogM(LogLevel.Warn, nameof(AdminCommand), $"[{playerName}] Command_ls exception: {ex}");
+                    }                    
+                }
             }
         }
 

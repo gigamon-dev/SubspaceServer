@@ -36,6 +36,7 @@ cmd_geta
 
 cmd_cd
 cmd_pwd
+cmd_ls
 cmd_getfile
 cmd_putfile
 cmd_delfile
