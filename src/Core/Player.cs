@@ -875,5 +875,10 @@ namespace SS.Core
         TargetType ITarget.Type => TargetType.Player;
 
         #endregion
+
+        public override int GetHashCode()
+        {
+            return Id;
+        }
     }
 }

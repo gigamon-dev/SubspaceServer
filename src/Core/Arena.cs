@@ -553,5 +553,10 @@ namespace SS.Core
                 return success;
             }
         }
+
+        public override int GetHashCode()
+        {
+            return Name.GetHashCode(StringComparison.OrdinalIgnoreCase);
+        }
     }
 }
