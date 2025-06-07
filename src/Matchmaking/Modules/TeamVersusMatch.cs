@@ -48,7 +48,7 @@ namespace SS.Matchmaking.Modules
         Manages team versus matches.
         Configuration: {nameof(TeamVersusMatch)}.conf
         """)]
-    public class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IPlayerPositionAdvisor
+    public class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IMatchFocusAdvisor
     {
         private const string ConfigurationFileName = $"{nameof(TeamVersusMatch)}.conf";
 
@@ -63,6 +63,7 @@ namespace SS.Matchmaking.Modules
         private readonly IMainloop _mainloop;
         private readonly IMainloopTimer _mainloopTimer;
         private readonly IMapData _mapData;
+        private readonly IMatchFocus _matchFocus;
         private readonly IMatchmakingQueues _matchmakingQueues;
         private readonly INetwork _network;
         private readonly IObjectPoolManager _objectPoolManager;
@@ -72,6 +73,7 @@ namespace SS.Matchmaking.Modules
         // optional
         private ITeamVersusStatsBehavior? _teamVersusStatsBehavior;
 
+        private AdvisorRegistrationToken<IMatchFocusAdvisor>? _iMatchFocusAdvisorToken;
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor>? _iMatchmakingQueueAdvisorToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
@@ -160,6 +162,7 @@ namespace SS.Matchmaking.Modules
             IMainloop mainloop,
             IMainloopTimer mainloopTimer,
             IMapData mapData,
+            IMatchFocus matchFocus,
             IMatchmakingQueues matchmakingQueues,
             INetwork network,
             IObjectPoolManager objectPoolManager,
@@ -177,6 +180,7 @@ namespace SS.Matchmaking.Modules
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+            _matchFocus = matchFocus ?? throw new ArgumentNullException(nameof(matchFocus));
             _matchmakingQueues = matchmakingQueues ?? throw new ArgumentNullException(nameof(matchmakingQueues));
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
@@ -214,6 +218,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("loadmatchtype", Command_loadmatchtype);
             _commandManager.AddCommand("unloadmatchtype", Command_unloadmatchtype);
 
+            _iMatchFocusAdvisorToken = broker.RegisterAdvisor<IMatchFocusAdvisor>(this);
             _iMatchmakingQueueAdvisorToken = broker.RegisterAdvisor<IMatchmakingQueueAdvisor>(this);
             return true;
 
@@ -247,6 +252,9 @@ namespace SS.Matchmaking.Modules
 
         Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
+            if (!broker.UnregisterAdvisor(ref _iMatchFocusAdvisorToken))
+                return Task.FromResult(false);
+
             if (!broker.UnregisterAdvisor(ref _iMatchmakingQueueAdvisorToken))
                 return Task.FromResult(false);
 
@@ -379,6 +387,37 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        #region IMatchFocusAdvisor
+
+        bool IMatchFocusAdvisor.TryGetPlaying(IMatch match, HashSet<string> players)
+        {
+            if (match is null || match is not MatchData matchData)
+                return false;
+
+            foreach (var team in matchData.Teams)
+            {
+                foreach (var slot in team.Slots)
+                {
+                    if (slot.PlayerName is not null)
+                    {
+                        players.Add(slot.PlayerName);
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        IMatch? IMatchFocusAdvisor.GetMatch(Player player)
+        {
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return null;
+
+            return playerData.AssignedSlot?.MatchData;
+        }
+
+        #endregion
+
         #region Callbacks
 
         [ConfigHelp<bool>("SS.Matchmaking.TeamVersusMatch", "PublicPlayEanbled", ConfigScope.Arena, Default = false,
@@ -445,7 +484,6 @@ namespace SS.Matchmaking.Modules
 
                 // Register advisors.
                 arenaData.IFreqManagerEnforcerAdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
-                arenaData.IPlayerPositionAdvisorToken = arena.RegisterAdvisor<IPlayerPositionAdvisor>(this);
 
                 // Fill in arena for associated matches.
                 foreach (MatchData matchData in _matchDataDictionary.Values)
@@ -465,9 +503,6 @@ namespace SS.Matchmaking.Modules
                 {
                     // Unregister advisors.
                     if (!arena.UnregisterAdvisor(ref arenaData.IFreqManagerEnforcerAdvisorToken))
-                        return;
-
-                    if (!arena.UnregisterAdvisor(ref arenaData.IPlayerPositionAdvisorToken))
                         return;
 
                     // Unregister callbacks.
@@ -1938,15 +1973,8 @@ namespace SS.Matchmaking.Modules
                 """)]
         private void Command_items(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+            if (_matchFocus.GetFocusedMatch(player) is not MatchData matchData)
                 return;
-
-            MatchData? matchData = playerData.AssignedSlot?.MatchData;
-            if (matchData is null)
-            {
-                // TODO: Check if the player is spectating a player in a match
-                return;
-            }
 
             if (matchData.Status != MatchStatus.InProgress)
             {
@@ -2031,35 +2059,6 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            return true;
-        }
-
-        #endregion
-
-        #region IPlayerPositionAdvisor
-
-        bool IPlayerPositionAdvisor.EditIndividualPositionPacket(Player player, Player toPlayer, ref C2S_PositionPacket positionPacket, ref ExtraPositionData extra, ref int extraLength)
-        {
-            if (toPlayer.Ship == ShipType.Spec)
-            {
-                // Allow spectators to view any match.
-                return false;
-            }
-
-            if (!toPlayer.TryGetExtraData(_pdKey, out PlayerData? toPlayerData))
-                return false;
-
-            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
-                return false;
-
-            if (toPlayerData.AssignedSlot?.MatchData == playerData.AssignedSlot?.MatchData)
-            {
-                // Both players are in the same match or both players are not in a match.
-                return false;
-            }
-
-            // Not playing in the same match, drop the packet.
-            positionPacket.X = positionPacket.Y = -1;
             return true;
         }
 
@@ -2703,6 +2702,8 @@ namespace SS.Matchmaking.Modules
                     matchData.InitializeStatsTask = _teamVersusStatsBehavior.InitializeAsync(matchData);
                 }
 
+                MatchStartingCallback.Fire(_broker, matchData);
+
                 // Set the time limit for players to arrive.
                 matchData.PhaseExpiration = DateTime.UtcNow + matchData.Configuration.ArrivalWaitDuration;
 
@@ -2933,6 +2934,8 @@ namespace SS.Matchmaking.Modules
 
             if (isSub)
                 slot.PremadeGroupId = null;
+
+            MatchAddPlayingCallback.Fire(_broker, slot.MatchData, player.Name!, player);
         }
 
         private void UnassignSlot(PlayerSlot slot)
@@ -2940,20 +2943,24 @@ namespace SS.Matchmaking.Modules
             if (slot is null)
                 return;
 
-            if (string.IsNullOrWhiteSpace(slot.PlayerName))
+            string? playerName = slot.PlayerName;
+            if (string.IsNullOrWhiteSpace(playerName))
                 return; // The slot is not assigned to a player.
 
             slot.PlayerName = null;
 
-            if (slot.Player is not null)
+            Player? player = slot.Player;
+            if (player is not null)
             {
-                if (slot.Player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                if (player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 {
                     playerData.AssignedSlot = null;
                 }
 
                 slot.Player = null;
             }
+
+            MatchRemovePlayingCallback.Fire(_broker, slot.MatchData, playerName, player);
         }
 
         private void SetSlotInactive(PlayerSlot slot, SlotInactiveReason reason)
@@ -3149,7 +3156,7 @@ namespace SS.Matchmaking.Modules
 
         /// <summary>
         /// Gets the players that should be notified about a match.
-        /// This includes the players in the match, and any spectators in that match's arena.
+        /// This includes the players in the match and players spectating the match.
         /// </summary>
         /// <param name="matchData">The match.</param>
         /// <param name="players">The collection to populate with players.</param>
@@ -3158,49 +3165,8 @@ namespace SS.Matchmaking.Modules
             if (matchData is null || players is null)
                 return;
 
-            // Players in the match.
-            foreach (Team team in matchData.Teams)
-            {
-                foreach (PlayerSlot slot in team.Slots)
-                {
-                    if (slot.Player is not null)
-                    {
-                        players.Add(slot.Player);
-                    }
-                }
-            }
-
-            // Players in the arena and on the spec freq get notifications for all matches in the arena.
-            // Players on a team freq get messages for the associated match (this includes a players that got subbed out).
-            Arena? arena = _arenaManager.FindArena(matchData.ArenaName);
-            if (arena is not null)
-            {
-                _playerData.Lock();
-
-                try
-                {
-                    Span<short> matchFreqs = stackalloc short[matchData.Teams.Length];
-                    for (int teamIdx = 0; teamIdx < matchData.Teams.Length; teamIdx++)
-                    {
-                        matchFreqs[teamIdx] = matchData.Teams[teamIdx].Freq;
-                    }
-
-                    foreach (Player player in _playerData.Players)
-                    {
-                        if (player.Arena == arena // in the arena
-                            && (player.Freq == arena.SpecFreq // on the spec freq
-                                || matchFreqs.Contains(player.Freq) // or on a team freq
-                            ))
-                        {
-                            players.Add(player);
-                        }
-                    }
-                }
-                finally
-                {
-                    _playerData.Unlock();
-                }
-            }
+            // Players that are playing the match or are spectating the match, and are in the match's arena.
+            _matchFocus.TryGetPlayers(matchData, players, MatchFocusReasons.Playing | MatchFocusReasons.Spectating, matchData.Arena);
         }
 
         private void ProcessMatchStateChange(MatchData matchData)
@@ -3786,6 +3752,7 @@ namespace SS.Matchmaking.Modules
                         await _teamVersusStatsBehavior.MatchStartedAsync(matchData);
                     }
 
+                    MatchStartedCallback.Fire(_broker, matchData);
                     TeamVersusMatchStartedCallback.Fire(matchData.Arena!, matchData);
                 }
                 finally
@@ -4209,6 +4176,8 @@ namespace SS.Matchmaking.Modules
                 // Change the status to stop any additional attempts to end the match while we're ending it.
                 matchData.Status = MatchStatus.Complete;
 
+                MatchEndingCallback.Fire(_broker, matchData);
+
                 bool isNotificationHandled = false;
 
                 if (_teamVersusStatsBehavior is not null)
@@ -4229,7 +4198,8 @@ namespace SS.Matchmaking.Modules
 
                     try
                     {
-                        GetPlayersToNotify(matchData, notifySet);
+                        // Notification to players that have any association to the match, regardless of the arena they are in.
+                        _matchFocus.TryGetPlayers(matchData, notifySet, MatchFocusReasons.Any, null);
 
                         foreach (Team team in matchData.Teams)
                         {
@@ -4268,6 +4238,7 @@ namespace SS.Matchmaking.Modules
 
                 Arena? arena = _arenaManager.FindArena(matchData.ArenaName); // Note: this can be null (the arena can be destroyed before the match ends)
 
+                MatchEndedCallback.Fire(_broker, matchData);
                 TeamVersusMatchEndedCallback.Fire(arena ?? _broker, matchData, reason, winnerTeam);
 
                 foreach (Team team in matchData.Teams)
@@ -4928,7 +4899,6 @@ namespace SS.Matchmaking.Modules
         private class ArenaData : IResettable
         {
             public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor>? IFreqManagerEnforcerAdvisorToken;
-            public AdvisorRegistrationToken<IPlayerPositionAdvisor>? IPlayerPositionAdvisorToken;
             public readonly ShipSettings[] ShipSettings = new ShipSettings[8];
 
             /// <summary>
@@ -4939,7 +4909,6 @@ namespace SS.Matchmaking.Modules
             bool IResettable.TryReset()
             {
                 IFreqManagerEnforcerAdvisorToken = null;
-                IPlayerPositionAdvisorToken = null;
                 Array.Clear(ShipSettings);
                 PublicPlayEnabled = false;
 

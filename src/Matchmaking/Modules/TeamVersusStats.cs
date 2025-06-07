@@ -62,6 +62,7 @@ namespace SS.Matchmaking.Modules
         private readonly ILogManager _logManager;
         private readonly IMainloopTimer _mainloopTimer;
         private readonly IMapData _mapData;
+        private readonly IMatchFocus _matchFocus;
         private readonly IObjectPoolManager _objectPoolManager;
         private readonly IPlayerData _playerData;
         private readonly IWatchDamage _watchDamage;
@@ -126,6 +127,7 @@ namespace SS.Matchmaking.Modules
             ILogManager logManager,
             IMainloopTimer mainloopTimer,
             IMapData mapData,
+            IMatchFocus matchFocus,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             IWatchDamage watchDamage)
@@ -138,6 +140,7 @@ namespace SS.Matchmaking.Modules
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
+            _matchFocus = matchFocus ?? throw new ArgumentNullException(nameof(matchFocus));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _watchDamage = watchDamage ?? throw new ArgumentNullException(nameof(watchDamage));
@@ -948,7 +951,8 @@ namespace SS.Matchmaking.Modules
 
                 try
                 {
-                    GetPlayersToNotify(matchStats, notifySet);
+                    // Players that are playing the match or are spectating the match, and are in the match's arena.
+                    _matchFocus.TryGetPlayers(matchData, notifySet, MatchFocusReasons.Playing | MatchFocusReasons.Spectating, matchData.Arena);
 
                     StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
@@ -1210,7 +1214,8 @@ namespace SS.Matchmaking.Modules
 
                 try
                 {
-                    GetPlayersToNotify(matchStats, notifySet);
+                    // Notification to players that have any association to the match, regardless of the arena they are in.
+                    _matchFocus.TryGetPlayers(matchStats.MatchData!, notifySet, MatchFocusReasons.Any, null);
                     PrintMatchStats(notifySet, matchStats, reason, winnerTeam);
                 }
                 finally
@@ -2174,12 +2179,12 @@ namespace SS.Matchmaking.Modules
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            MatchStats? matchStats = playerData.MemberStats?.MatchStats;
-            if (matchStats is null)
-            {
-                // TODO: Check if the player is spectating a player in a match
+            IMatch? match = _matchFocus.GetFocusedMatch(player);
+            if (match is null || match is not IMatchData matchData)
                 return;
-            }
+
+            if (!_matchStatsDictionary.TryGetValue(matchData.MatchIdentifier, out MatchStats? matchStats))
+                return;
 
             HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
 
@@ -2370,54 +2375,6 @@ namespace SS.Matchmaking.Modules
             finally
             {
                 s_tickRangeCalculatorPool.Return(empShutdownCalculator);
-            }
-        }
-
-        private void GetPlayersToNotify(MatchStats matchStats, HashSet<Player> players)
-        {
-            if (matchStats is null || players is null)
-                return;
-
-            IMatchData? matchData = matchStats.MatchData;
-            if (matchData is null)
-                return;
-
-            // Players in the match.
-            foreach (ITeam team in matchData.Teams)
-            {
-                foreach (IPlayerSlot slot in team.Slots)
-                {
-                    if (slot.Player is not null)
-                    {
-                        players.Add(slot.Player);
-                    }
-                }
-            }
-
-            // Players in the arena and on the spec freq get notifications for all matches in the arena.
-            // Players on a team freq get messages for the associated match (this includes a players that got subbed out).
-            Arena? arena = _arenaManager.FindArena(matchData.ArenaName);
-            if (arena is not null)
-            {
-                _playerData.Lock();
-
-                try
-                {
-                    foreach (Player player in _playerData.Players)
-                    {
-                        if (player.Arena == arena // in the arena
-                            && (player.Freq == arena.SpecFreq // on the spec freq
-                                || matchStats.Teams.ContainsKey(player.Freq) // or on a team freq
-                            ))
-                        {
-                            players.Add(player);
-                        }
-                    }
-                }
-                finally
-                {
-                    _playerData.Unlock();
-                }
             }
         }
 

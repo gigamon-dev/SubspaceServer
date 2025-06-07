@@ -1466,7 +1466,7 @@ namespace SS.Core.Modules
 
                                 bool drop = false;
 
-                                // Consult the advisors to allow other modules to edit the packet going to player i.
+                                // Consult the advisors to allow other modules to edit or drop the packet.
                                 foreach (var advisor in advisors)
                                 {
                                     if (advisor.EditIndividualPositionPacket(player, otherPlayer, ref posCopy, ref extraCopy, ref extraLength))

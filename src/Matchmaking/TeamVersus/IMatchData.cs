@@ -3,7 +3,7 @@ using System.Collections.ObjectModel;
 
 namespace SS.Matchmaking.TeamVersus
 {
-    public interface IMatchData
+    public interface IMatchData : IMatch
     {
         /// <summary>
         /// Uniquely identifies a match's type and place.
