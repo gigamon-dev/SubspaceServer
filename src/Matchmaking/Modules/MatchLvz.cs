@@ -3,8 +3,10 @@ using SS.Core;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Callbacks;
+using SS.Matchmaking.Interfaces;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
+using System.Diagnostics;
 
 namespace SS.Matchmaking.Modules
 {
@@ -15,7 +17,9 @@ namespace SS.Matchmaking.Modules
     public class MatchLvz(
         IConfigManager configManager,
         ILvzObjects lvzObjects,
-        IMainloopTimer mainloopTimer) : IModule, IArenaAttachableModule
+        IMainloopTimer mainloopTimer,
+        IMatchFocus matchFocus,
+        IObjectPoolManager objectPoolManager) : IModule, IArenaAttachableModule
     {
         #region Constants
 
@@ -91,6 +95,7 @@ namespace SS.Matchmaking.Modules
         private const int InitializeStatBox_MaxChanges = (StatBoxNumLines * (StatBox_NameChange_MaxChanges + StatBox_SetLives_MaxChanges + StatBox_SetRepels_MaxChanges + StatBox_SetRockets_MaxChanges));
         private const int InitializeStatBox_MaxToggles = StatBox_RefreshHeaderAndFrame_MaxToggles + (StatBoxNumLines * (StatBox_NameChange_MaxToggles + StatBox_SetLives_MaxToggles + StatBox_SetRepels_MaxToggles + StatBox_SetRockets_MaxToggles));
 
+        private const int Clear_MaxChanges = StatBoxCharacterObjectCount;
         private const int Clear_MaxToggles = 1 + Scoreboard_Timer_MaxToggles + Scoreboard_Freqs_MaxToggles + Scoreboard_Score_MaxToggles + StatBox_RefreshHeaderAndFrame_MaxToggles + StatBoxCharacterObjectCount + StatBoxStrikethroughObjectsCount;
 
         private const int StatBox_RefreshForSub_MaxChanges = StatBox_NameChange_MaxChanges;
@@ -124,11 +129,16 @@ namespace SS.Matchmaking.Modules
         private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
         private readonly ILvzObjects _lvzObjects = lvzObjects ?? throw new ArgumentNullException(nameof(lvzObjects));
         private readonly IMainloopTimer _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
-
+        private readonly IMatchFocus _matchFocus = matchFocus ?? throw new ArgumentNullException(nameof(matchFocus));
+        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
         private readonly Dictionary<Arena, ArenaLvzData> _arenaDataDictionary = new(Constants.TargetArenaCount);
+        private readonly Dictionary<Player, PlayerData> _playerDataDictionary = new(Constants.TargetPlayerCount);
 
         private const int TargetBoxesPerArena = 16;
         private static readonly DefaultObjectPool<ArenaLvzData> s_arenaDataPool = new(new DefaultPooledObjectPolicy<ArenaLvzData>(), Constants.TargetArenaCount);
+        private static readonly DefaultObjectPool<PlayerData> s_playerDataPool = new(new DefaultPooledObjectPolicy<PlayerData>(), Constants.TargetPlayerCount);
+        //private static readonly DefaultObjectPool<MatchLvzState> s_matchLvzStatePool = new(new DefaultPooledObjectPolicy<MatchLvzState>(), Constants.TargetPlayerCount);
+
 
         #region Digit to image mappings
 
@@ -162,7 +172,7 @@ namespace SS.Matchmaking.Modules
 
             ArenaActionCallback.Register(arena, Callback_ArenaAction);
             PlayerActionCallback.Register(arena, Callback_PlayerAction);
-
+            MatchFocusChangedCallback.Register(arena, Callback_MatchFocusChanged);
             TeamVersusMatchStartedCallback.Register(arena, Callback_TeamVersusMatchStarted);
             TeamVersusMatchEndedCallback.Register(arena, Callback_TeamVersusMatchEnded);
             TeamVersusMatchPlayerSubbedCallback.Register(arena, Callback_TeamVersusMatchPlayerSubbed);
@@ -177,7 +187,7 @@ namespace SS.Matchmaking.Modules
         {
             ArenaActionCallback.Unregister(arena, Callback_ArenaAction);
             PlayerActionCallback.Unregister(arena, Callback_PlayerAction);
-
+            MatchFocusChangedCallback.Unregister(arena, Callback_MatchFocusChanged);
             TeamVersusMatchStartedCallback.Unregister(arena, Callback_TeamVersusMatchStarted);
             TeamVersusMatchEndedCallback.Unregister(arena, Callback_TeamVersusMatchEnded);
             TeamVersusMatchPlayerSubbedCallback.Unregister(arena, Callback_TeamVersusMatchPlayerSubbed);
@@ -223,15 +233,116 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
+            if (action == PlayerAction.EnterArena)
+            {
+                _playerDataDictionary.Add(player, s_playerDataPool.Get());
+            }
             if (action == PlayerAction.EnterGame)
             {
-                if (arena is null || !_arenaDataDictionary.TryGetValue(arena!, out ArenaLvzData? arenaData))
+                if (arena is null)
                     return;
 
-                // TODO: add logic to track which match (box) a player is a participant in or spectating
-                // Include a delay to refresh lvz when they switch between matches (help limit bandwidth use)
-                // Perhaps add another module, MatchFocus, to manage which box a player is focused on?
+                IMatchData? matchData = _matchFocus.GetFocusedMatch(player) as IMatchData;
+                if (matchData is not null
+                    && matchData.Arena == arena)
+                {
+                    SetAndSendMatchLvz(player, matchData);
+                }
             }
+            else if (action == PlayerAction.LeaveArena)
+            {
+                if (_playerDataDictionary.Remove(player, out PlayerData? playerData))
+                {
+                    if (playerData.CurrentMatch is not null)
+                    {
+                        playerData.CurrentMatch.Players.Remove(player);
+                        playerData.CurrentMatch = null;
+                    }
+
+                    s_playerDataPool.Return(playerData);
+                }
+            }
+        }
+
+        private void Callback_MatchFocusChanged(Player player, IMatch? oldMatch, IMatch? newMatch)
+        {
+            // TODO: add a delay (throttle) if switching to a different match
+            SetAndSendMatchLvz(player, newMatch as IMatchData);
+        }
+
+        private void SetAndSendMatchLvz(Player player, IMatchData? matchData)
+        {
+            if (!_playerDataDictionary.TryGetValue(player, out PlayerData? playerData))
+                return;
+
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            if (!_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
+                return;
+
+            MatchLvzState? newState = null;
+
+            if (matchData is not null)
+            {
+                if (matchData.Arena != arena) // sanity check
+                    return;
+
+                newState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            }
+
+            MatchLvzState? oldState = playerData.CurrentMatch;
+
+            if (newState is null)
+            {
+                if (oldState is not null)
+                {
+                    // The player stopped focusing on a match.
+                    // Set the player's lvz back to the default.
+                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[InitializeStatBox_MaxChanges];
+                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[InitializeStatBox_MaxToggles];
+                    MatchLvzState.GetDifferences(oldState, arenaData.DefaultLvzState!, changes, out int changesWritten, toggles, out int togglesWritten);
+                    changes = changes[..changesWritten];
+                    toggles = toggles[..togglesWritten];
+                    _lvzObjects.SetAndToggle(player, changes, toggles);
+                }
+            }
+            else
+            {
+                if (newState == oldState)
+                {
+                    // Already on the match. Nothing to do. This shouldn't happen.
+                    return;
+                }
+
+                if (oldState is null)
+                {
+                    // The player wasn't focused on a match yet. 
+                    // Send the differences from the default state to the new state.
+                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[InitializeStatBox_MaxChanges];
+                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[InitializeStatBox_MaxToggles];
+                    MatchLvzState.GetDifferences(arenaData.DefaultLvzState!, newState, changes, out int changesWritten, toggles, out int togglesWritten);
+                    changes = changes[..changesWritten];
+                    toggles = toggles[..togglesWritten];
+                    _lvzObjects.SetAndToggle(player, changes, toggles);
+                }
+                else
+                {
+                    // The player was already focused on a match.
+                    // Send the differences from the old state and the new state.
+                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[InitializeStatBox_MaxChanges];
+                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[InitializeStatBox_MaxToggles];
+                    MatchLvzState.GetDifferences(oldState, newState, changes, out int changesWritten, toggles, out int togglesWritten);
+                    changes = changes[..changesWritten];
+                    toggles = toggles[..togglesWritten];
+                    _lvzObjects.SetAndToggle(player, changes, toggles);
+                }
+            }
+
+            oldState?.Players.Remove(player);
+            newState?.Players.Add(player);
+            playerData.CurrentMatch = newState;
         }
 
         private void Callback_TeamVersusMatchStarted(IMatchData matchData)
@@ -244,14 +355,24 @@ namespace SS.Matchmaking.Modules
 
             Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
             Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[Initialize_MaxToggles];
-
-            // Display statbox
-            matchLvzState.Initialize(matchData, changes, out int changesWritten, toggles, out int togglesWritten);
+            matchLvzState.Start(matchData, changes, out int changesWritten, toggles, out int togglesWritten);
             changes = changes[..changesWritten];
             toggles = toggles[..togglesWritten];
 
-            // TODO: target players participating and anyone spectating them instead of the whole arena
-            _lvzObjects.SetAndToggle(arena, changes, toggles);
+            // Purposely ignore the changes and toggles.
+
+            Debug.Assert(matchLvzState.Players.Count == 0);
+            RemovePlayers(matchLvzState);
+
+            _matchFocus.TryGetPlayers(matchData, matchLvzState.Players, MatchFocusReasons.Playing | MatchFocusReasons.Spectating, arena);
+
+            // Set each player to the match.
+            // This will send the 
+            foreach (Player player in matchLvzState.Players)
+            {
+                SetAndSendMatchLvz(player, matchData);
+                //_lvzObjects.SetAndToggle(player, changes, toggles);
+            }
 
             // Start a timer to refresh the game timer every 10 seconds
             _mainloopTimer.SetTimer(MainloopTimer_RefreshGameTimer, 10000, 10000, matchData, matchData);
@@ -263,18 +384,20 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return false;
 
-            var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier.BoxIdx);
+            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            if (matchLvzState is null)
+                return false;
 
             Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[Scoreboard_Timer_MaxToggles];
             Span<LvzObjectToggle> remainingToggles = toggles;
             int togglesWritten = 0;
-
             matchLvzState.RefreshScoreboardTimer(matchData, ref remainingToggles, ref togglesWritten);
-
             toggles = toggles[..togglesWritten];
 
-            // TODO: target players participating and anyone spectating them instead of the whole arena
-            _lvzObjects.Toggle(arena, toggles);
+            foreach (Player player in matchLvzState.Players)
+            {
+                _lvzObjects.Toggle(player, toggles);
+            }
 
             return true;
         }
@@ -285,19 +408,38 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
-            var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier.BoxIdx);
+            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            if (matchLvzState is null)
+                return;
 
+            Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Clear_MaxChanges];
             Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[Clear_MaxToggles];
-
-            // Hide statbox
-            matchLvzState.Clear(toggles, out int togglesWritten);
-
+            matchLvzState.Clear(changes, out int changesWritten, toggles, out int togglesWritten);
+            changes = changes[..changesWritten];
             toggles = toggles[..togglesWritten];
 
-            // TODO: target players participating and anyone spectating them instead of the whole arena
-            _lvzObjects.Toggle(arena, toggles);
+            // Purposely ignore the changes and toggles.
 
             _mainloopTimer.ClearTimer<IMatchData>(MainloopTimer_RefreshGameTimer, matchData);
+
+            // Remove the players from the match itself.
+            // This will set their lvz back to the default state.
+            RemovePlayers(matchLvzState);
+
+            arenaData.RemoveMatch(matchData.MatchIdentifier.BoxIdx);
+        }
+
+        private void RemovePlayers(MatchLvzState matchLvzState)
+        {
+            while (matchLvzState.Players.Count > 0)
+            {
+                foreach (Player player in matchLvzState.Players)
+                {
+                    // This removes the player from the collectuon, so the enumerator not usable after.
+                    SetAndSendMatchLvz(player, null);
+                    break;
+                }
+            }
         }
 
         private void Callback_TeamVersusMatchPlayerSubbed(IPlayerSlot slot, string? subOutPlayerName)
@@ -307,20 +449,22 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
-            var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier.BoxIdx);
-
-            Span<LvzObjectChange> changes = stackalloc LvzObjectChange[StatBox_RefreshForSub_MaxChanges];
-            Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[StatBox_RefreshForSub_MaxToggles];
+            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            if (matchLvzState is null)
+                return;
 
             // Update player name in statbox.
             // A change in name can affect the statbox frame size and any strikethrough indicator sizes.
+            Span<LvzObjectChange> changes = stackalloc LvzObjectChange[StatBox_RefreshForSub_MaxChanges];
+            Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[StatBox_RefreshForSub_MaxToggles];
             matchLvzState.RefreshStatBoxForSub(slot, changes, out int changesWritten, toggles, out int togglesWritten);
-
             changes = changes[..changesWritten];
             toggles = toggles[..togglesWritten];
 
-            // TODO: target players participating and anyone spectating them instead of the whole arena
-            _lvzObjects.SetAndToggle(arena, changes, toggles);
+            foreach (Player player in matchLvzState.Players)
+            {
+                _lvzObjects.SetAndToggle(player, changes, toggles);
+            }
         }
 
         private void Callback_TeamVersusMatchPlayerKilled(IPlayerSlot killedSlot, IPlayerSlot killerSlot, bool isKnockout)
@@ -330,7 +474,9 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
-            var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier.BoxIdx);
+            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            if (matchLvzState is null)
+                return;
 
             Span<LvzObjectChange> changes = stackalloc LvzObjectChange[RefreshForKill_MaxChanges];
             Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[RefreshForKill_MaxToggles];
@@ -340,8 +486,10 @@ namespace SS.Matchmaking.Modules
             changes = changes[..changesWritten];
             toggles = toggles[..togglesWritten];
 
-            // TODO: target players participating and anyone spectating them instead of the whole arena
-            _lvzObjects.SetAndToggle(arena, changes, toggles);
+            foreach (Player player in matchLvzState.Players)
+            {
+                _lvzObjects.SetAndToggle(player, changes, toggles);
+            }
         }
 
         // If we wanted to show kills and deaths, then this is how it could be done. For now, opting to show remaining lives for the slot since that information is much more useful.
@@ -365,7 +513,9 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
-            var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier.BoxIdx);
+            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            if (matchLvzState is null)
+                return;
 
             Span<LvzObjectChange> changes = stackalloc LvzObjectChange[StatBox_RefreshItems_MaxChanges];
             Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[StatBox_RefreshItems_MaxToggles];
@@ -375,8 +525,10 @@ namespace SS.Matchmaking.Modules
             changes = changes[..changesWritten];
             toggles = toggles[..togglesWritten];
 
-            // TODO: target players participating and anyone spectating them instead of the whole arena
-            _lvzObjects.SetAndToggle(arena, changes, toggles);
+            foreach (Player player in matchLvzState.Players)
+            {
+                _lvzObjects.SetAndToggle(player, changes, toggles);
+            }
         }
 
         #endregion
@@ -430,8 +582,18 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public ReadOnlyMemory<ObjectData> CharacterObjects => _characterObjects;
 
+            /// <summary>
+            /// The default lvz state (nothing being displayed).
+            /// </summary>
+            public MatchLvzState? DefaultLvzState => _defaultLvzState;
+            private MatchLvzState? _defaultLvzState;
+
             public void Initialize(Arena arena, ILvzObjects lvzObjects, int startingObjectId)
             {
+                // For lvz toggles, no extra data is needed. We know the ObjectIds to toggle on and off.
+                // For lvz changes, we need the ObjectData of an object.
+                // The statbox is updated using lvz changes to switch ImageIds, so we need to know the ObjectData of each character in the statbox.
+
                 // statbox characters
                 for (int i = 0; i < _characterObjects.Length; i++)
                 {
@@ -441,6 +603,8 @@ namespace SS.Matchmaking.Modules
 
                     lvzObjects.TryGetDefaultInfo(arena, objectId, out _, out _characterObjects[i]);
                 }
+
+                _defaultLvzState = new MatchLvzState(this);
             }
 
             public MatchLvzState GetOrAddMatch(int boxIdx)
@@ -454,10 +618,22 @@ namespace SS.Matchmaking.Modules
                 return matchLvzState;
             }
 
+            public MatchLvzState? TryGetMatch(int boxIdx)
+            {
+                BoxStates.TryGetValue(boxIdx, out MatchLvzState? matchLvzState);
+                return matchLvzState;
+            }
+
+            public bool RemoveMatch(int boxIdx)
+            {
+                return BoxStates.Remove(boxIdx, out _);
+            }
+
             bool IResettable.TryReset()
             {
                 BoxStates.Clear();
                 Array.Clear(_characterObjects);
+                _defaultLvzState = null;
                 return true;
             }
         }
@@ -469,6 +645,11 @@ namespace SS.Matchmaking.Modules
         {
             //private readonly ArenaLvzData _arenaLvzData;
 
+            private const string ExceptionMessage_InsufficientChangeBufferLength = "Not large enough to hold all possible changes.";
+            private const string ExceptionMessage_InsufficientToggleBufferLength = "Not large enough to hold all possible toggles.";
+
+            public readonly HashSet<Player> Players = new(Constants.TargetPlayerCount);
+
             #region Scoreboard data members
 
             private const short ScoreboardObjectId = 4040;
@@ -478,7 +659,7 @@ namespace SS.Matchmaking.Modules
             private const short TimerMinutesOnes0 = 4070;
             private const short TimerSecondsTens0 = 4060;
             private const short TimerSecondsOnes0 = 4058;
-            private const short TimerSecondsOnesCountdownObjectId = 4059;
+            private const short TimerSecondsOnesCountdownObjectId = 4059;            
             private TimerState _timerState;
 
             // Freqs
@@ -516,7 +697,7 @@ namespace SS.Matchmaking.Modules
 
                 for (int i = 0; i < _characterObjects.Length; i++)
                 {
-                    _characterObjects[i] = new LvzState(arenaLvzData.CharacterObjects.Slice(i, 1));
+                    _characterObjects[i] = new LvzState(arenaLvzData.CharacterObjects.Span[i]);
                 }
 
                 for (int lineIdx = 0; lineIdx < StatBoxNumLines; lineIdx++)
@@ -525,13 +706,13 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            public void Initialize(IMatchData matchData, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
+            public void Start(IMatchData matchData, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
-                if (changes.Length < (Initialize_MaxChanges))
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                if (changes.Length < Initialize_MaxChanges)
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
-                if (toggles.Length < (Initialize_MaxToggles))
-                    throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
+                if (toggles.Length < Initialize_MaxToggles)
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 changesWritten = 0;
                 togglesWritten = 0;
@@ -558,7 +739,7 @@ namespace SS.Matchmaking.Modules
                 void InitializeScoreboardFreqs(ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
                 {
                     if (toggles.Length < Scoreboard_Freqs_MaxToggles)
-                        throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
+                        throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                     for (int teamIdx = 0; teamIdx < _matchData.Teams.Count; teamIdx++)
                     {
@@ -588,8 +769,8 @@ namespace SS.Matchmaking.Modules
 
                 void InitializeScoreboardScores(ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
                 {
-                    if (toggles.Length < (Scoreboard_Score_MaxToggles))
-                        throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
+                    if (toggles.Length < Scoreboard_Score_MaxToggles)
+                        throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                     for (int teamIdx = 0; teamIdx < _matchData.Teams.Count; teamIdx++)
                     {
@@ -599,11 +780,11 @@ namespace SS.Matchmaking.Modules
 
                 void InitializeStatBox(IMatchData matchData, ref Span<LvzObjectChange> changes, ref int changesWritten, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
                 {
-                    if (changes.Length < (InitializeStatBox_MaxChanges))
-                        throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                    if (changes.Length < InitializeStatBox_MaxChanges)
+                        throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
-                    if (toggles.Length < (InitializeStatBox_MaxToggles))
-                        throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
+                    if (toggles.Length < InitializeStatBox_MaxToggles)
+                        throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                     SetHeaderAndFrame(matchData, ref toggles, ref togglesWritten);
 
@@ -628,7 +809,7 @@ namespace SS.Matchmaking.Modules
             public void RefreshScoreboardTimer(IMatchData matchData, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
             {
                 if (toggles.Length < Scoreboard_Timer_MaxToggles)
-                    throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 if (matchData.Started is null || matchData.Configuration.TimeLimit is null)
                     return;
@@ -686,10 +867,10 @@ namespace SS.Matchmaking.Modules
             public void RefreshStatBoxForSub(IPlayerSlot slot, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
                 if (changes.Length < StatBox_RefreshForSub_MaxChanges)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
                 if (toggles.Length < StatBox_RefreshForSub_MaxToggles)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 // objects for frames + player name for the slot + strikethroughs
 
@@ -725,10 +906,10 @@ namespace SS.Matchmaking.Modules
             public void RefreshForKill(IPlayerSlot killedSlot, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
                 if (changes.Length < RefreshForKill_MaxChanges)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
                 if (toggles.Length < RefreshForKill_MaxToggles)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 changesWritten = 0;
                 togglesWritten = 0;
@@ -739,7 +920,7 @@ namespace SS.Matchmaking.Modules
                 void RefreshScoreboardForKill(IPlayerSlot killedSlot, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
                 {
                     if (toggles.Length < Scoreboard_Score_MaxToggles)
-                        throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                        throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(toggles));
 
                     IMatchData matchData = killedSlot.MatchData;
 
@@ -752,10 +933,10 @@ namespace SS.Matchmaking.Modules
                 void RefreshStatBoxForKill(IPlayerSlot killedSlot, ref Span<LvzObjectChange> changes, ref int changesWritten, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
                 {
                     if (changes.Length < StatBox_RefreshForKill_MaxChanges)
-                        throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                        throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
                     if (toggles.Length < StatBox_RefreshForKill_MaxToggles)
-                        throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                        throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(toggles));
 
                     IMatchData matchData = killedSlot.MatchData;
                     if (_matchData != matchData)
@@ -769,10 +950,10 @@ namespace SS.Matchmaking.Modules
             public void RefreshStatBoxItems(IPlayerSlot slot, ItemChanges itemChanges, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
                 if (changes.Length < StatBox_RefreshItems_MaxChanges)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
                 if (toggles.Length < StatBox_RefreshItems_MaxToggles)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
                 
                 changesWritten = 0;
                 togglesWritten = 0;
@@ -793,13 +974,17 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            public void Clear(Span<LvzObjectToggle> toggles, out int togglesWritten)
+            public void Clear(Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
+                if (changes.Length < Clear_MaxChanges)
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
+
                 if (toggles.Length < Clear_MaxToggles)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(toggles));
 
                 _matchData = null;
 
+                changesWritten = 0;
                 togglesWritten = 0;
 
                 toggles[0] = new LvzObjectToggle(ScoreboardObjectId, false);
@@ -923,7 +1108,14 @@ namespace SS.Matchmaking.Modules
                         togglesWritten++;
                     }
 
-                    // We could change the image to ' ', but there's no need to since it's disabled.
+                    if (state.Current.ImageId != state.Default.ImageId)
+                    {
+                        state.Current.ImageId = state.Default.ImageId;
+
+                        changes[0] = new LvzObjectChange(new ObjectChange() { Image = true }, state.Current);
+                        changes = changes[1..];
+                        changesWritten++;
+                    }
                 }
 
                 // statbox strikethroughs
@@ -1063,7 +1255,7 @@ namespace SS.Matchmaking.Modules
             private static void RefreshScore(ITeam team, ref ScoreState scoreState, short tens0, short ones0, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
             {
                 if (toggles.Length < 2)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 short score = team.Score;
 
@@ -1116,7 +1308,7 @@ namespace SS.Matchmaking.Modules
             private void SetHeaderAndFrame(IMatchData matchData, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
             {
                 if (toggles.Length < StatBox_RefreshHeaderAndFrame_MaxToggles)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 // TODO: adjust lvz frames according to # of teams
                 //int numTeams = matchData.Configuration.NumTeams;
@@ -1235,10 +1427,10 @@ namespace SS.Matchmaking.Modules
             private void SetName(IPlayerSlot slot, ref Span<LvzObjectChange> changes, ref int changesWritten, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
             {
                 if (changes.Length < StatBox_NameChange_MaxChanges)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
                 if (toggles.Length < StatBox_NameChange_MaxToggles)
-                    throw new ArgumentException("Not large enough to hold all possible toggles.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 if (_matchData != slot.MatchData)
                     return;
@@ -1322,10 +1514,10 @@ namespace SS.Matchmaking.Modules
             private void SetLives(IPlayerSlot slot, ref Span<LvzObjectChange> changes, ref int changesWritten, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
             {
                 if (changes.Length < 2)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
                 if (toggles.Length < 2)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 if (_matchData != slot.MatchData)
                     return;
@@ -1339,10 +1531,10 @@ namespace SS.Matchmaking.Modules
             private void SetRepels(IPlayerSlot slot, ref Span<LvzObjectChange> changes, ref int changesWritten, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
             {
                 if (changes.Length < 2)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
                 if (toggles.Length < 2)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 if (_matchData != slot.MatchData)
                     return;
@@ -1356,10 +1548,10 @@ namespace SS.Matchmaking.Modules
             private void SetRockets(IPlayerSlot slot, ref Span<LvzObjectChange> changes, ref int changesWritten, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
             {
                 if (changes.Length < 2)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
                 if (toggles.Length < 2)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 if (_matchData != slot.MatchData)
                     return;
@@ -1375,10 +1567,10 @@ namespace SS.Matchmaking.Modules
                 ArgumentOutOfRangeException.ThrowIfNotEqual(charStates.Length, 2, nameof(charStates));
 
                 if (changes.Length < 2)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
                 if (toggles.Length < 2)
-                    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 Span<char> chars = stackalloc char[2];
                 if (!chars.TryWrite($"{value,2}", out _)) // right aligned
@@ -1594,19 +1786,30 @@ namespace SS.Matchmaking.Modules
         private struct LvzState
         {
             public bool IsEnabled;
-            private readonly ReadOnlyMemory<ObjectData> _default; // TODO: a copy of the ObjectData instead would use less memory
+            public readonly ObjectData Default;
             public ObjectData Current;
 
-            public LvzState(ReadOnlyMemory<ObjectData> defaultState)
+            public LvzState(ObjectData defaultState)
             {
-                ArgumentOutOfRangeException.ThrowIfNotEqual(defaultState.Length, 1, nameof(defaultState));
-
                 IsEnabled = false;
-                _default = defaultState;
+                Default = defaultState;
                 Current = Default;
             }
+        }
 
-            public readonly ref readonly ObjectData Default => ref _default.Span[0];
+        private class PlayerData : IResettable
+        {
+            public MatchLvzState? CurrentMatch;
+
+            // TODO: delay (throttle) switching to a different match's lvz.
+            // When a player switches to a different match. Set this, and clear/start a timer that will process it by sending differences.
+            //public MatchLvzState? SwitchToMatch;
+
+            bool IResettable.TryReset()
+            {
+                CurrentMatch = null;
+                return true;
+            }
         }
 
         #endregion

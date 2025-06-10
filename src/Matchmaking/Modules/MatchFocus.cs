@@ -34,10 +34,18 @@ namespace SS.Matchmaking.Modules
 
         private PlayerDataKey<PlayerData> _playerDataKey;
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new(Constants.TargetArenaCount);
-        private readonly Dictionary<IMatch, MatchFocusData> _matchDictionary = new(64);
+        private readonly Dictionary<IMatch, MatchFocusData> _matchDictionary = new(TargetMatchCount);
 
-        private readonly static ObjectPool<ArenaData> s_arenaDataPool = new DefaultObjectPool<ArenaData>(new DefaultPooledObjectPolicy<ArenaData>());
-        private readonly static ObjectPool<MatchFocusData> s_matchFocusPool = new DefaultObjectPool<MatchFocusData>(new DefaultPooledObjectPolicy<MatchFocusData>());
+        private readonly static ObjectPool<ArenaData> s_arenaDataPool = new DefaultObjectPool<ArenaData>(new DefaultPooledObjectPolicy<ArenaData>(), Constants.TargetArenaCount);
+        private readonly static ObjectPool<MatchFocusData> s_matchFocusPool = new DefaultObjectPool<MatchFocusData>(new DefaultPooledObjectPolicy<MatchFocusData>(), TargetMatchCount);
+
+        /// <summary>
+        /// The expected upper limit on the # of simultaneous matches.
+        /// </summary>
+        /// <remarks>
+        /// This is used to initialize collections with enough starting capacity such that they will likely never need to be resized.
+        /// </remarks>
+        private const int TargetMatchCount = 64;
 
         #region Module members
 
@@ -471,6 +479,8 @@ namespace SS.Matchmaking.Modules
 
         private void SetPlaying(Player player, PlayerData playerData, MatchFocusData matchFocusData)
         {
+            IMatch? oldMatch = GetFocusedMatchData(player)?.Match;
+
             if (playerData.SpectatingMatch is not null)
             {
                 ClearSpectating(player, playerData);
@@ -485,15 +495,17 @@ namespace SS.Matchmaking.Modules
                 }
 
                 // The player was playing in another match.
-                ClearPlaying(player, playerData);
+                ClearPlaying(player, playerData, false, false);
             }
 
             matchFocusData.Playing.Add(player);
             matchFocusData.Participants.Add(player);
             playerData.PlayingInMatch = matchFocusData;
+
+            MatchFocusChangedCallback.Fire(player.Arena ?? _broker, player, oldMatch, GetFocusedMatchData(player)?.Match);
         }
 
-        private void ClearPlaying(Player player, PlayerData? playerData = null, bool isDisconnect = false)
+        private void ClearPlaying(Player player, PlayerData? playerData = null, bool isDisconnect = false, bool invokeCallback = true)
         {
             if (playerData is null && !player.TryGetExtraData(_playerDataKey, out playerData))
                 return;
@@ -501,12 +513,19 @@ namespace SS.Matchmaking.Modules
             MatchFocusData? matchFocusData = playerData.PlayingInMatch;
             if (matchFocusData is not null)
             {
+                IMatch? oldMatch = invokeCallback ? GetFocusedMatchData(player)?.Match : null;
+
                 matchFocusData.Playing.Remove(player);
                 playerData.PlayingInMatch = null;
 
                 if (isDisconnect)
                 {
                     matchFocusData.DisconnectedPlayingNameSet.Add(player.Name!);
+                }
+
+                if (invokeCallback)
+                {
+                    MatchFocusChangedCallback.Fire(player.Arena ?? _broker, player, oldMatch, GetFocusedMatchData(player)?.Match);
                 }
             }
         }
@@ -536,6 +555,8 @@ namespace SS.Matchmaking.Modules
 
         private void SetSpectating(Player player, PlayerData playerData, MatchFocusData matchFocusData)
         {
+            IMatch? oldMatch = GetFocusedMatchData(player)?.Match;
+
             if (playerData.SpectatingMatch is not null)
             {
                 if (playerData.SpectatingMatch == matchFocusData)
@@ -545,22 +566,31 @@ namespace SS.Matchmaking.Modules
                 }
 
                 // The player was spectating a different match.
-                ClearSpectating(player, playerData);
+                ClearSpectating(player, playerData, false);
             }
 
             matchFocusData.Spectators.Add(player);
             playerData.SpectatingMatch = matchFocusData;
+
+            MatchFocusChangedCallback.Fire(player.Arena ?? _broker, player, oldMatch, GetFocusedMatchData(player)?.Match);
         }
 
-        private void ClearSpectating(Player player, PlayerData? playerData = null)
+        private void ClearSpectating(Player player, PlayerData? playerData = null, bool invokeCallback = true)
         {
             if (playerData is null && !player.TryGetExtraData(_playerDataKey, out playerData))
                 return;
 
             if (playerData.SpectatingMatch is not null)
             {
+                IMatch? oldMatch = invokeCallback ? GetFocusedMatchData(player)?.Match : null;
+
                 playerData.SpectatingMatch.Spectators.Remove(player);
                 playerData.SpectatingMatch = null;
+
+                if (invokeCallback)
+                {
+                    MatchFocusChangedCallback.Fire(player.Arena ?? _broker, player, oldMatch, GetFocusedMatchData(player)?.Match);
+                }
             }
         }
 

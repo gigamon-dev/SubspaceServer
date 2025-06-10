@@ -37,4 +37,10 @@ namespace SS.Matchmaking.Callbacks
     {
         public delegate void MatchRemovePlayingDelegate(IMatch match, string playerName, Player? player);
     }
+
+    [CallbackHelper]
+    public static partial class MatchFocusChangedCallback
+    {
+        public delegate void MatchFocusChangedDelegate(Player player, IMatch? oldMatch, IMatch? newMatch);
+    }
 }

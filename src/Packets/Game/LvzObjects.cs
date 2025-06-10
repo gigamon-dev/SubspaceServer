@@ -181,7 +181,7 @@ namespace SS.Packets.Game
 
         public static readonly int Length = Marshal.SizeOf<ObjectData>();
 
-        public static ObjectChange CalculateChange(ref ObjectData left, ref ObjectData right)
+        public static ObjectChange CalculateChange(ref readonly ObjectData left, ref readonly ObjectData right)
         {
             ObjectChange change = default;
 
