@@ -653,6 +653,7 @@ namespace SS.Matchmaking.Modules
             #region Scoreboard data members
 
             private const short ScoreboardObjectId = 4040;
+            private short? _scoreboard;
 
             // Timer
             private const short TimerMinutesTens0 = 4080;
@@ -730,6 +731,7 @@ namespace SS.Matchmaking.Modules
                 toggles[0] = new LvzObjectToggle(ScoreboardObjectId, true);
                 toggles = toggles[1..];
                 togglesWritten++;
+                _scoreboard = ScoreboardObjectId;
 
                 RefreshScoreboardTimer(matchData, ref toggles, ref togglesWritten);
                 InitializeScoreboardFreqs(ref toggles, ref togglesWritten);
@@ -990,6 +992,7 @@ namespace SS.Matchmaking.Modules
                 toggles[0] = new LvzObjectToggle(ScoreboardObjectId, false);
                 toggles = toggles[1..];
                 togglesWritten++;
+                _scoreboard = null;
 
                 // scoreboard timer
                 if (_timerState.MinutesTens is not null)
@@ -1139,35 +1142,38 @@ namespace SS.Matchmaking.Modules
             /// <param name="togglesWritten"></param>
             public static void GetDifferences(MatchLvzState from, MatchLvzState to, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
-                //if (changes.Length < )
-                //    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(changes));
+                if (changes.Length < InitializeStatBox_MaxChanges)
+                    throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
-                //if (toggles.Length < )
-                //    throw new ArgumentException("Not large enough to hold all possible changes.", nameof(toggles));
+                if (toggles.Length < InitializeStatBox_MaxToggles)
+                    throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 changesWritten = 0;
                 togglesWritten = 0;
 
+                // scoreboard
+                ToggleDifference(from._scoreboard, to._scoreboard, ref toggles, ref togglesWritten);
+
                 // scoreboard timer
-                ToggleDifference(ref from._timerState.MinutesTens, ref to._timerState.MinutesTens, ref toggles, ref togglesWritten);
-                ToggleDifference(ref from._timerState.MinutesOnes, ref to._timerState.MinutesOnes, ref toggles, ref togglesWritten);
-                ToggleDifference(ref from._timerState.SecondsTens, ref to._timerState.SecondsTens, ref toggles, ref togglesWritten);
-                ToggleDifference(ref from._timerState.SecondsOnes, ref to._timerState.SecondsOnes, ref toggles, ref togglesWritten);
+                ToggleDifference(from._timerState.MinutesTens, to._timerState.MinutesTens, ref toggles, ref togglesWritten);
+                ToggleDifference(from._timerState.MinutesOnes, to._timerState.MinutesOnes, ref toggles, ref togglesWritten);
+                ToggleDifference(from._timerState.SecondsTens, to._timerState.SecondsTens, ref toggles, ref togglesWritten);
+                ToggleDifference(from._timerState.SecondsOnes, to._timerState.SecondsOnes, ref toggles, ref togglesWritten);
 
                 // scoreboard freqs
                 for (int i = 0; i < from._freqStates.Length; i++)
                 {
-                    ToggleDifference(ref from._freqStates[i].Thousands, ref to._freqStates[i].Thousands, ref toggles, ref togglesWritten);
-                    ToggleDifference(ref from._freqStates[i].Hundreds, ref to._freqStates[i].Hundreds, ref toggles, ref togglesWritten);
-                    ToggleDifference(ref from._freqStates[i].Tens, ref to._freqStates[i].Tens, ref toggles, ref togglesWritten);
-                    ToggleDifference(ref from._freqStates[i].Ones, ref to._freqStates[i].Ones, ref toggles, ref togglesWritten);
+                    ToggleDifference(from._freqStates[i].Thousands, to._freqStates[i].Thousands, ref toggles, ref togglesWritten);
+                    ToggleDifference(from._freqStates[i].Hundreds, to._freqStates[i].Hundreds, ref toggles, ref togglesWritten);
+                    ToggleDifference(from._freqStates[i].Tens, to._freqStates[i].Tens, ref toggles, ref togglesWritten);
+                    ToggleDifference(from._freqStates[i].Ones, to._freqStates[i].Ones, ref toggles, ref togglesWritten);
                 }
 
                 // scoreboard score
                 for (int i = 0; i < from._scoreStates.Length; i++)
                 {
-                    ToggleDifference(ref from._scoreStates[i].Tens, ref to._scoreStates[i].Tens, ref toggles, ref togglesWritten);
-                    ToggleDifference(ref from._scoreStates[i].Ones, ref to._scoreStates[i].Ones, ref toggles, ref togglesWritten);
+                    ToggleDifference(from._scoreStates[i].Tens, to._scoreStates[i].Tens, ref toggles, ref togglesWritten);
+                    ToggleDifference(from._scoreStates[i].Ones, to._scoreStates[i].Ones, ref toggles, ref togglesWritten);
                 }
 
                 // statbox header and frame
@@ -1208,7 +1214,7 @@ namespace SS.Matchmaking.Modules
                 // statbox strikethroughs
                 ToggleDifferences(from._strikethoughEnabledObjects, to._strikethoughEnabledObjects, ref toggles, ref togglesWritten);
 
-                static void ToggleDifference(ref short? fromState, ref short? toState, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
+                static void ToggleDifference(short? fromState, short? toState, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
                 {
                     if (fromState != toState)
                     {
