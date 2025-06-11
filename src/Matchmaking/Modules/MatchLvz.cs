@@ -289,7 +289,7 @@ namespace SS.Matchmaking.Modules
                 if (matchData.Arena != arena) // sanity check
                     return;
 
-                newState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+                newState = arenaData.TryGetMatch(matchData.MatchIdentifier);
             }
 
             MatchLvzState? oldState = playerData.CurrentMatch;
@@ -351,7 +351,7 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
-            var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier.BoxIdx);
+            var matchLvzState = arenaData.GetOrAddMatch(matchData.MatchIdentifier);
 
             Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
             Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[Initialize_MaxToggles];
@@ -384,7 +384,7 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return false;
 
-            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier);
             if (matchLvzState is null)
                 return false;
 
@@ -408,7 +408,7 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
-            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier);
             if (matchLvzState is null)
                 return;
 
@@ -426,7 +426,7 @@ namespace SS.Matchmaking.Modules
             // This will set their lvz back to the default state.
             RemovePlayers(matchLvzState);
 
-            arenaData.RemoveMatch(matchData.MatchIdentifier.BoxIdx);
+            arenaData.RemoveMatch(matchData.MatchIdentifier);
         }
 
         private void RemovePlayers(MatchLvzState matchLvzState)
@@ -449,7 +449,7 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
-            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier);
             if (matchLvzState is null)
                 return;
 
@@ -474,7 +474,7 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
-            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier);
             if (matchLvzState is null)
                 return;
 
@@ -513,7 +513,7 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
-            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier.BoxIdx);
+            MatchLvzState? matchLvzState = arenaData.TryGetMatch(matchData.MatchIdentifier);
             if (matchLvzState is null)
                 return;
 
@@ -568,9 +568,9 @@ namespace SS.Matchmaking.Modules
         private class ArenaLvzData : IResettable
         {
             /// <summary>
-            /// Key = boxId
+            /// Key = match identifier
             /// </summary>
-            public readonly Dictionary<int, MatchLvzState> BoxStates = new(TargetBoxesPerArena);
+            public readonly Dictionary<MatchIdentifier, MatchLvzState> BoxStates = new(TargetBoxesPerArena);
 
             /// <summary>
             /// Lvz objects for statbox characters
@@ -607,26 +607,26 @@ namespace SS.Matchmaking.Modules
                 _defaultLvzState = new MatchLvzState(this);
             }
 
-            public MatchLvzState GetOrAddMatch(int boxIdx)
+            public MatchLvzState GetOrAddMatch(MatchIdentifier matchId)
             {
-                if (!BoxStates.TryGetValue(boxIdx, out MatchLvzState? matchLvzState))
+                if (!BoxStates.TryGetValue(matchId, out MatchLvzState? matchLvzState))
                 {
                     matchLvzState = new MatchLvzState(this);
-                    BoxStates.Add(boxIdx, matchLvzState);
+                    BoxStates.Add(matchId, matchLvzState);
                 }
 
                 return matchLvzState;
             }
 
-            public MatchLvzState? TryGetMatch(int boxIdx)
+            public MatchLvzState? TryGetMatch(MatchIdentifier matchId)
             {
-                BoxStates.TryGetValue(boxIdx, out MatchLvzState? matchLvzState);
+                BoxStates.TryGetValue(matchId, out MatchLvzState? matchLvzState);
                 return matchLvzState;
             }
 
-            public bool RemoveMatch(int boxIdx)
+            public bool RemoveMatch(MatchIdentifier matchId)
             {
-                return BoxStates.Remove(boxIdx, out _);
+                return BoxStates.Remove(matchId, out _);
             }
 
             bool IResettable.TryReset()
