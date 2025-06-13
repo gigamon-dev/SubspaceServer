@@ -6,6 +6,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
+using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
 
 namespace SS.Matchmaking.Modules
@@ -22,7 +23,7 @@ namespace SS.Matchmaking.Modules
         IGame game,
         ILogManager logManager,
         IObjectPoolManager objectPoolManager,
-        IPlayerData playerData) : IModule, IArenaAttachableModule, IMatchFocus, IPlayerPositionAdvisor
+        IPlayerData playerData) : IModule, IArenaAttachableModule, IMatchFocus, IPlayerPositionAdvisor, IBricksAdvisor
     {
         private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         private readonly IGame _game = game ?? throw new ArgumentNullException(nameof(game));
@@ -91,6 +92,7 @@ namespace SS.Matchmaking.Modules
             ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
             SpectateChangedCallback.Register(arena, Callback_SpectateChanged);
             arenaData.IPlayerPositionAdvisorRegistrationToken = arena.RegisterAdvisor<IPlayerPositionAdvisor>(this);
+            arenaData.IBricksAdvisorRegistrationToken = arena.RegisterAdvisor<IBricksAdvisor>(this);
 
             return true;
         }
@@ -101,6 +103,9 @@ namespace SS.Matchmaking.Modules
                 return false;
 
             if (!arena.UnregisterAdvisor(ref arenaData.IPlayerPositionAdvisorRegistrationToken))
+                return false;
+
+            if (!arena.UnregisterAdvisor(ref arenaData.IBricksAdvisorRegistrationToken))
                 return false;
 
             if (!_arenaDataDictionary.Remove(arena))
@@ -126,7 +131,7 @@ namespace SS.Matchmaking.Modules
             if (!toPlayer.TryGetExtraData(_playerDataKey, out PlayerData? toPlayerData))
                 return false;
 
-            if (playerData?.PlayingInMatch == GetFocusedMatchData(toPlayer))
+            if (playerData.PlayingInMatch == GetFocusedMatchData(toPlayer))
             {
                 // The player whose position packet is under consideration is in the match that the toPlayer is focused on (spectating or playing in).
                 // OR
@@ -137,6 +142,26 @@ namespace SS.Matchmaking.Modules
             // Drop the packet.
             positionPacket.X = positionPacket.Y = -1;
             return true;
+        }
+
+        #endregion
+
+        #region IBricksAdvisor
+
+        bool IBricksAdvisor.IsValidForPlayer(Player player, ref readonly BrickData brickData)
+        {
+            if (GetFocusedMatchData(player)?.Match is not IMatchData matchData)
+                return true;
+
+            // Check if the brick is for a team in the match.
+            for (int teamIdx = 0; teamIdx < matchData.Teams.Count; teamIdx++)
+            {
+                ITeam team = matchData.Teams[teamIdx];
+                if (team.Freq == brickData.Freq)
+                    return true;
+            }
+
+            return false;
         }
 
         #endregion
@@ -666,10 +691,12 @@ namespace SS.Matchmaking.Modules
         private class ArenaData : IResettable
         {
             public AdvisorRegistrationToken<IPlayerPositionAdvisor>? IPlayerPositionAdvisorRegistrationToken;
+            public AdvisorRegistrationToken<IBricksAdvisor>? IBricksAdvisorRegistrationToken;
 
             bool IResettable.TryReset()
             {
                 IPlayerPositionAdvisorRegistrationToken = null;
+                IBricksAdvisorRegistrationToken = null;
                 return true;
             }
         }

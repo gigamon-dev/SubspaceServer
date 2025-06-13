@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
@@ -8,6 +9,7 @@ using SS.Utilities;
 using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using System.Threading;
 using BrickSettings = SS.Core.ConfigHelp.Constants.Arena.Brick;
@@ -181,7 +183,7 @@ namespace SS.Core.Modules
                     ExpireBricks(player.Arena!);
 
                     // Send active bricks to the player.
-                    SendToPlayerOrArena(player, null, abd.Bricks, 0);
+                    SendToPlayer(player, abd.Bricks, 0);
                 }
             }
         }
@@ -425,7 +427,21 @@ namespace SS.Core.Modules
                             _mapData.TryAddBrick(arena, brickData.BrickId, new TileCoordinates(brickData.X1, brickData.Y1), new TileCoordinates(brickData.X2, brickData.Y2));
                     }
 
-                    SendToPlayerOrArena(null, arena, brickDataList, abd.WallResendCount);
+                    _playerData.Lock();
+                    try
+                    {
+                        foreach (Player otherPlayer in _playerData.Players)
+                        {
+                            if (otherPlayer.Arena != arena)
+                                continue;
+
+                            SendToPlayer(otherPlayer, brickDataList, abd.WallResendCount);
+                        }
+                    }
+                    finally
+                    {
+                        _playerData.Unlock();
+                    }
 
                     BricksPlacedCallback.Fire(arena, arena, player, brickDataList);
                 }
@@ -459,13 +475,19 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendToPlayerOrArena<T>(Player? player, Arena? arena, T bricks, int wallResendCount) where T : IReadOnlyCollection<BrickData>
+        private void SendToPlayer<T>(Player player, T bricks, int wallResendCount) where T : IReadOnlyCollection<BrickData>
         {
-            if (player is null && arena is null)
+            if (player is null)
                 return;
 
             if (bricks is null || bricks.Count <= 0)
                 return;
+
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            var advisors = arena.GetAdvisors<IBricksAdvisor>();
 
             //
             // create and send packet(s)
@@ -479,24 +501,27 @@ namespace SS.Core.Modules
 
             foreach (BrickData brick in bricks)
             {
+                if (!IsValidForPlayer(player, advisors, in brick))
+                    continue;
+
                 brickSpan[index++] = brick;
 
                 if (index >= brickSpan.Length)
                 {
                     // we have the maximum # of bricks that can be sent in a packet, send it
-                    SendToPlayerOrArena(player, arena, packetSpan, wallResendCount);
+                    SendToPlayer(player, packetSpan, wallResendCount);
                     index = 0;
                 }
             }
 
             if (index > 0)
             {
-                SendToPlayerOrArena(player, arena, packetSpan[..(1 + (index * BrickData.Length))], wallResendCount);
+                SendToPlayer(player, packetSpan[..(1 + (index * BrickData.Length))], wallResendCount);
             }
 
-            void SendToPlayerOrArena(Player? player, Arena? arena, Span<byte> data, int wallResendCount)
+            void SendToPlayer(Player player, Span<byte> data, int wallResendCount)
             {
-                if (player is null && arena is null)
+                if (player is null)
                     return;
 
                 if (data.Length <= 0)
@@ -505,25 +530,28 @@ namespace SS.Core.Modules
                 // send it unreliably, urgently, and allow it to be dropped (as many times as is configured)
                 for (int i = 0; i < wallResendCount; i++)
                 {
-                    SendToPlayerOrArena(player, arena, data, NetSendFlags.Unreliable | NetSendFlags.Droppable | NetSendFlags.PriorityP5); // NOTE: PriorityP5 has the Urgent flag set.
+                    _network.SendToOne(player, data, NetSendFlags.Unreliable | NetSendFlags.Droppable | NetSendFlags.PriorityP5); // NOTE: PriorityP5 has the Urgent flag set.
                 }
 
                 // send it reliably (always)
-                SendToPlayerOrArena(player, arena, data, NetSendFlags.Reliable);
+                _network.SendToOne(player, data, NetSendFlags.Reliable);
+            }
 
-                void SendToPlayerOrArena(Player? player, Arena? arena, Span<byte> data, NetSendFlags flags)
+            static bool IsValidForPlayer(Player player, ImmutableArray<IBricksAdvisor> advisors, ref readonly BrickData brick)
+            {
+                if (!advisors.IsEmpty)
                 {
-                    if (player is null && arena is null)
-                        return;
-
-                    if (data.Length <= 0)
-                        return;
-
-                    if (player is not null)
-                        _network.SendToOne(player, data, flags);
-                    else if (arena is not null)
-                        _network.SendToArena(arena, null, data, flags);
+                    foreach (var advisor in advisors)
+                    {
+                        if (!advisor.IsValidForPlayer(player, in brick))
+                        {
+                            // Not valid if any advisor says so.
+                            return false;
+                        }
+                    }
                 }
+
+                return true;
             }
         }
 
