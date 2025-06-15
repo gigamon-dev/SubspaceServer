@@ -50,5 +50,5 @@ GNU GPLv2, since that's what *A Small Subspace Server* uses and much of this can
 This project exists by standing on the shoulders of giants. Thank you to **Grelminar** for creating *A Small Subspace Server*. This would not have been possible without his work and the inspiration it provided. Thank you to everyone that contributed to the *A Small Subspace Server* project. All of your efforts can be considered as being part of this project as well. Thank you to **POiD** for all the knowledge and help he has provided. Thank you to **plushmonkey** for his ZeroBot project, help in finding / investigating bugs, and sharing his knowledge. Thank you to those that have contributed code to this project. Thank you to the creators of Subspace for making this great game, to everyone that has ever helped to keep the game going over the years, and to everyone that helps keep the game alive today.
 
 ## Related
-- Repository: [A Small Subspace Server](https://bitbucket.org/grelminar/asss)
+- Repository: [A Small Subspace Server](https://bitbucket.org/grelminar/asss) / [JoWie fork](https://bitbucket.org/jowie/asss)
 - Player Bot: [Zero](https://github.com/plushmonkey/zero) (a great tool for stress testing the server and quite fun to play too)
