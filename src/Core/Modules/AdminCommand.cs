@@ -1,4 +1,5 @@
 ﻿using SS.Core.ComponentInterfaces;
+using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Buffers;
@@ -22,6 +23,7 @@ namespace SS.Core.Modules
         ILogFile logFile,
         ILogManager logManager,
         IMainloop mainloop,
+        INetwork network,
         IPlayerData playerData) : IModule
     {
         private const string MapUploadDirectory = "maps/upload";
@@ -40,6 +42,7 @@ namespace SS.Core.Modules
         private readonly ILogFile _logFile = logFile ?? throw new ArgumentNullException(nameof(logFile));
         private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
+        private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
         private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
 
         #region Module members
@@ -58,6 +61,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("pwd", Command_pwd);
             _commandManager.AddCommand("delfile", Command_delfile);
             _commandManager.AddCommand("renfile", Command_renfile);
+            _commandManager.AddCommand("ufo", Command_ufo);
 
             return true;
         }
@@ -76,6 +80,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("pwd", Command_pwd);
             _commandManager.RemoveCommand("delfile", Command_delfile);
             _commandManager.RemoveCommand("renfile", Command_renfile);
+            _commandManager.RemoveCommand("ufo", Command_ufo);
 
             return true;
         }
@@ -789,6 +794,25 @@ namespace SS.Core.Modules
 
                 _chat.SendMessage(player, "Renamed.");
             }
+        }
+
+
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = null,
+            Description = "Toggles UFO on a player.")]
+        private void Command_ufo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
+                targetPlayer = player;
+
+            Span<byte> ufoPacket = [
+                (byte)S2CPacketType.Ufo,
+                (byte)((targetPlayer.Position.Status & PlayerPositionStatus.Ufo) != 0 ? 0 : 1),
+            ];
+
+            _network.SendToOne(targetPlayer, ufoPacket, NetSendFlags.Reliable);
+            _chat.SendMessage(player, $"UFO set to {ufoPacket[1]} for {targetPlayer.Name}");
         }
 
         #endregion

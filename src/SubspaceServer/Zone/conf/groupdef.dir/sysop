@@ -64,6 +64,9 @@ privcmd_py
 
 rprivcmd_send
 
+cmd_ufo
+privcmd_ufo
+
 ; Matchmaking (TeamVersusMatch)
 cmd_loadmatchtype
 cmd_unloadmatchtype

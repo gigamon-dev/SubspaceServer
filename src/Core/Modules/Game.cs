@@ -1513,6 +1513,7 @@ namespace SS.Core.Modules
                                     else if ((otherPlayer.ClientFeatures & ClientFeatures.BatchPositions) != 0
                                         && posCopy.Weapon.Type == WeaponCodes.Null
                                         && !sendBounty
+                                        && ((int)posCopy.Status & 0b11000000) == 0 // only the 6 lower bits
                                         && extraLength == 0 // no energy or extra data
                                         && ((uint)player.Id & 0xFFFF_FC00) == 0 // PlayerId [0-1023]
                                         && posCopy.XSpeed >= -8192 && posCopy.XSpeed <= 8191
