@@ -600,13 +600,13 @@ namespace SS.Core.Modules
             Span<LvzObjectToggle> set = stackalloc LvzObjectToggle[count]; // Note: count is limited to max the chat message length
 
             int i = 0;
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token;
-            while (i < set.Length
-                && (token = remaining.GetToken(' ', out remaining)).Length > 0)
+            foreach (Range range in parameters.Split(' '))
             {
-                bool enabled;
+                ReadOnlySpan<char> token = parameters[range];
+                if (token.IsEmpty)
+                    continue;
 
+                bool enabled;
                 if (token[0] == '+')
                     enabled = true;
                 else if (token[0] == '-')
@@ -617,7 +617,7 @@ namespace SS.Core.Modules
                 if (!short.TryParse(token[1..], out short id) || id < 0)
                     continue;
 
-                set[i++] = new LvzObjectToggle(id, !enabled);
+                set[i++] = new LvzObjectToggle(id, enabled);
             }
 
             if (i > 0)
@@ -635,17 +635,11 @@ namespace SS.Core.Modules
                 """)]
         private void Command_objmove(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> idStr = remaining.GetToken(' ', out remaining);
-            ReadOnlySpan<char> xStr = remaining.GetToken(' ', out remaining);
-            ReadOnlySpan<char> yStr = remaining.GetToken(' ', out _);
-
-            if (!idStr.IsEmpty
-                && !xStr.IsEmpty
-                && !yStr.IsEmpty
-                && short.TryParse(idStr, out short id)
-                && TryParseCoord(xStr, out short x, out ScreenOffset offsetX)
-                && TryParseCoord(yStr, out short y, out ScreenOffset offsetY))
+            Span<Range> ranges = stackalloc Range[3];
+            if (parameters.Split(ranges, ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) == 3
+                && short.TryParse(parameters[ranges[0]], out short id)
+                && TryParseCoord(parameters[ranges[1]], out short x, out ScreenOffset offsetX)
+                && TryParseCoord(parameters[ranges[2]], out short y, out ScreenOffset offsetY))
             {
                 ((ILvzObjects)this).SetPosition(target, id, x, y, offsetX, offsetY);
             }
@@ -688,11 +682,10 @@ namespace SS.Core.Modules
                 """)]
         private void Command_objimage(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> imageStr);
-            if (!idStr.IsEmpty
-                && short.TryParse(idStr, out short id)
-                && !(imageStr = imageStr.TrimStart(' ')).IsEmpty
-                && byte.TryParse(imageStr, out byte image))
+            Span<Range> ranges = stackalloc Range[2];
+            if (parameters.Split(ranges, ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) == 2
+                && short.TryParse(parameters[ranges[0]], out short id)
+                && byte.TryParse(parameters[ranges[1]], out byte image))
             {
                 ((ILvzObjects)this).SetImage(target, id, image);
             }
@@ -713,12 +706,10 @@ namespace SS.Core.Modules
                 """)]
         private void Command_objlayer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> layerStr);
-
-            if (!idStr.IsEmpty
-                && short.TryParse(idStr, out short id)
-                && !(layerStr = layerStr.TrimStart(' ')).IsEmpty
-                && Enum.TryParse(layerStr, true, out DisplayLayer layer))
+            Span<Range> ranges = stackalloc Range[2];
+            if (parameters.Split(ranges, ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) == 2
+                && short.TryParse(parameters[ranges[0]], out short id)
+                && Enum.TryParse(parameters[ranges[1]], true, out DisplayLayer layer))
             {
                 ((ILvzObjects)this).SetLayer(target, id, layer);
             }
@@ -737,18 +728,17 @@ namespace SS.Core.Modules
                 """)]
         private void Command_objtimer(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> timeStr);
-            if (!idStr.IsEmpty
-                && short.TryParse(idStr, out short id)
-                && !(timeStr = timeStr.TrimStart(' ')).IsEmpty
-                && ushort.TryParse(timeStr, out ushort time))
+            Span<Range> ranges = stackalloc Range[2];
+            if (parameters.Split(ranges, ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) == 2
+                && short.TryParse(parameters[ranges[0]], out short id)
+                && ushort.TryParse(parameters[ranges[1]], out ushort time))
             {
                 ((ILvzObjects)this).SetTimer(target, id, time);
             }
             else
             {
                 _chat.SendMessage(player, "Invalid syntax. Please read help for ?objtimer");
-            }
+            }    
         }
 
         [CommandHelp(
@@ -761,11 +751,10 @@ namespace SS.Core.Modules
                 """)]
         private void Command_objmode(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> idStr = parameters.GetToken(' ', out ReadOnlySpan<char> modeStr);
-            if (!idStr.IsEmpty
-                && short.TryParse(idStr, out short id)
-                && !(modeStr = modeStr.TrimStart(' ')).IsEmpty
-                && Enum.TryParse(modeStr, true, out DisplayMode mode))
+            Span<Range> ranges = stackalloc Range[2];
+            if (parameters.Split(ranges, ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) == 2
+                && short.TryParse(parameters[ranges[0]], out short id)
+                && Enum.TryParse(parameters[ranges[1]], true, out DisplayMode mode))
             {
                 ((ILvzObjects)this).SetMode(target, id, mode);
             }
