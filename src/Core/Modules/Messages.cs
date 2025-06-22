@@ -108,30 +108,23 @@ namespace SS.Core.Modules
                 ad.GreetMessage = _configManager.GetStr(arena.Cfg!, "Misc", "GreetMessage");
 
                 ad.PeriodicMessageList.Clear();
+                Span<Range> ranges = stackalloc Range[3];
                 for (int i = 0; i < PeriodicMessageKeys.Length; i++)
                 {
-                    string? setting = _configManager.GetStr(arena.Cfg!, "Misc", PeriodicMessageKeys[i]);
-                    if (setting == null)
+                    ReadOnlySpan<char> setting = _configManager.GetStr(arena.Cfg!, "Misc", PeriodicMessageKeys[i]);
+                    if (setting.IsEmpty)
                         continue;
 
-                    ReadOnlySpan<char> remaining = setting;
-                    ReadOnlySpan<char> token;
-                    if ((token = remaining.GetToken(' ', out remaining)).IsEmpty)
+                    if (setting.Split(ranges, ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) != 3)
                         continue;
 
-                    if (!int.TryParse(token, out int interval) || interval <= 0)
+                    if (!int.TryParse(setting[ranges[0]], out int interval) || interval <= 0)
                         continue;
 
-                    if ((token = remaining.GetToken(' ', out remaining)).IsEmpty)
+                    if (!int.TryParse(setting[ranges[1]], out int initialDelay))
                         continue;
 
-                    if (!int.TryParse(token, out int initialDelay))
-                        continue;
-
-                    if (remaining.IsWhiteSpace())
-                        continue;
-
-                    ad.PeriodicMessageList.Add(new PeriodicMessage(remaining.Trim().ToString(), initialDelay, interval));
+                    ad.PeriodicMessageList.Add(new PeriodicMessage(setting[ranges[2]].ToString(), initialDelay, interval));
                 }
 
                 if (ad.PeriodicMessageList.Count > 0)

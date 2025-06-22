@@ -297,7 +297,15 @@ namespace SS.Core.Modules
                 return;
             }
 
-            ReadOnlySpan<char> clientPath = parameters.GetToken(':', out ReadOnlySpan<char> serverPathSpan);
+            Span<Range> ranges = stackalloc Range[2];
+            int numRanges = parameters.Split(ranges, ':', StringSplitOptions.TrimEntries);
+            if (numRanges < 1)
+            {
+                _chat.SendMessage(player, "Invalid input. Missing client file path.");
+                return;
+            }
+
+            ReadOnlySpan<char> clientPath = parameters[ranges[0]];
             if (clientPath.IsEmpty)
             {
                 _chat.SendMessage(player, "Invalid input. Missing client file path.");
@@ -318,7 +326,11 @@ namespace SS.Core.Modules
                 return;
             }
 
-            serverPathSpan = serverPathSpan.TrimStart(':');
+            ReadOnlySpan<char> serverPathSpan = [];
+            if (numRanges == 2)
+            {
+                serverPathSpan = parameters[ranges[1]];
+            }
 
             string? workingDir = _fileTransfer.GetWorkingDirectory(player);
             if (workingDir is null)
