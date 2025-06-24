@@ -809,7 +809,7 @@ namespace SS.Core.Modules
 
                 case ChatMessageType.PubMacro:
                 case ChatMessageType.Pub:
-                    if (text[0] == ModChatChar)
+                    if (text.Length > 0 && text[0] == ModChatChar)
                         HandleModChat(player, text[1..], sound);
                     else
                         HandlePub(player, text, from.ChatType == (byte)ChatMessageType.PubMacro, false, sound);
@@ -1141,9 +1141,6 @@ namespace SS.Core.Modules
             if (player is null)
                 return;
 
-            if (MemoryExtensions.IsWhiteSpace(text))
-                return;
-
             Arena? arena = player.Arena; // this can be null
 
             if ((text.Length > 1 && IsCommandChar(text[0])) || isAllCmd)
@@ -1184,9 +1181,6 @@ namespace SS.Core.Modules
         private void HandleFreq(Player player, short freq, ReadOnlySpan<char> text, ChatSound sound)
         {
             if (player is null)
-                return;
-
-            if (MemoryExtensions.IsWhiteSpace(text))
                 return;
 
             Arena? arena = player.Arena;
@@ -1297,9 +1291,6 @@ namespace SS.Core.Modules
         private void HandlePub(Player player, ReadOnlySpan<char> msg, bool isMacro, bool isAllCmd, ChatSound sound)
         {
             if (player is null)
-                return;
-
-            if (MemoryExtensions.IsWhiteSpace(msg))
                 return;
 
             Arena? arena = player.Arena;
