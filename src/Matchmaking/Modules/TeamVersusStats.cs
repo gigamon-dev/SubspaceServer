@@ -678,31 +678,6 @@ namespace SS.Matchmaking.Modules
             // Update stats that are not damage related.
             //
 
-            // Whether to consider it a "first out" when calculating the killer player's rating.
-            bool isFirstOutKill = false;
-
-            // Whether to consider it a "first out" when calculating the killed player's rating.
-            bool isFirstOutDeath = false;
-
-            if (isKnockout && !matchStats.FirstOutProcessed)
-            {
-                matchStats.FirstOutProcessed = true;
-                isFirstOutKill = true;
-
-                // We need to check if the member was responsible for all of the deaths for the slot
-                // because there's a chance the player subbed into a slot that didn't have all lives remaining.
-                // For example, a player that subbed into a slot on its last life should not be marked with a "first out".
-                // However, a player that subbed in with all lives remaining should get marked as "first out" if they expend all the lives.
-                if (killedMemberStats.Deaths == matchData.Configuration.LivesPerPlayer)
-                {
-                    isFirstOutDeath = true;
-                    matchStats.FirstOut = killedMemberStats;
-                    matchStats.FirstOutCritical =
-                        ((DateTime.UtcNow - matchStats.StartTimestamp).TotalMinutes < 10d) // knocked out before the 10 minute mark
-                        && (killedMemberStats.Kills < 2); // TODO: add a setting to control this? < 2 kills is the rule 4v4 uses, but this needs to support other modes (can't assume 3 lives per player, can't assume 2 teams only, etc..)
-                }
-            }
-
             // Update killer stats.
             if (isTeamKill)
             {
@@ -727,6 +702,31 @@ namespace SS.Matchmaking.Modules
             killedMemberStats.WastedDecoys += killedSlot.Decoys;
             killedMemberStats.WastedPortals += killedSlot.Portals;
             killedMemberStats.WastedBricks += killedSlot.Bricks;
+
+            // Whether to consider it a "first out" when calculating the killer player's rating.
+            bool isFirstOutKill = false;
+
+            // Whether to consider it a "first out" when calculating the killed player's rating.
+            bool isFirstOutDeath = false;
+
+            if (isKnockout && !matchStats.FirstOutProcessed)
+            {
+                matchStats.FirstOutProcessed = true;
+                isFirstOutKill = true;
+
+                // We need to check if the member was responsible for all of the deaths for the slot
+                // because there's a chance the player subbed into a slot that didn't have all lives remaining.
+                // For example, a player that subbed into a slot on its last life should not be marked with a "first out".
+                // However, a player that subbed in with all lives remaining should get marked as "first out" if they expend all the lives.
+                if (killedMemberStats.Deaths == matchData.Configuration.LivesPerPlayer)
+                {
+                    isFirstOutDeath = true;
+                    matchStats.FirstOut = killedMemberStats;
+                    matchStats.FirstOutCritical =
+                        ((DateTime.UtcNow - matchStats.StartTimestamp).TotalMinutes < 10d) // knocked out before the 10 minute mark
+                        && (killedMemberStats.Kills < 2); // TODO: add a setting to control this? < 2 kills is the rule 4v4 uses, but this needs to support other modes (can't assume 3 lives per player, can't assume 2 teams only, etc..)
+                }
+            }
 
             // ships
             ShipType killedShip = killed.Ship;
