@@ -21,7 +21,7 @@ namespace SS.Matchmaking.Modules
         """)]
     public class OneVersusOneMatch : IAsyncModule, IMatchmakingQueueAdvisor
     {
-        private const string ConfigurationFileName = $"{nameof(OneVersusOneMatch)}.conf";
+        private const string ConfigurationFileName = "1v1Versus.conf";
 
         private readonly IArenaManager _arenaManager;
         private readonly IChat _chat;

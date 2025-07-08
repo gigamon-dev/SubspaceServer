@@ -50,7 +50,7 @@ namespace SS.Matchmaking.Modules
         """)]
     public class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IMatchFocusAdvisor
     {
-        private const string ConfigurationFileName = $"{nameof(TeamVersusMatch)}.conf";
+        private const string ConfigurationFileName = "TeamVersus.conf";
 
         private readonly IComponentBroker _broker;
         private readonly IArenaManager _arenaManager;
