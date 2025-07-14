@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Utilities;
 using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
@@ -326,7 +325,7 @@ namespace SS.Core.Modules
 
             // NOTE: The Chat module has already removed the starting ? or * from typedLine
 
-            typedLine = typedLine.Trim();
+            typedLine = typedLine.TrimStart();
             if (typedLine.IsEmpty)
                 return;
 
@@ -349,11 +348,16 @@ namespace SS.Core.Modules
             // = makes sense for ?chat=first,second,third or ?password=newpassword etc...
             // where is # used?
 
-            ReadOnlySpan<char> cmd = typedLine.GetToken(" =", out ReadOnlySpan<char> parameters);
+            Span<Range> ranges = stackalloc Range[2];
+            int numRanges = typedLine.SplitAny(ranges, " =");
+            if (numRanges <= 0)
+                return;
+
+            ReadOnlySpan<char> cmd = typedLine[ranges[0]].Trim();
             if (cmd.IsEmpty)
                 return;
 
-            parameters = parameters.TrimStart(" =");
+            ReadOnlySpan<char> parameters = numRanges == 2 ? typedLine[ranges[1]].TrimStart(" =") : [];
 
             string prefix;
             Arena? remoteArena = null;

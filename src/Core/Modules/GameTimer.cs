@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -288,9 +287,12 @@ namespace SS.Core.Modules
             {
                 ad.WarningAt.Clear();
                 ReadOnlySpan<char> warnStr = _configManager.GetStr(arena.Cfg!, "Misc", "TimerWarnings");
-                ReadOnlySpan<char> token;
-                while ((token = warnStr.GetToken(" ,", out warnStr)).Length > 0)
+                foreach (Range range in warnStr.SplitAny(" ,"))
                 {
+                    ReadOnlySpan<char> token = warnStr[range].Trim();
+                    if (token.IsEmpty)
+                        continue;
+                    
                     if (int.TryParse(token, out int seconds) && seconds > 0)
                     {
                         ad.WarningAt.Add(TimeSpan.FromSeconds(seconds));

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.ObjectPool;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Utilities;
 using SS.Utilities.ObjectPool;
 using System;
 using System.Collections.Generic;
@@ -158,7 +157,7 @@ namespace SS.Core.Modules
                 """)]
         private void LoadPubNames()
         {
-            string? delimitedArenaNames = _configManager.GetStr(_configManager.Global, "General", "PublicArenas");
+            ReadOnlySpan<char> delimitedArenaNames = _configManager.GetStr(_configManager.Global, "General", "PublicArenas");
 
             lock (_lock)
             {
@@ -166,10 +165,12 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    ReadOnlySpan<char> remaining = delimitedArenaNames;
-                    ReadOnlySpan<char> token;
-                    while (!(token = remaining.GetToken(" ,:;", out remaining)).IsEmpty)
+                    foreach (Range range in delimitedArenaNames.SplitAny(" ,:;"))
                     {
+                        ReadOnlySpan<char> token = delimitedArenaNames[range].Trim();
+                        if (token.IsEmpty)
+                            continue;
+
                         // Try to find an existing instance to avoid an allocation.
                         string? arenaName = null;
                         foreach (string pubName in _pubNames)

@@ -952,6 +952,7 @@ namespace SS.Core.Modules
 
                 _peers.Clear();
 
+                Span<Range> ranges = stackalloc Range[2];
                 Span<char> sectionSpan = stackalloc char[7];
                 for (int i = 0; i < 255; i++)
                 {
@@ -995,13 +996,15 @@ namespace SS.Core.Modules
                             ProvideDefaultArenas = _configManager.GetBool(_configManager.Global, peerSection, "ProvidesDefaultArenas", PeerSettings.ProvidesDefaultArenas.Default),
                         });
 
-                    string? arenas = _configManager.GetStr(_configManager.Global, peerSection, "Arenas");
-                    if (!string.IsNullOrWhiteSpace(arenas))
+                    ReadOnlySpan<char> arenas = _configManager.GetStr(_configManager.Global, peerSection, "Arenas");
+                    if (!arenas.IsEmpty)
                     {
-                        ReadOnlySpan<char> remaining = arenas;
-                        ReadOnlySpan<char> token;
-                        while (!(token = remaining.GetToken(" \t:;,", out remaining)).IsEmpty)
+                        foreach (Range range in arenas.SplitAny(" \t:;,"))
                         {
+                            ReadOnlySpan<char> token = arenas[range].Trim();
+                            if (token.IsEmpty)
+                                continue;
+
                             peerZone.Config.Arenas.Add(token.ToString());
                         }
                     }
@@ -1032,22 +1035,29 @@ namespace SS.Core.Modules
 						}
                     }
 
-                    string? renameArenas = _configManager.GetStr(_configManager.Global, peerSection, "RenameArenas");
-                    if (!string.IsNullOrWhiteSpace(renameArenas))
+                    ReadOnlySpan<char> renameArenas = _configManager.GetStr(_configManager.Global, peerSection, "RenameArenas");
+                    if (!renameArenas.IsEmpty)
                     {
-                        ReadOnlySpan<char> remaining = renameArenas;
-                        ReadOnlySpan<char> token;
-                        while (!(token = remaining.GetToken(" \t:;,", out remaining)).IsEmpty)
+                        foreach (Range range in renameArenas.SplitAny(" \t:;,"))
                         {
-                            ReadOnlySpan<char> remote;
-                            if (!(remote = token.GetToken('=', out ReadOnlySpan<char> local)).IsEmpty)
-                            {
-                                local = local.TrimStart('=');
+                            ReadOnlySpan<char> token = renameArenas[range].Trim();
+                            if (token.IsEmpty)
+                                continue;
 
-                                PeerArenaName peerArenaName = _peerArenaNamePool.Get();
-                                peerArenaName.SetNames(StringPool.Shared.GetOrAdd(remote), StringPool.Shared.GetOrAdd(local));
-                                peerZone.Config.RenamedArenas.Add(peerArenaName);
-                            }
+                            if (token.Split(ranges, '=', StringSplitOptions.TrimEntries) != 2)
+                                continue;
+
+                            ReadOnlySpan<char> remote = token[ranges[0]];
+                            if (remote.IsEmpty)
+                                continue;
+
+                            ReadOnlySpan<char> local = token[ranges[1]];
+                            if (local.IsEmpty)
+                                continue;
+                            
+                            PeerArenaName peerArenaName = _peerArenaNamePool.Get();
+                            peerArenaName.SetNames(StringPool.Shared.GetOrAdd(remote), StringPool.Shared.GetOrAdd(local));
+                            peerZone.Config.RenamedArenas.Add(peerArenaName);
                         }
                     }
 

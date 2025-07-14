@@ -1295,16 +1295,24 @@ namespace SS.Core.Modules
                 """)]
         private void Command_getX(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token = remaining.GetToken(':', out remaining).Trim();
-            if (token.IsWhiteSpace() || (remaining = remaining.TrimStart(':').Trim()).IsWhiteSpace())
+            if (_configManager is null)
+                return;
+
+            Span<Range> ranges = stackalloc Range[2];
+            if (parameters.Split(ranges, ':', StringSplitOptions.TrimEntries) != 2)
             {
                 _chat.SendMessage(player, $"Usage: ?{command} <section>:<key>");
                 return;
             }
 
-            ReadOnlySpan<char> section = token;
-            ReadOnlySpan<char> key = remaining;
+            ReadOnlySpan<char> section = parameters[ranges[0]];
+            ReadOnlySpan<char> key = parameters[ranges[1]];
+
+            if (section.IsEmpty || key.IsEmpty)
+            {
+                _chat.SendMessage(player, $"Usage: ?{command} <section>:<key>");
+                return;
+            }
 
             ConfigHandle ch;
             if (command.Equals("geta", StringComparison.OrdinalIgnoreCase))
@@ -1317,10 +1325,10 @@ namespace SS.Core.Modules
             }
             else
             {
-                ch = _configManager!.Global;
+                ch = _configManager.Global;
             };
 
-            string? result = _configManager!.GetStr(ch, section, key);
+            string? result = _configManager.GetStr(ch, section, key);
             if (result != null)
             {
                 _chat.SendMessage(player, $"{section}:{key} = {result}");
@@ -1443,15 +1451,21 @@ namespace SS.Core.Modules
                 """)]
         private void Command_getcs(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
+            Span<Range> ranges = stackalloc Range[2];
+            if (parameters.Split(ranges, ':', StringSplitOptions.TrimEntries) != 2)
+            {
+                _chat.SendMessage(player, "Usage: getcs <section>:<key>");
+                return;
+            }
+
+            ReadOnlySpan<char> section = parameters[ranges[0]];
             if (section.IsEmpty)
             {
                 _chat.SendMessage(player, "Invalid input (missing section).");
                 return;
             }
 
-            ReadOnlySpan<char> key = remaining.TrimStart(':');
+            ReadOnlySpan<char> key = parameters[ranges[1]];
             if (key.IsEmpty)
             {
                 _chat.SendMessage(player, "Invalid input (missing key).");
@@ -1487,15 +1501,21 @@ namespace SS.Core.Modules
             Description = "Gets a client setting override.")]
         private void Command_getcsoverride(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
+            Span<Range> ranges = stackalloc Range[2];
+            if (parameters.Split(ranges, ':', StringSplitOptions.TrimEntries) != 2)
+            {
+                _chat.SendMessage(player, "Usage: getcsoverride <section>:<key>");
+                return;
+            }
+
+            ReadOnlySpan<char> section = parameters[ranges[0]];
             if (section.IsEmpty)
             {
                 _chat.SendMessage(player, "Invalid input (missing section).");
                 return;
             }
 
-            ReadOnlySpan<char> key = remaining.TrimStart(':');
+            ReadOnlySpan<char> key = parameters[ranges[1]];
             if (key.IsEmpty)
             {
                 _chat.SendMessage(player, "Invalid input (missing key).");
@@ -1543,29 +1563,43 @@ namespace SS.Core.Modules
             Description = "Sets a client setting override.")]
         private void Command_setcsoverride(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
+            Span<Range> colonRanges = stackalloc Range[2];
+            if (parameters.Split(colonRanges, ':', StringSplitOptions.TrimEntries) != 2)
+            {
+                _chat.SendMessage(player, "Usage: setcsoverride <section>:<key>=<value>");
+                return;
+            }
+
+            ReadOnlySpan<char> section = parameters[colonRanges[0]];
             if (section.IsEmpty)
             {
                 _chat.SendMessage(player, "Invalid input (missing section).");
                 return;
             }
 
-            ReadOnlySpan<char> key = remaining.GetToken('=', out remaining).TrimStart(':');
+            ReadOnlySpan<char> remaining = parameters[colonRanges[1]];
+            Span<Range> keyValueRanges = stackalloc Range[2];
+            if (remaining.Split(keyValueRanges, '=', StringSplitOptions.TrimEntries) != 2)
+            {
+                _chat.SendMessage(player, "Usage: setcsoverride <section>:<key>=<value>");
+                return;
+            }
+
+            ReadOnlySpan<char> key = remaining[keyValueRanges[0]];
             if (key.IsEmpty)
             {
                 _chat.SendMessage(player, "Invalid input (missing key).");
                 return;
             }
 
-            remaining = remaining.TrimStart('=');
-            if (remaining.IsEmpty)
+            ReadOnlySpan<char> valueSpan = remaining[keyValueRanges[1]];
+            if (valueSpan.IsEmpty)
             {
                 _chat.SendMessage(player, "Invalid input (missing value).");
                 return;
             }
 
-            if (!int.TryParse(remaining, out int value))
+            if (!int.TryParse(valueSpan, out int value))
             {
                 _chat.SendMessage(player, "Invalid input (unable to parse value)");
                 return;
@@ -1614,15 +1648,21 @@ namespace SS.Core.Modules
             Description = "Removes a client setting override.")]
         private void Command_rmcsoverride(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> section = remaining.GetToken(':', out remaining);
+            Span<Range> ranges = stackalloc Range[2];
+            if (parameters.Split(ranges, ':', StringSplitOptions.TrimEntries) != 2)
+            {
+                _chat.SendMessage(player, "Usage: rmcsoverride <section>:<key>");
+                return;
+            }
+
+            ReadOnlySpan<char> section = parameters[ranges[0]];
             if (section.IsEmpty)
             {
                 _chat.SendMessage(player, "Invalid input (missing section).");
                 return;
             }
 
-            ReadOnlySpan<char> key = remaining.TrimStart(':');
+            ReadOnlySpan<char> key = parameters[ranges[1]];
             if (key.IsEmpty)
             {
                 _chat.SendMessage(player, "Invalid input (missing key).");
@@ -2258,10 +2298,12 @@ namespace SS.Core.Modules
             bool useFreqManager = true;
             short? freq = null;
 
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token;
-            while ((token = remaining.GetToken(' ', out remaining)).Length > 0)
+            foreach (Range range in parameters.Split(' '))
             {
+                ReadOnlySpan<char> token = parameters[range].Trim();
+                if (token.IsEmpty)
+                    continue;
+
                 if (token.Equals("-f", StringComparison.Ordinal))
                 {
                     useFreqManager = false;
@@ -2270,7 +2312,7 @@ namespace SS.Core.Modules
                 {
                     if (freqNumber < 0 || freqNumber > 9999)
                     {
-                        _chat.SendMessage(player, $"Invalid freq number.");
+                        _chat.SendMessage(player, "Invalid freq number.");
                         return;
                     }
 
@@ -2280,7 +2322,7 @@ namespace SS.Core.Modules
 
             if (freq == null)
             {
-                _chat.SendMessage(player, $"You must specify a freq number.");
+                _chat.SendMessage(player, "You must specify a freq number.");
                 return;
             }
 
@@ -2357,10 +2399,12 @@ namespace SS.Core.Modules
             bool useFreqManager = true;
             ShipType? ship = null;
 
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token;
-            while ((token = remaining.GetToken(' ', out remaining)).Length > 0)
+            foreach (Range range in parameters.Split(' '))
             {
+                ReadOnlySpan<char> token = parameters[range].Trim();
+                if (token.IsEmpty)
+                    continue;
+
                 if (token.Equals("-f", StringComparison.Ordinal))
                 {
                     useFreqManager = false;
@@ -2470,12 +2514,15 @@ namespace SS.Core.Modules
                 """)]
         private void Command_send(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> token;
             ReadOnlySpan<char> arenaName = "";
             ReadOnlySpan<char> remaining = parameters;
 
-            while (!(token = remaining.GetToken(' ', out remaining)).IsEmpty)
+            foreach (Range range in parameters.Split(' '))
             {
+                ReadOnlySpan<char> token = parameters[range].Trim();
+                if (token.IsEmpty)
+                    continue;
+
                 if (token.Equals("-zone", StringComparison.OrdinalIgnoreCase) && target.Type == TargetType.Arena)
                 {
                     target = Target.ZoneTarget;
@@ -2540,27 +2587,29 @@ namespace SS.Core.Modules
         private void Command_lsmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             bool sort = false;
-            string? substr = null;
+            ReadOnlySpan<char> substr = [];
 
             Arena? arena = null;
 
             if (!parameters.IsWhiteSpace())
             {
-                ReadOnlySpan<char> remaining = parameters;
-                ReadOnlySpan<char> arg;
-                while (!(arg = remaining.GetToken(' ', out remaining)).IsEmpty)
+                foreach (Range range in parameters.Split(' '))
                 {
-                    if (arg.Equals("-a", StringComparison.OrdinalIgnoreCase))
+                    ReadOnlySpan<char> token = parameters[range].Trim();
+                    if (token.IsEmpty)
+                        continue;
+
+                    if (token.Equals("-a", StringComparison.OrdinalIgnoreCase))
                     {
                         target.TryGetArenaTarget(out arena);
                     }
-                    else if (arg.Equals("-s", StringComparison.OrdinalIgnoreCase))
+                    else if (token.Equals("-s", StringComparison.OrdinalIgnoreCase))
                     {
                         sort = true;
                     }
                     else
                     {
-                        substr = arg.ToString();
+                        substr = token;
                     }
                 }
             }
@@ -2573,7 +2622,7 @@ namespace SS.Core.Modules
                 if (string.IsNullOrWhiteSpace(name))
                     continue;
 
-                if (substr is null || name.Contains(substr, StringComparison.OrdinalIgnoreCase))
+                if (substr.IsEmpty || name.AsSpan().Contains(substr, StringComparison.OrdinalIgnoreCase))
                     modulesList.Add(name);
             }
 
@@ -2784,9 +2833,12 @@ namespace SS.Core.Modules
             bool detach = false;
             ReadOnlySpan<char> module = [];
 
-            ReadOnlySpan<char> token;
-            while (!(token = parameters.GetToken(' ', out parameters)).IsEmpty)
+            foreach (Range range in parameters.Split(' '))
             {
+                ReadOnlySpan<char> token = parameters[range].Trim();
+                if (token.IsEmpty)
+                    continue;
+
                 if (token.Equals("-d", StringComparison.OrdinalIgnoreCase))
                 {
                     detach = true;
@@ -2883,10 +2935,12 @@ namespace SS.Core.Modules
             bool global = true;
             ReadOnlySpan<char> groupName = null;
 
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token;
-            while (!(token = remaining.GetToken(' ', out remaining)).IsEmpty)
+            foreach (Range range in parameters.Split(' '))
             {
+                ReadOnlySpan<char> token = parameters[range].Trim();
+                if (token.IsEmpty)
+                    continue;
+
                 if (token.Equals("-p", StringComparison.OrdinalIgnoreCase))
                     permanent = true;
                 else if (token.Equals("-a", StringComparison.OrdinalIgnoreCase))
@@ -3707,8 +3761,15 @@ namespace SS.Core.Modules
             if (arena is null)
                 return;
 
-            ReadOnlySpan<char> flagIdStr = parameters.GetToken(' ', out ReadOnlySpan<char> remaining);
-            if (!short.TryParse(flagIdStr, out short flagId))
+            Span<Range> ranges = stackalloc Range[3];
+            int numRanges = parameters.Split(ranges, ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (numRanges < 2)
+            {
+                _chat.SendMessage(player, "Invalid input.");
+                return;
+            }
+
+            if (!short.TryParse(parameters[ranges[0]], out short flagId))
             {
                 _chat.SendMessage(player, "Invalid flag id.");
                 return;
@@ -3732,8 +3793,7 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                ReadOnlySpan<char> freqStr = remaining.GetToken(' ', out remaining);
-                if (!short.TryParse(freqStr, out short freq)
+                if (!short.TryParse(parameters[ranges[1]], out short freq)
                     || freq < -1 // allow -1 to mean not owned
                     || freq > 9999)
                 {
@@ -3743,27 +3803,30 @@ namespace SS.Core.Modules
 
                 TileCoordinates? location = flagInfo.Location;
 
-                if (!remaining.IsWhiteSpace())
+                if (numRanges == 3)
                 {
-                    ReadOnlySpan<char> xStr = remaining.GetToken(" ,", out remaining);
-                    if (!short.TryParse(xStr, out short x)
-                        || x < 0
-                        || x > 1023)
+                    ReadOnlySpan<char> coordSpan = parameters[ranges[2]];
+                    Span<Range> coordRanges = stackalloc Range[2];
+                    if (coordSpan.SplitAny(coordRanges, " ,", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) == 2)
                     {
-                        _chat.SendMessage(player, "Invalid x-coordinate.");
-                        return;
-                    }
+                        if (!short.TryParse(coordSpan[coordRanges[0]], out short x)
+                            || x < 0
+                            || x > 1023)
+                        {
+                            _chat.SendMessage(player, "Invalid x-coordinate.");
+                            return;
+                        }
 
-                    remaining = remaining.TrimStart(" ,");
-                    if (!short.TryParse(remaining, out short y)
-                        || y < 0
-                        || y > 1023)
-                    {
-                        _chat.SendMessage(player, "Invalid y-coordinate.");
-                        return;
-                    }
+                        if (!short.TryParse(coordSpan[coordRanges[1]], out short y)
+                            || y < 0
+                            || y > 1023)
+                        {
+                            _chat.SendMessage(player, "Invalid y-coordinate.");
+                            return;
+                        }
 
-                    location = new TileCoordinates(x, y);
+                        location = new TileCoordinates(x, y);
+                    }
                 }
 
                 if (location is null)
@@ -3842,11 +3905,9 @@ namespace SS.Core.Modules
             bool force = false;
             byte ballId = 0;
 
-            ReadOnlySpan<char> remaining = parameters;
-
-            do
+            foreach (Range range in parameters.Split(' '))
             {
-                ReadOnlySpan<char> token = remaining.GetToken(' ', out remaining);
+                ReadOnlySpan<char> token = parameters[range].Trim();
                 if (token.IsEmpty)
                     continue;
 
@@ -3860,7 +3921,6 @@ namespace SS.Core.Modules
                     return;
                 }
             }
-            while (!remaining.IsEmpty);
 
             if (!_balls!.TryGetBallSettings(arena, out BallSettings ballSettings)
                 || ballId >= ballSettings.BallCount)
@@ -3936,8 +3996,14 @@ namespace SS.Core.Modules
             if (arena == null)
                 return;
 
-            ReadOnlySpan<char> token = parameters.GetToken(' ', out ReadOnlySpan<char> remaining);
-            if (token.IsEmpty || !byte.TryParse(token, out byte ballId))
+            Span<Range> ranges = stackalloc Range[2];
+            if (parameters.Split(ranges, ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) != 2)
+            {
+                _chat.SendMessage(player, "Invalid input.");
+                return;
+            }
+
+            if ( !byte.TryParse(parameters[ranges[0]], out byte ballId))
             {
                 _chat.SendMessage(player, "Invalid ball ID.");
                 return;
@@ -3950,14 +4016,20 @@ namespace SS.Core.Modules
                 return;
             }
 
-            token = remaining.GetToken(' ', out remaining);
-            if (token.IsEmpty || !short.TryParse(token, out short x) || x < 0 || x >= 1024)
+            ReadOnlySpan<char> coords = parameters[ranges[1]];
+            if (coords.SplitAny(ranges, " ,", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) != 2)
+            {
+                _chat.SendMessage(player, "Invalid coordinates.");
+                return;
+            }
+
+            if (!short.TryParse(coords[ranges[0]], out short x) || x < 0 || x >= 1024)
             {
                 _chat.SendMessage(player, "Invalid x-coordinate.");
                 return;
             }
 
-            if (!short.TryParse(remaining, out short y) || y < 0 || y >= 1024)
+            if (!short.TryParse(coords[ranges[1]], out short y) || y < 0 || y >= 1024)
             {
                 _chat.SendMessage(player, "Invalid y-coordinate.");
                 return;

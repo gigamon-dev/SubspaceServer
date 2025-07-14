@@ -1758,10 +1758,13 @@ namespace SS.Core.Modules
                         string? arenaGroups = _configManager.GetStr(_configManager.Global, "Billing", "ScoreResetArenaGroups");
                         arenaGroups ??= BillingSettings.ScoreResetArenaGroups.Default; // null only, white-space means none
 
-                        ReadOnlySpan<char> remaining = arenaGroups;
-                        ReadOnlySpan<char> token;
-                        while ((token = remaining.GetToken(", \t", out remaining)).Length > 0)
+                        ReadOnlySpan<char> arenaGroupsSpan = arenaGroups;
+                        foreach (Range range in arenaGroupsSpan.SplitAny(", \t"))
                         {
+                            ReadOnlySpan<char> token = arenaGroupsSpan[range].Trim();
+                            if (token.IsEmpty)
+                                continue;
+
                             persistExecutor.EndInterval(PersistInterval.Reset, token.ToString());
                             _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Billing server requested a score reset, resetting scores of arena group '{token}'.");
                         }

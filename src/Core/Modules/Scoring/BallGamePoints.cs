@@ -4,7 +4,6 @@ using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Packets.Game;
-using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -343,11 +342,12 @@ namespace SS.Core.Modules.Scoring
             Span<int> newScores = stackalloc int[MaxTeams];
 
             int i = 0;
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token;
-            while (i < newScores.Length
-                && (token = remaining.GetToken(' ', out remaining)).Length > 0)
+            foreach (Range range in parameters.Split(' '))
             {
+                ReadOnlySpan<char> token = parameters[range].Trim();
+                if (token.IsEmpty)
+                    continue;
+
                 if (!int.TryParse(token, out int score))
                 {
                     _chat.SendMessage(player, $"Invalid input: '{token}'. It must be an integer.");
@@ -358,6 +358,9 @@ namespace SS.Core.Modules.Scoring
                     score = 0;
 
                 newScores[i++] = score;
+
+                if (i >= newScores.Length)
+                    break;
             }
 
             SetScores(arena, newScores[..i]);

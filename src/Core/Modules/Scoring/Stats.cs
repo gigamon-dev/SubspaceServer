@@ -1205,10 +1205,12 @@ namespace SS.Core.Modules.Scoring
             PersistScope scope = PersistScope.PerArena;
             PersistInterval interval = PersistInterval.Reset;
 
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token;
-            while ((token = remaining.GetToken(' ', out remaining)).Length > 0)
+            foreach (Range range in parameters.Split(' '))
             {
+                ReadOnlySpan<char> token = parameters[range].Trim();
+                if (token.IsEmpty)
+                    continue;
+
                 if (token.Equals("-g", StringComparison.OrdinalIgnoreCase))
                 {
                     scope = PersistScope.Global;

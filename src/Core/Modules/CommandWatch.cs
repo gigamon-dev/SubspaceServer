@@ -1,6 +1,5 @@
 ﻿using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
-using SS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -108,9 +107,12 @@ namespace SS.Core.Modules
 
                 // Using the same setting name as ASSS for compatibility.
                 ReadOnlySpan<char> commands = _configManager.GetStr(_configManager.Global, "log_staff", "commands") ?? ConfigHelp.Constants.Global.log_staff.commands.Default;
-                ReadOnlySpan<char> command;
-                while (!(command = commands.GetToken(" ,:;", out commands)).IsEmpty)
+                foreach (Range range in commands.SplitAny(" ,:;"))
                 {
+                    ReadOnlySpan<char> command = commands[range].Trim();
+                    if (command.IsEmpty)
+                        continue;
+
                     _watchedCommandsLookup.Add(command);
                 }
             }

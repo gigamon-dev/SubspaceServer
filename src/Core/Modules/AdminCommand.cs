@@ -1,6 +1,5 @@
 ﻿using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
-using SS.Utilities;
 using System;
 using System.Buffers;
 using System.IO;
@@ -603,10 +602,12 @@ namespace SS.Core.Modules
                 """)]
         private void Command_botfeature(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token;
-            while ((token = remaining.GetToken(" ,", out remaining)).Length > 0)
+            foreach (Range range in parameters.SplitAny(" ,"))
             {
+                ReadOnlySpan<char> token = parameters[range].Trim();
+                if (token.IsEmpty)
+                    continue;
+                
                 bool isEnabled;
                 switch (token[0])
                 {
@@ -746,9 +747,17 @@ namespace SS.Core.Modules
             Description = "Rename a file on the server. Paths are relative to the current working directory.")]
         private void Command_renfile(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            ReadOnlySpan<char> oldFileName = parameters.GetToken(':', out ReadOnlySpan<char> newFileName);
-            if (oldFileName.IsEmpty
-                || (newFileName = newFileName.TrimStart(':')).IsEmpty)
+            Span<Range> ranges = stackalloc Range[2];
+            int numRanges = parameters.Split(ranges, ':', StringSplitOptions.TrimEntries);
+            if (numRanges != 2)
+            {
+                _chat.SendMessage(player, "Bad syntax.");
+                return;
+            }
+
+            ReadOnlySpan<char> oldFileName = parameters[ranges[0]];
+            ReadOnlySpan<char> newFileName = parameters[ranges[1]];
+            if (oldFileName.IsEmpty || newFileName.IsEmpty)
             {
                 _chat.SendMessage(player, "Bad syntax.");
                 return;
