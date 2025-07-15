@@ -737,6 +737,14 @@ namespace SS.Matchmaking.Modules
             {
                 killerPlayerSlot.Team.Score++;
             }
+            else if (killerPlayerSlot.Team == killedPlayerSlot.Team // TK
+                && matchData.Configuration.NumTeams == 2)
+            {
+                // Special logic only for matches with 2 teams.
+                // Give a point to the other team for TKs.
+                Team otherTeam = matchData.Teams[0] != killedPlayerSlot.Team ? matchData.Teams[0] : matchData.Teams[1];
+                otherTeam.Score++;
+            }
 
             bool isKnockout = killedPlayerSlot.Lives <= 0;
 
