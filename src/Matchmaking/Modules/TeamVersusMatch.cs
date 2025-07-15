@@ -632,7 +632,8 @@ namespace SS.Matchmaking.Modules
                 }
 
                 PlayerSlot? slot = playerData.AssignedSlot;
-                if (slot is not null)
+                if (slot is not null
+                    && string.Equals(arena!.Name, slot.MatchData.ArenaName, StringComparison.OrdinalIgnoreCase))
                 {
                     MatchData matchData = slot.MatchData;
 
