@@ -170,7 +170,8 @@ namespace SS.Core.Modules
                             if (player is null)
                                 return;
 
-                            _chat.SendMessage(player, $"[{enumerator.Current.Name}]");
+                            DirectoryInfo directoryInfo = enumerator.Current;
+                            _chat.SendMessage(player, $"{"<DIR>",10} {directoryInfo.LastWriteTimeUtc:u} {directoryInfo.Name}");
                         }
                     }
 
@@ -188,7 +189,8 @@ namespace SS.Core.Modules
                             if (player is null)
                                 return;
 
-                            _chat.SendMessage(player, enumerator.Current.Name);
+                            FileInfo fileInfo = enumerator.Current;
+                            _chat.SendMessage(player, $"{fileInfo.Length,10} {fileInfo.LastWriteTimeUtc:u} {fileInfo.Name}");
                         }
                     }
 
