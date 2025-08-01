@@ -769,9 +769,9 @@ namespace SS.Core.Modules
                     Debug.Assert(string.Equals("Misc", ClientSettingsConfig.ShortNames[i].Section, StringComparison.OrdinalIgnoreCase)
                         && string.Equals("SendPositionDelay", ClientSettingsConfig.ShortNames[i].Key, StringComparison.OrdinalIgnoreCase));
 
-                    // Misc:SendPositionDelay of 0 will crash Continuum. Set it to 1 at least.
+                    // Misc:SendPositionDelay of 0 will crash Continuum. Use 10, the original default (from when modems were used).
                     if (cs.Int16Settings[i] == 0)
-                        cs.Int16Settings[i] = 1;
+                        cs.Int16Settings[i] = 10;
                 }
                 else if (i == 11)
                 {
