@@ -18,12 +18,10 @@ namespace SS.Core.Modules
     public sealed class Crowns(
         ILogManager logManager,
         INetwork network,
-        IObjectPoolManager objectPoolManager,
         IPlayerData playerData) : IModule, ICrowns, ICrownsBehavior
     {
         private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
-        private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
         private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
         private InterfaceRegistrationToken<ICrowns>? _iCrownsInterfaceRegistrationToken;
 
@@ -226,67 +224,10 @@ namespace SS.Core.Modules
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
-            if (action == PlayerAction.EnterArena)
+            if (action == PlayerAction.PreEnterArena)
             {
                 // Make sure the player starts out without a crown.
                 player.Packet.HasCrown = false;
-
-                //
-                // Send the current crown state of the players in the arena.
-                //
-
-                HashSet<Player> crownSet = _objectPoolManager.PlayerSetPool.Get();
-                HashSet<Player> noCrownSet = _objectPoolManager.PlayerSetPool.Get();
-
-                try
-                {
-                    // Find out who has a crown and who doesn't.
-                    _playerData.Lock();
-
-                    try
-                    {
-                        foreach (Player otherPlayer in _playerData.Players)
-                        {
-                            if (otherPlayer.Packet.HasCrown)
-                                crownSet.Add(otherPlayer);
-                            else
-                                noCrownSet.Add(otherPlayer);
-                        }
-                    }
-                    finally
-                    {
-                        _playerData.Unlock();
-                    }
-
-                    if (crownSet.Count > 1 + noCrownSet.Count)
-                    {
-                        // Send S2C Crown to turn on the crown for all players followed by S2C Crown to turn off the crown for those in noCrownSet.
-                        // TODO: grouped packet?
-                        S2C_Crown addAllPacket = new(CrownAction.On, TimeSpan.Zero, -1);
-                        _network.SendToOne(player, ref addAllPacket, NetSendFlags.Reliable);
-
-                        foreach (Player otherPlayer in noCrownSet)
-                        {
-                            S2C_Crown removePacket = new(CrownAction.Off, TimeSpan.Zero, (short)otherPlayer.Id);
-                            _network.SendToOne(player, ref removePacket, NetSendFlags.Reliable);
-                        }
-                    }
-                    else
-                    {
-                        // Send a S2C Crown packet to turn on the crown for each player in crownSet.
-                        // TODO: grouped packet?
-                        foreach (Player otherPlayer in crownSet)
-                        {
-                            S2C_Crown addPacket = new(CrownAction.On, TimeSpan.Zero, (short)otherPlayer.Id);
-                            _network.SendToOne(player, ref addPacket, NetSendFlags.Reliable);
-                        }
-                    }
-                }
-                finally
-                {
-                    _objectPoolManager.PlayerSetPool.Return(crownSet);
-                    _objectPoolManager.PlayerSetPool.Return(noCrownSet);
-                }
             }
             else if (action == PlayerAction.LeaveArena)
             {
