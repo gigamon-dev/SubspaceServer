@@ -579,6 +579,24 @@ namespace SS.Core.Modules
             Attach(player, to);
         }
 
+        void IGame.TurretKickoff(Player player)
+        {
+            if (player is null)
+                return;
+
+            if (player.Status != PlayerState.Playing)
+                return;
+
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            S2C_TurretKickoff packet = new((short)player.Id);
+            _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
+
+            TurretKickoffCallback.Fire(arena, player);
+        }
+
         void IGame.GetSpectators(Player target, HashSet<Player> spectators)
         {
             if (target is null || spectators is null)
@@ -2431,18 +2449,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            if (player is null)
-                return;
-
-            if (player.Status != PlayerState.Playing)
-                return;
-
-            Arena? arena = player.Arena;
-            if (arena is null)
-                return;
-
-            S2C_TurretKickoff packet = new((short)player.Id);
-            _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
+            ((IGame)this).TurretKickoff(player);
         }
 
         private static int Hypot(int dx, int dy)

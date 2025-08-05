@@ -49,6 +49,9 @@
 
         SecuritySeedChange = 130,
 
+        AttachChange = 140,
+        TurretKickoff = 141,
+
         // TODO: bricks (allow multiple, allow specifying a time to allow for placing initial bricks)
     }
 }

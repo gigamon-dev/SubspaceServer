@@ -451,6 +451,37 @@ namespace SS.Replay
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, CarryFlagDrop.Length));
         }
 
+        private void Callback_Attach(Player player, Player? to)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            Arena? arena = player.Arena;
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                return;
+
+            if (to is not null && to.Arena != arena)
+                return;
+
+            byte[] buffer = _recordBufferPool.Rent(AttachChange.Length);
+            ref AttachChange attachChange = ref MemoryMarshal.AsRef<AttachChange>(buffer);
+            attachChange = new(ServerTick.Now, (short)player.Id, to is null ? (short)-1 : (short)to.Id);
+            ad.RecorderQueue!.Add(new RecordBuffer(buffer, AttachChange.Length));
+        }
+
+        private void Callback_TurretKickoff(Player player)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            Arena? arena = player.Arena;
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                return;
+
+            byte[] buffer = _recordBufferPool.Rent(TurretKickoff.Length);
+            ref TurretKickoff turretKickoff = ref MemoryMarshal.AsRef<TurretKickoff>(buffer);
+            turretKickoff = new(ServerTick.Now, (short)player.Id);
+            ad.RecorderQueue!.Add(new RecordBuffer(buffer, TurretKickoff.Length));
+        }
+
         #endregion
 
         private void Packet_Position(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
@@ -674,11 +705,8 @@ namespace SS.Replay
                 // - security info (door/green seeds, and timestamp)
                 QueueSecurityInfo(ad);
 
-                // - players in the arena (enter events)
+                // - players in the arena (enter events, attach state, crown state)
                 QueuePlayers(arena, ad);
-
-                // - crown state (which players have a crown)
-                QueueCrownInfo(arena, ad);
 
                 // - active bricks
                 //QueueBricks(arena, ad);
@@ -701,6 +729,8 @@ namespace SS.Replay
                 FlagOnMapCallback.Register(arena, Callback_CarryFlagOnMap);
                 FlagGainCallback.Register(arena, Callback_CarryFlagPickup);
                 FlagLostCallback.Register(arena, Callback_CarryFlagDrop);
+                AttachCallback.Register(arena, Callback_Attach);
+                TurretKickoffCallback.Register(arena, Callback_TurretKickoff);
 
                 ad.RecorderTask = Task.Factory.StartNew(
                     () =>
@@ -730,6 +760,7 @@ namespace SS.Replay
 
                 try
                 {
+                    // Enter
                     foreach (Player player in _playerData.Players)
                     {
                         if (player.Arena == arena
@@ -742,19 +773,23 @@ namespace SS.Replay
                             ad.RecorderQueue!.Add(new RecordBuffer(buffer, Enter.Length));
                         }
                     }
-                }
-                finally
-                {
-                    _playerData.Unlock();
-                }
-            }
 
-            void QueueCrownInfo(Arena arena, ArenaData ad)
-            {
-                _playerData.Lock();
+                    // Attach state (which players are attached to another player)
+                    foreach (Player player in _playerData.Players)
+                    {
+                        if (player.Arena == arena
+                            && player.Status == PlayerState.Playing
+                            && player.Attached != -1)
+                        {
+                            byte[] buffer = _recordBufferPool.Rent(AttachChange.Length);
+                            ref AttachChange attachChange = ref MemoryMarshal.AsRef<AttachChange>(buffer);
+                            attachChange = new(ServerTick.Now, (short)player.Id, player.Attached);
 
-                try
-                {
+                            ad.RecorderQueue!.Add(new RecordBuffer(buffer, AttachChange.Length));
+                        }
+                    }
+
+                    // Crown state (which players have a crown)
                     foreach (Player player in _playerData.Players)
                     {
                         if (player.Arena == arena
@@ -900,6 +935,8 @@ namespace SS.Replay
                 FlagOnMapCallback.Unregister(arena, Callback_CarryFlagOnMap);
                 FlagGainCallback.Unregister(arena, Callback_CarryFlagPickup);
                 FlagLostCallback.Unregister(arena, Callback_CarryFlagDrop);
+                AttachCallback.Unregister(arena, Callback_Attach);
+                TurretKickoffCallback.Unregister(arena, Callback_TurretKickoff);
 
                 ad.RecorderQueue.CompleteAdding();
                 return true;
@@ -1649,6 +1686,22 @@ namespace SS.Replay
                                         }
                                         break;
 
+                                    case EventType.AttachChange:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..AttachChange.Length])) != AttachChange.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+                                        break;
+
+                                    case EventType.TurretKickoff:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..TurretKickoff.Length])) != TurretKickoff.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+                                        break;
+
                                     default:
                                         _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unknown event type {head.Type}.");
                                         return;
@@ -2068,6 +2121,40 @@ namespace SS.Replay
                         case EventType.SecuritySeedChange:
                             ref SecuritySeedChange securitySeedChange = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer);
                             _securitySeedSync.OverrideArenaSeedInfo(arena, securitySeedChange.GreenSeed, securitySeedChange.DoorSeed, ServerTick.Now - securitySeedChange.TimeDelta);
+                            break;
+
+                        case EventType.AttachChange:
+                            ref AttachChange attachChange = ref MemoryMarshal.AsRef<AttachChange>(buffer);
+                            if (!ad.PlayerIdMap.TryGetValue(attachChange.PlayerId, out player))
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{head.Type} event for non-existent PlayerId {attachChange.PlayerId}.");
+                                break;
+                            }
+
+                            Player? toPlayer;
+                            if (attachChange.ToPlayerId == -1)
+                            {
+                                toPlayer = null; // detach
+                            }
+                            else if (!ad.PlayerIdMap.TryGetValue(attachChange.ToPlayerId, out toPlayer))
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{head.Type} event for non-existent ToPlayerId {attachChange.ToPlayerId}.");
+                                break;
+                            }
+
+                            _game.Attach(player, toPlayer);
+                            break;
+
+                        case EventType.TurretKickoff:
+                            ref TurretKickoff turretKickoff = ref MemoryMarshal.AsRef<TurretKickoff>(buffer);
+                            if (ad.PlayerIdMap.TryGetValue(turretKickoff.PlayerId, out player))
+                            {
+                                //_game.turr
+                            }
+                            else
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{head.Type} event for non-existent PlayerId {turretKickoff.PlayerId}.");
+                            }
                             break;
 
                         default:

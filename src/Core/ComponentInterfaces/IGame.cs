@@ -241,8 +241,14 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <remarks>Note that continuum is not able to handle going over the TurretLimit.</remarks>
         /// <param name="player">The attacher.</param>
-        /// <param name="to">The player to attach to.</param>
-        void Attach(Player player, Player to);
+        /// <param name="to">The player to attach to. <see langword="null"/> means detach.</param>
+        void Attach(Player player, Player? to);
+
+        /// <summary>
+        /// Forcefully detach players from a <paramref name="player"/>.
+        /// </summary>
+        /// <param name="player">The player to detach all turreters from.</param>
+        void TurretKickoff(Player player);
 
         /// <summary>
         /// Gets the players spectating a <paramref name="target"/> player.
