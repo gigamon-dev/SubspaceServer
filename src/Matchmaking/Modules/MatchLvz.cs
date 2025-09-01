@@ -84,19 +84,18 @@ namespace SS.Matchmaking.Modules
         private const int StatBoxObjectsPerNumericValue = 2; // 2 digits each
 
         private const int Initialize_MaxChanges = InitializeStatBox_MaxChanges;
-        private const int Initialize_MaxToggles = 1 + Scoreboard_Timer_MaxToggles + Scoreboard_Freqs_MaxToggles + Scoreboard_Score_MaxToggles + InitializeStatBox_MaxToggles;
+        private const int Initialize_MaxToggles = Scoreboard_MaxToggles + InitializeStatBox_MaxToggles;
 
         private const int Scoreboard_Timer_MaxToggles = 8; // 4 digits, toggle off and on
-
         private const int Scoreboard_Freqs_MaxToggles = 16; // each freq is 4 digits, toggle off and on
-
         private const int Scoreboard_Score_MaxToggles = 8; // 4 digits, toggle off and on
+        private const int Scoreboard_MaxToggles = 1 + Scoreboard_Timer_MaxToggles + Scoreboard_Freqs_MaxToggles + Scoreboard_Score_MaxToggles;
 
         private const int InitializeStatBox_MaxChanges = (StatBoxNumLines * (StatBox_NameChange_MaxChanges + StatBox_SetLives_MaxChanges + StatBox_SetRepels_MaxChanges + StatBox_SetRockets_MaxChanges));
         private const int InitializeStatBox_MaxToggles = StatBox_RefreshHeaderAndFrame_MaxToggles + (StatBoxNumLines * (StatBox_NameChange_MaxToggles + StatBox_SetLives_MaxToggles + StatBox_SetRepels_MaxToggles + StatBox_SetRockets_MaxToggles));
 
         private const int Clear_MaxChanges = StatBoxCharacterObjectCount;
-        private const int Clear_MaxToggles = 1 + Scoreboard_Timer_MaxToggles + Scoreboard_Freqs_MaxToggles + Scoreboard_Score_MaxToggles + StatBox_RefreshHeaderAndFrame_MaxToggles + StatBoxCharacterObjectCount + StatBoxStrikethroughObjectsCount;
+        private const int Clear_MaxToggles = Scoreboard_MaxToggles + StatBox_RefreshHeaderAndFrame_MaxToggles + StatBoxCharacterObjectCount + StatBoxStrikethroughObjectsCount;
 
         private const int StatBox_RefreshForSub_MaxChanges = StatBox_NameChange_MaxChanges;
         private const int StatBox_RefreshForSub_MaxToggles = StatBox_RefreshHeaderAndFrame_MaxToggles + StatBox_NameChange_MaxToggles + StatBoxStrikethroughObjectsCount;
@@ -300,8 +299,8 @@ namespace SS.Matchmaking.Modules
                 {
                     // The player stopped focusing on a match.
                     // Set the player's lvz back to the default.
-                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[InitializeStatBox_MaxChanges];
-                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[InitializeStatBox_MaxToggles];
+                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
+                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[Initialize_MaxToggles];
                     MatchLvzState.GetDifferences(oldState, arenaData.DefaultLvzState!, changes, out int changesWritten, toggles, out int togglesWritten);
                     changes = changes[..changesWritten];
                     toggles = toggles[..togglesWritten];
@@ -320,8 +319,8 @@ namespace SS.Matchmaking.Modules
                 {
                     // The player wasn't focused on a match yet. 
                     // Send the differences from the default state to the new state.
-                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[InitializeStatBox_MaxChanges];
-                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[InitializeStatBox_MaxToggles];
+                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
+                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[Initialize_MaxToggles];
                     MatchLvzState.GetDifferences(arenaData.DefaultLvzState!, newState, changes, out int changesWritten, toggles, out int togglesWritten);
                     changes = changes[..changesWritten];
                     toggles = toggles[..togglesWritten];
@@ -331,8 +330,8 @@ namespace SS.Matchmaking.Modules
                 {
                     // The player was already focused on a match.
                     // Send the differences from the old state and the new state.
-                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[InitializeStatBox_MaxChanges];
-                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[InitializeStatBox_MaxToggles];
+                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
+                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[Initialize_MaxToggles];
                     MatchLvzState.GetDifferences(oldState, newState, changes, out int changesWritten, toggles, out int togglesWritten);
                     changes = changes[..changesWritten];
                     toggles = toggles[..togglesWritten];
@@ -1142,10 +1141,10 @@ namespace SS.Matchmaking.Modules
             /// <param name="togglesWritten"></param>
             public static void GetDifferences(MatchLvzState from, MatchLvzState to, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
             {
-                if (changes.Length < InitializeStatBox_MaxChanges)
+                if (changes.Length < Initialize_MaxChanges)
                     throw new ArgumentException(ExceptionMessage_InsufficientChangeBufferLength, nameof(changes));
 
-                if (toggles.Length < InitializeStatBox_MaxToggles)
+                if (toggles.Length < Initialize_MaxToggles)
                     throw new ArgumentException(ExceptionMessage_InsufficientToggleBufferLength, nameof(toggles));
 
                 changesWritten = 0;
