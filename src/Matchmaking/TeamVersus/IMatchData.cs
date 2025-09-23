@@ -35,5 +35,10 @@ namespace SS.Matchmaking.TeamVersus
         /// When the match started.
         /// </summary>
         DateTime? Started { get; }
+        
+        /// <summary>
+        /// ID of the game in the league database. <see langword="null"/> if not a league match.
+        /// </summary>
+        long? LeagueSeasonGameId { get; }
     }
 }

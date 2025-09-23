@@ -710,6 +710,22 @@ namespace SS.Utilities
             return builder;
         }
 
+        /// <summary>
+        /// Appends text to a <see cref="StringBuilder"/>, prepended with a comma if there is already text.
+        /// </summary>
+        /// <param name="builder">The <see cref="StringBuilder"/> to append to.</param>
+        /// <param name="text">The text to append.</param>
+        public static void AppendCommaDelimited(this StringBuilder builder, ReadOnlySpan<char> text)
+        {
+            if (text.IsEmpty)
+                return;
+
+            if (builder.Length > 0)
+                builder.Append(", ");
+
+            builder.Append(text);
+        }
+
         #endregion
     }
 

@@ -6,9 +6,9 @@
     public interface IMatchConfiguration
     {
         /// <summary>
-        /// Id for game type, for when saving to the database.
+        /// Id for game type, for when saving to the database. <see langword="null"/> means the stats will not be saved.
         /// </summary>
-        long GameTypeId { get; }
+        long? GameTypeId { get; }
 
         /// <summary>
         /// The required # of teams to begin a match.

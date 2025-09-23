@@ -4,6 +4,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.1.32421.90
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SubspaceServer", "SubspaceServer\SubspaceServer.csproj", "{C8467BE0-4222-4B1D-AC2E-4A7ADF31BB67}"
+	ProjectSection(ProjectDependencies) = postProject
+		{15517AA1-FEB9-43BC-A783-D271909C4B60} = {15517AA1-FEB9-43BC-A783-D271909C4B60}
+		{3C4217C3-4376-4F93-AB2E-B824FB191A4D} = {3C4217C3-4376-4F93-AB2E-B824FB191A4D}
+		{44EC8F7A-102E-4A00-B063-A99C2ACD5939} = {44EC8F7A-102E-4A00-B063-A99C2ACD5939}
+	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Utilities", "Utilities\Utilities.csproj", "{2A8FD4C6-8448-4F56-8B3A-60DF0ECD9CEB}"
 EndProject

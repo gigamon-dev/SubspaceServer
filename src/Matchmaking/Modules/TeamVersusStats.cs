@@ -25,7 +25,7 @@ namespace SS.Matchmaking.Modules
         Tracks stats for team versus matches.
         For use with the {nameof(TeamVersusMatch)} module.
         """)]
-    public class TeamVersusStats : IModule, IArenaAttachableModule, ITeamVersusStatsBehavior
+    public class TeamVersusStats : IModule, IArenaAttachableModule, ITeamVersusStatsBehavior, ILeagueHelp
     {
         #region Static members
 
@@ -69,6 +69,7 @@ namespace SS.Matchmaking.Modules
 
         // optional
         private IGameStatsRepository? _gameStatsRepository;
+        private ILeagueRepository? _leagueRepository;
 
         private InterfaceRegistrationToken<ITeamVersusStatsBehavior>? _iTeamVersusStatsBehaviorToken;
 
@@ -117,6 +118,10 @@ namespace SS.Matchmaking.Modules
         /// Key: player name
         /// </remarks>
         private readonly Dictionary<string, MemberStats> _playerMemberDictionary = new(StringComparer.OrdinalIgnoreCase);
+
+        private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = [];
+
+        private readonly DefaultObjectPool<ArenaData> _arenaDataPool = new(new DefaultPooledObjectPolicy<ArenaData>(), Constants.TargetArenaCount);
 
         public TeamVersusStats(
             IArenaManager arenaManager,
@@ -220,8 +225,9 @@ namespace SS.Matchmaking.Modules
 
             // Try to get the optional service for saving stats to a database.
             _gameStatsRepository = broker.GetInterface<IGameStatsRepository>();
+            _leagueRepository = broker.GetInterface<ILeagueRepository>();
 
-            if (_gameStatsRepository is not null)
+            if (_gameStatsRepository is not null || _leagueRepository is not null)
             {
                 // We got the optional service. To use it, we'll need the server name.
                 _zoneServerName = _configManager.GetStr(_configManager.Global, "Billing", "ServerName");
@@ -231,6 +237,7 @@ namespace SS.Matchmaking.Modules
                     _logManager.LogM(LogLevel.Error, nameof(TeamVersusStats), "Missing setting, global.conf: Billing.ServerName");
 
                     broker.ReleaseInterface(ref _gameStatsRepository);
+                    broker.ReleaseInterface(ref _leagueRepository);
                     return false;
                 }
 
@@ -260,11 +267,17 @@ namespace SS.Matchmaking.Modules
             if (_gameStatsRepository is not null)
                 broker.ReleaseInterface(ref _gameStatsRepository);
 
+            if (_leagueRepository is not null)
+                broker.ReleaseInterface(ref _leagueRepository);
+
             return true;
         }
 
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
+            ArenaData arenaData = _arenaDataPool.Get();
+            _arenaDataDictionary.Add(arena, arenaData);
+
             TeamVersusMatchPlayerLagOutCallback.Register(arena, Callback_TeamVersusMatchPlayerLagOut);
             TeamVersusMatchPlayerShipChangedCallback.Register(arena, Callback_TeamVersusMatchPlayerShipChanged);
             TeamVersusMatchPlayerSubbedCallback.Register(arena, Callback_TeamVersusMatchPlayerSubbed);
@@ -276,10 +289,25 @@ namespace SS.Matchmaking.Modules
 
             _commandManager.AddCommand("chart", Command_chart, arena);
 
+            arenaData.ILeagueHelpToken = arena.RegisterInterface<ILeagueHelp>(this, nameof(TeamVersusStats));
+
             return true;
         }
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
+            if (!_arenaDataDictionary.Remove(arena, out ArenaData? arenaData))
+                return false;
+
+            try
+            {
+                if (arena.UnregisterInterface(ref arenaData.ILeagueHelpToken) != 0)
+                    return false;
+            }
+            finally
+            {
+                _arenaDataPool.Return(arenaData);
+            }
+
             _commandManager.RemoveCommand("chart", Command_chart, arena);
 
             TeamVersusMatchPlayerLagOutCallback.Unregister(arena, Callback_TeamVersusMatchPlayerLagOut);
@@ -303,6 +331,9 @@ namespace SS.Matchmaking.Modules
             if (matchConfiguration is null)
                 return false;
 
+            if (matchConfiguration.GameTypeId is null)
+                return false;
+
             if (teamList.Count < 2)
                 return false;
 
@@ -320,7 +351,7 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            await _gameStatsRepository.GetPlayerRatingsAsync(matchConfiguration.GameTypeId, playerRatingDictionary);
+            await _gameStatsRepository.GetPlayerRatingsAsync(matchConfiguration.GameTypeId.Value, playerRatingDictionary);
 
             // Create a list of player ratings sorted by rating.
             List<(string PlayerName, int Rating)> playerRatingList = []; // TODO: pool
@@ -435,9 +466,9 @@ namespace SS.Matchmaking.Modules
             // Initialize the ratings for each team member
             //
 
-            if (_gameStatsRepository is not null)
+            if (_gameStatsRepository is not null && matchData.Configuration.GameTypeId is not null)
             {
-                await _gameStatsRepository.GetPlayerRatingsAsync(matchData.Configuration.GameTypeId, playerRatingDictionary);
+                await _gameStatsRepository.GetPlayerRatingsAsync(matchData.Configuration.GameTypeId.Value, playerRatingDictionary);
             }
 
             foreach (TeamStats teamStats in matchStats.Teams.Values)
@@ -1236,7 +1267,11 @@ namespace SS.Matchmaking.Modules
                 if (matchData is null || matchStats is null)
                     return;
 
-                if (_gameStatsRepository is null)
+                bool isLeagueMatch = matchData.LeagueSeasonGameId is not null;
+                if ((!isLeagueMatch && _gameStatsRepository is null) || (isLeagueMatch && _leagueRepository is null))
+                    return;
+
+                if (matchData.Configuration.GameTypeId is null)
                     return;
 
                 // TODO: Maybe pool the MemoryStream and Utf8JsonWriter?
@@ -1247,7 +1282,7 @@ namespace SS.Matchmaking.Modules
                 using Utf8JsonWriter writer = new(gameJsonStream, default);
 
                 writer.WriteStartObject(); // game object
-                writer.WriteNumber("game_type_id"u8, matchData.Configuration.GameTypeId);
+                writer.WriteNumber("game_type_id"u8, matchData.Configuration.GameTypeId.Value);
                 writer.WriteString("zone_server_name"u8, _zoneServerName);
                 writer.WriteString("arena"u8, matchData.ArenaName);
                 writer.WriteNumber("box_number"u8, matchData.MatchIdentifier.BoxIdx);
@@ -1414,7 +1449,10 @@ namespace SS.Matchmaking.Modules
                 //gameJsonStream.Position = 0;
                 // DEBUG - REMOVE ME ***************************************************
 
-                matchStats.GameId = await _gameStatsRepository.SaveGameAsync(gameJsonStream);
+                if (matchData.LeagueSeasonGameId is null && _gameStatsRepository is not null)
+                    matchStats.GameId = await _gameStatsRepository.SaveGameAsync(gameJsonStream);
+                else if (matchData.LeagueSeasonGameId is not null && _leagueRepository is not null)
+                    matchStats.GameId = await _leagueRepository!.SaveGameAsync(matchData.LeagueSeasonGameId.Value, gameJsonStream);
 
                 if (matchStats.GameId is not null)
                 {
@@ -1441,6 +1479,21 @@ namespace SS.Matchmaking.Modules
                         writer.WriteNumber("lvl_checksum"u8, 0);
                     }
                 }
+            }
+        }
+
+        #endregion
+
+        #region ILeagueHelp
+
+        void ILeagueHelp.PrintHelp(Player player)
+        {
+            _chat.SendMessage(player, "--- Stats Information ---------------------------------------------------------");
+            PrintCommand(player, "chart", "Prints the stats chart for the current match.");
+
+            void PrintCommand(Player player, string command, string description)
+            {
+                _chat.SendMessage(player, $"?{command,-10}  {description}");
             }
         }
 
@@ -1621,18 +1674,20 @@ namespace SS.Matchmaking.Modules
                 matchStats.AddAssignSlotEvent(DateTime.UtcNow, playerSlot.Team.Freq, playerSlot.SlotIdx, subInPlayerName);
 
                 // Get the rating of the player subbing in.
-                if (_gameStatsRepository is not null)
+                Dictionary<string, int> playerRatingDictionary = new(StringComparer.OrdinalIgnoreCase) // TODO: pool
                 {
-                    Dictionary<string, int> playerRatingDictionary = new(StringComparer.OrdinalIgnoreCase) // TODO: pool
-                    {
-                        [subInPlayerName] = DefaultRating
-                    };
+                    [subInPlayerName] = DefaultRating
+                };
 
-                    await _gameStatsRepository.GetPlayerRatingsAsync(matchStats.MatchData!.Configuration.GameTypeId, playerRatingDictionary);
+                long? gameTypeId = matchStats.MatchData?.Configuration.GameTypeId;
 
-                    if (playerRatingDictionary.TryGetValue(subInPlayerName, out int rating))
-                        memberStats.InitialRating = rating;
+                if (_gameStatsRepository is not null && gameTypeId is not null)
+                {
+                    await _gameStatsRepository.GetPlayerRatingsAsync(gameTypeId.Value, playerRatingDictionary);
                 }
+
+                if (playerRatingDictionary.TryGetValue(subInPlayerName, out int rating))
+                    memberStats.InitialRating = rating;
 
                 // Refresh the team's average rating.
                 teamStats.RefreshRemainingSlotsAndAverageRating();
@@ -3823,6 +3878,17 @@ namespace SS.Matchmaking.Modules
             /// All:AntiWarpEnergy - Amount of energy required to have 'Anti-Warp' activated (thousandths per hundredth of a second).
             /// </summary>
             public required short AntiWarpEnergy;
+        }
+
+        private class ArenaData : IResettable
+        {
+            public InterfaceRegistrationToken<ILeagueHelp>? ILeagueHelpToken;
+
+            bool IResettable.TryReset()
+            {
+                ILeagueHelpToken = null;
+                return true;
+            }
         }
 
         #endregion

@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.ObjectPool;
+﻿using CommunityToolkit.HighPerformance.Buffers;
+using Microsoft.Extensions.ObjectPool;
 using SS.Core;
 using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
@@ -7,6 +8,7 @@ using SS.Core.Map;
 using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
+using SS.Matchmaking.League;
 using SS.Matchmaking.Queues;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
@@ -48,12 +50,13 @@ namespace SS.Matchmaking.Modules
         Manages team versus matches.
         Configuration: {nameof(TeamVersusMatch)}.conf
         """)]
-    public class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IMatchFocusAdvisor
+    public class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IMatchFocusAdvisor, ILeagueGameMode, ILeagueHelp
     {
         private const string ConfigurationFileName = "TeamVersus.conf";
 
         private readonly IComponentBroker _broker;
         private readonly IArenaManager _arenaManager;
+        private readonly ICapabilityManager _capabilityManager;
         private readonly IChat _chat;
         private readonly IClientSettings _clientSettings;
         private readonly ICommandManager _commandManager;
@@ -72,6 +75,7 @@ namespace SS.Matchmaking.Modules
 
         // optional
         private ITeamVersusStatsBehavior? _teamVersusStatsBehavior;
+        private ILeagueManager? _leagueManager;
 
         private AdvisorRegistrationToken<IMatchFocusAdvisor>? _iMatchFocusAdvisorToken;
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor>? _iMatchmakingQueueAdvisorToken;
@@ -101,6 +105,14 @@ namespace SS.Matchmaking.Modules
         /// key: queue name
         /// </remarks>
         private readonly Dictionary<string, List<MatchConfiguration>> _queueMatchConfigurations = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Match configurations for league matches by GameTypeId.
+        /// </summary>
+        /// <remarks>
+        /// Key: GameTypeId
+        /// </remarks>
+        private readonly Dictionary<long, MatchConfiguration> _leagueMatchConfigurations = [];
 
         /// <summary>
         /// Dictionary of match configurations.
@@ -153,6 +165,7 @@ namespace SS.Matchmaking.Modules
         public TeamVersusMatch(
             IComponentBroker broker,
             IArenaManager arenaManager,
+            ICapabilityManager capabilityManager,
             IChat chat,
             IClientSettings clientSettings,
             ICommandManager commandManager,
@@ -171,6 +184,7 @@ namespace SS.Matchmaking.Modules
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
+            _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
@@ -193,6 +207,7 @@ namespace SS.Matchmaking.Modules
         async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _teamVersusStatsBehavior = broker.GetInterface<ITeamVersusStatsBehavior>();
+            _leagueManager = broker.GetInterface<ILeagueManager>();
 
             if (!_clientSettings.TryGetSettingsIdentifier("Kill", "EnterDelay", out _killEnterDelayClientSettingId))
             {
@@ -270,6 +285,9 @@ namespace SS.Matchmaking.Modules
             if (_teamVersusStatsBehavior is not null)
                 broker.ReleaseInterface(ref _teamVersusStatsBehavior);
 
+            if (_leagueManager is not null)
+                broker.ReleaseInterface(ref _leagueManager);
+
             return Task.FromResult(true);
         }
 
@@ -282,12 +300,73 @@ namespace SS.Matchmaking.Modules
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return ShipMask.None;
 
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return ShipMask.None;
+
+            bool isPublicPlayFreq = IsPublicPlayFreq(freq);
+            if (isPublicPlayFreq && !arenaData.PublicPlayEnabled)
+            {
+                errorMessage?.Append("This arena does not allow public play.");
+                return ShipMask.None;
+            }
+
+            MatchData? leagueMatch = arenaData.LeagueMatch;
+            if (leagueMatch is not null)
+            {
+                if (leagueMatch.Status == MatchStatus.Starting)
+                {
+                    // Don't allow a change at this stage.
+                    return player.Ship.GetShipMask();
+                }
+
+                if (isPublicPlayFreq)
+                {
+                    if (leagueMatch.Status == MatchStatus.Initializing)
+                    {
+                        // Public play is allowed before the match starts.
+                        return ShipMask.All;
+                    }
+                    else
+                    {
+                        errorMessage?.Append("There is an ongoing league match. Public play is unavailable for the duration.");
+                        return ShipMask.None;
+                    }
+                }
+
+                Team? team = null;
+                foreach (Team otherTeam in leagueMatch.Teams)
+                {
+                    if (otherTeam.Freq == freq)
+                    {
+                        team = otherTeam;
+                        break;
+                    }
+                }
+
+                if (team is null)
+                    return ShipMask.None;
+
+                if (leagueMatch.Status == MatchStatus.Initializing || leagueMatch.Status == MatchStatus.StartingCountdown)
+                {
+                    // Special rules apply before the match starts since slots are not assigned until it actually starts.
+                    return CanPlayAsStarterInLeagueMatch(arena, player, team) ? ShipMask.All : ShipMask.None;
+                }
+            }
+
             PlayerSlot? playerSlot = playerData.AssignedSlot;
             if (playerSlot is null)
             {
                 // The player is not in a match.
-                // Allow changing to any ship.
-                return ShipMask.All;
+                if (leagueMatch is not null)
+                {
+                    return ShipMask.None;
+                }
+                else
+                {
+                    // Allow changing to any ship for public play.
+                    return ShipMask.All;
+                }
             }
             else
             {
@@ -317,33 +396,93 @@ namespace SS.Matchmaking.Modules
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return false;
 
-            PlayerSlot? playerSlot = playerData.AssignedSlot;
-            if (playerSlot is null)
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return false;
+
+            bool isPublicPlayFreq = IsPublicPlayFreq(newFreq);
+            if (isPublicPlayFreq && !arenaData.PublicPlayEnabled)
             {
-                // Not in a match. 
-                if (player.Arena is null || !_arenaDataDictionary.TryGetValue(player.Arena, out ArenaData? arenaData))
-                    return false;
+                errorMessage?.Append("This arena does not allow public play.");
+                return false;
+            }
 
-                if (arenaData.PublicPlayEnabled)
+            if (arenaData.LeagueMatch is not null)
+            {
+                // The arena is reserved for a league match.
+                MatchData leagueMatch = arenaData.LeagueMatch;
+
+                if (isPublicPlayFreq)
                 {
-                    bool result = newFreq >= 0 && newFreq <= 9;
-
-                    if (!result)
+                    if (leagueMatch.Status == MatchStatus.Initializing)
                     {
-                        errorMessage?.Append("Only frequencies 0-9 are available for public play.");
+                        // Public play is allowed before the match starts.
+                        return true;
                     }
-
-                    return result;
+                    else
+                    {
+                        errorMessage?.Append("There is an ongoing league match. Public play is unavailable for the duration.");
+                        return false;
+                    }
                 }
                 else
                 {
+                    foreach (Team team in leagueMatch.Teams)
+                    {
+                        if (team.Freq == newFreq)
+                        {
+                            if (team.LeagueTeam is null)
+                                continue;
+
+                            // Check that the player is on the team's roster.
+                            if (team.LeagueTeam.Roster.ContainsKey(player.Name!))
+                            {
+                                return true;
+                            }
+                            else
+                            {
+                                errorMessage?.Append($"You are not on the roster of: '{team.LeagueTeam.TeamName}'.");
+                                return false;
+                            }
+                        }
+                    }
+
+                    errorMessage?.Append($"{newFreq} is not a valid freq for the league match.");
                     return false;
                 }
             }
             else
             {
-                // In a match, manual freq changes are not allowed.
-                return newFreq == playerSlot.Team.Freq;
+                PlayerSlot? playerSlot = playerData.AssignedSlot;
+                if (playerSlot is not null)
+                {
+                    if (newFreq == playerSlot.Team.Freq)
+                    {
+                        // In a match, always allow players to change to their team's freq.
+                        return true;
+                    }
+
+                    if (playerSlot.Status != PlayerSlotStatus.KnockedOut)
+                    {
+                        // Only team freq is allowed.
+                        errorMessage?.Append("Only the team freq is allowed when playing in a match.");
+                        return false;
+                    }
+                }
+
+                if (arenaData.PublicPlayEnabled)
+                {
+                    if (!isPublicPlayFreq)
+                    {
+                        errorMessage?.Append("Only frequencies 0-9 are available for public play.");
+                    }
+
+                    return isPublicPlayFreq;
+                }
+                else
+                {
+                    return false;
+                }
             }
         }
 
@@ -352,31 +491,77 @@ namespace SS.Matchmaking.Modules
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return false;
 
-            PlayerSlot? playerSlot = playerData.AssignedSlot;
-            if (playerSlot is null)
-            {
-                // Not in a match. Can enter public play if the arena is configured for it.
-                bool result = player.Arena is not null
-                    && _arenaDataDictionary.TryGetValue(player.Arena, out ArenaData? arenaData)
-                    && arenaData.PublicPlayEnabled;
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return false;
 
-                if (!result)
+            if (arenaData.LeagueMatch is not null)
+            {
+                // The arena is reserved for a league match.
+                if (arenaData.LeagueMatch.Status == MatchStatus.Initializing)
                 {
-                    errorMessage?.Append($"This arena does not support public play. Use ?{_matchmakingQueues.NextCommandName} to search for a match to play in.");
+                    // The match has not started yet, so special rules apply.
+                    if (arenaData.PublicPlayEnabled)
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        foreach (Team team in arenaData.LeagueMatch.Teams)
+                        {
+                            if (team.LeagueTeam is null)
+                                continue;
+
+                            if (team.LeagueTeam.Roster.ContainsKey(player.Name!))
+                                return true;
+                        }
+
+                        errorMessage?.Append("You are not on the roster of any team in this league match.");
+                        return false;
+                    }
                 }
 
-                return result;
+                PlayerSlot? playerSlot = playerData.AssignedSlot;
+                if (playerSlot is null)
+                {
+                    return false;
+                }
+                else
+                {
+                    if (player.Ship == ShipType.Spec)
+                    {
+                        // Allow returning to match using regular ship selection, rather than having to use ?return.
+                        // This is pretty hacky, as it's trying to fit into the existing FreqManager's use of IFreqManagerEnforcerAdvisor to tie in.
+                        ReturnToMatch(player, playerData);
+                    }
+
+                    return false;
+                }
             }
             else
             {
-                if (player.Ship == ShipType.Spec)
+                PlayerSlot? playerSlot = playerData.AssignedSlot;
+                if (playerSlot is null)
                 {
-                    // Allow returning to match using regular ship selection, rather than having to use ?return.
-                    // This is pretty hacky, as it's trying to fit into the existing FreqManager's use of IFreqManagerEnforcerAdvisor to tie in.
-                    ReturnToMatch(player, playerData);
-                }
+                    // Not in a match. Can enter public play if the arena is configured for it.
+                    if (!arenaData.PublicPlayEnabled)
+                    {
+                        errorMessage?.Append($"This arena does not support public play. Use ?{_matchmakingQueues.NextCommandName} to search for a match to play in.");
+                    }
 
-                return false;
+                    return arenaData.PublicPlayEnabled;
+                }
+                else
+                {
+                    if (player.Ship == ShipType.Spec)
+                    {
+                        // Allow returning to match using regular ship selection, rather than having to use ?return.
+                        // This is pretty hacky, as it's trying to fit into the existing FreqManager's use of IFreqManagerEnforcerAdvisor to tie in.
+                        ReturnToMatch(player, playerData);
+                    }
+
+                    return false;
+                }
             }
         }
 
@@ -418,9 +603,114 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        #region ILeagueGameMode
+
+        ILeagueMatch? ILeagueGameMode.CreateMatch(LeagueGameInfo leagueGame)
+        {
+            if (!_leagueMatchConfigurations.TryGetValue(leagueGame.GameTypeId, out MatchConfiguration? matchConfiguration))
+                return null;
+
+            if (!TryGetAvailableMatch(matchConfiguration, leagueGame, out MatchData? matchData))
+                return null;
+
+            //
+            // Reserve the match.
+            //
+
+            matchData.Status = MatchStatus.Initializing;
+
+            // Send a chat notification to the entire zone.
+            StringBuilder teamsBuilder = _objectPoolManager.StringBuilderPool.Get();
+            StringBuilder announcementBuilder = _objectPoolManager.StringBuilderPool.Get();
+            try
+            {
+                foreach (var team in leagueGame.Teams.Values)
+                {
+                    if (teamsBuilder.Length > 0)
+                        teamsBuilder.Append(" vs ");
+
+                    teamsBuilder.Append(team.TeamName);
+                }
+
+                announcementBuilder.Append($"{leagueGame.LeagueName} - {leagueGame.SeasonName}: ");
+                announcementBuilder.Append(teamsBuilder);
+                announcementBuilder.Append($" is starting in ?go {matchData.ArenaName}");
+
+                _chat.SendArenaMessage(null, announcementBuilder);
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(teamsBuilder);
+                _objectPoolManager.StringBuilderPool.Return(announcementBuilder);
+            }
+
+            Arena? arena = matchData.Arena;
+            if (arena is not null)
+            {
+                // Move everyone in the arena to spec (freq and ship).
+                foreach (Player player in _playerData.Players)
+                {
+                    if (player.Arena != arena)
+                        continue;
+
+                    bool changeFreq = player.Freq != arena.SpecFreq;
+                    bool changeShip = player.Ship != ShipType.Spec;
+
+                    if (changeFreq)
+                    {
+                        if (changeShip)
+                            _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+                        else
+                            _game.SetFreq(player, arena.SpecFreq);
+                    }
+                    else if (changeShip)
+                    {
+                        _game.SetShip(player, ShipType.Spec);
+                    }
+                }
+            }
+
+            return matchData;
+        }
+
+        #endregion
+
+        #region ILeagueHelp
+
+        void ILeagueHelp.PrintHelp(Player player)
+        {
+            _chat.SendMessage(player, "--- Match Information ---------------------------------------------------------");
+            PrintCommand(player, CommandNames.MatchInfo, "Prints information about the current match.");
+            PrintCommand(player, CommandNames.Rosters, "Prints the team rosters of the current match.");
+            _chat.SendMessage(player, "--- Team Members --------------------------------------------------------------");
+            PrintCommand(player, CommandNames.RequestSub, "Makes your slot available for subbing.");
+            PrintCommand(player, CommandNames.Sub, "To fill an empty slot or to sub in for another player.");
+            PrintCommand(player, CommandNames.CancelSub, "To cancel an ongoing attempt to sub in for another player.");
+            PrintCommand(player, CommandNames.Cap, "To take captain powers for your the freq you are on.");
+            _chat.SendMessage(player, "--- Captains ------------------------------------------------------------------");
+            PrintCommand(player, CommandNames.Ready, "Toggles the indicator on whether your team is ready.");
+            PrintCommand(player, CommandNames.AllowPlay, "Toggles starters. Who can play (in a ship) before GO.");
+            PrintCommand(player, CommandNames.AllowSub, "Toggles whether a player can ?sub in after GO.");
+            PrintCommand(player, CommandNames.FullSub, "Toggles whether a slot is enabled for a full sub.");
+            PrintCommand(player, CommandNames.RequestSub, "Makes the targeted slot available for subbing.");
+
+            if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
+            {
+                _chat.SendMessage(player, "--- Staff ---------------------------------------------------------------------");
+                PrintCommand(player, CommandNames.ForceStart, "Forces a league match to start.");
+            }
+
+            void PrintCommand(Player player, string command, string description)
+            {
+                _chat.SendMessage(player, $"?{command,-10}  {description}");
+            }
+        }
+
+        #endregion
+
         #region Callbacks
 
-        [ConfigHelp<bool>("SS.Matchmaking.TeamVersusMatch", "PublicPlayEanbled", ConfigScope.Arena, Default = false,
+        [ConfigHelp<bool>("SS.Matchmaking.TeamVersusMatch", "PublicPlayEnabled", ConfigScope.Arena, Default = false,
             Description = "Whether to allow players into ships without being in a match.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -481,9 +771,21 @@ namespace SS.Matchmaking.Modules
                 //_commandManager.AddCommand(CommandNames.Draw, Command_draw, arena);
                 _commandManager.AddCommand(CommandNames.ShipChange, Command_sc, arena);
                 _commandManager.AddCommand(CommandNames.Items, Command_items, arena);
+                _commandManager.AddCommand(CommandNames.MatchInfo, Command_matchinfo, arena);
+                _commandManager.AddCommand(CommandNames.FreqInfo, Command_matchinfo, arena); // alias of ?matchinfo since existing 4v4 players accustomed to !freqinfo
+                _commandManager.AddCommand(CommandNames.Rosters, Command_rosters, arena);
 
-                // Register advisors.
+                _commandManager.AddCommand(CommandNames.Cap, Command_cap, arena);
+                _commandManager.AddCommand(CommandNames.Ready, Command_ready, arena);
+                _commandManager.AddCommand(CommandNames.Rdy, Command_ready, arena);
+                _commandManager.AddCommand(CommandNames.ForceStart, Command_forcestart, arena);
+                _commandManager.AddCommand(CommandNames.AllowPlay, Command_allowplay, arena);
+                _commandManager.AddCommand(CommandNames.AllowSub, Command_allowsub, arena);
+                _commandManager.AddCommand(CommandNames.FullSub, Command_fullsub, arena);
+
+                // Register advisors and interfaces.
                 arenaData.IFreqManagerEnforcerAdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
+                arenaData.ILeagueHelpToken = arena.RegisterInterface<ILeagueHelp>(this, nameof(TeamVersusMatch));
 
                 // Fill in arena for associated matches.
                 foreach (MatchData matchData in _matchDataDictionary.Values)
@@ -491,6 +793,10 @@ namespace SS.Matchmaking.Modules
                     if (matchData.Arena is null && string.Equals(arena.Name, matchData.ArenaName, StringComparison.OrdinalIgnoreCase))
                     {
                         matchData.Arena = arena;
+
+                        // Also keep track of league matches in the ArenaData.
+                        if (matchData.LeagueGame is not null)
+                            arenaData.LeagueMatch = matchData;
                     }
                 }
             }
@@ -501,8 +807,11 @@ namespace SS.Matchmaking.Modules
 
                 try
                 {
-                    // Unregister advisors.
+                    // Unregister advisors and interfaces
                     if (!arena.UnregisterAdvisor(ref arenaData.IFreqManagerEnforcerAdvisorToken))
+                        return;
+
+                    if (arena.UnregisterInterface(ref arenaData.ILeagueHelpToken) != 0)
                         return;
 
                     // Unregister callbacks.
@@ -524,6 +833,18 @@ namespace SS.Matchmaking.Modules
                     //_commandManager.RemoveCommand(CommandNames.Draw, Command_draw, arena);
                     _commandManager.RemoveCommand(CommandNames.ShipChange, Command_sc, arena);
                     _commandManager.RemoveCommand(CommandNames.Items, Command_items, arena);
+                    _commandManager.RemoveCommand(CommandNames.MatchInfo, Command_matchinfo, arena);
+                    _commandManager.RemoveCommand(CommandNames.FreqInfo, Command_matchinfo, arena);
+                    _commandManager.RemoveCommand(CommandNames.Rosters, Command_rosters, arena);
+
+                    _commandManager.RemoveCommand(CommandNames.Cap, Command_cap, arena);
+                    _commandManager.RemoveCommand(CommandNames.Ready, Command_ready, arena);
+                    _commandManager.RemoveCommand(CommandNames.Rdy, Command_ready, arena);
+                    _commandManager.RemoveCommand(CommandNames.ForceStart, Command_forcestart, arena);
+                    _commandManager.RemoveCommand(CommandNames.AllowPlay, Command_allowplay, arena);
+                    _commandManager.RemoveCommand(CommandNames.AllowSub, Command_allowsub, arena);
+                    _commandManager.RemoveCommand(CommandNames.FullSub, Command_fullsub, arena);
+
                 }
                 finally
                 {
@@ -654,6 +975,20 @@ namespace SS.Matchmaking.Modules
                         SetSlotInactive(slot, SlotInactiveReason.LeftArena);
                     }
                 }
+
+                if (arena is not null 
+                    && _arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData)
+                    && arenaData.LeagueMatch is not null)
+                {
+                    foreach (Team team in arenaData.LeagueMatch.Teams)
+                    {
+                        if (team.Captain == player)
+                        {
+                            team.Captain = null;
+                            _chat.SendArenaMessage(arena, $"{player.Name} is no longer the captain of freq {team.Freq} ({team.LeagueTeam?.TeamName})");
+                        }
+                    }
+                }
             }
             else if (action == PlayerAction.Disconnect)
             {
@@ -732,6 +1067,14 @@ namespace SS.Matchmaking.Modules
             DateTime now = DateTime.UtcNow;
 
             killedPlayerSlot.Lives--;
+
+            if (matchData.Configuration.DeathSubDuration > TimeSpan.Zero)
+            {
+                killedPlayerSlot.LastDeathForDeathSub = now;
+
+                // DeathSubs are enabled, set the expiration.
+                killedPlayerSlot.DeathSubExpiration = now + matchData.Configuration.DeathSubDuration;
+            }
 
             if (killerPlayerSlot.Team != killedPlayerSlot.Team)
             {
@@ -954,7 +1297,9 @@ namespace SS.Matchmaking.Modules
             if (slot is null)
                 return;
 
-            if (arena != slot.MatchData.Arena || newFreq != slot.Team.Freq)
+            MatchData match = slot.MatchData;
+
+            if (arena != match.Arena || newFreq != slot.Team.Freq)
                 return;
 
             ShipType slotOldShip = slot.Ship;
@@ -963,22 +1308,84 @@ namespace SS.Matchmaking.Modules
             {
                 // Keep track of the ship for the slot, for when a player wants to ?return or ?sub in.
                 slot.Ship = newShip;
+
+                if (match.Status == MatchStatus.InProgress)
+                {
+                    // Adjust items, if needed.
+                    AdjustItems(slot, slot.ShipChangeItemsAction);
+                }
             }
 
-            if (slot.MatchData.Status == MatchStatus.InProgress
+            if (match.Status == MatchStatus.InProgress
                 && slotOldShip != ShipType.Spec
                 && slot.Ship != ShipType.Spec
                 && slotOldShip != slot.Ship)
             {
-                // Send ship change notification.
+                AllowShipChangeReason? reason = slot.AllowShipChangeReason;
+
+                if (slot.AllowShipChangeExpiration is not null && ++slot.ShipChangeCount >= match.Configuration.MaxShipChangesPerEligibleEvent)
+                {
+                    // Used up the allowed # of ship changes.
+                    slot.AllowShipChangeExpiration = null;
+                    slot.AllowShipChangeReason = null;
+                }
+
+                // Send a ship change notification.
                 HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
                 try
                 {
-                    GetPlayersToNotify(slot.MatchData, players);
+                    GetPlayersToNotify(match, players);
+                    players.Add(player);
 
-                    if (players.Count > 0)
+                    StringBuilder details = _objectPoolManager.StringBuilderPool.Get();
+                    StringBuilder notification = _objectPoolManager.StringBuilderPool.Get();
+                    try
                     {
-                        _chat.SendSetMessage(players, $"{slot.Player!.Name} changed to a {slot.Player.Ship}");
+                        // Details - reason
+                        if (reason is not null)
+                        {
+                            switch (reason.Value)
+                            {
+                                case AllowShipChangeReason.FillUnused:
+                                    details.Append("After Filling Unused Slot");
+                                    break;
+                                case AllowShipChangeReason.Death:
+                                    details.Append("After Death");
+                                    break;
+                                case AllowShipChangeReason.Sub:
+                                    details.Append("After Sub");
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+
+                        // Details - items
+                        string itemsActionDescription = GetItemsActionDescription(slot.ShipChangeItemsAction);
+                        if (!string.IsNullOrEmpty(itemsActionDescription))
+                        {
+                            if (details.Length > 0)
+                                details.Append(": ");
+
+                            details.Append(itemsActionDescription);
+                        }
+
+                        // Notification
+                        notification.Append($"{slot.Player!.Name} changed to a {slot.Player.Ship}");
+
+                        if (details.Length > 0)
+                        {
+                            notification.Append($" [");
+                            notification.Append(details);
+                            notification.Append(']');
+                        }
+
+                        _chat.SendSetMessage(players, notification);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(details);
+                        _objectPoolManager.StringBuilderPool.Return(notification);
                     }
                 }
                 finally
@@ -1051,46 +1458,47 @@ namespace SS.Matchmaking.Modules
             {
                 // Keep track of the items for the slot.
                 ItemChanges changes = ItemChanges.None;
+                ref ItemInventory items = ref slot.Items;
 
-                if (slot.Bursts != extra.Bursts)
+                if (items.Bursts != extra.Bursts)
                 {
-                    slot.Bursts = extra.Bursts;
+                    items.Bursts = extra.Bursts;
                     changes |= ItemChanges.Bursts;
                 }
 
-                if (slot.Repels != extra.Repels)
+                if (items.Repels != extra.Repels)
                 {
-                    slot.Repels = extra.Repels;
+                    items.Repels = extra.Repels;
                     changes |= ItemChanges.Repels;
                 }
 
-                if (slot.Thors != extra.Thors)
+                if (items.Thors != extra.Thors)
                 {
-                    slot.Thors = extra.Thors;
+                    items.Thors = extra.Thors;
                     changes |= ItemChanges.Thors;
                 }
 
-                if (slot.Bricks != extra.Bricks)
+                if (items.Bricks != extra.Bricks)
                 {
-                    slot.Bricks = extra.Bricks;
+                    items.Bricks = extra.Bricks;
                     changes |= ItemChanges.Bricks;
                 }
 
-                if (slot.Decoys != extra.Decoys)
+                if (items.Decoys != extra.Decoys)
                 {
-                    slot.Decoys = extra.Decoys; 
+                    items.Decoys = extra.Decoys; 
                     changes |= ItemChanges.Decoys;
                 }
 
-                if (slot.Rockets != extra.Rockets)
+                if (items.Rockets != extra.Rockets)
                 {
-                    slot.Rockets = extra.Rockets; 
+                    items.Rockets = extra.Rockets; 
                     changes |= ItemChanges.Rockets;
                 }
 
-                if (slot.Portals != extra.Portals)
+                if (items.Portals != extra.Portals)
                 {
-                    slot.Portals = extra.Portals;
+                    items.Portals = extra.Portals;
                     changes |= ItemChanges.Portals;
                 }
 
@@ -1248,11 +1656,14 @@ namespace SS.Matchmaking.Modules
             if (isAfterDeath)
             {
                 // Allow the player to ship change after respawning from a death for a limited amount of time.
-                TimeSpan allowShipChangeAfterDeathDuration = slot.MatchData.Configuration.AllowShipChangeAfterDeathDuration;
-                slot.AllowShipChangeExpiration = allowShipChangeAfterDeathDuration != TimeSpan.Zero
-                    ? DateTime.UtcNow + allowShipChangeAfterDeathDuration
+                TimeSpan allowShipChangeDuration = slot.MatchData.Configuration.AllowShipChangeAfterDeathDuration;
+                slot.AllowShipChangeExpiration = allowShipChangeDuration > TimeSpan.Zero
+                    ? DateTime.UtcNow + allowShipChangeDuration
                     : null;
-    
+                slot.AllowShipChangeReason = slot.AllowShipChangeExpiration is not null ? AllowShipChangeReason.Death : null;
+                slot.ShipChangeItemsAction = ItemsAction.Full;
+                slot.ShipChangeCount = 0;
+
                 if (!isShipChange
                     && playerData.NextShip is not null
                     && player.Ship != playerData.NextShip)
@@ -1311,37 +1722,63 @@ namespace SS.Matchmaking.Modules
                         return;
                     }
 
-                    string queueName = matchConfiguration.QueueName;
-                    if (!_queueDictionary.TryGetValue(queueName, out TeamVersusMatchmakingQueue? queue))
+                    // league
+                    if (matchConfiguration.LeagueId is not null && matchConfiguration.GameTypeId is not null)
                     {
-                        queue = CreateQueue(ch, queueName);
-                        if (queue is null)
+                        if (!_leagueMatchConfigurations.TryAdd(matchConfiguration.GameTypeId.Value, matchConfiguration))
                         {
-                            _chat.SendMessage(player, $"Error creating queue '{queueName}' for match type '{matchType}' from '{ConfigurationFileName}'.");
-                            return;
+                            _chat.SendMessage(player, $"Unable to register game type {matchConfiguration.GameTypeId.Value} as a league match configuration for match type {matchConfiguration.MatchType}.");
+                        }
+                        else
+                        {
+                            if (_leagueManager is null)
+                            {
+                                _chat.SendMessage(player, $"No {nameof(ILeagueManager)} to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value}.");
+                            }
+                            else
+                            {
+                                if (!_leagueManager.Register(matchConfiguration.GameTypeId.Value, this))
+                                {
+                                    _chat.SendMessage(player, $"Failed to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value} on the {nameof(ILeagueManager)}.");
+                                }
+                            }
+                        }
+                    }
+
+                    string? queueName = matchConfiguration.QueueName;
+                    if (queueName is not null)
+                    {
+                        if (!_queueDictionary.TryGetValue(queueName, out TeamVersusMatchmakingQueue? queue))
+                        {
+                            queue = CreateQueue(ch, queueName);
+                            if (queue is null)
+                            {
+                                _chat.SendMessage(player, $"Error creating queue '{queueName}' for match type '{matchType}' from '{ConfigurationFileName}'.");
+                                return;
+                            }
+
+                            if (!_matchmakingQueues.RegisterQueue(queue))
+                            {
+                                _chat.SendMessage(player, $"Error registering queue '{queueName}' for match type '{matchType}' from '{ConfigurationFileName}'.");
+                                return;
+                            }
+
+                            _queueDictionary.Add(queueName, queue);
                         }
 
-                        if (!_matchmakingQueues.RegisterQueue(queue))
+                        if (!_queueMatchConfigurations.TryGetValue(queueName, out List<MatchConfiguration>? matchConfigurationList))
                         {
-                            _chat.SendMessage(player, $"Error registering queue '{queueName}' for match type '{matchType}' from '{ConfigurationFileName}'.");
-                            return;
+                            matchConfigurationList = new List<MatchConfiguration>(1);
+                            _queueMatchConfigurations.Add(queueName, matchConfigurationList);
                         }
 
-                        _queueDictionary.Add(queueName, queue);
+                        int index = matchConfigurationList.FindIndex(c => c.MatchType == matchType);
+                        if (index != -1)
+                        {
+                            matchConfigurationList.RemoveAt(index);
+                        }
+                        matchConfigurationList.Add(matchConfiguration);
                     }
-
-                    if (!_queueMatchConfigurations.TryGetValue(queueName, out List<MatchConfiguration>? matchConfigurationList))
-                    {
-                        matchConfigurationList = new List<MatchConfiguration>(1);
-                        _queueMatchConfigurations.Add(queueName, matchConfigurationList);
-                    }
-
-                    int index = matchConfigurationList.FindIndex(c => c.MatchType == matchType);
-                    if (index != -1)
-                    {
-                        matchConfigurationList.RemoveAt(index);
-                    }
-                    matchConfigurationList.Add(matchConfiguration);
 
                     _matchConfigurationDictionary[matchType] = matchConfiguration;
 
@@ -1391,8 +1828,22 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            string queueName = matchConfiguration.QueueName;
-            if (_queueMatchConfigurations.TryGetValue(queueName, out List<MatchConfiguration>? matchConfigurationList))
+            if (matchConfiguration.LeagueId is not null && _leagueManager is not null && matchConfiguration.GameTypeId is not null)
+            {
+                if (!_leagueMatchConfigurations.Remove(matchConfiguration.GameTypeId.Value))
+                {
+                    _chat.SendMessage(player, $"Failed to remove game type {matchConfiguration.GameTypeId.Value} from the known league match configurations.");
+                }
+
+                if (!_leagueManager.Unregister(matchConfiguration.GameTypeId.Value, this))
+                {
+                    _chat.SendMessage(player, $"Failed to unregister game type {matchConfiguration.GameTypeId.Value} from the league manager.");
+                }
+            }
+
+            string? queueName = matchConfiguration.QueueName;
+
+            if (queueName is not null && _queueMatchConfigurations.TryGetValue(queueName, out List<MatchConfiguration>? matchConfigurationList))
             {
                 matchConfigurationList.Remove(matchConfiguration);
 
@@ -1439,53 +1890,109 @@ namespace SS.Matchmaking.Modules
         #region Commands
 
         [CommandHelp(
-            Targets = CommandTarget.None,
+            Targets = CommandTarget.None | CommandTarget.Player,
             Args = null,
             Description = "For a player to request to be subbed out of their current match.")]
         private void Command_requestsub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
+            {
+                targetPlayer = player;
+            }
+
+            if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData))
                 return;
 
-            PlayerSlot? slot = playerData.AssignedSlot;
+            PlayerSlot? slot = targetPlayerData.AssignedSlot;
             if (slot is null)
                 return;
+
+            if (targetPlayer != player)
+            {
+                // Check that the player is a captain and the targetPlayer is on their team.
+                if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                    return;
+
+                Team? team = playerData.CaptainOfTeam;
+                if (team is null)
+                {
+                    _chat.SendMessage(player, "You are not a captain.");
+                    return;
+                }
+
+                if (slot.Team != team)
+                {
+                    _chat.SendMessage(player, $"{targetPlayer.Name} is not on your team.");
+                    return;
+                }
+            }
 
             if (slot.Lives <= 0)
             {
                 // The slot has already been knocked out.
-                _chat.SendMessage(player, "Your assigned slot is not eligible for a sub since it's knocked out.");
+                if (targetPlayer == player)
+                    _chat.SendMessage(player, "Your assigned slot is not eligible for a sub since it's knocked out.");
+                else
+                    _chat.SendMessage(player, $"The slot assigned to {targetPlayer.Name} is not eligible for a sub since it's knocked out.");
+
                 return;
             }
 
             if (slot.AvailableSubSlotNode.List is not null || slot.IsSubRequested)
             {
                 // The slot is already open for a sub.
-                _chat.SendMessage(player, "Your assigned slot is already open for a sub.");
+                if (targetPlayer == player)
+                    _chat.SendMessage(player, "Your assigned slot is already open for a sub.");
+                else
+                    _chat.SendMessage(player, $"The slot assigned to {targetPlayer.Name} is already open for sub.");
+
                 return;
             }
 
             slot.IsSubRequested = true;
             _availableSubSlots.AddLast(slot.AvailableSubSlotNode);
 
-            _chat.SendArenaMessage(player.Arena, $"{player.Name} has requested to be subbed out.");
+            if (targetPlayer == player)
+                _chat.SendArenaMessage(player.Arena, $"{player.Name} has requested to be subbed out.");
+            else
+                _chat.SendArenaMessage(player.Arena, $"{targetPlayer.Name}'s slot is open to be subbed out.");
+
             SendSubAvailabilityNotificationToQueuedPlayers(slot.MatchData);
         }
 
         [CommandHelp(
-            Targets = CommandTarget.None,
-            Args = "[<queue name>]",
-            Description = """
-                Searches for the next available slot in any ongoing matches and substitutes the player into the slot.
-                When matched with a slot to sub in for, the switch may not happen immediately.
-                First, the player may need to be moved to the proper arena.
-                Also, the slot may currently contain an active player (that requested to be subbed out),
-                in which case the active player needs to get to full energy to become eligible to be switched out.
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = "[<queue name>] | [<slot #>] | [<player name>]",
+            Description = $"""
+                Allows subbing into a slot in existing match. It works differently for matchmaking vs league.
+                When subbing in, the switch may not happen immediately. First, you may need to be moved to the proper arena.
+                Next, the slot may currently have an active player (that requested to be subbed out), in which case the 
+                active player needs to get to full energy to become eligible to be switched out. If the player is purposely
+                not allowing their ship to reach full energy, use ?cancelsub to cancel out.
+
+                Matchmaking
+                -----------
+                Args: [<queue name>] 
+                Searches for the next available slot in any ongoing matches on the queues that you are waiting on (with ?next).
+                It will search all queues that you are currently waiting for a match on. You can optionally specify a 
+                <queue name>, in which case it will only search for open slots in matches for that queue.
+
+                League
+                ------
+                Args: [<slot #>] | [<player name>]
+                To use this command, the captain of your team first needs to ?{CommandNames.AllowSub} you.
+                When used without a target specified (i.e. ?sub), it will attempt to find an eligible slot by searching for:
+                an unused slot, a used but currently unassigned slot, or a slot that can be subbed into; in that order.
+                The slot to take can be specified by player or slot #.
+                To sub in for (replace) another player, send the command as a private message:
+                  /?{CommandNames.Sub}  or :<player>:?{CommandNames.Sub}
+                Or specify the name of the player the slot is assigned to:
+                  ?{CommandNames.Sub} <player name>
+                Or specify the slot #:
+                  ?{CommandNames.Sub} <slot #>
                 """)]
         private void Command_sub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            // TODO: maybe the sub command should be in the MatchMakingQueues module, and this method is an advisor method?
-
             if (player.Ship != ShipType.Spec)
             {
                 _chat.SendMessage(player, $"You must be in spec to use ?{CommandNames.Sub}.");
@@ -1507,62 +2014,329 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            // TODO: Maybe allow players that are not in the matchmaking queue to sub in?
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
 
-            // Find the next available slot, if one exists.
-            PlayerSlot? subSlot = null;
-
-            foreach (PlayerSlot slot in _availableSubSlots)
+            MatchData? leagueMatch = arenaData.LeagueMatch;
+            if (leagueMatch is not null)
             {
-                if (slot.CanBeSubbed
-                    && slot.SubPlayer is null // no sub in progress
-                    && (parameters.IsWhiteSpace() || parameters.Equals(slot.MatchData.Configuration.QueueName, StringComparison.OrdinalIgnoreCase))
-                    && _queueDictionary.TryGetValue(slot.MatchData.Configuration.QueueName, out TeamVersusMatchmakingQueue? queue)
-                    && queue.ContainsSoloPlayer(player))
+                // Each player can only participate once in the match.
+                foreach (PlayerParticipationRecord record in leagueMatch.ParticipationList)
                 {
-                    subSlot = slot;
-                    break;
+                    if (string.Equals(record.PlayerName, player.Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _chat.SendMessage(player, "You have already particpated in the match.");
+                        return;
+                    }
                 }
-            }
 
-            if (subSlot is null)
-            {
-                _chat.SendMessage(player, "There are no available slots to sub into at this moment.");
-                return;
-            }
+                // Get the player's team
+                Team? team = null;
+                foreach (Team otherTeam in leagueMatch.Teams)
+                {
+                    if (otherTeam.Freq == player.Freq)
+                    {
+                        team = otherTeam;
+                        break;
+                    }
+                }
 
-            MatchData matchData = subSlot.MatchData;
-            Arena? arena = _arenaManager.FindArena(matchData.ArenaName);
-            if (arena is null)
-                return;
+                if (team is null)
+                    return;
 
-            // Set the 'playing' status now. Otherwise, the player could get pulled into a match while in the process of subbing in.
-            _matchmakingQueues.SetPlayingAsSub(player);
+                if (leagueMatch.Status == MatchStatus.Initializing || leagueMatch.Status == MatchStatus.StartingCountdown)
+                {
+                    // Special rules apply before the match starts since slots are not assigned until it actually starts.
+                    if (!CanPlayAsStarterInLeagueMatch(arena, player, team))
+                        return;
 
-            playerData.SubSlot = subSlot; // Keep track of the slot the player is trying to sub into.
-            subSlot.SubPlayer = player; // So that other players can't try to sub into the slot.
+                    // Slots are not assigned until the game starts, so just put the player in a ship.
+                    _game.SetShip(player, playerData.NextShip ?? ShipType.Warbird);
+                    return;
+                }
 
-            if (player.Arena != arena)
-            {
-                _chat.SendMessage(player, $"You are being moved to arena {arena.Name} to become a substitute player in an ongoing match. Please stand by.");
+                if (leagueMatch.Status != MatchStatus.InProgress)
+                    return;
 
-                _arenaManager.SendToArena(player, arena.Name, 0, 0);
+                // TODO: add a check to make sure the player hasn't already played in the match
+                //leagueMatch.ParticipationList
 
-                // When the player enters the arena fully, it will check playerData.SubSlot and continue from there.
-                // If the player never fully enters the arena (e.g. disconnects), it will do the same and the sub will be cancelled.
-                return;
+                if (!team.AllowedToSub.Contains(player.Name!))
+                {
+                    _chat.SendMessage(player, "Your captain must first allow you to sub using ?allowsub.");
+                    return;
+                }
+
+                PlayerSlot? slot = null;
+                if (target.TryGetPlayerTarget(out Player? targetPlayer))
+                {
+                    // Attempting to sub-in for a specific player.
+                    if (targetPlayer.Arena != arena)
+                        return;
+
+                    if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData))
+                        return;
+
+                    PlayerSlot? targetSlot = targetPlayerData.AssignedSlot;
+                    if (targetSlot is null)
+                    {
+                        _chat.SendMessage(player, $"{targetPlayer.Name} is not assigned a slot.");
+                        return;
+                    }
+
+                    if (targetSlot.Team != team)
+                    {
+                        _chat.SendMessage(player, $"{targetPlayer.Name} is not on your team.");
+                        return;
+                    }
+
+                    slot = targetSlot;
+                }
+                else if (!parameters.IsWhiteSpace())
+                {
+                    // Try by slot #.
+                    if (int.TryParse(parameters, out int slotIdx))
+                    {
+                        if (slotIdx < 0 || slotIdx >= team.Slots.Length)
+                        {
+                            _chat.SendMessage(player, $"Invalid slot # specified. (min: 0, max: {team.Slots.Length - 1}");
+                            return;
+                        }
+
+                        slot = team.Slots[slotIdx];
+                    }
+                    else
+                    {
+                        // Try by player name.
+                        foreach (PlayerSlot otherSlot in team.Slots)
+                        {
+                            if (parameters.Equals(otherSlot.PlayerName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                slot = otherSlot;
+                                break;
+                            }
+                        }
+
+                        if (slot is null)
+                        {
+                            _chat.SendMessage(player, $"A slot assigned to '{parameters}' could not be found.");
+                            return;
+                        }
+                    }
+                }
+
+                if (slot is null)
+                {
+                    // No target slot was specified (either by private message, slot #, or player name).
+
+                    // Look for an unused (never assigned) slot that can be filled.
+                    foreach (PlayerSlot otherSlot in team.Slots)
+                    {
+                        if (otherSlot.Status == PlayerSlotStatus.Waiting && string.IsNullOrWhiteSpace(otherSlot.PlayerName))
+                        {
+                            slot = otherSlot;
+                            break;
+                        }
+                    }
+
+                    if (slot is null)
+                    {
+                        // Otherwise, look for a used, but currently unassigned slot to sub into.
+                        foreach (PlayerSlot otherSlot in team.Slots)
+                        {
+                            if (otherSlot.Status == PlayerSlotStatus.Waiting)
+                            {
+                                slot = otherSlot;
+                                break;
+                            }
+                        }
+
+                        if (slot is null)
+                        {
+                            // Otherwise, look for a slot that can be subbed into.
+                            foreach (PlayerSlot otherSlot in team.Slots)
+                            {
+                                if (otherSlot.CanBeSubbed && otherSlot.SubPlayer is null)
+                                {
+                                    slot = otherSlot;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (slot is null)
+                {
+                    _chat.SendMessage(player, "Eligible slot not found.");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(slot.PlayerName))
+                {
+                    // Fill the unused (never assigned) slot.
+                    AssignSlot(slot, player);
+                    slot.Status = PlayerSlotStatus.Playing;
+
+                    // Put the player in with a full ship of their choice.
+                    SetShipAndFreq(slot, false, null, ItemsAction.Full);
+
+                    // Allow the player to ship change after subbing in for a limited amount of time.
+                    TimeSpan allowShipChangeDuration = slot.MatchData.Configuration.AllowShipChangeAfterSubDuration;
+                    slot.AllowShipChangeExpiration = allowShipChangeDuration > TimeSpan.Zero
+                        ? DateTime.UtcNow + allowShipChangeDuration
+                        : null;
+                    slot.AllowShipChangeReason = slot.AllowShipChangeExpiration is not null ? AllowShipChangeReason.FillUnused : null;
+                    slot.ShipChangeItemsAction = ItemsAction.Full;
+                    slot.ShipChangeCount = 0;
+
+                    // Send a notification.
+                    HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                    try
+                    {
+                        GetPlayersToNotify(slot.MatchData, players);
+                        players.Add(player);
+
+                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                        try
+                        {
+                            sb.Append($"{player.Name} in (unused slot) on Freq {slot.Team.Freq} -- {slot.Lives} {(slot.Lives == 1 ? "life" : "lives")}");
+
+                            TimeSpan gameTime = leagueMatch.Started is not null ? DateTime.UtcNow - leagueMatch.Started.Value : TimeSpan.Zero;
+
+                            sb.Append(" [");
+                            sb.AppendFriendlyTimeSpan(gameTime);
+                            sb.Append(']');
+
+                            _chat.SendSetMessage(players, sb);
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(sb);
+                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(players);
+                    }
+
+                    TeamVersusMatchPlayerSubbedCallback.Fire(arena, slot, null);
+                }
+                else
+                {
+                    // The slot is already assigned, try to sub into it.
+                    if (!slot.CanBeSubbed)
+                    {
+                        if (slot.Status == PlayerSlotStatus.KnockedOut)
+                            _chat.SendMessage(player, "The slot is knocked out.");
+                        else
+                            _chat.SendMessage(player, "The slot cannot be subbed (requires ?requestsub or the existing player to spec).");
+
+                        return;
+                    }
+
+                    if (slot.SubPlayer is not null)
+                    {
+                        _chat.SendMessage(player, $"{slot.SubPlayer.Name} is already attempting to sub into the slot.");
+                        return;
+                    }
+
+                    playerData.SubSlot = slot; // Keep track of the slot the player is trying to sub into.
+                    slot.SubPlayer = player; // So that other players can't try to sub into the slot.
+
+                    SubSlot(slot);
+                    return;
+                }
             }
             else
             {
-                SubSlot(subSlot);
+                // TODO: Maybe allow players that are not in the matchmaking queue to sub in?
+
+                // Find the next available slot, if one exists.
+                PlayerSlot? subSlot = null;
+
+                foreach (PlayerSlot slot in _availableSubSlots)
+                {
+                    if (slot.CanBeSubbed
+                        && slot.SubPlayer is null // no sub in progress
+                        && (parameters.IsWhiteSpace() || parameters.Equals(slot.MatchData.Configuration.QueueName, StringComparison.OrdinalIgnoreCase))
+                        && slot.MatchData.Configuration.QueueName is not null
+                        && _queueDictionary.TryGetValue(slot.MatchData.Configuration.QueueName, out TeamVersusMatchmakingQueue? queue)
+                        && queue.ContainsSoloPlayer(player))
+                    {
+                        subSlot = slot;
+                        break;
+                    }
+                }
+
+                if (subSlot is null)
+                {
+                    _chat.SendMessage(player, "There are no available slots to sub into at this moment.");
+                    return;
+                }
+
+                MatchData matchData = subSlot.MatchData;
+                arena = _arenaManager.FindArena(matchData.ArenaName);
+                if (arena is null)
+                    return;
+
+                // Set the 'playing' status now. Otherwise, the player could get pulled into a match while in the process of subbing in.
+                _matchmakingQueues.SetPlayingAsSub(player);
+
+                playerData.SubSlot = subSlot; // Keep track of the slot the player is trying to sub into.
+                subSlot.SubPlayer = player; // So that other players can't try to sub into the slot.
+
+                if (player.Arena != arena)
+                {
+                    _chat.SendMessage(player, $"You are being moved to arena {arena.Name} to become a substitute player in an ongoing match. Please stand by.");
+
+                    _arenaManager.SendToArena(player, arena.Name, 0, 0);
+
+                    // When the player enters the arena fully, it will check playerData.SubSlot and continue from there.
+                    // If the player never fully enters the arena (e.g. disconnects), it will do the same and the sub will be cancelled.
+                    return;
+                }
+                else
+                {
+                    SubSlot(subSlot);
+                }
             }
+        }
+
+        private bool CanPlayAsStarterInLeagueMatch(Arena arena, Player player, Team team)
+        {
+            if (team.NonStarter.Contains(player.Name!))
+            {
+                _chat.SendMessage(player, "You are not allowed to play as a starter (captain controls this using ?allowplay).");
+                return false;
+            }
+
+            // Check that there is room for another to play on the freq.
+            int teamPlaying = 0;
+            foreach (Player otherPlayer in _playerData.Players)
+            {
+                if (otherPlayer.Arena == arena
+                    && otherPlayer.Freq == team.Freq
+                    && otherPlayer.Ship != ShipType.Spec)
+                {
+                    teamPlaying++;
+                }
+            }
+
+            if (teamPlaying >= team.MatchData.Configuration.PlayersPerTeam)
+            {
+                _chat.SendMessage(player, "Your team already at the maximum allowed playing in ships.");
+                return false;
+            }
+
+            // Slots are not assigned until the game starts, so just put the player in a ship.
+            return true;
         }
 
         private void SubSlot(PlayerSlot slot)
         {
-            if (slot is null)
-                return;
-
             if (!slot.CanBeSubbed)
             {
                 CancelSubInProgress(slot, true);
@@ -1589,7 +2363,7 @@ namespace SS.Matchmaking.Modules
             if (slot.Status == PlayerSlotStatus.Playing
                 && slot.Player is not null
                 && slot.Player.Ship != ShipType.Spec
-                && !slot.IsFullEnergy) // Note: not using slot.Player.Position.Energy since it might not be up to date (depending on the order of position packet handlers)
+                && !slot.IsFullEnergy)
             {
                 // The currently assigned player is still playing and isn't at full energy.
                 // Wait until the player gets to full energy.
@@ -1599,8 +2373,8 @@ namespace SS.Matchmaking.Modules
                 // - the player action handler (when the currently assigned player leaves the arena)
                 // - the ship change handler (when the currently assigned player switches to spec)
 
-                _chat.SendMessage(slot.Player, $"A player is waiting to sub in for your slot. Get to full energy to be automatically subbed out.");
-                _chat.SendMessage(player, "You will be subbed in when the active player gets to full energy. Please stand by.");
+                _chat.SendMessage(slot.Player, $"A player is waiting to sub in for your slot. Get to full energy to be subbed out automatically.");
+                _chat.SendMessage(player, $"You will be subbed in when {slot.Player.Name} gets to full energy. Please stand by, or use ?{CommandNames.CancelSub} to cancel.");
                 return;
             }
 
@@ -1664,13 +2438,194 @@ namespace SS.Matchmaking.Modules
 
             // Do the actual sub in.
             string? subOutPlayerName = slot.PlayerName;
+            Player? subOutPlayer = slot.Player; // can be null if the player disconnected
             AssignSlot(slot, player);
+            slot.Status = PlayerSlotStatus.Playing;
 
-            // Fire the callback, purposely before setting the player's freq and ship as we want this event to occur before the ship change event.
+            // When a slot is subbed, it is no longer tied to an original pre-made group.
+            // This is done before calling TeamVersusMatchPlayerSubbedCallback because the stats module will read it.
+            slot.PremadeGroupId = null;
+
+            // Fire the callback purposely before setting the player's freq and ship as we want this event to occur before the ship change event.
             TeamVersusMatchPlayerSubbedCallback.Fire(arena, slot, subOutPlayerName);
 
+            // TODO: Determine whether the ship must be the same ship that was used by the previous assigned or one chosen by the newly assigned player.
+            // TODO: Determine whether to: restored items with what the previous player had, burn items, or given a full ship.
+
+            bool usePriorShip;
+            ItemsAction itemsAction = ItemsAction.Full;
+
+            StringBuilder details = _objectPoolManager.StringBuilderPool.Get();
+            StringBuilder fineDetails = _objectPoolManager.StringBuilderPool.Get();
+            try
+            {
+                bool isDeathSub = false;
+                bool isFullSub = false;
+
+                bool tooLateForDeathSub = false;
+                bool noRemainingFullSubs = false;
+                bool slotNotMarkedForFullSub = false;
+
+                // DeathSub
+                if (matchData.Configuration.DeathSubDuration > TimeSpan.Zero // DeathSubs are enabled
+                    && slot.LastDeathForDeathSub is not null)
+                {
+                    if (DateTime.UtcNow > (slot.LastDeathForDeathSub + matchData.Configuration.DeathSubDuration))
+                    {
+                        isDeathSub = true;
+                        usePriorShip = false;
+                        itemsAction = ItemsAction.Full;
+
+                        // Only eligible once per death.
+                        slot.LastDeathForDeathSub = null;
+
+                        details.Append("DeathSub -- not burned");
+                    }
+                    else
+                    {
+                        tooLateForDeathSub = true;
+                    }
+                }
+
+                // FullSub (league only)
+                if (!isDeathSub && matchData.LeagueGame is not null)
+                {
+                    if (slot.Team.RemainingFullSubs > 0)
+                    {
+                        if (slot.FullSubEnabled)
+                        {
+                            isFullSub = true;
+                            usePriorShip = false;
+                            itemsAction = ItemsAction.Full;
+
+                            // Use up one of the remaining FullSubs.
+                            slot.Team.RemainingFullSubs--;
+
+                            details.Append("FullSub");
+                        }
+                        else
+                        {
+                            slotNotMarkedForFullSub = true;
+                        }
+                    }
+                    else
+                    {
+                        noRemainingFullSubs = true;
+                    }
+                }
+
+                if (!isDeathSub && !isFullSub)
+                {
+                    usePriorShip = matchData.Configuration.SubInMustUsePriorShip;
+                    itemsAction = matchData.Configuration.SubInItemsAction;
+
+                    switch (itemsAction)
+                    {
+                        case ItemsAction.Full:
+                            break;
+                        case ItemsAction.Burn:
+                            details.Append("Burned");
+                            break;
+                        case ItemsAction.Restore:
+                            details.Append("Remaining Items Restored");
+                            break;
+                        default:
+                            break;
+                    }
+                }
+
+                if (itemsAction != ItemsAction.Full)
+                {
+                    if (tooLateForDeathSub)
+                    {
+                        fineDetails.AppendCommaDelimited("too late for a DeathSub");
+                    }
+
+                    if (noRemainingFullSubs)
+                    {
+                        fineDetails.AppendCommaDelimited("no FullSubs left");
+                    }
+
+                    if (slotNotMarkedForFullSub)
+                    {
+                        fineDetails.AppendCommaDelimited("slot not marked for FullSub");
+                    }
+                }
+
+                if (fineDetails.Length > 0)
+                {
+                    details.Append(" (");
+                    details.Append(fineDetails);
+                    details.Append(')');
+                }
+
+                // Send a notification.
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    GetPlayersToNotify(slot.MatchData, players);
+                    players.Add(player);
+
+                    if (subOutPlayer is not null)
+                        players.Add(subOutPlayer);
+
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
+                    {
+                        sb.Append($"{player.Name} in for {subOutPlayerName} on Freq {slot.Team.Freq}");
+
+                        if (details.Length > 0)
+                        {
+                            sb.Append(" [");
+                            sb.Append(details);
+                            sb.Append(']');
+                        }
+
+                        sb.Append($" -- {slot.Lives} {(slot.Lives == 1 ? "life" : "lives")}");
+
+                        TimeSpan gameTime = matchData.Started is not null ? DateTime.UtcNow - matchData.Started.Value : TimeSpan.Zero;
+
+                        sb.Append(" [");
+                        sb.AppendFriendlyTimeSpan(gameTime);
+                        sb.Append(']');
+
+                        _chat.SendSetMessage(players, sb);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(details);
+                _objectPoolManager.StringBuilderPool.Return(fineDetails);
+            }
+
+            if (itemsAction == ItemsAction.Restore)
+            {
+                // Keep a copy of what the items were before the sub-in.
+                // This is also used if the player subsequently changes ship within the allowed timeframe (ship change after sub).
+                slot.RestoreItems = slot.Items;
+            }
+
+            // Allow the player to ship change after sub-in for a limited amount of time.
+            TimeSpan allowShipChangeDuration = slot.MatchData.Configuration.AllowShipChangeAfterSubDuration;
+            slot.AllowShipChangeExpiration = allowShipChangeDuration > TimeSpan.Zero
+                ? DateTime.UtcNow + allowShipChangeDuration
+                : null;
+            slot.AllowShipChangeReason = slot.AllowShipChangeExpiration is not null ? AllowShipChangeReason.Sub : null;
+            slot.ShipChangeItemsAction = itemsAction;
+            slot.ShipChangeCount = 0;
+
             // Finally, get the sub-in player into the game (on the correct freq and in the proper ship).
-            SetShipAndFreq(slot, true, null, false);
+            SetShipAndFreq(slot, true, null, itemsAction);
         }
 
         [CommandHelp(
@@ -1696,9 +2651,6 @@ namespace SS.Matchmaking.Modules
 
         private void CancelSubInProgress(PlayerSlot slot, bool notify)
         {
-            if (slot is null)
-                return;
-
             Player? player = slot.SubPlayer;
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
@@ -1778,21 +2730,45 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            SetShipAndFreq(slot, true, null, false);
+            ItemsAction itemsAction = matchData.Status == MatchStatus.InProgress
+                ? matchData.Configuration.ReturnToMatchItemsAction
+                : ItemsAction.Full;
+
+            if (itemsAction == ItemsAction.Restore)
+            {
+                // Save a copy of what the prior items were.
+                slot.RestoreItems = slot.Items;
+            }
+
+            SetShipAndFreq(slot, true, null, itemsAction);
 
             HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
             try
             {
                 GetPlayersToNotify(slot.MatchData, players);
+                players.Add(player);
 
                 if (slot.SubPlayer is not null)
                 {
                     players.Add(slot.SubPlayer);
                 }
 
-                if (players.Count > 0)
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                try
                 {
-                    _chat.SendSetMessage(players, $"{player.Name} returned to the match. [Lives: {slot.Lives}]");
+                    sb.Append($"{player.Name} returned to the match.");
+                    
+                    string itemsActionDescription = GetItemsActionDescription(slot.ShipChangeItemsAction);
+                    if (!string.IsNullOrEmpty(itemsActionDescription))
+                        sb.Append($" [{itemsActionDescription}]");
+
+                    sb.Append($" [Lives: {slot.Lives}]");
+
+                    _chat.SendSetMessage(players, sb);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
                 }
             }
             finally
@@ -1951,7 +2927,7 @@ namespace SS.Matchmaking.Modules
             {
                 // Set the player's next ship and change the ship now.
                 SetNextShip(player, playerData, ship, false);
-                SetShipAndFreq(playerSlot, false, null, false);
+                SetShipAndFreq(playerSlot, false, null, playerSlot.ShipChangeItemsAction);
             }
             else
             {
@@ -2009,7 +2985,7 @@ namespace SS.Matchmaking.Modules
                                 if (slotsBuilder.Length > 0)
                                     slotsBuilder.Append(", ");
 
-                                slotsBuilder.Append($"{slot.PlayerName} {slot.Repels}/{slot.Rockets}");
+                                slotsBuilder.Append($"{slot.PlayerName} {slot.Items.Repels}/{slot.Items.Rockets}");
                             }
 
                             if (slotsBuilder.Length <= 0)
@@ -2033,6 +3009,844 @@ namespace SS.Matchmaking.Modules
                 default:
                     break;
             }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "",
+            Description = "Displays information about the current match.")]
+        private void Command_matchinfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            if (arenaData.LeagueMatch is not null)
+            {
+                PrintMatchInfo(player, arenaData.LeagueMatch);
+            }
+            else
+            {
+                IMatch? focusedMatch = _matchFocus.GetFocusedMatch(player);
+                if (focusedMatch is null || focusedMatch is not MatchData matchData)
+                {
+                    _chat.SendMessage(player, "No match found.");
+                    return;
+                }
+
+                PrintMatchInfo(player, matchData);
+            }
+
+            void PrintMatchInfo(Player player, MatchData matchData)
+            {
+                if (matchData.LeagueGame is not null)
+                {
+                    LeagueGameInfo leagueGame = matchData.LeagueGame;
+
+                    _chat.SendMessage(player, "League Match");
+                    _chat.SendMessage(player, $"ID: {leagueGame.SeasonGameId}");
+                    _chat.SendMessage(player, $"League: {leagueGame.LeagueName}");
+                    _chat.SendMessage(player, $"Season: {leagueGame.SeasonName}");
+
+                    if (leagueGame.RoundNumber is not null)
+                        _chat.SendMessage(player, $"Round: {leagueGame.RoundNumber}");
+                }
+                else
+                {
+                    _chat.SendMessage(player, "Matchmaking Match");
+                    _chat.SendMessage(player, $"Match Type: {matchData.Configuration.MatchType}");
+
+                    if(!string.IsNullOrWhiteSpace(matchData.Configuration.QueueName))
+                        _chat.SendMessage(player, $"Queue: {matchData.Configuration.QueueName}");
+                }
+
+                foreach (Team team in matchData.Teams)
+                {
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                    try
+                    {
+                        sb.Append($"Freq {team.Freq}");
+                        if (team.LeagueTeam is not null)
+                        {
+                            sb.Append($": {team.LeagueTeam.TeamName}");
+                        }
+
+                        _chat.SendMessage(player, sb);
+                        sb.Clear();
+
+                        if (team.LeagueTeam is not null)
+                        {
+                            _chat.SendMessage(player, $"  CAP: {team.Captain?.Name ?? "<none>"}  --  Fullsubs remaining: {team.RemainingFullSubs}");
+                        }
+
+                        foreach (PlayerSlot slot in team.Slots)
+                        {
+                            // For a league match that has not yet started, the slots will not yet be assigned.
+                            if (slot.Status == PlayerSlotStatus.None)
+                                continue;
+
+                            sb.Append($"{slot.SlotIdx,5}: ");
+
+                            if (string.IsNullOrWhiteSpace(slot.PlayerName))
+                                sb.Append("[unused]");
+                            else
+                                sb.Append(slot.PlayerName);
+
+                            switch (slot.Status)
+                            {
+                                case PlayerSlotStatus.Waiting:
+                                    sb.Append(" [Lag Out]");
+                                    break;
+                                case PlayerSlotStatus.KnockedOut:
+                                    sb.Append(" [Knocked Out]");
+                                    break;
+                                default:
+                                    break;
+                            }
+
+                            _chat.SendMessage(player, sb);
+                            sb.Clear();
+                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
+                    }
+                }
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "",
+            Description = """
+                Displays rosters of the teams in the current league match.
+                Only includes players that can participate in this match.
+                In other words, suspended players are excluded.
+                Use ?roster <team name> for the full roster.
+                """)]
+        private void Command_rosters(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            MatchData? leagueMatch = arenaData.LeagueMatch;
+            if (leagueMatch is null)
+            {
+                _chat.SendMessage(player, "There currently is no league match in the arena.");
+                return;
+            }
+
+            // Here's what the output should look like with an odd # of teams.
+            //
+            // +=============================================================+
+            // | F 1000: Team1                | F 2000: Team2                |
+            // +------------------------------+------------------------------+
+            // | [C] Name1                    | [C] Name1                    |
+            // |     Name2                    |     Name2                    |
+            // |                              |     Name3                    |
+            // ===============================================================
+            // | F 3000: Team3                |
+            // +------------------------------+
+            // | [C] Name1                    |
+            // |     Name2                    |
+            // ================================
+
+            _chat.SendMessage(player, "===============================================================");
+
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+            try
+            {
+                for (int teamIdx = 0; teamIdx < leagueMatch.Teams.Length;)
+                {
+                    Team team1 = leagueMatch.Teams[teamIdx++];
+                    Team? team2 = teamIdx < leagueMatch.Teams.Length ? leagueMatch.Teams[teamIdx++] : null;
+
+                    LeagueTeamInfo? leagueTeam1 = team1.LeagueTeam;
+                    LeagueTeamInfo? leagueTeam2 = team2?.LeagueTeam;
+
+                    if (leagueTeam1 is null)
+                        break;
+
+                    // Freq and Team Name
+                    sb.Append($"| F {team1.Freq:D4}: {leagueTeam1.TeamName,-20} |");
+                    if (team2 is not null && leagueTeam2 is not null)
+                    {
+                        sb.Append($" F {team2.Freq:D4}: {leagueTeam2.TeamName,-20} |");
+                    }
+
+                    _chat.SendMessage(player, sb);
+                    sb.Clear();
+
+                    sb.Append("+------------------------------+");
+                    if (team2 is not null)
+                    {
+                        sb.Append("------------------------------+");
+                    }
+
+                    _chat.SendMessage(player, sb);
+                    sb.Clear();
+
+                    // Roster
+                    List<RosterItem> roster1 = new(leagueTeam1.Roster.Count);
+                    List<RosterItem>? roster2 = leagueTeam2 is not null ? new(leagueTeam2.Roster.Count) : null;
+                    // TODO: Use an object pool for List<RosterItem>
+
+                    foreach ((string playerName, bool isCaptain) in leagueTeam1.Roster)
+                    {
+                        roster1.Add(new RosterItem(playerName, isCaptain));
+                    }
+
+                    if (roster2 is not null && leagueTeam2 is not null)
+                    {
+                        foreach ((string playerName, bool isCaptain) in leagueTeam2.Roster)
+                        {
+                            roster2.Add(new RosterItem(playerName, isCaptain));
+                        }
+                    }
+
+                    roster1.Sort(RosterItemComparer);
+                    roster2?.Sort(RosterItemComparer);
+
+                    int end = roster2 is null ? roster1.Count : int.Max(roster1.Count, roster2.Count);
+                    for (int rosterIdx = 0; rosterIdx < end; rosterIdx++)
+                    {
+                        if (rosterIdx < roster1.Count)
+                        {
+                            RosterItem item = roster1[rosterIdx];
+                            sb.Append($"| {(item.IsCaptain ? "[C]" : "   ")} {item.PlayerName,-20}     |");
+                        }
+                        else
+                        {
+                            sb.Append("|                              |");
+                        }
+
+                        if (roster2 is not null)
+                        {
+                            if (rosterIdx < roster2.Count)
+                            {
+                                RosterItem item = roster2[rosterIdx];
+                                sb.Append($" {(item.IsCaptain ? "[C]" : "   ")} {item.PlayerName,-20}     |");
+                            }
+                            else
+                            {
+                                sb.Append("                              |");
+                            }
+
+                            _chat.SendMessage(player, sb);
+                            sb.Clear();
+                        }
+                    }
+
+                    // Footer
+                    sb.Append("================================");
+                    if (team2 is not null)
+                    {
+                        sb.Append("===============================");
+                    }
+
+                    _chat.SendMessage(player, sb);
+                    sb.Clear();
+                }
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
+        }
+
+        private static int RosterItemComparer(RosterItem x, RosterItem y)
+        {
+            // Captains first
+            if (x.IsCaptain)
+            {
+                if (!y.IsCaptain)
+                    return -1;
+            }
+            else if (y.IsCaptain)
+            {
+                return 1;
+            }
+
+            // Then by player name
+            return StringComparer.OrdinalIgnoreCase.Compare(x.PlayerName, y.PlayerName);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = "",
+            Description = """
+                Changes who the current captain of the freq is. (League games only)
+                If there is no captain, anyone on the team roster can take cap.
+                An official captain of a team can take cap from an unofficial captain.
+                This command can be sent privately to another player to transfer captain powers to the target player.
+                """)]
+        private void Command_cap(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            MatchData? matchData = arenaData.LeagueMatch;
+            if (matchData is null)
+                return;
+
+            Team? team;
+            LeagueTeamInfo? leagueTeam;
+
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
+            {
+                team = playerData.CaptainOfTeam;
+                if (team is null)
+                {
+                    _chat.SendMessage(player, "You are not a captain.");
+                    return;
+                }
+
+                leagueTeam = team.LeagueTeam;
+                if (leagueTeam is null)
+                    return;
+
+                if (!leagueTeam.Roster.ContainsKey(targetPlayer.Name!))
+                {
+                    _chat.SendMessage(player, $"{targetPlayer.Name} is not on the roster.");
+                    return;
+                }
+
+                if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData))
+                    return;
+
+                if (targetPlayerData.CaptainOfTeam is not null)
+                    return;
+
+                // Transfer cap
+                playerData.CaptainOfTeam = null;
+                team.Captain = targetPlayer;
+                targetPlayerData.CaptainOfTeam = team;
+                
+                AnnounceCaptainChange(arena, team, leagueTeam);
+                return;
+            }
+
+            team = null;
+            foreach (Team otherTeam in matchData.Teams)
+            {
+                if (otherTeam.Freq == player.Freq)
+                {
+                    team = otherTeam;
+                    break;
+                }
+            }
+
+            if (team is null)
+                return;
+
+            leagueTeam = team.LeagueTeam;
+            if (leagueTeam is null)
+                return;
+
+            if (team.Captain is null)
+            {
+                // Give captain to the player.
+                team.Captain = player;
+                playerData.CaptainOfTeam = team;
+
+                AnnounceCaptainChange(arena, team, leagueTeam);
+                return;
+            }
+
+            if (team.Captain == player)
+            {
+                _chat.SendMessage(player, $"You're already captain of freq {team.Freq}.");
+                return;
+            }
+
+            // Another player is already assigned captain of the freq. Check if we can override it.
+            if (!leagueTeam.Roster.TryGetValue(player.Name!, out bool isOfficialCap) || !isOfficialCap)
+            {
+                _chat.SendMessage(player, $"You cannot take captain of the freq since you are not an official captain of team: {leagueTeam.TeamName}");
+                return;
+            }
+
+            if (leagueTeam.Roster.TryGetValue(team.Captain.Name!, out bool currentIsOfficialCap) && currentIsOfficialCap)
+            {
+                _chat.SendMessage(player, $"You cannot take captain from official captain {team.Captain.Name!}.");
+                return;
+            }
+
+            // Override captain
+            if (!team.Captain.TryGetExtraData(_pdKey, out PlayerData? oldPlayerData))
+                return;
+
+            oldPlayerData.CaptainOfTeam = null;
+            team.Captain = player;
+            playerData.CaptainOfTeam = team;
+
+            AnnounceCaptainChange(arena, team, leagueTeam);
+
+            // local helper for notifying the arena of a change in who is captain
+            void AnnounceCaptainChange(Arena arena, Team team, LeagueTeamInfo leagueTeam)
+            {
+                if (team.Captain is null)
+                    return;
+
+                _chat.SendArenaMessage(arena, $"{team.Captain.Name} is now the captain for freq {team.Freq} ({leagueTeam.TeamName}).");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "",
+            Description = """
+                For captains to indicate that their team is ready.
+                League games only.
+                The match will begin when all captains have indicated that their teams are ready,
+                or a referee forces the match to begin.
+                """)]
+        private void Command_ready(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            MatchData? matchData = arenaData.LeagueMatch;
+            if (matchData is null)
+                return;
+
+            if (matchData.IsForcedStart)
+            {
+                // The ?ready command is disabled when a match is forced to start.
+                return;
+            }
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            Team? team = playerData.CaptainOfTeam;
+            if (team is null)
+            {
+                _chat.SendMessage(player, "You are not a captain.");
+                return;
+            }
+
+            if (team.IsReady)
+            {
+                team.IsReady = false;
+            }
+            else
+            {
+                int playingCount = 0;
+                foreach (Player otherPlayer in _playerData.Players)
+                {
+                    if (otherPlayer.Arena == arena
+                        && otherPlayer.Freq == team.Freq
+                        && otherPlayer.Ship != ShipType.Spec)
+                    {
+                        playingCount++;
+                    }
+                }
+
+                if (playingCount < 1)
+                {
+                    _chat.SendMessage(player, "Your team has no players in game.");
+                    return;
+                }
+                else if (playingCount > matchData.Configuration.PlayersPerTeam)
+                {
+                    _chat.SendMessage(player, $"Your team has too many players in game (current: {playingCount}, max: {matchData.Configuration.PlayersPerTeam}).");
+                    return;
+                }
+
+                team.IsReady = true;
+            }
+
+            _chat.SendArenaMessage(arena, $"Freq {team.Freq} ({team.LeagueTeam?.TeamName}) is {(team.IsReady ? "READY" : "NOT READY")}.");
+
+            // Check if all teams are ready.
+            bool allReady = true;
+            foreach (Team t in matchData.Teams)
+            {
+                if (!t.IsReady)
+                {
+                    allReady = false;
+                    break;
+                }
+            }
+
+            if (!allReady && matchData.Status == MatchStatus.StartingCountdown)
+            {
+                // The match was starting, stop it now that all teams are not ready.
+                matchData.Status = MatchStatus.Initializing;
+                _mainloopTimer.ClearTimer<MatchData>(MainloopTimer_ProcessMatchStateChange, matchData);
+            }
+            else if (allReady && matchData.Status == MatchStatus.Initializing)
+            {
+                // All teams are ready, begin the startup sequence.
+                BeginLeagueMatchStartupSequence(matchData);
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "",
+            Description = """
+                Forces a league match to start even if not all teams have readied up (?ready).
+                This can be used if one team is holding things up and has gone beyond a time limit.
+                """)]
+        private void Command_forcestart(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            MatchData? matchData = arenaData.LeagueMatch;
+            if (matchData is null)
+                return;
+
+            matchData.IsForcedStart = true;
+            BeginLeagueMatchStartupSequence(matchData);
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = "",
+            Description = """
+                Toggles whether a player is allowed to be a starter for the match. Captains only.
+                Initially, all players on the roster are automatically allowed.
+                Players not allowed will be sent to spectator mode and will not be able to enter a ship until toggled back.
+                """)]
+        private void Command_allowplay(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            MatchData? leagueMatch = arenaData.LeagueMatch;
+            if (leagueMatch is null)
+                return;
+
+            if (leagueMatch.Status >= MatchStatus.Starting)
+            {
+                _chat.SendMessage(player, "This command can only be used prior to match startup.");
+                return;
+            }
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            Team? team = playerData.CaptainOfTeam;
+            if (team is null)
+            {
+                _chat.SendMessage(player, "You are not a captain.");
+                return;
+            }
+
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
+                return;
+
+            if (targetPlayer.Freq != team.Freq)
+                return;
+
+            if (team.NonStarter.Remove(targetPlayer.Name!))
+            {
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    _playerData.TargetToSet(Target.TeamTarget(arena, team.Freq), players);
+                    players.Add(player);
+                    players.Add(targetPlayer);
+
+                    _chat.SendSetMessage(players, $"{CommandNames.AllowPlay}: '{targetPlayer.Name}' can play as a starter.");
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
+            }
+            else if (team.NonStarter.Add(targetPlayer.Name!))
+            {
+                if (targetPlayer.Ship != ShipType.Spec)
+                {
+                    _game.SetShip(targetPlayer, ShipType.Spec);
+                }
+
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    _playerData.TargetToSet(Target.TeamTarget(arena, team.Freq), players);
+                    players.Add(player);
+                    players.Add(targetPlayer);
+
+                    _chat.SendSetMessage(players, $"{CommandNames.AllowPlay}: '{targetPlayer.Name}' set to not play as a starter.");
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = "<none> | <player name> | -a | -c",
+            Description = $"""
+                Toggles whether a member on a roster is allowed to sub into a league match. Captains only.
+                
+                This command can target a player by sending it as a private message: /?{CommandNames.AllowSub} 
+                or :foo:?{CommandNames.AllowSub} (where the player's name is foo)
+
+                Otherwise if not targeting a single player:
+                * Use -a to allow all rostered players (rather than have to run the command individually on each).
+                  This includes players that are not yet connected.
+                * Use -c to clear the allowsub list.
+                """)]
+        private void Command_allowsub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            MatchData? leagueMatch = arenaData.LeagueMatch;
+            if (leagueMatch is null)
+                return;
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            Team? team = playerData.CaptainOfTeam;
+            if (team is null)
+            {
+                _chat.SendMessage(player, "You are not a captain.");
+                return;
+            }
+
+            if (team.LeagueTeam is null)
+                return;
+
+            ReadOnlySpan<char> playerName = [];
+            string? playerNameStr = null;
+
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
+            {
+                playerName = playerNameStr = targetPlayer.Name;
+            }
+
+            if (playerName.IsEmpty)
+            {
+                if (parameters.IsEmpty)
+                {
+                    PrintUsage(player);
+                    return;
+                }
+
+                if (parameters.StartsWith('-'))
+                {
+                    if (parameters.StartsWith("-a"))
+                    {
+                        if (team.LeagueTeam is not null)
+                        {
+                            foreach (string name in team.LeagueTeam.Roster.Keys)
+                            {
+                                team.AllowedToSub.Add(name);
+                            }
+
+                            HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                            try
+                            {
+                                _playerData.TargetToSet(Target.TeamTarget(arena, team.Freq), players);
+                                players.Add(player);
+
+                                _chat.SendSetMessage(players, $"{CommandNames.AllowSub}: All players on the roster are allowed to sub.");
+                            }
+                            finally
+                            {
+                                _objectPoolManager.PlayerSetPool.Return(players);
+                            }
+                        }
+                    }
+                    else if (parameters.StartsWith("-c"))
+                    {
+                        if (team.LeagueTeam is not null)
+                        {
+                            if (team.LeagueTeam.Roster.Count == 0)
+                            {
+                                _chat.SendMessage(player, $"{CommandNames.AllowSub}: Already empty.");
+                                return;
+                            }
+
+                            team.AllowedToSub.Clear();
+
+                            HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                            try
+                            {
+                                _playerData.TargetToSet(Target.TeamTarget(arena, team.Freq), players);
+                                players.Add(player);
+
+                                _chat.SendSetMessage(players, $"{CommandNames.AllowSub}: Cleared, no players are allowed to sub.");
+                            }
+                            finally
+                            {
+                                _objectPoolManager.PlayerSetPool.Return(players);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        PrintUsage(player);
+                    }
+
+                    return;
+                }
+                else
+                {
+                    playerName = parameters;
+                }
+            }
+
+            if (playerName.IsEmpty)
+            {
+                PrintUsage(player);
+                return;
+            }
+
+            if (team.AllowedToSubLookup.Remove(playerName))
+            {
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    _playerData.TargetToSet(Target.TeamTarget(arena, team.Freq), players);
+                    players.Add(player);
+
+                    _chat.SendSetMessage(players, $"{CommandNames.AllowSub}: Removed {playerName}");
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
+            }
+            else
+            {
+                if (!team.LeagueTeam.Roster.TryGetAlternateLookup<ReadOnlySpan<char>>(out var rosterLookup))
+                    return;
+
+                if (!rosterLookup.ContainsKey(playerName))
+                {
+                    _chat.SendMessage(player, $"{CommandNames.AllowSub}: {playerName} is not on the roster.");
+                    return;
+                }
+
+                playerNameStr ??= StringPool.Shared.GetOrAdd(playerName);
+                team.AllowedToSub.Add(playerNameStr);
+
+                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    _playerData.TargetToSet(Target.TeamTarget(arena, team.Freq), players);
+                    players.Add(player);
+
+                    _chat.SendSetMessage(players, $"{CommandNames.AllowSub}: Added {playerName}");
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(players);
+                }
+            }
+
+
+            void PrintUsage(Player player)
+            {
+                _chat.SendMessage(player, $"Invalid input. For usage instructions, see: ?man {CommandNames.AllowSub}");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = "<none> | <slot #>",
+            Description = """
+                For league captains to toggle whether a slot is enabled for a full sub.
+                This can be private messaged to a player that is currently assigned to a slot.
+                For example: /?fullsub
+                Alternatively, the slot # can specified as a parameter (slot numbers begin with 1):
+                For example: ?fullsub 2
+                """)]
+        private void Command_fullsub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            MatchData? matchData = arenaData.LeagueMatch;
+            if (matchData is null)
+                return;
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            // Check that the player is a captain
+            Team? team = playerData.CaptainOfTeam;
+            if (team is null)
+            {
+                _chat.SendMessage(player, "You are not a captain.");
+                return;
+            }
+
+            // Determine which slot to toggle.
+            PlayerSlot? slot = null;
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
+            {
+                if (!targetPlayer.TryGetExtraData(_pdKey, out PlayerData? targetPlayerData))
+                    return;
+
+                if (targetPlayerData.AssignedSlot is null)
+                {
+                    _chat.SendMessage(player, $"{targetPlayer.Name} is not assigned a slot.");
+                    return;
+                }
+                else if (targetPlayerData.AssignedSlot.Team != team)
+                {
+                    _chat.SendMessage(player, $"{targetPlayer.Name} is not on your team.");
+                    return;
+                }
+
+                slot = targetPlayerData.AssignedSlot;
+            }
+
+            if (slot is null && !parameters.IsEmpty)
+            {
+                if (int.TryParse(parameters, out int slotNumber))
+                {
+                    if (slotNumber < 1 || slotNumber > team.Slots.Length)
+                    {
+                        _chat.SendMessage(player, "Invalid slot.");
+                        return;
+                    }
+
+                    slot = team.Slots[slotNumber];
+                }
+            }
+
+            if (slot is null)
+            {
+                _chat.SendMessage(player, "You must specify a slot either by including the slot # or by private messaging the command to a player assigned to a slot.");
+                return;
+            }
+
+            slot.FullSubEnabled = !slot.FullSubEnabled;
+
+            _chat.SendMessage(player, $"Slot {slot.SlotIdx + 1} ({(string.IsNullOrEmpty(slot.PlayerName) ? "<unassigned>" : slot.PlayerName)}) is full sub {(slot.FullSubEnabled ? "ENABLED" : "DISABLED")}.");
         }
 
         #endregion
@@ -2106,38 +3920,65 @@ namespace SS.Matchmaking.Modules
                         continue;
                     }
 
-                    string queueName = matchConfiguration.QueueName;
-                    if (!_queueDictionary.TryGetValue(queueName, out TeamVersusMatchmakingQueue? queue))
+                    // league
+                    if (matchConfiguration.LeagueId is not null && matchConfiguration.GameTypeId is not null)
                     {
-                        queue = CreateQueue(ch, queueName);
-                        if (queue is null)
-                            continue;
-
-                        // TODO: for now only allowing groups of the exact size needed (for simplified matching)
-                        if (queue.Options.AllowGroups
-                            && (queue.Options.MinGroupSize != matchConfiguration.PlayersPerTeam
-                                || queue.Options.MaxGroupSize != matchConfiguration.PlayersPerTeam))
+                        if (!_leagueMatchConfigurations.TryAdd(matchConfiguration.GameTypeId.Value, matchConfiguration))
                         {
-                            _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Unsupported configuration for match '{matchConfiguration.MatchType}'. Queue '{queueName}' can't be used (must only allow groups of exactly {matchConfiguration.PlayersPerTeam} players).");
-                            continue;
+                            _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Unable to register game type {matchConfiguration.GameTypeId.Value} as a league match configuration for match type {matchConfiguration.MatchType}.");
                         }
-
-                        if (!_matchmakingQueues.RegisterQueue(queue))
+                        else
                         {
-                            _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Failed to register queue '{queueName}' (used by match:{matchConfiguration.MatchType}).");
-                            return false;
+                            if (_leagueManager is null)
+                            {
+                                _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"No {nameof(ILeagueManager)} to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value}.");
+                            }
+                            else
+                            {
+                                if (!_leagueManager.Register(matchConfiguration.GameTypeId.Value, this))
+                                {
+                                    _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Failed to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value} on the {nameof(ILeagueManager)}.");
+                                }
+                            }
                         }
-
-                        _queueDictionary.Add(queueName, queue);
                     }
 
-                    if (!_queueMatchConfigurations.TryGetValue(queueName, out List<MatchConfiguration>? matchConfigurationList))
+                    // matchmaking (queues)
+                    string? queueName = matchConfiguration.QueueName;
+                    if (!string.IsNullOrWhiteSpace(queueName))
                     {
-                        matchConfigurationList = new List<MatchConfiguration>(1);
-                        _queueMatchConfigurations.Add(queueName, matchConfigurationList);
-                    }
+                        if (!_queueDictionary.TryGetValue(queueName, out TeamVersusMatchmakingQueue? queue))
+                        {
+                            queue = CreateQueue(ch, queueName);
+                            if (queue is null)
+                                continue;
 
-                    matchConfigurationList.Add(matchConfiguration);
+                            // TODO: for now only allowing groups of the exact size needed (for simplified matching)
+                            if (queue.Options.AllowGroups
+                                && (queue.Options.MinGroupSize != matchConfiguration.PlayersPerTeam
+                                    || queue.Options.MaxGroupSize != matchConfiguration.PlayersPerTeam))
+                            {
+                                _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Unsupported configuration for match '{matchConfiguration.MatchType}'. Queue '{queueName}' can't be used (must only allow groups of exactly {matchConfiguration.PlayersPerTeam} players).");
+                                continue;
+                            }
+
+                            if (!_matchmakingQueues.RegisterQueue(queue))
+                            {
+                                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Failed to register queue '{queueName}' (used by match:{matchConfiguration.MatchType}).");
+                                return false;
+                            }
+
+                            _queueDictionary.Add(queueName, queue);
+                        }
+
+                        if (!_queueMatchConfigurations.TryGetValue(queueName, out List<MatchConfiguration>? matchConfigurationList))
+                        {
+                            matchConfigurationList = new List<MatchConfiguration>(1);
+                            _queueMatchConfigurations.Add(queueName, matchConfigurationList);
+                        }
+
+                        matchConfigurationList.Add(matchConfiguration);
+                    }
 
                     _matchConfigurationDictionary.Add(matchType, matchConfiguration);
 
@@ -2162,17 +4003,57 @@ namespace SS.Matchmaking.Modules
 
         private MatchConfiguration? CreateMatchConfiguration(ConfigHandle ch, string matchType)
         {
-            int gameTypeId = _configManager.GetInt(ch, matchType, "GameTypeId", -1);
-            if (gameTypeId == -1)
+            long? gameTypeId;
+            string? gameTypeIdStr = _configManager.GetStr(ch, matchType, "GameTypeId");
+            if (string.IsNullOrWhiteSpace(gameTypeIdStr))
             {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Missing or invalid MatchTypeId for Match '{matchType}'.");
+                gameTypeId = null;
+            }
+            else if (long.TryParse(gameTypeIdStr, out long gameTypeIdLong))
+            {
+                gameTypeId = gameTypeIdLong;
+            }
+            else
+            {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid GameTypeId for Match '{matchType}'.");
+                return null;
+            }
+
+            long? leagueId;
+            string? leagueIdStr = _configManager.GetStr(ch, matchType, "LeagueId");
+            if (string.IsNullOrWhiteSpace(leagueIdStr))
+            {
+                leagueId = null;
+            }
+            else if (long.TryParse(leagueIdStr, out long leagueIdLong))
+            {
+                leagueId = leagueIdLong;
+            }
+            else
+            {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid LeagueId for Match '{matchType}'.");
                 return null;
             }
 
             string? queueName = _configManager.GetStr(ch, matchType, "Queue");
             if (string.IsNullOrWhiteSpace(queueName))
+                queueName = null; // consider empty or whitespace to just be null (as if the setting was completely omitted)
+
+            if (leagueId is null && queueName is null)
             {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid Queue for Match '{matchType}'.");
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"No LeagueID or Queue for Match '{matchType}'.");
+                return null;
+            }
+
+            if (leagueId is not null && queueName is not null)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Can't have both a LeagueId and a Queue for Match '{matchType}'.");
+                return null;
+            }
+
+            if (leagueId is not null && gameTypeId is null)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Can't have a LeagueId without a GameTypeId for Match '{matchType}'.");
                 return null;
             }
 
@@ -2274,6 +4155,14 @@ namespace SS.Matchmaking.Modules
                 return null;
             }
 
+            string? inactiveTeamsMatchCompletionDelayStr = _configManager.GetStr(ch, matchType, "InactiveTeamsMatchCompletionDelay");
+            if(string.IsNullOrWhiteSpace(inactiveTeamsMatchCompletionDelayStr)
+                || !TimeSpan.TryParse(inactiveTeamsMatchCompletionDelayStr, out TimeSpan inactiveTeamsMatchCompletionDelay))
+            {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid InactiveTeamsMatchCompletionDelay for Match '{matchType}'.");
+                return null;
+            }
+
             int timeLimitWinBy = _configManager.GetInt(ch, matchType, "TimeLimitWinBy", 1);
             if (timeLimitWinBy < 1)
                 timeLimitWinBy = 1;
@@ -2287,17 +4176,52 @@ namespace SS.Matchmaking.Modules
                 allowShipChangeAfterDeathDuration = TimeSpan.Zero;
             }
 
+            string? allowShipChangeAfterSubDurationStr = _configManager.GetStr(ch, matchType, "AllowShipChangeAfterSubDuration");
+            if (string.IsNullOrWhiteSpace(allowShipChangeAfterSubDurationStr)
+                || !TimeSpan.TryParse(allowShipChangeAfterSubDurationStr, out TimeSpan allowShipChangeAfterSubDuration))
+            {
+                allowShipChangeAfterSubDuration = TimeSpan.Zero;
+            }
+
+            int maxShipChangesPerEligibleEvent = _configManager.GetInt(ch, matchType, "MaxShipChangesPerEligibleEvent", 1);
+
             int inactiveSlotAvailableDelaySeconds = _configManager.GetInt(ch, matchType, "InactiveSlotAvailableDelay", 30);
             TimeSpan inactiveSlotAvailableDelay = TimeSpan.FromSeconds(inactiveSlotAvailableDelaySeconds);
+
+            string? deathSubDurationStr = _configManager.GetStr(ch, matchType, "DeathSubDuration");
+            if (string.IsNullOrWhiteSpace(deathSubDurationStr)
+                || !TimeSpan.TryParse(deathSubDurationStr, out TimeSpan deathSubDuration))
+            {
+                deathSubDuration = TimeSpan.Zero;
+            }
+
+            int initialFullSubs = _configManager.GetInt(ch, matchType, "InitialFullSubs", 0);
+
+            bool subInMustUsePriorShip = _configManager.GetBool(ch, matchType, "SubInMustUsePriorShip", false);
+
+            ItemsAction subInItemsAction = _configManager.GetEnum(ch, matchType, "SubInItemsAction", ItemsAction.Full);
+            ItemsAction returnToMatchItemsAction = _configManager.GetEnum(ch, matchType, "ReturnToMatchItemsAction", ItemsAction.Burn);
 
             ItemsCommandOption itemsCommandOption = _configManager.GetEnum(ch, matchType, "ItemsCommandOption", ItemsCommandOption.None);
 
             bool burnItemsOnSpawn = _configManager.GetBool(ch, matchType, "BurnItemsOnSpawn", false);
 
+            bool allowFillUnusedSlots = _configManager.GetBool(ch, matchType, "AllowFillUnusedSlots", true);
+
+            string? replayRecordPath = _configManager.GetStr(ch, matchType, "ReplayRecordPath");
+
+            if (!string.IsNullOrWhiteSpace(replayRecordPath) && numBoxes != 1)
+            {
+                // The replay module only supports recording one replay at a time per arena.
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Only one box is allowed when replay recording is enabled. (Match '{matchType}')");
+                return null;
+            }
+
             MatchConfiguration matchConfiguration = new()
             {
                 MatchType = matchType,
                 GameTypeId = gameTypeId,
+                LeagueId = leagueId,
                 QueueName = queueName,
                 ArenaBaseName = arenaBaseName,
                 MaxArenas = maxArenas,
@@ -2310,12 +4234,22 @@ namespace SS.Matchmaking.Modules
                 TimeLimit = timeLimit,
                 OverTimeLimit = overTimeLimit,
                 WinConditionDelay = winConditionDelay,
+                InactiveTeamsMatchCompletionDelay = inactiveTeamsMatchCompletionDelay,
                 TimeLimitWinBy = timeLimitWinBy,
                 MaxLagOuts = maxLagOuts,
                 AllowShipChangeAfterDeathDuration = allowShipChangeAfterDeathDuration,
+                AllowShipChangeAfterSubDuration = allowShipChangeAfterSubDuration,
+                MaxShipChangesPerEligibleEvent = maxShipChangesPerEligibleEvent,
                 InactiveSlotAvailableDelay = inactiveSlotAvailableDelay,
+                DeathSubDuration = deathSubDuration,
+                InitialFullSubs = initialFullSubs,
+                SubInMustUsePriorShip = subInMustUsePriorShip,
+                SubInItemsAction = subInItemsAction,
+                ReturnToMatchItemsAction = returnToMatchItemsAction,
                 ItemsCommandOption = itemsCommandOption,
                 BurnItemsOnSpawn = burnItemsOnSpawn,
+                AllowFillUnusedSlots = allowFillUnusedSlots,
+                ReplayRecordPath = replayRecordPath,
                 Boxes = new MatchBoxConfiguration[numBoxes],
             };
 
@@ -2486,6 +4420,121 @@ namespace SS.Matchmaking.Modules
             return new TeamVersusMatchmakingQueue(queueName, options, description);
         }
 
+        private void BeginLeagueMatchStartupSequence(MatchData matchData)
+        {
+            if (matchData.Status != MatchStatus.Initializing)
+                return;
+
+            Arena? arena = matchData.Arena;
+            if (arena is null)
+                return;
+
+            LeagueGameInfo? leagueGame = matchData.LeagueGame;
+            if (leagueGame is null)
+                return;
+
+            // Set starting locations.
+            foreach (Team team in matchData.Teams)
+            {
+                SetTeamStartLoocation(team);
+            }
+
+            // Move any players not in the match to spec.
+            // Warp players in the match to their starting locations and reset ships.
+            foreach (Player player in _playerData.Players)
+            {
+                if (player.Arena != matchData.Arena)
+                    continue;
+
+                if (player.Ship == ShipType.Spec && player.Freq == arena.SpecFreq)
+                    continue;
+
+                Team? team = null;
+                foreach (Team otherTeam in matchData.Teams)
+                {
+                    if (otherTeam.Freq == player.Freq)
+                    {
+                        team = otherTeam;
+                        break;
+                    }
+                }
+
+                if (team is null)
+                {
+                    _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+                }
+                else
+                {
+                    TileCoordinates startLocation = GetTeamStartLoocation(team);
+                    _game.WarpTo(player, startLocation.X, startLocation.Y);
+                    _game.ShipReset(player);
+                }
+            }
+
+            // Begin the countdown.
+            matchData.Status = MatchStatus.StartingCountdown;
+            matchData.StartCountdown = (int)matchData.Configuration.StartCountdownDuration.TotalSeconds;
+            SetProcessMatchStateTimer(matchData);
+
+            // Send arena notifications.
+            _chat.SendArenaMessage(arena, $"All teams are ready. Starting in {matchData.StartCountdown} seconds!");
+
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+            try
+            {
+                sb.Append($"{leagueGame.LeagueName} - {leagueGame.SeasonName}");
+
+                if (leagueGame.RoundNumber is not null)
+                {
+                    sb.Append($" - Round {leagueGame.RoundNumber.Value}");
+                }
+
+                _chat.SendArenaMessage(arena, sb);
+
+                sb.Clear();
+
+                foreach (Team team in matchData.Teams)
+                {
+                    if (sb.Length > 0)
+                        sb.Append(" vs ");
+
+                    if (team.LeagueTeam is null)
+                        sb.Append(team.Freq);
+                    else
+                        sb.Append(team.LeagueTeam.TeamName);
+                }
+
+                _chat.SendArenaMessage(arena, sb);
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+            }
+
+            // TODO: The current SVS league startup countdown is 60 seconds, which is very long.
+            // This is probably to make sure any existing bricks expire?
+            // We could force bricks to disappear by temporarily overriding the Brick:BrickTime client setting to 0 or 1 and then unoverride it.
+            // Then the countdown could be reduced.
+            //_clientSettings.OverrideSetting(arena, BrickTimeClientSettingIdentifier, 0); // not sure if 0 is valid, if not then 1 definitely is, but then might need a short delay before unoverride?
+            //_clientSettings.SendClientSettings(arena); // would be a good method to add
+            //_clientSettings.UnoverrideSetting(arena, BrickTimeClientSettingIdentifier); 
+            //_clientSettings.SendClientSettings(arena); // might need to put a slight delay on sending this?
+        }
+
+        private TileCoordinates SetTeamStartLoocation(Team team)
+        {
+            MatchData matchData = team.MatchData;
+            TileCoordinates[] startLocations = matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx].TeamStartLocations[team.TeamIdx];
+            team.StartLocationIdx = startLocations.Length == 1 ? 0 : _prng.Number(0, startLocations.Length - 1);
+            return startLocations[team.StartLocationIdx];
+        }
+
+        private static TileCoordinates GetTeamStartLoocation(Team team)
+        {
+            MatchData matchData = team.MatchData;
+            return matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx].TeamStartLocations[team.TeamIdx][team.StartLocationIdx];
+        }
+
         private bool MakeMatch(TeamVersusMatchmakingQueue queue)
         {
             if (queue is null)
@@ -2617,7 +4666,7 @@ namespace SS.Matchmaking.Modules
                     }
 
                     // Get the Player objects of all the players in the match.
-                    Dictionary<string, Player> playersByName = []; // TODO: pool
+                    Dictionary<string, Player> playersByName = new(matchData.Configuration.NumTeams * matchData.Configuration.PlayersPerTeam); // TODO: pool
                     HashSet<string> abandonedPlayerNames = _objectPoolManager.NameHashSetPool.Get();
 
                     try
@@ -2707,8 +4756,7 @@ namespace SS.Matchmaking.Modules
                 if (_teamVersusStatsBehavior is not null)
                 {
                     // Initialize the stats asynchronously.
-                    // Hold onto the task so that each time we try to proceed further (e.g. a player enters the arena), we can check whether it's done.
-                    matchData.InitializeStatsTask = _teamVersusStatsBehavior.InitializeAsync(matchData);
+                    await _teamVersusStatsBehavior.InitializeAsync(matchData);
                 }
 
                 MatchStartingCallback.Fire(_broker, matchData);
@@ -2765,41 +4813,86 @@ namespace SS.Matchmaking.Modules
                     ArrayPool<string>.Shared.Return(playerNames);
                 }
             }
+        }
 
-            bool TryGetAvailableMatch(MatchConfiguration matchConfiguration, [MaybeNullWhen(false)] out MatchData matchData)
+        /// <summary>
+        /// Finds an available match (arena/box) for a match (matchmaking system).
+        /// </summary>
+        /// <param name="matchConfiguration"></param>
+        /// <param name="matchData"></param>
+        /// <returns></returns>
+        private bool TryGetAvailableMatch(MatchConfiguration matchConfiguration, [MaybeNullWhen(false)] out MatchData matchData)
+        {
+            if (!_arenaBaseDataDictionary.TryGetValue(matchConfiguration.ArenaBaseName, out ArenaBaseData? arenaBaseData))
             {
-                if (!_arenaBaseDataDictionary.TryGetValue(matchConfiguration.ArenaBaseName, out ArenaBaseData? arenaBaseData))
-                {
-                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Missing ArenaBaseData for {matchConfiguration.ArenaBaseName}.");
-                    matchData = null;
-                    return false;
-                }
-
-                for (int arenaNumber = 0; arenaNumber < matchConfiguration.MaxArenas; arenaNumber++)
-                {
-                    for (int boxIdx = 0; boxIdx < matchConfiguration.Boxes.Length; boxIdx++)
-                    {
-                        MatchIdentifier matchIdentifier = new(matchConfiguration.MatchType, arenaNumber, boxIdx);
-                        if (!_matchDataDictionary.TryGetValue(matchIdentifier, out matchData))
-                        {
-                            short startingFreq = arenaBaseData.NextFreq;
-                            arenaBaseData.NextFreq += (short)matchConfiguration.NumTeams;
-
-                            matchData = new MatchData(matchIdentifier, matchConfiguration, startingFreq);
-                            matchData.Arena = _arenaManager.FindArena(matchData.ArenaName);
-                            _matchDataDictionary.Add(matchIdentifier, matchData);
-                            return true;
-                        }
-
-                        if (matchData.Status == MatchStatus.None)
-                            return true;
-                    }
-                }
-
-                // no availability
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Missing ArenaBaseData for {matchConfiguration.ArenaBaseName}.");
                 matchData = null;
                 return false;
             }
+
+            for (int arenaNumber = 0; arenaNumber < matchConfiguration.MaxArenas; arenaNumber++)
+            {
+                for (int boxIdx = 0; boxIdx < matchConfiguration.Boxes.Length; boxIdx++)
+                {
+                    MatchIdentifier matchIdentifier = new(matchConfiguration.MatchType, arenaNumber, boxIdx);
+                    if (!_matchDataDictionary.TryGetValue(matchIdentifier, out matchData))
+                    {
+                        short startingFreq = arenaBaseData.NextFreq;
+                        arenaBaseData.NextFreq += (short)matchConfiguration.NumTeams;
+
+                        matchData = new MatchData(matchIdentifier, matchConfiguration, startingFreq);
+                        matchData.Arena = _arenaManager.FindArena(matchData.ArenaName);
+                        _matchDataDictionary.Add(matchIdentifier, matchData);
+                        return true;
+                    }
+
+                    if (matchData.Status == MatchStatus.None)
+                    {
+                        // Found an existing, available match to use.
+                        return true;
+                    }
+                }
+            }
+
+            // no availability
+            matchData = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Finds an available match (arena/box) for a match (league system).
+        /// </summary>
+        /// <param name="matchConfiguration"></param>
+        /// <param name="leagueGame"></param>
+        /// <param name="matchData"></param>
+        /// <returns></returns>
+        private bool TryGetAvailableMatch(MatchConfiguration matchConfiguration, LeagueGameInfo leagueGame, [MaybeNullWhen(false)] out MatchData matchData)
+        {
+            for (int arenaNumber = 0; arenaNumber < matchConfiguration.MaxArenas; arenaNumber++)
+            {
+                for (int boxIdx = 0; boxIdx < matchConfiguration.Boxes.Length; boxIdx++)
+                {
+                    MatchIdentifier matchIdentifier = new(matchConfiguration.MatchType, arenaNumber, boxIdx);
+                    if (_matchDataDictionary.ContainsKey(matchIdentifier))
+                        continue; // already in use
+
+                    matchData = new MatchData(matchIdentifier, matchConfiguration, leagueGame);
+                    matchData.Arena = _arenaManager.FindArena(matchData.ArenaName);
+
+                    if (matchData.Arena is not null)
+                    {
+                        if (_arenaDataDictionary.TryGetValue(matchData.Arena, out ArenaData? arenaData))
+                            arenaData.LeagueMatch = matchData;
+                    }
+
+                    _matchDataDictionary.Add(matchIdentifier, matchData);
+                    return true;
+                }
+            }
+
+            // no availability
+            matchData = null;
+            return false;
         }
 
         /// <summary>
@@ -2828,10 +4921,7 @@ namespace SS.Matchmaking.Modules
 
                 foreach (string playerName in responsiblePlayerNames)
                 {
-                    if (responsibleBuilder.Length > 0)
-                        responsibleBuilder.Append(", ");
-
-                    responsibleBuilder.Append(playerName);
+                    responsibleBuilder.AppendCommaDelimited(playerName);
                 }
 
                 //
@@ -2859,6 +4949,13 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        private static void ResetSlotForMatchStart(PlayerSlot slot)
+        {
+            slot.Lives = slot.MatchData.Configuration.LivesPerPlayer;
+            slot.LagOuts = 0;
+            slot.AllowShipChangeExpiration = null;
+        }
+
         private void AssignSlot(PlayerSlot slot, Player player)
         {
             if (slot is null || player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
@@ -2879,49 +4976,6 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            bool isSub = false;
-
-            if (slot.PlayerName is not null && !string.Equals(slot.PlayerName, player.Name, StringComparison.OrdinalIgnoreCase))
-            {
-                // The slot was previously assigned to another player.
-                isSub = true;
-
-                // Send a notification.
-                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
-                try
-                {
-                    GetPlayersToNotify(slot.MatchData, players);
-                    players.Add(player);
-
-                    if (players.Count > 0)
-                    {
-                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-                        try
-                        {
-                            sb.Append($"{player.Name} in for {slot.PlayerName} -- {slot.Lives} {(slot.Lives == 1 ? "life" : "lives")}");
-
-                            MatchData matchData = slot.MatchData;
-                            TimeSpan gameTime = matchData.Started is not null ? DateTime.UtcNow - matchData.Started.Value : TimeSpan.Zero;
-
-                            sb.Append(" [");
-                            sb.AppendFriendlyTimeSpan(gameTime);
-                            sb.Append(']');
-
-                            _chat.SendSetMessage(players, sb);
-                        }
-                        finally
-                        {
-                            _objectPoolManager.StringBuilderPool.Return(sb);
-                        }
-                    }
-                }
-                finally
-                {
-                    _objectPoolManager.PlayerSetPool.Return(players);
-                }
-            }
-
             if (slot.SubPlayer is not null)
             {
                 // There is a sub in progress for the slot. Cancel it.
@@ -2933,16 +4987,13 @@ namespace SS.Matchmaking.Modules
 
             // Assign the slot.
             _playerSlotDictionary.Add(player.Name!, slot);
-            slot.PlayerName = player.Name!;
+            slot.PlayerName = player.Name;
             slot.Player = player;
             playerData.AssignedSlot = slot;
 
             // Clear fields now that the slot is newly assigned.
             slot.LagOuts = 0;
             slot.IsSubRequested = false;
-
-            if (isSub)
-                slot.PremadeGroupId = null;
 
             MatchAddPlayingCallback.Fire(_broker, slot.MatchData, player.Name!, player);
         }
@@ -3088,16 +5139,16 @@ namespace SS.Matchmaking.Modules
                         }
                     }
 
-                    if (remainingTeamCount <= 1)
+                    if (remainingTeamCount < 2)
                     {
                         if (remainingTeamCount == 0)
-                            _chat.SendSetMessage(players, $"There are no remaining active teams. The game with automatically end in 15 seconds if not refilled.");
+                            _chat.SendSetMessage(players, $"There are no remaining active teams. The game with automatically end in {matchData.Configuration.InactiveTeamsMatchCompletionDelay.TotalSeconds} seconds if not refilled.");
                         else
-                            _chat.SendSetMessage(players, $"There is {remainingTeamCount} remaining active team. The game with automatically end in 15 seconds if not refilled.");
+                            _chat.SendSetMessage(players, $"There is a single remaining active team. The game with automatically end in {matchData.Configuration.InactiveTeamsMatchCompletionDelay.TotalSeconds} seconds if not refilled.");
 
                         // Schedule a timer to check for match completion.
                         // The timer is to allow player(s) to ?return before the check happens. (e.g. server lag spike kicking all players to spec)
-                        ScheduleCheckForMatchCompletion(matchData, 15000); // TODO: configuration setting (remember to change the chat notification too)
+                        ScheduleCheckForMatchCompletion(matchData, (int)matchData.Configuration.InactiveTeamsMatchCompletionDelay.TotalMilliseconds);
                     }
                 }
             }
@@ -3109,7 +5160,11 @@ namespace SS.Matchmaking.Modules
 
         private void SendSubAvailabilityNotificationToQueuedPlayers(MatchData matchData)
         {
-            if (!_queueDictionary.TryGetValue(matchData.Configuration.QueueName, out var queue))
+            string? queueName = matchData.Configuration.QueueName;
+            if (queueName is null)
+                return;
+
+            if (!_queueDictionary.TryGetValue(queueName, out var queue))
                 return;
 
             // Notify any solo players waiting in the queue that there is a slot available.
@@ -3174,8 +5229,20 @@ namespace SS.Matchmaking.Modules
             if (matchData is null || players is null)
                 return;
 
-            // Players that are playing the match or are spectating the match, and are in the match's arena.
-            _matchFocus.TryGetPlayers(matchData, players, MatchFocusReasons.Playing | MatchFocusReasons.Spectating, matchData.Arena);
+            if (matchData.LeagueGame is not null)
+            {
+                // It's a league game, so notify the entire arena.
+                Arena? arena = matchData.Arena;
+                if (arena is null)
+                    return;
+
+                _playerData.TargetToSet(arena, players);
+            }
+            else
+            {
+                // Players that are playing the match or are spectating the match, and are in the match's arena.
+                _matchFocus.TryGetPlayers(matchData, players, MatchFocusReasons.Playing | MatchFocusReasons.Spectating, matchData.Arena);
+            }
         }
 
         private void ProcessMatchStateChange(MatchData matchData)
@@ -3202,6 +5269,7 @@ namespace SS.Matchmaking.Modules
                 case MatchStatus.Initializing:
                 case MatchStatus.StartingCheck:
                 case MatchStatus.StartingCountdown:
+                case MatchStatus.Starting:
                 case MatchStatus.InProgress:
                 case MatchStatus.Complete:
                     MainloopWork_ProcessMatchStateChange(matchData);
@@ -3215,7 +5283,7 @@ namespace SS.Matchmaking.Modules
             // Only continue the timer if the match is still in a valid state.
             return matchData.Status switch
             {
-                MatchStatus.Initializing or MatchStatus.StartingCheck or MatchStatus.StartingCountdown or MatchStatus.InProgress or MatchStatus.Complete => true,
+                MatchStatus.Initializing or MatchStatus.StartingCheck or MatchStatus.StartingCountdown or MatchStatus.Starting or MatchStatus.InProgress or MatchStatus.Complete => true,
                 _ => false,
             };
         }
@@ -3238,6 +5306,10 @@ namespace SS.Matchmaking.Modules
                     ProcessStartingCountdown(matchData);
                     break;
 
+                case MatchStatus.Starting:
+                    // Do nothing, the match is starting up asynchronously.
+                    break;
+
                 case MatchStatus.InProgress:
                     ProcessInProgress(matchData);
                     break;
@@ -3253,19 +5325,6 @@ namespace SS.Matchmaking.Modules
             void ProcessInitializing(MatchData matchData)
             {
                 Debug.Assert(matchData.Status == MatchStatus.Initializing);
-
-                if (matchData.InitializeStatsTask is not null)
-                {
-                    if (matchData.InitializeStatsTask.IsCompleted)
-                    {
-                        matchData.InitializeStatsTask = null;
-                    }
-                    else
-                    {
-                        // Can't start yet, stats initialization is still in progress.
-                        return;
-                    }
-                }
 
                 // Wait for all players to enter the designated arena.
                 // The match is cancelled if any of the players abandons the match (disconnects or leaves the arena).
@@ -3394,31 +5453,26 @@ namespace SS.Matchmaking.Modules
                     }
 
                     // All players are have arrived!
+                    // Burn Items if configured in match settings (overrides item refill)
+                    ItemsAction itemsAction = matchData.Configuration.BurnItemsOnSpawn ? ItemsAction.Burn : ItemsAction.Full;
 
                     // Set freqs and ships, and move players to their starting locations.
                     foreach (Team team in matchData.Teams)
                     {
-                        TileCoordinates[] startLocations = matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx].TeamStartLocations[team.TeamIdx];
-                        team.StartLocationIdx = startLocations.Length == 1 ? 0 : _prng.Number(0, startLocations.Length - 1);
-                        TileCoordinates startLocation = startLocations[team.StartLocationIdx];
-
-                        // Burn Items if configured in match settings (overrides item refill)
-                        bool burnItems = matchData.Configuration.BurnItemsOnSpawn;
+                        TileCoordinates startLocation = SetTeamStartLoocation(team);
 
                         foreach (PlayerSlot playerSlot in team.Slots)
                         {
-                            Player player = playerSlot.Player!;
-                            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                            ResetSlotForMatchStart(playerSlot);
+
+                            Player? player = playerSlot.Player;
+                            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                                 continue;
 
                             // The next phase will check if the player is ready to start.
                             playerData.IsReadyToStart = false;
 
-                            playerSlot.Lives = matchData.Configuration.LivesPerPlayer;
-                            playerSlot.LagOuts = 0;
-                            playerSlot.AllowShipChangeExpiration = null;
-
-                            SetShipAndFreq(playerSlot, false, startLocation, burnItems);
+                            SetShipAndFreq(playerSlot, false, startLocation, itemsAction);
                         }
                     }
 
@@ -3560,7 +5614,7 @@ namespace SS.Matchmaking.Modules
                             _matchmakingQueues.UnsetPlayingDueToCancel(readyPlayers);
 
                             // Players that we were still waiting for took too long to ready up.
-                            // They are penalized with a delay to discourage from attempting to cherrypick their matches (didn't like their teammates) or trolling.
+                            // They are penalized with a delay to discourage from attempting to cherry pick their matches (didn't like their teammates) or trolling.
                             foreach (Player player in waitingPlayers)
                             {
                                 abandonedPlayerNames.Add(player.Name!);
@@ -3650,126 +5704,210 @@ namespace SS.Matchmaking.Modules
             {
                 Debug.Assert(matchData.Status == MatchStatus.StartingCountdown);
 
-                // Run the starting countdown.
-                // The match is cancelled if any of the players abandons the match (disconnects, leaves the arena, or changes to spec).
+                if (matchData.LeagueGame is null)
+                {
+                    // The match is cancelled if any of the players abandons the match (disconnects, leaves the arena, or changes to spec).
 
-                HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get(); // Players that are ready.
-                HashSet<Player> abandonedPlayers = _objectPoolManager.PlayerSetPool.Get(); // Players that have abandoned the match (but are still connected).
-                HashSet<string> abandonedPlayerNames = _objectPoolManager.NameHashSetPool.Get(); // Players that have abandoned the match.
+                    HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get(); // Players that are ready.
+                    HashSet<Player> abandonedPlayers = _objectPoolManager.PlayerSetPool.Get(); // Players that have abandoned the match (but are still connected).
+                    HashSet<string> abandonedPlayerNames = _objectPoolManager.NameHashSetPool.Get(); // Players that have abandoned the match.
 
+                    try
+                    {
+                        foreach (Team team in matchData.Teams)
+                        {
+                            foreach (PlayerSlot slot in team.Slots)
+                            {
+                                if (slot.Player is null || slot.HasLeftMatchArena || slot.Player.Ship == ShipType.Spec)
+                                {
+                                    // The player abandoned the match (disconnected, left the match arena, or changed to spectator mode).
+                                    abandonedPlayerNames.Add(slot.PlayerName!);
+
+                                    if (slot.Player is not null)
+                                    {
+                                        abandonedPlayers.Add(slot.Player);
+                                    }
+                                }
+                                else
+                                {
+                                    players.Add(slot.Player);
+                                }
+                            }
+                        }
+
+                        if (abandonedPlayerNames.Count > 0)
+                        {
+                            // At least one player abandoned the match. Cancel the match.
+
+                            // Send chat notifications.
+                            HashSet<Player> notifyPlayers = _objectPoolManager.PlayerSetPool.Get();
+                            try
+                            {
+                                notifyPlayers.UnionWith(players);
+                                notifyPlayers.UnionWith(abandonedPlayers);
+
+                                SendMatchCancellationNotification(notifyPlayers, abandonedPlayerNames, abandonedPlayers, "abandoned the game");
+
+                                // Additionally, send all players to spec.
+                                foreach (Player player in notifyPlayers)
+                                {
+                                    _game.SetShipAndFreq(player, ShipType.Spec, matchData.Arena!.SpecFreq);
+                                }
+                            }
+                            finally
+                            {
+                                _objectPoolManager.PlayerSetPool.Return(notifyPlayers);
+                            }
+
+                            EndMatch(matchData, MatchEndReason.Cancelled, null);
+
+                            // Players that did not abandon the match are placed back into their queues and keep their original position in the queues.
+                            _matchmakingQueues.UnsetPlayingDueToCancel(players);
+
+                            // Players that abandoned the match are penalized with a delay.
+                            _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
+
+                            return;
+                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(players);
+                        _objectPoolManager.PlayerSetPool.Return(abandonedPlayers);
+                        _objectPoolManager.NameHashSetPool.Return(abandonedPlayerNames);
+                    }
+                }
+
+                //
+                // Countdown
+                //
+
+                HashSet<Player> notifyCountdownPlayers = _objectPoolManager.PlayerSetPool.Get();
                 try
                 {
+                    GetPlayersToNotify(matchData, notifyCountdownPlayers);
+
+                    if (matchData.StartCountdown > 0)
+                    {
+                        if (matchData.StartCountdown <= 3)
+                        {
+                            _chat.SendSetMessage(notifyCountdownPlayers, $"-{matchData.StartCountdown}-");
+                        }
+
+                        matchData.StartCountdown--;
+                        return;
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.PlayerSetPool.Return(notifyCountdownPlayers);
+                }
+
+                matchData.Status = MatchStatus.Starting;
+
+                if (matchData.LeagueGame is not null)
+                {
+                    // For league games, the slots are not assigned until the last moment, which is now.
+                    foreach (Player player in _playerData.Players)
+                    {
+                        if (player.Arena != matchData.Arena || player.Ship == ShipType.Spec)
+                            continue;
+
+                        Team? team = null;
+                        PlayerSlot? slot = null;
+
+                        foreach (Team otherTeam in matchData.Teams)
+                        {
+                            if (otherTeam.Freq == player.Freq)
+                            {
+                                team = otherTeam;
+                                break;
+                            }
+                        }
+
+                        if (team is not null)
+                        {
+                            foreach (PlayerSlot otherSlot in team.Slots)
+                            {
+                                if (string.IsNullOrWhiteSpace(otherSlot.PlayerName))
+                                {
+                                    slot = otherSlot;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (slot is null)
+                        {
+                            // Player is not in the match. Change the player to spectator mode.
+                            _game.SetShip(player, ShipType.Spec);
+                        }
+                        else
+                        {
+                            // Assign the slot.
+                            AssignSlot(slot, player);
+                            slot.Status = PlayerSlotStatus.Playing;
+
+                            matchData.ParticipationList.Add(new PlayerParticipationRecord(player.Name!, false, false));
+                        }
+                    }
+
                     foreach (Team team in matchData.Teams)
                     {
                         foreach (PlayerSlot slot in team.Slots)
                         {
-                            if (slot.Player is null || slot.HasLeftMatchArena || slot.Player.Ship == ShipType.Spec)
-                            {
-                                // The player abandoned the match (disconnected, left the match arena, or changed to spectator mode).
-                                abandonedPlayerNames.Add(slot.PlayerName!);
+                            if (slot.Status == PlayerSlotStatus.None && matchData.Configuration.AllowFillUnusedSlots)
+                                slot.Status = PlayerSlotStatus.Waiting;
 
-                                if (slot.Player is not null)
-                                {
-                                    abandonedPlayers.Add(slot.Player);
-                                }
-                            }
-                            else
-                            {
-                                players.Add(slot.Player);
-                            }
+                            ResetSlotForMatchStart(slot);
                         }
                     }
 
-                    if (abandonedPlayerNames.Count > 0)
-                    {
-                        // At least one player abandoned the match. Cancel the match.
-
-                        // Send chat notifications.
-                        HashSet<Player> notifyPlayers = _objectPoolManager.PlayerSetPool.Get();
-                        try
-                        {
-                            notifyPlayers.UnionWith(players);
-                            notifyPlayers.UnionWith(abandonedPlayers);
-
-                            SendMatchCancellationNotification(notifyPlayers, abandonedPlayerNames, abandonedPlayers, "abandoned the game");
-
-                            // Additionally, send all players to spec.
-                            foreach (Player player in notifyPlayers)
-                            {
-                                _game.SetShipAndFreq(player, ShipType.Spec, matchData.Arena!.SpecFreq);
-                            }
-                        }
-                        finally
-                        {
-                            _objectPoolManager.PlayerSetPool.Return(notifyPlayers);
-                        }
-
-                        EndMatch(matchData, MatchEndReason.Cancelled, null);
-
-                        // Players that did not abandon the match are placed back into their queues and keep their original position in the queues.
-                        _matchmakingQueues.UnsetPlayingDueToCancel(players);
-
-                        // Players that abandoned the match are penalized with a delay.
-                        _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
-
-                        return;
-                    }
-
-                    //
-                    // Countdown
-                    //
-
-                    HashSet<Player> notifyCountdownPlayers = _objectPoolManager.PlayerSetPool.Get();
-                    try
-                    {
-                        GetPlayersToNotify(matchData, notifyCountdownPlayers);
-
-                        if (matchData.StartCountdown > 0)
-                        {
-                            if (matchData.StartCountdown <= 3)
-                            {
-                                _chat.SendSetMessage(notifyCountdownPlayers, $"-{matchData.StartCountdown}-");
-                            }
-
-                            matchData.StartCountdown--;
-                            return;
-                        }
-
-                        _chat.SendSetMessage(notifyCountdownPlayers, ChatSound.Ding, "GO!");
-                    }
-                    finally
-                    {
-                        _objectPoolManager.PlayerSetPool.Return(notifyCountdownPlayers);
-                    }
-
-                    // Start the match.
-                    matchData.Status = MatchStatus.InProgress;
-                    matchData.Started = DateTime.UtcNow;
-
-                    if (matchData.Configuration.TimeLimit is not null)
-                    {
-                        matchData.PhaseExpiration = matchData.Started + matchData.Configuration.TimeLimit.Value;
-                    }
-                    else
-                    {
-                        matchData.PhaseExpiration = null;
-                    }
-
-                    // Tell the stats module that the match has started.
+                    // The initial players in the match can't change now.
+                    // Tell the stats module to initialize. It may get info about the players (e.g. current ratings).
                     if (_teamVersusStatsBehavior is not null)
                     {
-                        await _teamVersusStatsBehavior.MatchStartedAsync(matchData);
+                        await _teamVersusStatsBehavior.InitializeAsync(matchData);
                     }
 
-                    MatchStartedCallback.Fire(_broker, matchData);
-                    TeamVersusMatchStartedCallback.Fire(matchData.Arena!, matchData);
+                    MatchStartingCallback.Fire(_broker, matchData);
+                }
+
+                // Start the match.
+                matchData.Status = MatchStatus.InProgress;
+                matchData.Started = DateTime.UtcNow;
+
+                if (matchData.Configuration.TimeLimit is not null)
+                {
+                    matchData.PhaseExpiration = matchData.Started + matchData.Configuration.TimeLimit.Value;
+                }
+                else
+                {
+                    matchData.PhaseExpiration = null;
+                }
+
+                // Send the GO notification.
+                // We can't assume players are still valid after an await, so get the players from scratch.
+                HashSet<Player> notifyGoPlayers = _objectPoolManager.PlayerSetPool.Get();
+                try
+                {
+                    GetPlayersToNotify(matchData, notifyGoPlayers);
+
+                    _chat.SendSetMessage(notifyGoPlayers, ChatSound.Ding, "GO!");
                 }
                 finally
                 {
-                    _objectPoolManager.PlayerSetPool.Return(players);
-                    _objectPoolManager.PlayerSetPool.Return(abandonedPlayers);
-                    _objectPoolManager.NameHashSetPool.Return(abandonedPlayerNames);
+                    _objectPoolManager.PlayerSetPool.Return(notifyGoPlayers);
                 }
+
+                // Tell the stats module that the match has started.
+                if (_teamVersusStatsBehavior is not null)
+                {
+                    await _teamVersusStatsBehavior.MatchStartedAsync(matchData);
+                }
+
+                MatchStartedCallback.Fire(_broker, matchData);
+                TeamVersusMatchStartedCallback.Fire(matchData.Arena!, matchData);
             }
 
             void ProcessInProgress(MatchData matchData)
@@ -3843,6 +5981,7 @@ namespace SS.Matchmaking.Modules
                 || (player.Arena is not null // player is in an arena
                     && player.Arena == playerSlot.MatchData.Arena // player is in the match's arena
                     && player.Freq == playerSlot.Team.Freq // player is on the team's freq
+                    && player.Ship != ShipType.Spec // player is in a ship
                     && (IsStartingPhase(playerSlot.MatchData.Status)
                         || (playerSlot.MatchData.Status == MatchStatus.InProgress
                             && (playerSlot.AllowShipChangeExpiration is not null && playerSlot.AllowShipChangeExpiration.Value > DateTime.UtcNow)
@@ -3873,7 +6012,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void SetShipAndFreq(PlayerSlot slot, bool isRefill, TileCoordinates? startLocation, bool isBurned)
+        private void SetShipAndFreq(PlayerSlot slot, bool isRefill, TileCoordinates? startLocation, ItemsAction itemsAction)
         {
             Player? player = slot.Player;
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
@@ -3906,24 +6045,17 @@ namespace SS.Matchmaking.Modules
             slot.Status = PlayerSlotStatus.Playing;
             slot.InactiveTimestamp = null;
 
-            // Spawn the player (this is automatically in the center).
+            // Set what to do about items when the ship is changed.
+            slot.ShipChangeItemsAction = itemsAction;
+
+            // Set the ship and freq (this is automatically in the center).
+            // NOTE: This fires the PreShipFreqChangeCallback which adjusts items accordingly.
             _game.SetShipAndFreq(player, ship, slot.Team.Freq);
 
             // Warp the player to the starting location.
             if (startLocation is not null)
             {
                 _game.WarpTo(player, startLocation.Value.X, startLocation.Value.Y);
-            }
-
-            if (isBurned)
-            {
-                // Adjust the player's items to nothing (to override defaults or for certain conditions).
-                RemoveAllItems(slot);
-            }
-            else if (isRefill)
-            {
-                // Adjust the player's items to the prior remaining amounts.
-                SetRemainingItems(slot);
             }
 
             // Remove any existing timers for the slot.
@@ -3963,34 +6095,54 @@ namespace SS.Matchmaking.Modules
                     _clientSettings.SendClientSettings(player);
                 }
             }
+        }
 
-            void SetRemainingItems(PlayerSlot slot)
+        private void AdjustItems(PlayerSlot slot, ItemsAction action)
+        {
+            switch (action)
             {
-                Player? player = slot.Player;
-                if (player is null)
+                case ItemsAction.Restore:
+                    // Adjust the player's items to the prior remaining amounts.
+                    RestoreRemainingItems(slot);
+                    break;
+
+                case ItemsAction.Burn:
+                    // Adjust the player's items to nothing (to override defaults or for certain conditions).
+                    RemoveAllItems(slot);
+                    break;
+
+                case ItemsAction.Full:
+                default:
+                    break;
+            }
+        }
+
+        private void RestoreRemainingItems(PlayerSlot slot)
+        {
+            Player? player = slot.Player;
+            if (player is null)
+                return;
+
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            ref ShipSettings shipSettings = ref arenaData.ShipSettings[(int)slot.Ship];
+            AdjustItem(player, Prize.Burst, shipSettings.InitialBurst, slot.RestoreItems.Bursts);
+            AdjustItem(player, Prize.Repel, shipSettings.InitialRepel, slot.RestoreItems.Repels);
+            AdjustItem(player, Prize.Thor, shipSettings.InitialThor, slot.RestoreItems.Thors);
+            AdjustItem(player, Prize.Brick, shipSettings.InitialBrick, slot.RestoreItems.Bricks);
+            AdjustItem(player, Prize.Decoy, shipSettings.InitialDecoy, slot.RestoreItems.Decoys);
+            AdjustItem(player, Prize.Rocket, shipSettings.InitialRocket, slot.RestoreItems.Rockets);
+            AdjustItem(player, Prize.Portal, shipSettings.InitialPortal, slot.RestoreItems.Portals);
+
+            void AdjustItem(Player player, Prize prize, byte initial, byte remaining)
+            {
+                short adjustAmount = (short)(initial - remaining);
+                if (adjustAmount <= 0)
                     return;
 
-                Arena? arena = player.Arena;
-                if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
-                    return;
-
-                ref ShipSettings shipSettings = ref arenaData.ShipSettings[(int)slot.Ship];
-                AdjustItem(player, Prize.Burst, shipSettings.InitialBurst, slot.Bursts);
-                AdjustItem(player, Prize.Repel, shipSettings.InitialRepel, slot.Repels);
-                AdjustItem(player, Prize.Thor, shipSettings.InitialThor, slot.Thors);
-                AdjustItem(player, Prize.Brick, shipSettings.InitialBrick, slot.Bricks);
-                AdjustItem(player, Prize.Decoy, shipSettings.InitialDecoy, slot.Decoys);
-                AdjustItem(player, Prize.Rocket, shipSettings.InitialRocket, slot.Rockets);
-                AdjustItem(player, Prize.Portal, shipSettings.InitialPortal, slot.Portals);
-
-                void AdjustItem(Player player, Prize prize, byte initial, byte remaining)
-                {
-                    short adjustAmount = (short)(initial - remaining);
-                    if (adjustAmount <= 0)
-                        return;
-
-                    _game.GivePrize(player, (Prize)(-(short)prize), adjustAmount);
-                }
+                _game.GivePrize(player, (Prize)(-(short)prize), adjustAmount);
             }
         }
 
@@ -3998,7 +6150,7 @@ namespace SS.Matchmaking.Modules
         /// Overrides initial shipSetting items
         /// </summary>
         /// <remarks>
-        /// This is used to burn ships for various purposes..
+        /// This is used to burn ships for various purposes.
         /// </remarks>
         /// <param name="slot">The player slot to remove items for.</param>
         private void RemoveAllItems(PlayerSlot slot)
@@ -4011,7 +6163,7 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
                 return;
 
-            ref ShipSettings shipSettings = ref arenaData.ShipSettings[(int)player.Ship];
+            ref ShipSettings shipSettings = ref arenaData.ShipSettings[(int)slot.Ship];
             AdjustItem(player, Prize.Burst, shipSettings.InitialBurst);
             AdjustItem(player, Prize.Repel, shipSettings.InitialRepel);
             AdjustItem(player, Prize.Thor, shipSettings.InitialThor);
@@ -4035,7 +6187,7 @@ namespace SS.Matchmaking.Modules
         /// </summary>
         /// <remarks>
         /// This method does not send any setting changes to the player.
-        /// It is the caller's responsiblity to call <see cref="IClientSettings.SendClientSettings(Player)"/>
+        /// It is the caller's responsibility to call <see cref="IClientSettings.SendClientSettings(Player)"/>
         /// since the caller may be updating other setting overrides as well.
         /// </remarks>
         /// <param name="player">The player to unoverride settings for.</param>
@@ -4250,6 +6402,18 @@ namespace SS.Matchmaking.Modules
                 MatchEndedCallback.Fire(_broker, matchData);
                 TeamVersusMatchEndedCallback.Fire(arena ?? _broker, matchData, reason, winnerTeam);
 
+                if (matchData.LeagueGame is not null)
+                {
+                    LeagueMatchEndedCallback.Fire(_broker, matchData);
+
+                    if (arena is not null 
+                        && _arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData)
+                        && arenaData.LeagueMatch == matchData)
+                    {
+                        arenaData.LeagueMatch = null;
+                    }
+                }
+
                 foreach (Team team in matchData.Teams)
                 {
                     foreach (PlayerSlot slot in team.Slots)
@@ -4267,6 +6431,8 @@ namespace SS.Matchmaking.Modules
                             // Spec any remaining players
                             _game.SetShipAndFreq(slot.Player, ShipType.Spec, arena.SpecFreq);
                         }
+
+                        UnassignSlot(slot);
                     }
                 }
 
@@ -4333,47 +6499,16 @@ namespace SS.Matchmaking.Modules
 
             matchData.ParticipationList.Clear();
 
-            // Clear the team data.
-            foreach (Team team in matchData.Teams)
+            if (matchData.LeagueGame is not null)
             {
-                // Slots
-                foreach (PlayerSlot slot in team.Slots)
-                {
-                    UnassignSlot(slot); // this clears slot.PlayerName and slot.Player
-                    slot.Status = PlayerSlotStatus.None;
-                    slot.PremadeGroupId = null;
-                    slot.HasLeftMatchArena = false;
-                    slot.InactiveTimestamp = null;
-                    slot.LagOuts = 0;
-                    slot.AvailableSubSlotNode.List?.Remove(slot.AvailableSubSlotNode);
-                    slot.IsSubRequested = false;
-                    // Note: slot.SubPlayer should already be null because we would have called CancelSubInProgress
-                    slot.IsFullEnergy = false;
-                    slot.IsInPlayArea = false;
-                    slot.AllowShipChangeExpiration = null;
-                    slot.Lives = 0;
-
-                    // ship and items
-                    slot.Ship = ShipType.Spec;
-                    slot.Bursts = 0;
-                    slot.Repels = 0;
-                    slot.Thors = 0;
-                    slot.Bricks = 0;
-                    slot.Decoys = 0;
-                    slot.Rockets = 0;
-                    slot.Portals = 0;
-                }
-
-                // Score
-                team.Score = 0;
+                // Do not reuse MatchData for league games.
+                _matchDataDictionary.Remove(matchData.MatchIdentifier);
+                return;
             }
 
-            // Set the status. This makes it available to host a new game.
-            matchData.Status = MatchStatus.None;
-            matchData.PhaseExpiration = null;
-            matchData.StartCountdown = 0;
-            matchData.Started = null;
-            matchData.IsOvertime = false;
+            // Reset the entire match, including all the teams slots.
+            // This also sets the status to None, which makes it available to host another match.
+            matchData.Reset();
 
             if (!_matchConfigurationDictionary.TryGetValue(matchData.MatchIdentifier.MatchType, out MatchConfiguration? configuration)
                 || configuration != matchData.Configuration)
@@ -4385,9 +6520,12 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            // Now that the match has ended, check if there are enough players available to refill it.
-            _mainloop.QueueMainWorkItem(MainloopWork_MakeMatch, matchData.Configuration.QueueName);
-
+            string? queueName = matchData.Configuration.QueueName;
+            if (queueName is not null)
+            {
+                // Now that the match has ended, check if there are enough players available to refill it.
+                _mainloop.QueueMainWorkItem(MainloopWork_MakeMatch, queueName);
+            }
 
             // local helper for a mainloop work item that attempts to make a match
             void MainloopWork_MakeMatch(string queueName)
@@ -4402,6 +6540,22 @@ namespace SS.Matchmaking.Modules
         private static bool IsStartingPhase(MatchStatus status)
         {
             return status == MatchStatus.Initializing || status == MatchStatus.StartingCheck || status == MatchStatus.StartingCountdown;
+        }
+
+        private static bool IsPublicPlayFreq(short freq)
+        {
+            return freq >= 0 && freq <= 9;
+        }
+
+        private static string GetItemsActionDescription(ItemsAction action)
+        {
+            return action switch
+            {
+                ItemsAction.Full => "Full Ship",
+                ItemsAction.Burn => "Items Burned",
+                ItemsAction.Restore => "Items Restored",
+                _ => string.Empty,
+            };
         }
 
         #region Helper types
@@ -4422,11 +6576,33 @@ namespace SS.Matchmaking.Modules
             RepelsAndRockets,
         }
 
+        /// <summary>
+        /// How items are handled for a player that subs into a match or ship changes in the allowed window (after death, after sub in; and without engaging).
+        /// </summary>
+        private enum ItemsAction
+        {
+            /// <summary>
+            /// The player that subs in gets a full ship.
+            /// </summary>
+            Full = 0,
+
+            /// <summary>
+            /// The player that subs in gets no items.
+            /// </summary>
+            Burn,
+
+            /// <summary>
+            /// The player that subs in gets the items restored based on what the previous player had remaining.
+            /// </summary>
+            Restore,
+        }
+
         private class MatchConfiguration : IMatchConfiguration
         {
             public required string MatchType { get; init; }
-            public required long GameTypeId { get; init; }
-            public required string QueueName { get; init; }
+            public required long? GameTypeId { get; init; }
+            public required long? LeagueId { get; init; }
+            public required string? QueueName { get; init; }
             public required string ArenaBaseName { get; init; }
             public required int MaxArenas { get; init; }
             public required int NumTeams { get; init; }
@@ -4438,13 +6614,22 @@ namespace SS.Matchmaking.Modules
             public required TimeSpan? TimeLimit { get; init; }
             public required TimeSpan? OverTimeLimit { get; init; }
             public required TimeSpan WinConditionDelay { get; init; }
+            public required TimeSpan InactiveTeamsMatchCompletionDelay { get; init; }
             public required int TimeLimitWinBy { get; init; }
             public required int MaxLagOuts { get; init; }
             public required TimeSpan AllowShipChangeAfterDeathDuration { get; init; }
+            public required TimeSpan AllowShipChangeAfterSubDuration { get; init; }
+            public required int MaxShipChangesPerEligibleEvent { get; init; }
             public required TimeSpan InactiveSlotAvailableDelay { get; init; }
+            public required TimeSpan DeathSubDuration { get; init; }
+            public required int InitialFullSubs { get; init; }
+            public required bool SubInMustUsePriorShip { get; init; }
+            public required ItemsAction SubInItemsAction { get; init; }
+            public required ItemsAction ReturnToMatchItemsAction { get; init; }
             public ItemsCommandOption ItemsCommandOption { get; init; } = ItemsCommandOption.None;
-
             public required bool BurnItemsOnSpawn { get; init; }
+            public required bool AllowFillUnusedSlots { get; init; }
+            public required string? ReplayRecordPath { get; init; }
 
             public required MatchBoxConfiguration[] Boxes;
 
@@ -4483,8 +6668,17 @@ namespace SS.Matchmaking.Modules
 
             /// <summary>
             /// Gathering players into the proper arena.
+            /// 
+            /// <para>
+            /// For regular matches:
             /// Wait for every player to enter the designated arena and send a position packet (finished map and lvz download).
             /// If any player takes too long, leaves the arena, or disconnects, cancel the match and send the remaining players back to the front of the queue.
+            /// </para>
+            /// 
+            /// <para>
+            /// For league matches:
+            /// Allow a certain amount of time for players to arrive and join their assigned freqs.
+            /// </para>
             /// </summary>
             Initializing,
 
@@ -4504,6 +6698,12 @@ namespace SS.Matchmaking.Modules
             StartingCountdown,
 
             /// <summary>
+            /// The match is starting.
+            /// The initial players in the match cannot change now.
+            /// </summary>
+            Starting,
+
+            /// <summary>
             /// The match is ongoing.
             /// </summary>
             InProgress,
@@ -4514,9 +6714,9 @@ namespace SS.Matchmaking.Modules
             Complete,
         }
 
-        private class MatchData : IMatchData
+        private class MatchData : IMatchData, ILeagueMatch
         {
-            public MatchData(MatchIdentifier matchIdentifier, MatchConfiguration configuration, short startingFreq)
+            private MatchData(MatchIdentifier matchIdentifier, MatchConfiguration configuration)
             {
                 MatchIdentifier = matchIdentifier;
                 Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
@@ -4524,13 +6724,30 @@ namespace SS.Matchmaking.Modules
                 Status = MatchStatus.None;
                 Teams = new Team[Configuration.NumTeams];
                 _readOnlyTeams = new ReadOnlyCollection<ITeam>(Teams);
+                ParticipationList = new(Configuration.NumTeams * Configuration.PlayersPerTeam * 2);
+            }
 
+            public MatchData(MatchIdentifier matchIdentifier, MatchConfiguration configuration, short startingFreq) : this(matchIdentifier, configuration)
+            {
                 for (int teamIdx = 0; teamIdx < Configuration.NumTeams; teamIdx++)
                 {
                     Teams[teamIdx] = new Team(this, teamIdx, startingFreq++);
                 }
+            }
 
-                ParticipationList = new(Configuration.NumTeams * Configuration.PlayersPerTeam * 2);
+            public MatchData(MatchIdentifier matchIdentifier, MatchConfiguration configuration, LeagueGameInfo leagueGame) : this(matchIdentifier, configuration)
+            {
+                if (configuration.NumTeams != leagueGame.Teams.Count)
+                    throw new Exception($"# of teams mismatch in the match configuration and league game info. (config: {configuration.NumTeams}, league: {leagueGame.Teams.Count}");
+
+                LeagueGame = leagueGame;
+
+                int teamIdx = 0;
+                foreach ((short freq, LeagueTeamInfo leagueTeam) in leagueGame.Teams)
+                {
+                    Teams[teamIdx] = new Team(this, teamIdx, freq, leagueTeam);
+                    teamIdx++;
+                }
             }
 
             public MatchIdentifier MatchIdentifier { get; }
@@ -4574,11 +6791,6 @@ namespace SS.Matchmaking.Modules
             public DateTime? PhaseExpiration;
 
             /// <summary>
-            /// Task that initializes the stats module prior to a match starting.
-            /// </summary>
-            public Task? InitializeStatsTask;
-
-            /// <summary>
             /// Approximately how many seconds before the match starts.
             /// </summary>
             public int StartCountdown;
@@ -4605,6 +6817,30 @@ namespace SS.Matchmaking.Modules
             /// This allows players that played through the entire match to get re-queued, in the order that they were originally queued in.
             /// </remarks>
             public readonly List<PlayerParticipationRecord> ParticipationList;
+
+            public LeagueGameInfo? LeagueGame { get; }
+
+            public long? LeagueSeasonGameId => LeagueGame?.SeasonGameId;
+
+            long ILeagueMatch.SeasonGameId => LeagueGame?.SeasonGameId ?? throw new InvalidOperationException("Not a league match.");
+
+            public bool IsForcedStart { get; set; } = false;
+
+            public void Reset()
+            {
+                Status = MatchStatus.None;
+                PhaseExpiration = null;
+                StartCountdown = 0;
+                Started = null;
+                IsOvertime = false;
+                ParticipationList.Clear();
+                IsForcedStart = false;
+
+                foreach (Team team in Teams)
+                {
+                    team.Reset();
+                }
+            }
         }
 
         /// <summary>
@@ -4629,6 +6865,15 @@ namespace SS.Matchmaking.Modules
                 {
                     Slots[slotIdx] = new PlayerSlot(this, slotIdx);
                 }
+
+                AllowedToSubLookup = AllowedToSub.GetAlternateLookup<ReadOnlySpan<char>>();
+
+                Reset();
+            }
+
+            public Team(MatchData matchData, int teamIdx, short freq, LeagueTeamInfo leagueTeam) : this(matchData, teamIdx, freq)
+            {
+                LeagueTeam = leagueTeam;
             }
 
             /// <inheritdoc cref="ITeam.MatchData"/>
@@ -4647,10 +6892,67 @@ namespace SS.Matchmaking.Modules
             public short Score { get; set; }
 
             public int StartLocationIdx;
+
+            #region League
+
+            /// <summary>
+            /// Info about the league team.
+            /// </summary>
+            public LeagueTeamInfo? LeagueTeam { get; }
+
+            /// <summary>
+            /// The player that is currently holding captain powers of the freq.
+            /// </summary>
+            public Player? Captain { get; set; }
+
+            /// <summary>
+            /// Whether the captain has indicated the team is ready.
+            /// </summary>
+            public bool IsReady { get; set; }
+
+            /// <summary>
+            /// How many full subs the team has available.
+            /// </summary>
+            public int RemainingFullSubs { get; set; }
+
+            /// <summary>
+            /// Members on the roster that have been flagged as not being allowed to play as a starter, using ?allowplay
+            /// </summary>
+            /// <remarks>Key: player name</remarks>
+            public readonly HashSet<string> NonStarter = new(StringComparer.OrdinalIgnoreCase);
+
+            /// <summary>
+            /// Members on the roster that have been flagged as being allowed to ?sub into the game, using ?allowsub
+            /// </summary>
+            /// <remarks>Key: player name</remarks>
+            public readonly HashSet<string> AllowedToSub = new(StringComparer.OrdinalIgnoreCase);
+
+            public readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> AllowedToSubLookup;
+
+            #endregion
+
+            public void Reset()
+            {
+                Score = 0;
+                StartLocationIdx = 0;
+                Captain = null;
+                IsReady = false;
+                RemainingFullSubs = MatchData.Configuration.InitialFullSubs;
+                NonStarter.Clear();
+                AllowedToSub.Clear();
+
+                foreach (PlayerSlot slot in Slots)
+                {
+                    slot.Reset();
+                }
+            }
         }
 
         private enum PlayerSlotStatus
         {
+            /// <summary>
+            /// The slot is unused and should not be filled.
+            /// </summary>
             None,
 
             /// <summary>
@@ -4670,8 +6972,33 @@ namespace SS.Matchmaking.Modules
         }
 
         /// <summary>
+        /// The reason why a player is allowed a limited time to ship change.
+        /// </summary>
+        private enum AllowShipChangeReason
+        {
+            /// <summary>
+            /// The player was assigned a slot that was unused.
+            /// </summary>
+            FillUnused,
+
+            /// <summary>
+            /// The player respawned after taking a death.
+            /// </summary>
+            Death,
+
+            /// <summary>
+            /// The player subbed into a slot.
+            /// </summary>
+            Sub,
+        }
+
+        /// <summary>
         /// A slot for a player on a team.
         /// </summary>
+        /// <remarks>
+        /// For matchmaking matches, slots are assigned to a player immediately upon initialization since the players in the match are known in advance.
+        /// For league matches, slots are not assigned until the match actually starts.
+        /// </remarks>
         private class PlayerSlot : IPlayerSlot
         {
             /// <inheritdoc cref="IPlayerSlot.MatchData"/>
@@ -4724,15 +7051,29 @@ namespace SS.Matchmaking.Modules
             /// <summary>
             /// Whether another player can be subbed in to the slot.
             /// </summary>
-            public bool CanBeSubbed =>
-                IsSubRequested
-                || (Status == PlayerSlotStatus.Waiting
-                    && (LagOuts >= MatchData.Configuration.MaxLagOuts
-                        || (InactiveTimestamp is not null
-                            && (DateTime.UtcNow - InactiveTimestamp.Value) >= MatchData.Configuration.InactiveSlotAvailableDelay
-                        )
-                    )
-                );
+            public bool CanBeSubbed
+            {
+                get
+                {
+                    if (Team.MatchData.LeagueGame is not null)
+                    {
+                        // League
+                        return IsSubRequested || Status == PlayerSlotStatus.Waiting;
+                    }
+                    else
+                    {
+                        // Matchmaking
+                        return IsSubRequested
+                            || (Status == PlayerSlotStatus.Waiting
+                                && (LagOuts >= MatchData.Configuration.MaxLagOuts
+                                    || (InactiveTimestamp is not null
+                                        && (DateTime.UtcNow - InactiveTimestamp.Value) >= MatchData.Configuration.InactiveSlotAvailableDelay
+                                    )
+                                )
+                            );
+                    }
+                }
+            }
 
             /// <summary>
             /// The player that is in the process of being subbed into the slot.
@@ -4743,6 +7084,12 @@ namespace SS.Matchmaking.Modules
             /// Whether the <see cref="Player"/> is at full energy.
             /// This is used when trying to sub a player in.
             /// </summary>
+            /// <remarks>
+            /// This field is used instead of Player.Position.Energy since Player.Position.Energy might not be up to date 
+            /// depending on the order that position packet handlers are executed. That is, when our position packet handler 
+            /// looks at Player.Position.Energy, the value may not have been updated yet. Instead, our position packet handler 
+            /// will set this flag, and then call the logic for subbing which reads the flag.
+            /// </remarks>
             public bool IsFullEnergy;
 
             /// <summary>
@@ -4758,6 +7105,50 @@ namespace SS.Matchmaking.Modules
             public DateTime? AllowShipChangeExpiration;
 
             /// <summary>
+            /// The reason that the player can ship change until <see cref="AllowShipChangeExpiration"/>.
+            /// </summary>
+            public AllowShipChangeReason? AllowShipChangeReason;
+
+            /// <summary>
+            /// The # of times the player has changed ships since they became eligible to ship change.
+            /// </summary>
+            public int ShipChangeCount;
+
+            /// <summary>
+            /// The action to take when the player is placed in a ship.
+            /// This includes: ship changes (regular ESC + # and ?sc), returning to a match after lagout, and subbing in for another player
+            /// </summary>
+            public ItemsAction ShipChangeItemsAction;
+
+            /// <summary>
+            /// What items to restore when a player subs into a slot or subsequently ship changes.
+            /// </summary>
+            /// <remarks>
+            /// Set this when a player subs in.
+            /// </remarks>
+            public ItemInventory RestoreItems;
+
+            /// <summary>
+            /// The timestamp after which a sub no longer qualifies as a DeathSub (get a full ship).
+            /// <see langword="null"/> means not eligible for a DeathSub.
+            /// </summary>
+            public DateTime? DeathSubExpiration;
+
+            /// <summary>
+            /// The timestamp of the last death, for DeathSub only.
+            /// When a DeathSub is awarded, this field is cleared.
+            /// </summary>
+            public DateTime? LastDeathForDeathSub;
+
+            /// <summary>
+            /// If this slot is subbed, whether it should attempt to perform full sub (new player gets a full ship).
+            /// </summary>
+            /// <remarks>
+            /// League only and only if <see cref="Team.RemainingFullSubs"/> is > 0.
+            /// </remarks>
+            public bool FullSubEnabled;
+
+            /// <summary>
             /// The # of lives remaining.
             /// </summary>
             public int Lives { get; set; }
@@ -4765,13 +7156,16 @@ namespace SS.Matchmaking.Modules
             #region Ship/Item counts
 
             public ShipType Ship { get; set; }
-            public byte Bursts { get; set; }
-            public byte Repels { get; set; }
-            public byte Thors { get; set; }
-            public byte Bricks { get; set; }
-            public byte Decoys { get; set; }
-            public byte Rockets { get; set; }
-            public byte Portals { get; set; }
+
+            public ItemInventory Items;
+
+            byte IPlayerSlot.Bursts => Items.Bursts;
+            byte IPlayerSlot.Repels => Items.Repels;
+            byte IPlayerSlot.Thors => Items.Thors;
+            byte IPlayerSlot.Bricks => Items.Bricks;
+            byte IPlayerSlot.Decoys => Items.Decoys;
+            byte IPlayerSlot.Rockets => Items.Rockets;
+            byte IPlayerSlot.Portals => Items.Portals;
 
             #endregion
 
@@ -4781,6 +7175,44 @@ namespace SS.Matchmaking.Modules
                 SlotIdx = slotIdx;
                 AvailableSubSlotNode = new(this);
             }
+
+            public void Reset()
+            {
+                Status = PlayerSlotStatus.None;
+                PlayerName = null;
+                Player = null;
+                PremadeGroupId = null;
+                HasLeftMatchArena = false;
+                InactiveTimestamp = null;
+                LagOuts = 0;
+                AvailableSubSlotNode.List?.Remove(AvailableSubSlotNode);
+                IsSubRequested = false;
+                SubPlayer = null;
+                IsFullEnergy = false;
+                IsInPlayArea = false;
+                AllowShipChangeExpiration = null;
+                AllowShipChangeReason = null;
+                ShipChangeCount = 0;
+                ShipChangeItemsAction = ItemsAction.Full;
+                RestoreItems = default;
+                DeathSubExpiration = null;
+                LastDeathForDeathSub = null;
+                FullSubEnabled = false;
+                Lives = 0;
+                Ship = ShipType.Spec;
+                Items = default;
+            }
+        }
+
+        private struct ItemInventory
+        {
+            public byte Bursts { get; set; }
+            public byte Repels { get; set; }
+            public byte Thors { get; set; }
+            public byte Bricks { get; set; }
+            public byte Decoys { get; set; }
+            public byte Rockets { get; set; }
+            public byte Portals { get; set; }
         }
 
         private class PlayerData : IResettable
@@ -4800,6 +7232,8 @@ namespace SS.Matchmaking.Modules
             /// The slot the player is in the process of being subbed into.
             /// </summary>
             public PlayerSlot? SubSlot = null;
+
+            public Team? CaptainOfTeam;
 
             /// <summary>
             /// The player's next ship.
@@ -4862,6 +7296,7 @@ namespace SS.Matchmaking.Modules
             {
                 AssignedSlot = null;
                 SubSlot = null;
+                CaptainOfTeam = null;
                 NextShip = null;
                 HasFullyEnteredArena = false;
                 IsInMatchArena = false;
@@ -4908,12 +7343,18 @@ namespace SS.Matchmaking.Modules
         private class ArenaData : IResettable
         {
             public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor>? IFreqManagerEnforcerAdvisorToken;
+            public InterfaceRegistrationToken<ILeagueHelp>? ILeagueHelpToken;
             public readonly ShipSettings[] ShipSettings = new ShipSettings[8];
 
             /// <summary>
             /// Whether arenas of this support public play in addition to team versus matches.
             /// </summary>
             public bool PublicPlayEnabled = false;
+
+            /// <summary>
+            /// A league match reserves control over the entire arena.
+            /// </summary>
+            public MatchData? LeagueMatch;
 
             bool IResettable.TryReset()
             {
@@ -4937,7 +7378,22 @@ namespace SS.Matchmaking.Modules
             public const string Draw = "draw";
             public const string ShipChange = "sc";
             public const string Items = "items";
+            public const string MatchInfo = "matchinfo";
+            public const string FreqInfo = "freqinfo";
+            public const string Rosters = "rosters";
+
+            // League specific commands
+            public const string LeagueHelp = "leaguehelp";
+            public const string Cap = "cap";
+            public const string Ready = "ready";
+            public const string Rdy = "rdy";
+            public const string ForceStart = "forcestart";
+            public const string AllowPlay = "allowplay";
+            public const string AllowSub = "allowsub";
+            public const string FullSub = "fullsub";
         }
+
+        private record struct RosterItem(string PlayerName, bool IsCaptain);
 
         #endregion
     }

@@ -109,3 +109,7 @@ privcmd_av
 ; Matchmaking (PlayerGroups module)
 seeplayergroupdetails
 privcmd_nexthold
+
+; Matchmaking (league)
+cmd_startleaguematch
+cmd_forcestart

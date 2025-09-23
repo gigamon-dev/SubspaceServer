@@ -114,3 +114,25 @@ cmd_draw
 cmd_sc
 cmd_items
 cmd_chart
+cmd_freqinfo
+cmd_matchinfo
+
+; Matchmaking (TeamVersusMatch - league)
+cmd_rosters
+cmd_cap
+privcmd_cap
+cmd_ready
+privcmd_allowplay
+privcmd_requestsub
+privcmd_sub
+cmd_allowsub
+privcmd_allowsub
+cmd_fullsub
+privcmd_fullsub
+
+; Matchmaking - League
+cmd_leaguehelp
+cmd_roster
+cmd_standings
+cmd_schedule
+cmd_results
