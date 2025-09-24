@@ -122,6 +122,7 @@ cmd_rosters
 cmd_cap
 privcmd_cap
 cmd_ready
+cmd_rdy
 privcmd_allowplay
 privcmd_requestsub
 privcmd_sub

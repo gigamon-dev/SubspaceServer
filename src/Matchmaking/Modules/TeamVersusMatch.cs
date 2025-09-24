@@ -513,14 +513,8 @@ namespace SS.Matchmaking.Modules
                     }
                     else
                     {
-                        foreach (Team team in arenaData.LeagueMatch.Teams)
-                        {
-                            if (team.LeagueTeam is null)
-                                continue;
-
-                            if (team.LeagueTeam.Roster.ContainsKey(player.Name!))
-                                return true;
-                        }
+                        if (arenaData.LeagueMatch.TryGetLeagueTeam(player.Name, out _))
+                            return true;
 
                         errorMessage?.Append("You are not on the roster of any team in this league match.");
                         return false;
@@ -626,48 +620,43 @@ namespace SS.Matchmaking.Modules
             matchData.Status = MatchStatus.Initializing;
 
             // Send a chat notification to the entire zone.
-            StringBuilder teamsBuilder = _objectPoolManager.StringBuilderPool.Get();
             StringBuilder announcementBuilder = _objectPoolManager.StringBuilderPool.Get();
             try
             {
-                foreach (var team in leagueGame.Teams.Values)
-                {
-                    if (teamsBuilder.Length > 0)
-                        teamsBuilder.Append(" vs ");
-
-                    teamsBuilder.Append(team.TeamName);
-                }
-
-                announcementBuilder.Append($"{leagueGame.LeagueName} - {leagueGame.SeasonName}: ");
-                announcementBuilder.Append(teamsBuilder);
-                announcementBuilder.Append($" is starting in ?go {matchData.ArenaName}");
+                AppendLeagueMatchInfo(announcementBuilder, matchData);
+                announcementBuilder.Append($" -- Starting in ?go {matchData.ArenaName}");
 
                 _chat.SendArenaMessage(null, announcementBuilder);
             }
             finally
             {
-                _objectPoolManager.StringBuilderPool.Return(teamsBuilder);
                 _objectPoolManager.StringBuilderPool.Return(announcementBuilder);
             }
 
             Arena? arena = matchData.Arena;
             if (arena is not null)
             {
-                // Move everyone in the arena to spec (freq and ship).
+                // The arena already exists. Adjust ships and freqs.
+                // Move everyone in the arena to spec.
+                // Move players on teams to their respective freq.
                 foreach (Player player in _playerData.Players)
                 {
                     if (player.Arena != arena)
                         continue;
 
-                    bool changeFreq = player.Freq != arena.SpecFreq;
-                    bool changeShip = player.Ship != ShipType.Spec;
+                    matchData.TryGetLeagueTeam(player.Name, out Team? team);
 
-                    if (changeFreq)
+                    bool changeShip = player.Ship != ShipType.Spec;
+                    short? newFreq = team is null
+                        ? player.Freq != arena.SpecFreq ? arena.SpecFreq : null
+                        : player.Freq != team.Freq ? team.Freq : null;
+
+                    if (newFreq is not null)
                     {
                         if (changeShip)
-                            _game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+                            _game.SetShipAndFreq(player, ShipType.Spec, newFreq.Value);
                         else
-                            _game.SetFreq(player, arena.SpecFreq);
+                            _game.SetFreq(player, newFreq.Value);
                     }
                     else if (changeShip)
                     {
@@ -887,6 +876,29 @@ namespace SS.Matchmaking.Modules
             else if (action == PlayerAction.EnterArena)
             {
                 playerData.IsInMatchArena = playerData.AssignedSlot is not null && playerData.AssignedSlot.MatchData.Arena == arena;
+
+                if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                    return;
+
+                MatchData? leagueMatch = arenaData.LeagueMatch;
+                if (leagueMatch is not null && leagueMatch.LeagueGame is not null)
+                {
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                    try
+                    {
+                        AppendLeagueMatchInfo(sb, leagueMatch);
+                        _chat.SendMessage(player, sb);
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
+                    }
+
+                    if (leagueMatch.TryGetLeagueTeam(player.Name, out Team? team))
+                    {
+                        _game.SetFreq(player, team.Freq);
+                    }
+                }
             }
             else if (action == PlayerAction.EnterGame)
             {
@@ -1298,8 +1310,23 @@ namespace SS.Matchmaking.Modules
         private void Callback_PreShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
             Arena? arena = player.Arena;
-            if (arena is null)
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
                 return;
+
+            if (arenaData.LeagueMatch is not null && newFreq != arena.SpecFreq)
+            {
+                foreach (Team team in arenaData.LeagueMatch.Teams)
+                {
+                    if (team.LeagueTeam is null)
+                        continue;
+
+                    if (team.Freq == newFreq)
+                    {
+                        _chat.SendMessage(player, $"Welcome to team freq {team.Freq} ({team.LeagueTeam.TeamName})");
+                        break;
+                    }
+                }
+            }
 
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
@@ -6619,6 +6646,41 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        private void AppendLeagueMatchInfo(StringBuilder builder, MatchData leagueMatch)
+        {
+            LeagueGameInfo? leagueGame = leagueMatch.LeagueGame;
+            if (leagueGame is null)
+                return;
+
+            builder.Append($"{leagueGame.LeagueName} - {leagueGame.SeasonName}");
+
+            if (string.IsNullOrWhiteSpace(leagueGame.RoundName))
+                builder.Append($" - {leagueGame.RoundName}");
+            else if (leagueGame.RoundNumber is not null)
+                builder.Append($" - Round #{leagueGame.RoundNumber}");
+
+            builder.Append(": ");
+
+            StringBuilder teamsBuilder = _objectPoolManager.StringBuilderPool.Get();
+            try
+            {
+                // Teams
+                foreach (var team in leagueGame.Teams.Values)
+                {
+                    if (teamsBuilder.Length > 0)
+                        teamsBuilder.Append(" vs ");
+
+                    teamsBuilder.Append(team.TeamName);
+                }
+
+                builder.Append(teamsBuilder);
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(teamsBuilder);
+            }
+        }
+
         private static bool IsStartingPhase(MatchStatus status)
         {
             return status == MatchStatus.Initializing || status == MatchStatus.StartingCheck || status == MatchStatus.StartingCountdown;
@@ -6907,6 +6969,34 @@ namespace SS.Matchmaking.Modules
             long ILeagueMatch.SeasonGameId => LeagueGame?.SeasonGameId ?? throw new InvalidOperationException("Not a league match.");
 
             public bool IsForcedStart { get; set; } = false;
+
+            public bool TryGetLeagueTeam(ReadOnlySpan<char> playerName, [MaybeNullWhen(false)] out Team team)
+            {
+                if (LeagueGame is null)
+                {
+                    team = null;
+                    return false;
+                }
+
+                foreach (Team otherTeam in Teams)
+                {
+                    LeagueTeamInfo? leagueTeam = otherTeam.LeagueTeam;
+                    if (leagueTeam is null)
+                        continue;
+
+                    if (!leagueTeam.Roster.TryGetAlternateLookup<ReadOnlySpan<char>>(out var alternateLookup))
+                        continue;
+
+                    if (alternateLookup.ContainsKey(playerName))
+                    {
+                        team = otherTeam;
+                        return true;
+                    }
+                }
+
+                team = null;
+                return false;
+            }
 
             public void Reset()
             {
