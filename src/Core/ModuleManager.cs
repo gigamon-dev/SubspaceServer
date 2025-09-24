@@ -85,7 +85,7 @@ namespace SS.Core
         /// Assembly Path --> Assembly
         /// </summary>
         /// TODO: StringComparer based whether the file system is case sensitive? Also, how to handle a mixture of file systems?
-        private readonly Dictionary<string, Assembly> _loadedPluginAssemblies = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, (Assembly, ModulePluginLoadContext)> _loadedPluginAssemblies = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Types of 'plug-in' modules that are loaded.
@@ -938,7 +938,10 @@ namespace SS.Core
                     {
                         WriteLogM(LogLevel.Info, $"Unloaded the last module from plug-in assembly [{assembly.FullName}].");
 
-                        _loadedPluginAssemblies.Remove(moduleLoadContext.AssemblyPath);
+                        if (_loadedPluginAssemblies.Remove(moduleLoadContext.AssemblyPath, out (Assembly PluginAssembly, ModulePluginLoadContext PluginLoadContext) tuple))
+                        {
+                            tuple.PluginLoadContext.Resolving -= LoadContext_Resolving;
+                        }
 
                         PluginAssemblyUnloadingCallback.Fire(this, assembly);
 
@@ -1386,9 +1389,9 @@ namespace SS.Core
 
                 lock (_moduleLock)
                 {
-                    if (_loadedPluginAssemblies.TryGetValue(path, out assembly))
+                    if (_loadedPluginAssemblies.TryGetValue(path, out (Assembly Assembly, ModulePluginLoadContext Context) tuple))
                     {
-                        return assembly.GetType(typeName);
+                        return tuple.Assembly.GetType(typeName);
                     }
 
                     // Assembly not loaded yet, try to load it.
@@ -1413,7 +1416,9 @@ namespace SS.Core
                         return null;
                     }
 
-                    _loadedPluginAssemblies[path] = assembly;
+                    loadContext.Resolving += LoadContext_Resolving;
+
+                    _loadedPluginAssemblies[path] = (assembly, loadContext);
                 }
 
                 WriteLogM(LogLevel.Info, $"Loaded assembly [{assembly.FullName}] from path \"{path}\".");
@@ -1427,6 +1432,31 @@ namespace SS.Core
                 WriteLogM(LogLevel.Error, $"Error getting type \"{typeName}\" from plug-in assembly path \"{path}\". Exception: {ex}");
                 return null;
             }
+        }
+
+        private Assembly? LoadContext_Resolving(AssemblyLoadContext assemblyLoadContext, AssemblyName assemblyName)
+        {
+            // This is resolve an assembly when a plugin assembly references types from another plugin assembly.
+
+            // First, look for an exact match.
+            foreach ((Assembly pluginAssembly, _) in _loadedPluginAssemblies.Values)
+            {
+                if (string.Equals(pluginAssembly.FullName, assemblyName.FullName, StringComparison.Ordinal))
+                {
+                    return pluginAssembly;
+                }
+            }
+
+            // Otherwise, look by simple assembly name.
+            foreach ((Assembly pluginAssembly, _) in _loadedPluginAssemblies.Values)
+            {
+                if (AssemblyName.ReferenceMatchesDefinition(pluginAssembly.GetName(), assemblyName))
+                {
+                    return pluginAssembly;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
