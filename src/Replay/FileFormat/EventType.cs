@@ -14,7 +14,7 @@
         Kill,
         Chat,
         Position,
-        Packet, // ASSS has this in playback, but does seem to record it, so skipped.
+        Packet, // ASSS has this in playback, but doesn't seem to record it, so skipped.
 
         //
         // The following are matched up with the modifications of the record module from Powerball Zone.

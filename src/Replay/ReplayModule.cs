@@ -59,7 +59,7 @@ namespace SS.Replay
         playback of all aspects of the game including: flag games, crowns, 
         synchronization of doors & greens, etc.
         """)]
-    public sealed class ReplayModule : IModule, IFreqManagerEnforcerAdvisor
+    public sealed class ReplayModule : IModule, IReplayController, IFreqManagerEnforcerAdvisor
     {
         private const uint ReplayFileVersion = 2;
         private const uint MapChecksumKey = 0x46692018;
@@ -83,6 +83,8 @@ namespace SS.Replay
         private readonly IObjectPoolManager _objectPoolManager;
         private readonly IPlayerData _playerData;
         private readonly ISecuritySeedSync _securitySeedSync;
+
+        private InterfaceRegistrationToken<IReplayController>? _iReplayControllerToken;
 
         private ArenaDataKey<ArenaData> _adKey;
 
@@ -141,11 +143,15 @@ namespace SS.Replay
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
             SecuritySeedChangedCallback.Register(broker, Callback_SecuritySeedChanged);
 
+            _iReplayControllerToken = broker.RegisterInterface<IReplayController>(this);
             return true;
         }
 
         bool IModule.Unload(IComponentBroker broker)
         {
+            if (broker.UnregisterInterface(ref _iReplayControllerToken) != 0)
+                return false;
+
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             SecuritySeedChangedCallback.Unregister(broker, Callback_SecuritySeedChanged);
 
@@ -158,6 +164,78 @@ namespace SS.Replay
             _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
+        }
+
+        #endregion
+
+        #region IReplay
+
+        ReplayState IReplayController.GetState(Arena arena)
+        {
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                return ReplayState.None;
+
+            return ad.State;
+        }
+
+        bool IReplayController.StartRecording(Arena arena, string filePath, string? comments)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+                return false;
+
+            return StartRecording(arena, filePath, null, comments);
+        }
+
+        bool IReplayController.StopRecording(Arena arena)
+        {
+            return StopRecording(arena);
+        }
+
+        bool IReplayController.StartPlayback(Arena arena, string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+                return false;
+
+            return StartPlayback(arena, filePath, null);
+        }
+
+        bool IReplayController.PausePlayback(Arena arena)
+        {
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                return false;
+
+            lock (ad.Lock)
+            {
+                if (ad.State == ReplayState.Playing && !ad.IsPlaybackPaused)
+                {
+                    ad.PlaybackQueue.Add(PlaybackCommand.Pause);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool IReplayController.ResumePlayback(Arena arena)
+        {
+            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                return false;
+
+            lock (ad.Lock)
+            {
+                if (ad.State == ReplayState.Playing && ad.IsPlaybackPaused)
+                {
+                    ad.PlaybackQueue.Add(PlaybackCommand.Resume);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool IReplayController.StopPlayback(Arena arena)
+        {
+            return StopPlayback(arena);
         }
 
         #endregion
@@ -538,38 +616,44 @@ namespace SS.Replay
             if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token = remaining.GetToken(' ', out remaining);
-
-            if (MemoryExtensions.Equals(token, "record", StringComparison.OrdinalIgnoreCase))
+            Span<Range> ranges = stackalloc Range[2];
+            int numRanges = parameters.Split(ranges, ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (numRanges == 0)
             {
-                token = remaining.GetToken(' ', out remaining);
-                if (token.IsWhiteSpace())
+                _chat.SendMessage(player, $"{ReplayCommandName}: A subcommand is required. For instructions, see: ?man {ReplayCommandName}");
+                return;
+            }
+
+            ReadOnlySpan<char> subCommand = parameters[ranges[0]];
+            ReadOnlySpan<char> remaining = numRanges == 2 ? parameters[ranges[1]] : [];
+            
+            if (subCommand.Equals("record", StringComparison.OrdinalIgnoreCase))
+            {
+                if (remaining.IsEmpty)
                 {
                     _chat.SendMessage(player, $"{ReplayCommandName}: A filename is required to record to.");
                     return;
                 }
 
-                if (!StartRecording(arena, token.ToString(), player, null))
+                if (!StartRecording(arena, remaining.ToString(), player, null))
                 {
                     _chat.SendMessage(player, $"{ReplayCommandName}: A recording cannot be started at this time.");
                 }
             }
-            else if (MemoryExtensions.Equals(token, "play", StringComparison.OrdinalIgnoreCase))
+            else if (subCommand.Equals("play", StringComparison.OrdinalIgnoreCase))
             {
-                token = remaining.GetToken(' ', out remaining);
-                if (token.IsWhiteSpace())
+                if (remaining.IsEmpty)
                 {
                     _chat.SendMessage(player, $"{ReplayCommandName}: A filename is required to play from.");
                     return;
                 }
 
-                if (!StartPlayback(arena, token.ToString(), player))
+                if (!StartPlayback(arena, remaining.ToString(), player))
                 {
                     _chat.SendMessage(player, $"{ReplayCommandName}: A playback cannot be started at this time.");
                 }
             }
-            else if (MemoryExtensions.Equals(token, "stop", StringComparison.OrdinalIgnoreCase))
+            else if (subCommand.Equals("stop", StringComparison.OrdinalIgnoreCase))
             {
                 lock (ad.Lock)
                 {
@@ -579,7 +663,7 @@ namespace SS.Replay
                         StopRecording(arena);
                 }
             }
-            else if (MemoryExtensions.Equals(token, "pause", StringComparison.OrdinalIgnoreCase))
+            else if (subCommand.Equals("pause", StringComparison.OrdinalIgnoreCase))
             {
                 bool success = false;
 
@@ -601,7 +685,7 @@ namespace SS.Replay
                     _chat.SendMessage(player, $"{ReplayCommandName}: Nothing is being played.");
                 }
             }
-            else if (MemoryExtensions.Equals(token, "settings", StringComparison.OrdinalIgnoreCase))
+            else if (subCommand.Equals("settings", StringComparison.OrdinalIgnoreCase))
             {
                 _chat.SendMessage(player, $"{ReplayCommandName}: NotifyPlayback = {ad.Settings.NotifyPlayback}");
                 _chat.SendMessage(player, $"{ReplayCommandName}: NotifyPlaybackError = {ad.Settings.NotifyPlaybackError}");
@@ -610,6 +694,7 @@ namespace SS.Replay
                 _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackMapCheckEnabled = {ad.Settings.PlaybackMapCheckEnabled}");
                 _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackSpecFreqCheckEnabled = {ad.Settings.PlaybackSpecFreqCheckEnabled}");
                 _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackLockTeams = {ad.Settings.PlaybackLockTeams}");
+                _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackPrintComments = {ad.Settings.PlaybackPrintComments}");
                 _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackPublicChat = {ad.Settings.PlaybackPublicChat}");
                 _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackPublicMacroChat = {ad.Settings.PlaybackPublicMacroChat}");
                 _chat.SendMessage(player, $"{ReplayCommandName}: PlaybackSpecChat = {ad.Settings.PlaybackSpecChat}");
@@ -679,7 +764,7 @@ namespace SS.Replay
             }
         }
 
-        private bool StartRecording(Arena arena, string path, Player recorder, string? comments)
+        private bool StartRecording(Arena arena, string path, Player? recorder, string? comments)
         {
             if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return false;
@@ -693,7 +778,7 @@ namespace SS.Replay
                     return false;
 
                 ad.State = ReplayState.Recording;
-                ad.StartedBy = recorder?.Name!;
+                ad.StartedBy = recorder?.Name;
                 ad.RecorderQueue = [];
 
                 ServerTick started = ServerTick.Now;
@@ -953,7 +1038,7 @@ namespace SS.Replay
 
             if (string.IsNullOrWhiteSpace(path))
             {
-                LogAndNotify(arena, ad.Settings.NotifyPlaybackError, "Missing path of replay to play.");
+                LogAndNotify(arena, ad.Settings.NotifyPlaybackError, "Missing path of replay to record.");
                 path = Path.Combine("recordings", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{arena.Name}");
             }
             else if (!path.StartsWith("recordings", StringComparison.OrdinalIgnoreCase)
@@ -961,6 +1046,21 @@ namespace SS.Replay
                 || (path["recordings".Length] != Path.DirectorySeparatorChar && path["recordings".Length] != Path.AltDirectorySeparatorChar))
             {
                 path = Path.Combine("recordings", path);
+            }
+
+            // Create the directory if it doesn't exist.
+            try
+            {
+                string? directory = Path.GetDirectoryName(path);
+                if (directory is not null)
+                {
+                    Directory.CreateDirectory(directory);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogAndNotify(arena, ad.Settings.NotifyRecordingError, $"Unable to create directory for replay file '{path}'.", ex);
+                return;
             }
 
             // Create the file.
@@ -1030,7 +1130,7 @@ namespace SS.Replay
                             throw new Exception($"Encoding resulted in {numBytes} bytes when {commentsLength} bytes were expected.");
                         }
 
-                        fileStream.Write(commentsBuffer);
+                        fileStream.Write(commentsSpan);
                     }
                     catch (Exception ex)
                     {
@@ -1178,7 +1278,7 @@ namespace SS.Replay
             }
         }
 
-        private bool StartPlayback(Arena arena, string path, Player startedBy)
+        private bool StartPlayback(Arena arena, string path, Player? startedBy)
         {
             if (string.IsNullOrWhiteSpace(path))
                 return false;
@@ -1195,7 +1295,7 @@ namespace SS.Replay
                     return false;
 
                 ad.State = ReplayState.Playing;
-                ad.StartedBy = startedBy?.Name!;
+                ad.StartedBy = startedBy?.Name;
                 ad.PlaybackPosition = 0;
                 ad.IsPlaybackPaused = false;
 
@@ -1333,6 +1433,68 @@ namespace SS.Replay
                     return;
                 }
 
+                // Notify the arena that playback is starting.
+                if (ad.Settings.NotifyPlayback != NotifyOption.None)
+                {
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+
+                    try
+                    {
+                        // Info
+                        sb.Append($"Starting playback of '{path}' recorded ");
+
+                        ReadOnlySpan<byte> arenaNameBytes = ((ReadOnlySpan<byte>)fileHeader.ArenaName).SliceNullTerminated();
+                        Span<char> arenaNameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(arenaNameBytes)];
+                        decodedCharCount = StringUtils.DefaultEncoding.GetChars(arenaNameBytes, arenaNameChars);
+                        Debug.Assert(decodedCharCount == arenaNameChars.Length);
+
+                        if (!MemoryExtensions.IsWhiteSpace(arenaNameChars))
+                            sb.Append($"in arena {arenaNameChars} ");
+
+                        ReadOnlySpan<byte> recorderBytes = ((ReadOnlySpan<byte>)fileHeader.Recorder).SliceNullTerminated();
+                        Span<char> recorderChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(recorderBytes)];
+                        decodedCharCount = StringUtils.DefaultEncoding.GetChars(recorderBytes, recorderChars);
+                        Debug.Assert(decodedCharCount == recorderChars.Length);
+
+                        if (!MemoryExtensions.IsWhiteSpace(recorderChars))
+                            sb.Append($"by {recorderChars} ");
+
+                        sb.Append($"on {fileHeader.Recorded}");
+
+                        Notify(arena, ad.Settings.NotifyPlayback, sb);
+
+                        // Comments
+                        int commentsBytesRemaining = (int)fileHeader.Offset - FileHeader.Length;
+                        if (commentsBytesRemaining > 0 && ad.Settings.PlaybackPrintComments)
+                        {
+                            Span<byte> buffer = stackalloc byte[ChatPacket.MaxMessageBytes];
+                            Span<char> textBuffer = stackalloc char[ChatPacket.MaxMessageChars];
+
+                            sb.Clear();
+
+                            while (commentsBytesRemaining > 0)
+                            {
+                                int bytesRead = ReadFromStream(fileStream, buffer[..commentsBytesRemaining]);
+                                if (bytesRead == 0)
+                                    break;
+
+                                int charsWritten = StringUtils.DefaultEncoding.GetChars(buffer[..bytesRead], textBuffer);
+                                sb.Append(textBuffer[..charsWritten]);
+
+                                commentsBytesRemaining -= bytesRead;
+                            }
+
+                            // TOOD: try to split the comments into multiple lines? look for new lines?
+
+                            Notify(arena, ad.Settings.NotifyPlayback, sb);
+                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(sb);
+                    }
+                }
+
                 // Move to where the events begin.
                 try
                 {
@@ -1359,41 +1521,6 @@ namespace SS.Replay
 
                 try
                 {
-                    // Notify the arena that playback is starting.
-                    if (ad.Settings.NotifyPlayback != NotifyOption.None)
-                    {
-                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-                        try
-                        {
-                            sb.Append($"Starting playback of '{path}' recorded ");
-
-                            ReadOnlySpan<byte> arenaNameBytes = ((ReadOnlySpan<byte>)fileHeader.ArenaName).SliceNullTerminated();
-                            Span<char> arenaNameChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(arenaNameBytes)];
-                            decodedCharCount = StringUtils.DefaultEncoding.GetChars(arenaNameBytes, arenaNameChars);
-                            Debug.Assert(decodedCharCount == arenaNameChars.Length);
-
-                            if (!MemoryExtensions.IsWhiteSpace(arenaNameChars))
-                                sb.Append($"in arena {arenaNameChars} ");
-
-                            ReadOnlySpan<byte> recorderBytes = ((ReadOnlySpan<byte>)fileHeader.Recorder).SliceNullTerminated();
-                            Span<char> recorderChars = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(recorderBytes)];
-                            decodedCharCount = StringUtils.DefaultEncoding.GetChars(recorderBytes, recorderChars);
-                            Debug.Assert(decodedCharCount == recorderChars.Length);
-
-                            if (!MemoryExtensions.IsWhiteSpace(recorderChars))
-                                sb.Append($"by {recorderChars} ");
-
-                            sb.Append($"on {fileHeader.Recorded}");
-
-                            Notify(arena, ad.Settings.NotifyPlayback, sb);
-                        }
-                        finally
-                        {
-                            _objectPoolManager.StringBuilderPool.Return(sb);
-                        }
-                    }
-
                     // Lock everyone watching to spectator mode.
                     LockAllSpec(arena); // TODO: does this need to be done on the mainloop? If so, then we'll need to wait for it to complete too.
 
@@ -2378,13 +2505,6 @@ namespace SS.Replay
             //Staff,
         }
 
-        private enum ReplayState
-        {
-            None,
-            Recording,
-            Playing,
-        }
-
         private enum PlaybackCommand
         {
             Stop,
@@ -2428,6 +2548,7 @@ namespace SS.Replay
             public readonly bool PlaybackMapCheckEnabled;
             public readonly bool PlaybackSpecFreqCheckEnabled;
             public readonly bool PlaybackLockTeams;
+            public readonly bool PlaybackPrintComments;
 
             public readonly bool RecordPublicChat;
             public readonly bool RecordPublicMacroChat;
@@ -2458,6 +2579,8 @@ namespace SS.Replay
                 Description = $"Whether to check if the arena's spec freq matches the recording's.")]
             [ConfigHelp<bool>("Replay", "PlaybackLockTeams", ConfigScope.Arena, Default = false,
                 Description = $"Whether teams are locked during a playback.")]
+            [ConfigHelp<bool>("Replay", "PlaybackPrintComments", ConfigScope.Arena, Default = true,
+                Description = $"Whether to print a replay's comments as arena messages at the start of a playback.")]
             [ConfigHelp<bool>("Replay", "RecordPublicChat", ConfigScope.Arena, Default = true,
                 Description = $"Whether public chat messages are recorded.")]
             [ConfigHelp<bool>("Replay", "RecordPublicMacroChat", ConfigScope.Arena, Default = true,
@@ -2493,6 +2616,7 @@ namespace SS.Replay
                 PlaybackMapCheckEnabled = configManager.GetBool(ch, "Replay", "PlaybackMapCheckEnabled", ReplaySettings.PlaybackMapCheckEnabled.Default);
                 PlaybackSpecFreqCheckEnabled = configManager.GetBool(ch, "Replay", "PlaybackSpecFreqCheckEnabled", ReplaySettings.PlaybackSpecFreqCheckEnabled.Default);
                 PlaybackLockTeams = configManager.GetBool(ch, "Replay", "PlaybackLockTeams", ReplaySettings.PlaybackLockTeams.Default);
+                PlaybackPrintComments = configManager.GetBool(ch, "Replay", "PlaybackPrintComments", ReplaySettings.PlaybackPrintComments.Default);
 
                 // chat settings (recording)
                 RecordPublicChat = configManager.GetBool(ch, "Replay", "RecordPublicChat", ReplaySettings.RecordPublicChat.Default);
