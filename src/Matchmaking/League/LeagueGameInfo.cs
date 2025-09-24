@@ -21,10 +21,22 @@ namespace SS.Matchmaking.League
         public long GameTypeId { get; init; }
 
         /// <summary>
+        /// ID of the league in the league database.
+        /// </summary>
+        [JsonPropertyName("league_id")]
+        public required long LeagueId { get; init; }
+
+        /// <summary>
         /// The name of the league.
         /// </summary>
         [JsonPropertyName("league_name")]
         public required string LeagueName { get; init; }
+
+        /// <summary>
+        /// ID of the season in the league database.
+        /// </summary>
+        [JsonPropertyName("season_id")]
+        public required long SeasonId { get; init; }
 
         /// <summary>
         /// The name of the season within the league.
@@ -37,6 +49,12 @@ namespace SS.Matchmaking.League
         /// </summary>
         [JsonPropertyName("round_number")]
         public int? RoundNumber { get; init; }
+
+        /// <summary>
+        /// Name of the round.
+        /// </summary>
+        [JsonPropertyName("round_name")]
+        public string? RoundName { get; init; }
 
         /// <summary>
         /// When the league game is scheduled to be played.

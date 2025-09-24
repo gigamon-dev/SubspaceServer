@@ -12,6 +12,7 @@ using SS.Matchmaking.League;
 using SS.Matchmaking.Queues;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
+using SS.Replay;
 using SS.Utilities;
 using SS.Utilities.ObjectPool;
 using System.Buffers;
@@ -76,6 +77,7 @@ namespace SS.Matchmaking.Modules
         // optional
         private ITeamVersusStatsBehavior? _teamVersusStatsBehavior;
         private ILeagueManager? _leagueManager;
+        private IReplayController? _replayController;
 
         private AdvisorRegistrationToken<IMatchFocusAdvisor>? _iMatchFocusAdvisorToken;
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor>? _iMatchmakingQueueAdvisorToken;
@@ -208,6 +210,7 @@ namespace SS.Matchmaking.Modules
         {
             _teamVersusStatsBehavior = broker.GetInterface<ITeamVersusStatsBehavior>();
             _leagueManager = broker.GetInterface<ILeagueManager>();
+            _replayController = broker.GetInterface<IReplayController>();
 
             if (!_clientSettings.TryGetSettingsIdentifier("Kill", "EnterDelay", out _killEnterDelayClientSettingId))
             {
@@ -287,6 +290,9 @@ namespace SS.Matchmaking.Modules
 
             if (_leagueManager is not null)
                 broker.ReleaseInterface(ref _leagueManager);
+
+            if (_replayController is not null)
+                broker.ReleaseInterface(ref _replayController);
 
             return Task.FromResult(true);
         }
@@ -807,6 +813,11 @@ namespace SS.Matchmaking.Modules
 
                 try
                 {
+                    if (!string.IsNullOrWhiteSpace(arenaData.ReplayRecordingFilePath))
+                    {
+                        StopRecordingReplay(arena, arenaData);
+                    }
+
                     // Unregister advisors and interfaces
                     if (!arena.UnregisterAdvisor(ref arenaData.IFreqManagerEnforcerAdvisorToken))
                         return;
@@ -3489,8 +3500,7 @@ namespace SS.Matchmaking.Modules
             if (!allReady && matchData.Status == MatchStatus.StartingCountdown)
             {
                 // The match was starting, stop it now that all teams are not ready.
-                matchData.Status = MatchStatus.Initializing;
-                _mainloopTimer.ClearTimer<MatchData>(MainloopTimer_ProcessMatchStateChange, matchData);
+                CancelLeagueStartupSequence(matchData);
             }
             else if (allReady && matchData.Status == MatchStatus.Initializing)
             {
@@ -4426,7 +4436,7 @@ namespace SS.Matchmaking.Modules
                 return;
 
             Arena? arena = matchData.Arena;
-            if (arena is null)
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
                 return;
 
             LeagueGameInfo? leagueGame = matchData.LeagueGame;
@@ -4476,6 +4486,26 @@ namespace SS.Matchmaking.Modules
             matchData.StartCountdown = (int)matchData.Configuration.StartCountdownDuration.TotalSeconds;
             SetProcessMatchStateTimer(matchData);
 
+            // Record replay if configured
+            if (_replayController is not null && !string.IsNullOrWhiteSpace(matchData.Configuration.ReplayRecordPath))
+            {
+                arenaData.ReplayRecordingFilePath = Path.Join(matchData.Configuration.ReplayRecordPath, $"{leagueGame.LeagueId}/{leagueGame.SeasonId}/{DateTime.UtcNow:yyyyMMdd-HHmmss} {leagueGame.SeasonGameId}.replay");
+
+                if (!_replayController.StartRecording(
+                    arena,
+                    arenaData.ReplayRecordingFilePath,
+                    $"League: {leagueGame.LeagueName}, Season: {leagueGame.SeasonName}, SeasonGameId: {leagueGame.SeasonGameId}"))
+                {
+                    _logManager.LogA(LogLevel.Warn, nameof(TeamVersusMatch), arena, $"Failed to start recording of league match. (SeasonGameId: {leagueGame.SeasonGameId}, FilePath: {arenaData.ReplayRecordingFilePath})");
+                    arenaData.ReplayRecordingFilePath = null;
+                }
+
+                // TODO: Wait for the recording to actually begin? Would need some mechanism added to the replay module to detect it.
+                // Perhaps use callbacks? There's also the possiblity it fails to begin recording (bad filename, out of disk space, etc..)
+                // For now, not dealing with it and assuming if recording starts, it most likely will happen by the time the GO! occurs.
+                // The following arena notifications unfortunately will very likely not make it into the recording.
+            }
+
             // Send arena notifications.
             _chat.SendArenaMessage(arena, $"All teams are ready. Starting in {matchData.StartCountdown} seconds!");
 
@@ -4484,9 +4514,13 @@ namespace SS.Matchmaking.Modules
             {
                 sb.Append($"{leagueGame.LeagueName} - {leagueGame.SeasonName}");
 
-                if (leagueGame.RoundNumber is not null)
+                if (!string.IsNullOrWhiteSpace(leagueGame.RoundName))
                 {
-                    sb.Append($" - Round {leagueGame.RoundNumber.Value}");
+                    sb.Append($" - {leagueGame.RoundName}");
+                }
+                else if (leagueGame.RoundNumber is not null)
+                {
+                    sb.Append($" - Round #{leagueGame.RoundNumber.Value}");
                 }
 
                 _chat.SendArenaMessage(arena, sb);
@@ -4519,6 +4553,46 @@ namespace SS.Matchmaking.Modules
             //_clientSettings.SendClientSettings(arena); // would be a good method to add
             //_clientSettings.UnoverrideSetting(arena, BrickTimeClientSettingIdentifier); 
             //_clientSettings.SendClientSettings(arena); // might need to put a slight delay on sending this?
+        }
+
+        private void CancelLeagueStartupSequence(MatchData matchData)
+        {
+            if (matchData.Status != MatchStatus.StartingCountdown)
+                return;
+
+            LeagueGameInfo? leagueGame = matchData.LeagueGame;
+            if (leagueGame is null)
+                return;
+
+            matchData.Status = MatchStatus.Initializing;
+            _mainloopTimer.ClearTimer<MatchData>(MainloopTimer_ProcessMatchStateChange, matchData);
+
+            Arena? arena = matchData.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            if (!string.IsNullOrWhiteSpace(arenaData.ReplayRecordingFilePath))
+            {
+                StopRecordingReplay(arena, arenaData);
+
+                // TODO: Unfortunately, we can't delete the recording, because the task recording it may not have ended yet.
+            }
+        }
+
+        private void StopRecordingReplay(Arena arena, ArenaData arenaData)
+        {
+            if (string.IsNullOrWhiteSpace(arenaData.ReplayRecordingFilePath))
+                return;
+
+            if (_replayController is null)
+                return;
+
+            if (!_replayController.StopRecording(arena))
+            {
+                _logManager.LogA(LogLevel.Warn, nameof(TeamVersusMatch), arena, $"Failed to stop recording of match. (FilePath: {arenaData.ReplayRecordingFilePath})");
+            }
+
+            arenaData.ReplayRecordingFilePath = null;
         }
 
         private TileCoordinates SetTeamStartLoocation(Team team)
@@ -6398,6 +6472,9 @@ namespace SS.Matchmaking.Modules
                 }
 
                 Arena? arena = _arenaManager.FindArena(matchData.ArenaName); // Note: this can be null (the arena can be destroyed before the match ends)
+                ArenaData? arenaData = null;
+                if (arena is not null)
+                    _arenaDataDictionary.TryGetValue(arena, out arenaData);
 
                 MatchEndedCallback.Fire(_broker, matchData);
                 TeamVersusMatchEndedCallback.Fire(arena ?? _broker, matchData, reason, winnerTeam);
@@ -6406,12 +6483,17 @@ namespace SS.Matchmaking.Modules
                 {
                     LeagueMatchEndedCallback.Fire(_broker, matchData);
 
-                    if (arena is not null 
-                        && _arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData)
-                        && arenaData.LeagueMatch == matchData)
+                    if (arenaData is not null && arenaData.LeagueMatch == matchData)
                     {
                         arenaData.LeagueMatch = null;
                     }
+                }
+
+                if (arena is not null 
+                    && arenaData is not null 
+                    && !string.IsNullOrWhiteSpace(arenaData.ReplayRecordingFilePath))
+                {
+                    StopRecordingReplay(arena, arenaData);
                 }
 
                 foreach (Team team in matchData.Teams)
@@ -7356,11 +7438,15 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public MatchData? LeagueMatch;
 
+            public string? ReplayRecordingFilePath;
+
             bool IResettable.TryReset()
             {
                 IFreqManagerEnforcerAdvisorToken = null;
+                ILeagueHelpToken = null;
                 Array.Clear(ShipSettings);
                 PublicPlayEnabled = false;
+                ReplayRecordingFilePath = null;
 
                 return true;
             }

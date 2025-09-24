@@ -23,16 +23,22 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Core\Core.csproj">
-	  <Private>false</Private>
+	  <Private>False</Private>
 	  <ExcludeAssets>all</ExcludeAssets>
     </ProjectReference>
 	<ProjectReference Include="..\Packets\Packets.csproj">
-		<Private>false</Private>
-		<ExcludeAssets>all</ExcludeAssets>
+	  <Private>False</Private>
+	  <ExcludeAssets>all</ExcludeAssets>
 	</ProjectReference>
-	<ProjectReference Include="..\SourceGeneration\SourceGeneration.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	<ProjectReference Include="..\Replay\Replay.csproj">
+	  <Private>False</Private>
+	  <ExcludeAssets>all</ExcludeAssets>
+	</ProjectReference>
+	<ProjectReference Include="..\SourceGeneration\SourceGeneration.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false">
+	  <ExcludeAssets>all</ExcludeAssets>
+	</ProjectReference>
     <ProjectReference Include="..\Utilities\Utilities.csproj">
-      <Private>false</Private>
+      <Private>False</Private>
       <ExcludeAssets>all</ExcludeAssets>
     </ProjectReference>
   </ItemGroup>
