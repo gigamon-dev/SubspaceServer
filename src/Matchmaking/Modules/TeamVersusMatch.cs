@@ -2351,6 +2351,8 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
+            if (player.Freq != team.Freq || player.Ship == ShipType.Spec)
+            {
             // Check that there is room for another to play on the freq.
             int teamPlaying = 0;
             foreach (Player otherPlayer in _playerData.Players)
@@ -2367,6 +2369,7 @@ namespace SS.Matchmaking.Modules
             {
                 _chat.SendMessage(player, "Your team already at the maximum allowed playing in ships.");
                 return false;
+                }
             }
 
             // Slots are not assigned until the game starts, so just put the player in a ship.
