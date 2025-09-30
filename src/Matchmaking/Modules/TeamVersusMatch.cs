@@ -2136,9 +2136,11 @@ namespace SS.Matchmaking.Modules
                     // Try by slot #.
                     if (int.TryParse(parameters, out int slotIdx))
                     {
+                        slotIdx--; // Input is 1 based
+
                         if (slotIdx < 0 || slotIdx >= team.Slots.Length)
                         {
-                            _chat.SendMessage(player, $"Invalid slot # specified. (min: 0, max: {team.Slots.Length - 1}");
+                            _chat.SendMessage(player, $"Invalid slot # specified. (min: 1, max: {team.Slots.Length - 1}");
                             return;
                         }
 
@@ -2353,22 +2355,22 @@ namespace SS.Matchmaking.Modules
 
             if (player.Freq != team.Freq || player.Ship == ShipType.Spec)
             {
-            // Check that there is room for another to play on the freq.
-            int teamPlaying = 0;
-            foreach (Player otherPlayer in _playerData.Players)
-            {
-                if (otherPlayer.Arena == arena
-                    && otherPlayer.Freq == team.Freq
-                    && otherPlayer.Ship != ShipType.Spec)
+                // Check that there is room for another to play on the freq.
+                int teamPlaying = 0;
+                foreach (Player otherPlayer in _playerData.Players)
                 {
-                    teamPlaying++;
+                    if (otherPlayer.Arena == arena
+                        && otherPlayer.Freq == team.Freq
+                        && otherPlayer.Ship != ShipType.Spec)
+                    {
+                        teamPlaying++;
+                    }
                 }
-            }
 
-            if (teamPlaying >= team.MatchData.Configuration.PlayersPerTeam)
-            {
-                _chat.SendMessage(player, "Your team already at the maximum allowed playing in ships.");
-                return false;
+                if (teamPlaying >= team.MatchData.Configuration.PlayersPerTeam)
+                {
+                    _chat.SendMessage(player, "Your team already at the maximum allowed playing in ships.");
+                    return false;
                 }
             }
 
@@ -3129,7 +3131,7 @@ namespace SS.Matchmaking.Modules
                             if (slot.Status == PlayerSlotStatus.None)
                                 continue;
 
-                            sb.Append($"{slot.SlotIdx,5}: ");
+                            sb.Append($"{slot.SlotIdx + 1,5}: ");
 
                             if (string.IsNullOrWhiteSpace(slot.PlayerName))
                                 sb.Append("[unused]");
