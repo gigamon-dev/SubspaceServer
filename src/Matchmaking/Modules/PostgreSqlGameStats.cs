@@ -314,7 +314,7 @@ namespace SS.Matchmaking.Modules
                 int column_seasonId = reader.GetOrdinal("season_id");
                 int column_seasonName = reader.GetOrdinal("season_name");
                 int column_seasonGameId = reader.GetOrdinal("season_game_id");
-                int column_scheduledTimestamp = reader.GetOrdinal("scheduled_timestamp");
+                int column_gameTimestamp = reader.GetOrdinal("game_timestamp");
                 int column_teams = reader.GetOrdinal("teams");
                 int column_gameStatus = reader.GetOrdinal("game_status_id");
 
@@ -372,7 +372,7 @@ namespace SS.Matchmaking.Modules
                     }
 
                     long seasonGameId = reader.GetInt64(column_seasonGameId);
-                    DateTime? scheduledTimestamp = reader.IsDBNull(column_scheduledTimestamp) ? null : reader.GetDateTime(column_scheduledTimestamp);
+                    DateTime? gameTimestamp = reader.IsDBNull(column_gameTimestamp) ? null : reader.GetDateTime(column_gameTimestamp);
 
                     char[] teams = ArrayPool<char>.Shared.Rent(ChatPacket.MaxMessageChars);
                     try
@@ -386,9 +386,9 @@ namespace SS.Matchmaking.Modules
                         {
                             sb.Append($"{seasonGameId,11}");
 
-                            if (scheduledTimestamp is not null)
+                            if (gameTimestamp is not null)
                             {
-                                sb.Append($" {scheduledTimestamp:yyyy-MM-dd hh:mm:ss}");
+                                sb.Append($" {gameTimestamp:yyyy-MM-dd hh:mm:ss}");
                             }
                             else
                             {
@@ -552,7 +552,6 @@ namespace SS.Matchmaking.Modules
                 await using NpgsqlCommand command = new("select * from league.get_team_games($1)", connection);
 
                 command.Parameters.Add(new NpgsqlParameter<long>() { TypedValue = teamId.Value });
-                command.Parameters.AddWithValue(teamName);
                 await command.PrepareAsync().ConfigureAwait(false);
 
                 await using var reader = await command.ExecuteReaderAsync();
