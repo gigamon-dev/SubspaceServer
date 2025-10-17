@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentInterfaces;
 using SS.Core.Configuration;
 using SS.Core.Map;
@@ -1295,7 +1296,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_getX(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (_configManager is null)
+            if (_configManager is null || _capabilityManager is null)
                 return;
 
             Span<Range> ranges = stackalloc Range[2];
@@ -1322,11 +1323,18 @@ namespace SS.Core.Modules
                     return;
 
                 ch = arena.Cfg!;
+
+                if (IsArenaConfRestrictedSection(section) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
+                    return;
             }
             else
             {
                 ch = _configManager.Global;
-            };
+
+                if (IsGlobalConfRestrictedSection(section) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
+                    return;
+            }
+            ;
 
             string? result = _configManager.GetStr(ch, section, key);
             if (result != null)
@@ -1337,6 +1345,30 @@ namespace SS.Core.Modules
             {
                 _chat.SendMessage(player, $"{section}:{key} not found.");
             }
+        }
+
+        private bool IsArenaConfRestrictedSection(ReadOnlySpan<char> section)
+        {
+            // Restricted if any advisor says that it is.
+            foreach (var advisor in _broker.GetAdvisors<IConfigManagerAdvisor>())
+            {
+                if (advisor.IsArenaConfRestrictedSection(section))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool IsGlobalConfRestrictedSection(ReadOnlySpan<char> section)
+        {
+            // Restricted if any advisor says that it is.
+            foreach (var advisor in _broker.GetAdvisors<IConfigManagerAdvisor>())
+            {
+                if (advisor.IsGlobalConfRestrictedSection(section))
+                    return true;
+            }
+
+            return false;
         }
 
         [CommandHelp(
@@ -1363,6 +1395,9 @@ namespace SS.Core.Modules
                 """)]
         private void Command_setX(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            if (_configManager is null || _capabilityManager is null)
+                return;
+
             if (parameters.IsWhiteSpace())
                 return;
 
@@ -1429,16 +1464,23 @@ namespace SS.Core.Modules
                     return;
 
                 ch = arena.Cfg!;
+
+                if (IsArenaConfRestrictedSection(section) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
+                    return;
             }
             else
             {
-                ch = _configManager!.Global;
-            };
+                ch = _configManager.Global;
+
+                if (IsGlobalConfRestrictedSection(section) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
+                    return;
+            }
+            ;
 
             if (comment.IsEmpty)
-                _configManager!.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow}", permanent, options);
+                _configManager.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow}", permanent, options);
             else
-                _configManager!.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow} - {comment}", permanent, options);
+                _configManager.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow} - {comment}", permanent, options);
         }
 
         [CommandHelp(

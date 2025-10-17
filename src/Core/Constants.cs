@@ -285,6 +285,11 @@ namespace SS.Core
             public const string ChangeSettings = "changesettings";
 
             /// <summary>
+            /// If a user can access and/or modify settings that are designated as being restricted.
+            /// </summary>
+            public const string AllowRestrictedSettings = "allowrestrictedsettings";
+
+            /// <summary>
             /// if a player shows up in ?listmod output
             /// </summary>
             public const string IsStaff = "isstaff";

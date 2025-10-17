@@ -33,6 +33,7 @@ cmd_setg
 cmd_getg
 cmd_seta
 cmd_geta
+allowrestrictedsettings
 
 cmd_cd
 cmd_pwd

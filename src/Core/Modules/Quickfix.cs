@@ -1,4 +1,5 @@
-﻿using SS.Core.ComponentInterfaces;
+﻿using SS.Core.ComponentAdvisors;
+using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using SS.Utilities;
 using System;
@@ -20,6 +21,7 @@ namespace SS.Core.Modules
     [CoreModuleInfo]
     public sealed class Quickfix : IModule
     {
+        private readonly IComponentBroker _broker;
         private readonly ICommandManager _commandManager;
         private readonly ICapabilityManager _capabilityManager;
         private readonly IChat _chat;
@@ -31,6 +33,7 @@ namespace SS.Core.Modules
         private readonly IObjectPoolManager _objectPoolManager;
 
         public Quickfix(
+            IComponentBroker broker,
             ICapabilityManager capabilityManager,
             ICommandManager commandManager,
             IChat chat,
@@ -41,6 +44,7 @@ namespace SS.Core.Modules
             INetwork network,
             IObjectPoolManager objectPoolManager)
         {
+            _broker = broker;
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
@@ -138,6 +142,9 @@ namespace SS.Core.Modules
                     }
                     else
                     {
+                        if (IsArenaConfRestrictedSection(token1) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
+                            return true;
+
                         _logManager.LogP(LogLevel.Info, nameof(Quickfix), player, $"Setting {token1}:{token2} = {token3}");
                         _configManager.SetStr(arenaConfigHandle, token1.ToString(), token2.ToString(), token3.ToString(), comment, permanent);
                     }
@@ -149,6 +156,18 @@ namespace SS.Core.Modules
                     if (buffer is not null)
                         ArrayPool<char>.Shared.Return(buffer);
                 }
+            }
+
+            bool IsArenaConfRestrictedSection(ReadOnlySpan<char> section)
+            {
+                // Restricted if any advisor says that it is.
+                foreach (var advisor in _broker.GetAdvisors<IConfigManagerAdvisor>())
+                {
+                    if (advisor.IsArenaConfRestrictedSection(section))
+                        return true;
+                }
+
+                return false;
             }
         }
 

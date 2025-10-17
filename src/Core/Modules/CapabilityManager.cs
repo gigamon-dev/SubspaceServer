@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.HighPerformance.Buffers;
 using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
@@ -26,7 +27,7 @@ namespace SS.Core.Modules
 	/// </para>
 	/// </summary>
 	[CoreModuleInfo]
-    public sealed class CapabilityManager : IAsyncModule, ICapabilityManager, IGroupManager
+    public sealed class CapabilityManager : IAsyncModule, ICapabilityManager, IGroupManager, IConfigManagerAdvisor
     {
         private readonly IComponentBroker _broker;
 		private readonly IPlayerData _playerData;
@@ -35,6 +36,7 @@ namespace SS.Core.Modules
 		private readonly IConfigManager _configManager;
 		private InterfaceRegistrationToken<ICapabilityManager>? _iCapabilityManagerToken;
         private InterfaceRegistrationToken<IGroupManager>? _iGroupManagerToken;
+        private AdvisorRegistrationToken<IConfigManagerAdvisor>? _iConfigManagerAdvisorToken;
 
         private PlayerDataKey<PlayerData> _pdkey;
         private readonly DefaultObjectPool<PlayerData> _playerDataPool = new(new DefaultPooledObjectPolicy<PlayerData>(), Constants.TargetPlayerCount);
@@ -100,6 +102,7 @@ namespace SS.Core.Modules
 
             _iCapabilityManagerToken = _broker.RegisterInterface<ICapabilityManager>(this);
             _iGroupManagerToken = _broker.RegisterInterface<IGroupManager>(this);
+            _iConfigManagerAdvisorToken = _broker.RegisterAdvisor<IConfigManagerAdvisor>(this);
 
             return true;
         }
@@ -110,6 +113,9 @@ namespace SS.Core.Modules
                 return Task.FromResult(false);
 
             if (broker.UnregisterInterface(ref _iGroupManagerToken) != 0)
+                return Task.FromResult(false);
+
+            if (!broker.UnregisterAdvisor(ref _iConfigManagerAdvisorToken))
                 return Task.FromResult(false);
 
             if (_groupDefConfHandle is not null)
@@ -304,6 +310,21 @@ namespace SS.Core.Modules
 
             string? correctPw = _configManager.GetStr(_staffConfHandle, "GroupPasswords", group);
             return !string.IsNullOrWhiteSpace(correctPw) && pw.Equals(correctPw, StringComparison.Ordinal);
+        }
+
+        #endregion
+
+        #region IConfigManagerAdvisor
+
+        bool IConfigManagerAdvisor.IsArenaConfRestrictedSection(ReadOnlySpan<char> section)
+        {
+            // Consider the [Staff] section of the arena.conf to be restricted.
+            // If the section was not restricted and the server was configured to use that section,
+            // then users able to change arena.conf settings could give themselves any role,
+            // including powerful ones such as sysop and bot.
+            // This logic purposely restricts it even if the arena.conf [Staff] section is not currently
+            // being used, since it could be enabled later.
+            return section.Equals("Staff", StringComparison.OrdinalIgnoreCase);
         }
 
         #endregion
