@@ -277,7 +277,7 @@ namespace SS.Matchmaking.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[-f] <league game id>", 
+            Args = "[-f] <match id>", 
             Description = """
                 Manually starts a league match.
                 This updates the match's state to "In Progress", initializes the match to be played, and announces it to the zone.
