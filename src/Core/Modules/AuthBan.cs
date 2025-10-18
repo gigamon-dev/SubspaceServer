@@ -145,9 +145,10 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.Player,
-            Args = "[-s seconds | -t seconds | -m minutes | seconds] [reason]",
+            Args = "[-s <seconds> | -t <seconds> | -m <minutes> | -h <hours> | -d <days> | <seconds>] [reason]",
             Description = """
-                Kicks the player off of the server, with an optional timeout. (-s number, -t number, or number for seconds, -m number for minutes.)
+                Kicks the player off of the server, with an optional timeout.
+                (-s, -t, or number for seconds, -m for minutes, -h for hours, -d for days)
                 For kicks with a timeout, you may provide a message to be displayed to the user.
                 Messages appear to users on timeout as "You have been temporarily kicked for <reason>."
                 """)]
@@ -197,6 +198,30 @@ namespace SS.Core.Modules
                     }
 
                     timeout = TimeSpan.FromMinutes(numValue);
+                }
+                else if (parameters.StartsWith("-h"))
+                {
+                    ReadOnlySpan<char> token = parameters[2..].GetToken(' ', out reason);
+                    if (token.IsEmpty
+                        || !int.TryParse(token, out int numValue))
+                    {
+                        _chat.SendMessage(player, $"{parameters[..2]} was specified, but invalid input for a timeout period.");
+                        return;
+                    }
+
+                    timeout = TimeSpan.FromHours(numValue);
+                }
+                else if (parameters.StartsWith("-d"))
+                {
+                    ReadOnlySpan<char> token = parameters[2..].GetToken(' ', out reason);
+                    if (token.IsEmpty
+                        || !int.TryParse(token, out int numValue))
+                    {
+                        _chat.SendMessage(player, $"{parameters[..2]} was specified, but invalid input for a timeout period.");
+                        return;
+                    }
+
+                    timeout = TimeSpan.FromDays(numValue);
                 }
                 else
                 {
