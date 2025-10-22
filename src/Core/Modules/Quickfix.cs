@@ -142,7 +142,7 @@ namespace SS.Core.Modules
                     }
                     else
                     {
-                        if (IsArenaConfRestrictedSection(token1) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
+                        if (IsArenaConfRestrictedSetting(token1, token2) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
                             return true;
 
                         _logManager.LogP(LogLevel.Info, nameof(Quickfix), player, $"Setting {token1}:{token2} = {token3}");
@@ -157,18 +157,18 @@ namespace SS.Core.Modules
                         ArrayPool<char>.Shared.Return(buffer);
                 }
             }
+        }
 
-            bool IsArenaConfRestrictedSection(ReadOnlySpan<char> section)
+        private bool IsArenaConfRestrictedSetting(ReadOnlySpan<char> section, ReadOnlySpan<char> key)
+        {
+            // Restricted if any advisor says that it is.
+            foreach (var advisor in _broker.GetAdvisors<IConfigManagerAdvisor>())
             {
-                // Restricted if any advisor says that it is.
-                foreach (var advisor in _broker.GetAdvisors<IConfigManagerAdvisor>())
-                {
-                    if (advisor.IsArenaConfRestrictedSection(section))
-                        return true;
-                }
-
-                return false;
+                if (advisor.IsArenaConfRestrictedSetting(section, key))
+                    return true;
             }
+
+            return false;
         }
 
         [CommandHelp(
@@ -214,12 +214,12 @@ namespace SS.Core.Modules
 
                             for (int i = 0; i < (int)ShipType.Spec; i++)
                             {
-                                TryWriteSection(parameters, section, arenaConfigHandle, writer, shipNames[i]);
+                                TryWriteSection(parameters, section, arenaConfigHandle, writer, shipNames[i], player);
                             }
                         }
                         else
                         {
-                            TryWriteSection(parameters, section, arenaConfigHandle, writer, section);
+                            TryWriteSection(parameters, section, arenaConfigHandle, writer, section, player);
                         }
                     }
                 }
@@ -260,7 +260,8 @@ namespace SS.Core.Modules
             string helpSection,
             ConfigHandle configHandle,
             StreamWriter writer,
-            string sectionName)
+            string sectionName, 
+            Player player)
         {
             bool sectionMatch = filter.IsWhiteSpace() || sectionName.AsSpan().Contains(filter, StringComparison.OrdinalIgnoreCase);
 
@@ -283,7 +284,10 @@ namespace SS.Core.Modules
                     (IConfigHelpAttribute attribute, _) = helpList[helpIndex];
 
                     if (attribute.Scope == ConfigScope.Arena
-                        && string.IsNullOrWhiteSpace(attribute.FileName))
+                        && string.IsNullOrWhiteSpace(attribute.FileName)
+                        && (!IsArenaConfRestrictedSetting(sectionName, attribute.Key)
+                            || _capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings)
+                        ))
                     {
                         string? value = _configManager.GetStr(configHandle, sectionName, attribute.Key);
                         value ??= "<unset>";

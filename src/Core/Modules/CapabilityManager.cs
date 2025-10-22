@@ -316,7 +316,7 @@ namespace SS.Core.Modules
 
         #region IConfigManagerAdvisor
 
-        bool IConfigManagerAdvisor.IsArenaConfRestrictedSection(ReadOnlySpan<char> section)
+        bool IConfigManagerAdvisor.IsArenaConfRestrictedSetting(ReadOnlySpan<char> section, ReadOnlySpan<char> key)
         {
             // Consider the [Staff] section of the arena.conf to be restricted.
             // If the section was not restricted and the server was configured to use that section,

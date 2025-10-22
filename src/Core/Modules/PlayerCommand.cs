@@ -1324,17 +1324,16 @@ namespace SS.Core.Modules
 
                 ch = arena.Cfg!;
 
-                if (IsArenaConfRestrictedSection(section) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
+                if (IsArenaConfRestrictedSetting(section, key) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
                     return;
             }
             else
             {
                 ch = _configManager.Global;
 
-                if (IsGlobalConfRestrictedSection(section) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
+                if (IsGlobalConfRestrictedSetting(section, key) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
                     return;
             }
-            ;
 
             string? result = _configManager.GetStr(ch, section, key);
             if (result != null)
@@ -1347,24 +1346,24 @@ namespace SS.Core.Modules
             }
         }
 
-        private bool IsArenaConfRestrictedSection(ReadOnlySpan<char> section)
+        private bool IsArenaConfRestrictedSetting(ReadOnlySpan<char> section, ReadOnlySpan<char> key)
         {
             // Restricted if any advisor says that it is.
             foreach (var advisor in _broker.GetAdvisors<IConfigManagerAdvisor>())
             {
-                if (advisor.IsArenaConfRestrictedSection(section))
+                if (advisor.IsArenaConfRestrictedSetting(section, key))
                     return true;
             }
 
             return false;
         }
 
-        private bool IsGlobalConfRestrictedSection(ReadOnlySpan<char> section)
+        private bool IsGlobalConfRestrictedSetting(ReadOnlySpan<char> section, ReadOnlySpan<char> key)
         {
             // Restricted if any advisor says that it is.
             foreach (var advisor in _broker.GetAdvisors<IConfigManagerAdvisor>())
             {
-                if (advisor.IsGlobalConfRestrictedSection(section))
+                if (advisor.IsGlobalConfRestrictedSetting(section, key))
                     return true;
             }
 
@@ -1465,17 +1464,16 @@ namespace SS.Core.Modules
 
                 ch = arena.Cfg!;
 
-                if (IsArenaConfRestrictedSection(section) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
+                if (IsArenaConfRestrictedSetting(section, key) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
                     return;
             }
             else
             {
                 ch = _configManager.Global;
 
-                if (IsGlobalConfRestrictedSection(section) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
+                if (IsGlobalConfRestrictedSetting(section, key) && !_capabilityManager.HasCapability(player, Constants.Capabilities.AllowRestrictedSettings))
                     return;
             }
-            ;
 
             if (comment.IsEmpty)
                 _configManager.SetStr(ch, section.ToString(), key.ToString(), value.ToString(), $"Set by {player.Name} on {DateTime.UtcNow}", permanent, options);

@@ -8,19 +8,25 @@ namespace SS.Core.ComponentAdvisors
     public interface IConfigManagerAdvisor : IComponentAdvisor
     {
         /// <summary>
-        /// Asks if an arena.conf <paramref name="section"/> is restricted and can only be accessed or modified 
+        /// Asks if an arena.conf setting is restricted and can only be accessed or modified 
         /// by users with <see cref="Constants.Capabilities.AllowRestrictedSettings"/>.
         /// </summary>
+        /// <remarks>
+        /// A setting is considered to be restricted if any advisor says it is.
+        /// </remarks>
         /// <param name="section">The section to check.</param>
         /// <returns><see langword="true"/> if the section is restricted; otherwise, <see langword="false"/>.</returns>
-        bool IsArenaConfRestrictedSection(ReadOnlySpan<char> section) => false;
+        bool IsArenaConfRestrictedSetting(ReadOnlySpan<char> section, ReadOnlySpan<char> key) => false;
 
         /// <summary>
-        /// Asks if a global.conf <paramref name="section"/> is restricted and can only be accessed or modified 
+        /// Asks if a global.conf setting is restricted and can only be accessed or modified 
         /// by users with <see cref="Constants.Capabilities.AllowRestrictedSettings"/>.
         /// </summary>
+        /// <remarks>
+        /// A setting is considered to be restricted if any advisor says it is.
+        /// </remarks>
         /// <param name="section">The section to check.</param>
         /// <returns><see langword="true"/> if the section is restricted; otherwise, <see langword="false"/>.</returns>
-        bool IsGlobalConfRestrictedSection(ReadOnlySpan<char> section) => false;
+        bool IsGlobalConfRestrictedSetting(ReadOnlySpan<char> section, ReadOnlySpan<char> key) => false;
     }
 }
