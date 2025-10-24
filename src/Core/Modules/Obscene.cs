@@ -22,13 +22,11 @@ namespace SS.Core.Modules
         IComponentBroker broker,
         ICommandManager commandManager,
         ILogManager logManager,
-        IMainloop mainloop,
         IObjectPoolManager objectPoolManager) : IAsyncModule, IObscene, IDisposable
     {
         private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
         private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
         private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
 
         private InterfaceRegistrationToken<IObscene>? _iObsceneRegistrationToken;
@@ -77,6 +75,7 @@ namespace SS.Core.Modules
                 _obsceneList = null;
             }
 
+            Dispose();
             return Task.FromResult(true);
         }
 
@@ -212,7 +211,7 @@ namespace SS.Core.Modules
                                 return;
                             }
 
-                            _logManager.LogM(LogLevel.Drivel, nameof(MapNewsDownload), $"Error opening {ObsceneFileName} ({tries} tries). {ex.Message}");
+                            _logManager.LogM(LogLevel.Drivel, nameof(Obscene), $"Error opening {ObsceneFileName} ({tries} tries). {ex.Message}");
 
                             await Task.Delay(1000).ConfigureAwait(false);
                         }
@@ -291,6 +290,8 @@ namespace SS.Core.Modules
                     return;
                 }
 
+                int wordCount = obsceneList.Count;
+
                 lock (_obsceneLock)
                 {
                     _checksum = checksum;
@@ -298,7 +299,7 @@ namespace SS.Core.Modules
                     _obscenities = SearchValues.Create(CollectionsMarshal.AsSpan(obsceneList), StringComparison.OrdinalIgnoreCase);
                 }
 
-                _logManager.LogM(LogLevel.Info, nameof(Obscene), $"Loaded {ObsceneFileName} (words:{obsceneList.Count}, checksum:{_checksum:X}).");
+                _logManager.LogM(LogLevel.Info, nameof(Obscene), $"Loaded {ObsceneFileName} (words:{wordCount}, checksum:{checksum:X}).");
             }
         }
 
@@ -332,7 +333,7 @@ namespace SS.Core.Modules
 
         public void Dispose()
         {
-            if (_fileSystemWatcher != null)
+            if (_fileSystemWatcher is not null)
             {
                 _fileSystemWatcher.EnableRaisingEvents = false;
                 _fileSystemWatcher.Changed -= FileSystemWatcher_Changed;
