@@ -520,7 +520,7 @@ namespace SS.Core.Modules
                     }
                 }
 
-                ref PeerPacketHeader header = ref MemoryMarshal.AsRef<PeerPacketHeader>(peerZone.PlayerListBuffer);
+                ref PeerPacketHeader header = ref MemoryMarshal.AsRef<PeerPacketHeader>(peerZone.PlayerListBuffer.AsSpan(0, PeerPacketHeader.Length));
                 header = new(peerZone.Config.PasswordHash, PeerPacketType.PlayerList, ServerTick.Now);
 
                 _rawNetwork.ReallyRawSend(peerZone.Config.SocketAddress, peerZone.PlayerListBuffer.AsSpan(0, pos), listenData);

@@ -299,7 +299,7 @@ namespace SS.Replay
             if (action == PlayerAction.EnterArena)
             {
                 byte[] buffer = _recordBufferPool.Rent(Enter.Length);
-                ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer);
+                ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer.AsSpan(0, Enter.Length));
                 enter = new(ServerTick.Now, (short)player.Id, player.Name, player.Squad, player.Ship, player.Freq);
 
                 ad.RecorderQueue!.Add(new RecordBuffer(buffer, Enter.Length));
@@ -307,7 +307,7 @@ namespace SS.Replay
             else if (action == PlayerAction.LeaveArena)
             {
                 byte[] buffer = _recordBufferPool.Rent(Leave.Length);
-                ref Leave leave = ref MemoryMarshal.AsRef<Leave>(buffer);
+                ref Leave leave = ref MemoryMarshal.AsRef<Leave>(buffer.AsSpan(0, Leave.Length));
                 leave = new(ServerTick.Now, (short)player.Id);
 
                 ad.RecorderQueue!.Add(new RecordBuffer(buffer, Leave.Length));
@@ -325,7 +325,7 @@ namespace SS.Replay
             if (newShip == oldShip)
             {
                 byte[] buffer = _recordBufferPool.Rent(FreqChange.Length);
-                ref FreqChange freqChange = ref MemoryMarshal.AsRef<FreqChange>(buffer);
+                ref FreqChange freqChange = ref MemoryMarshal.AsRef<FreqChange>(buffer.AsSpan(0, FreqChange.Length));
                 freqChange = new(ServerTick.Now, (short)player.Id, newFreq);
 
                 ad.RecorderQueue!.Add(new RecordBuffer(buffer, FreqChange.Length));
@@ -333,7 +333,7 @@ namespace SS.Replay
             else
             {
                 byte[] buffer = _recordBufferPool.Rent(ShipChange.Length);
-                ref ShipChange shipChange = ref MemoryMarshal.AsRef<ShipChange>(buffer);
+                ref ShipChange shipChange = ref MemoryMarshal.AsRef<ShipChange>(buffer.AsSpan(0, ShipChange.Length));
                 shipChange = new(ServerTick.Now, (short)player.Id, newShip, newFreq);
 
                 ad.RecorderQueue!.Add(new RecordBuffer(buffer, ShipChange.Length));
@@ -347,8 +347,8 @@ namespace SS.Replay
             if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
-            byte[] buffer = _recordBufferPool.Rent(ShipChange.Length);
-            ref Kill kill = ref MemoryMarshal.AsRef<Kill>(buffer);
+            byte[] buffer = _recordBufferPool.Rent(Kill.Length);
+            ref Kill kill = ref MemoryMarshal.AsRef<Kill>(buffer.AsSpan(0, Kill.Length));
             kill = new(ServerTick.Now, (short)killer.Id, (short)killed.Id, points, flagCount);
 
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, Kill.Length));
@@ -368,7 +368,7 @@ namespace SS.Replay
             {
                 int messageByteCount = StringUtils.DefaultEncoding.GetByteCount(message) + 1;
                 byte[] buffer = _recordBufferPool.Rent(Chat.Length + messageByteCount);
-                ref Chat chat = ref MemoryMarshal.AsRef<Chat>(buffer);
+                ref Chat chat = ref MemoryMarshal.AsRef<Chat>(buffer.AsSpan(0, Chat.Length));
                 short fromPlayerId = (short)(player is not null ? player.Id : -1);
                 chat = new(ServerTick.Now, fromPlayerId, type, sound, (ushort)messageByteCount);
                 Span<byte> messageBytes = buffer.AsSpan(Chat.Length, messageByteCount);
@@ -391,7 +391,7 @@ namespace SS.Replay
                 BrickData brickData = bricks[i];
 
                 byte[] buffer = _recordBufferPool.Rent(Brick.Length);
-                ref Brick brick = ref MemoryMarshal.AsRef<Brick>(buffer);
+                ref Brick brick = ref MemoryMarshal.AsRef<Brick>(buffer.AsSpan(0, Brick.Length));
                 brick = new(ServerTick.Now, in brickData);
 
                 ad.RecorderQueue!.Add(new(buffer, Brick.Length));
@@ -406,7 +406,7 @@ namespace SS.Replay
                 return;
 
             byte[] buffer = _recordBufferPool.Rent(BallPacketWrapper.Length);
-            ref BallPacketWrapper ballPacketWrapper = ref MemoryMarshal.AsRef<BallPacketWrapper>(buffer);
+            ref BallPacketWrapper ballPacketWrapper = ref MemoryMarshal.AsRef<BallPacketWrapper>(buffer.AsSpan(0, BallPacketWrapper.Length));
             ballPacketWrapper = new(ServerTick.Now, in ballPacket);
 
             ad.RecorderQueue!.Add(new(buffer, BallPacketWrapper.Length));
@@ -421,7 +421,7 @@ namespace SS.Replay
                 return;
 
             byte[] buffer = _recordBufferPool.Rent(CrownToggle.Length);
-            ref CrownToggle crownToggle = ref MemoryMarshal.AsRef<CrownToggle>(buffer);
+            ref CrownToggle crownToggle = ref MemoryMarshal.AsRef<CrownToggle>(buffer.AsSpan(0, CrownToggle.Length));
             crownToggle = new(ServerTick.Now, on, (short)player.Id);
 
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, CrownToggle.Length));
@@ -443,7 +443,7 @@ namespace SS.Replay
                     if (ad.State == ReplayState.Recording && ad.RecorderQueue is not null && !ad.RecorderQueue.IsAddingCompleted)
                     {
                         byte[] buffer = _recordBufferPool.Rent(SecuritySeedChange.Length);
-                        ref SecuritySeedChange seedChange = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer);
+                        ref SecuritySeedChange seedChange = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer.AsSpan(0, SecuritySeedChange.Length));
                         seedChange = new(timestamp, greenSeed, doorSeed, 0);
 
                         ad.RecorderQueue.Add(new RecordBuffer(buffer, SecuritySeedChange.Length));
@@ -474,7 +474,7 @@ namespace SS.Replay
                 arena.ReleaseInterface(ref carryFlagGame);
 
                 byte[] buffer = _recordBufferPool.Rent(CarryFlagGameReset.Length);
-                ref CarryFlagGameReset gameReset = ref MemoryMarshal.AsRef<CarryFlagGameReset>(buffer);
+                ref CarryFlagGameReset gameReset = ref MemoryMarshal.AsRef<CarryFlagGameReset>(buffer.AsSpan(0, CarryFlagGameReset.Length));
                 gameReset = new(ServerTick.Now, winnerFreq, points);
                 ad.RecorderQueue!.Add(new RecordBuffer(buffer, CarryFlagGameReset.Length));
                 return;
@@ -491,7 +491,7 @@ namespace SS.Replay
                 return;
 
             byte[] buffer = _recordBufferPool.Rent(StaticFlagClaimed.Length);
-            ref StaticFlagClaimed claimed = ref MemoryMarshal.AsRef<StaticFlagClaimed>(buffer);
+            ref StaticFlagClaimed claimed = ref MemoryMarshal.AsRef<StaticFlagClaimed>(buffer.AsSpan(0, StaticFlagClaimed.Length));
             claimed = new(ServerTick.Now, flagId, (short)player.Id);
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, StaticFlagClaimed.Length));
         }
@@ -524,7 +524,7 @@ namespace SS.Replay
                 return;
 
             byte[] buffer = _recordBufferPool.Rent(CarryFlagDrop.Length);
-            ref CarryFlagDrop drop = ref MemoryMarshal.AsRef<CarryFlagDrop>(buffer);
+            ref CarryFlagDrop drop = ref MemoryMarshal.AsRef<CarryFlagDrop>(buffer.AsSpan(0, CarryFlagDrop.Length));
             drop = new(ServerTick.Now, (short)player.Id);
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, CarryFlagDrop.Length));
         }
@@ -541,7 +541,7 @@ namespace SS.Replay
                 return;
 
             byte[] buffer = _recordBufferPool.Rent(AttachChange.Length);
-            ref AttachChange attachChange = ref MemoryMarshal.AsRef<AttachChange>(buffer);
+            ref AttachChange attachChange = ref MemoryMarshal.AsRef<AttachChange>(buffer.AsSpan(0, AttachChange.Length));
             attachChange = new(ServerTick.Now, (short)player.Id, to is null ? (short)-1 : (short)to.Id);
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, AttachChange.Length));
         }
@@ -555,7 +555,7 @@ namespace SS.Replay
                 return;
 
             byte[] buffer = _recordBufferPool.Rent(TurretKickoff.Length);
-            ref TurretKickoff turretKickoff = ref MemoryMarshal.AsRef<TurretKickoff>(buffer);
+            ref TurretKickoff turretKickoff = ref MemoryMarshal.AsRef<TurretKickoff>(buffer.AsSpan(0, TurretKickoff.Length));
             turretKickoff = new(ServerTick.Now, (short)player.Id);
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, TurretKickoff.Length));
         }
@@ -586,7 +586,7 @@ namespace SS.Replay
             ref readonly C2S_PositionPacket c2sPosition = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
 
             byte[] buffer = _recordBufferPool.Rent(EventHeader.Length + length);
-            ref Position position = ref MemoryMarshal.AsRef<Position>(buffer);
+            ref Position position = ref MemoryMarshal.AsRef<Position>(buffer.AsSpan(0, Position.Length));
             position = new(ServerTick.Now, c2sPosition);
             position.PositionPacket.Type = (byte)length;
             position.PositionPacket.Time = (uint)player.Id;
@@ -594,7 +594,7 @@ namespace SS.Replay
             if (length == C2S_PositionPacket.LengthWithExtra)
             {
                 ref readonly ExtraPositionData extra = ref MemoryMarshal.AsRef<ExtraPositionData>(data.Slice(C2S_PositionPacket.Length, ExtraPositionData.Length));
-                ref PositionWithExtra positionWithExtra = ref MemoryMarshal.AsRef<PositionWithExtra>(buffer);
+                ref PositionWithExtra positionWithExtra = ref MemoryMarshal.AsRef<PositionWithExtra>(buffer.AsSpan(0, PositionWithExtra.Length));
                 positionWithExtra.ExtraPositionData = extra;
             }
 
@@ -832,7 +832,7 @@ namespace SS.Replay
             {
                 _securitySeedSync.GetCurrentSeedInfo(out uint greenSeed, out uint doorSeed, out uint timestamp);
                 byte[] buffer = _recordBufferPool.Rent(SecuritySeedChange.Length);
-                ref SecuritySeedChange change = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer);
+                ref SecuritySeedChange change = ref MemoryMarshal.AsRef<SecuritySeedChange>(buffer.AsSpan(0, SecuritySeedChange.Length));
                 ServerTick now = ServerTick.Now;
                 change = new(now, greenSeed, doorSeed, (uint)(now - (ServerTick)timestamp));
 
@@ -852,7 +852,7 @@ namespace SS.Replay
                             && player.Status == PlayerState.Playing)
                         {
                             byte[] buffer = _recordBufferPool.Rent(Enter.Length);
-                            ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer);
+                            ref Enter enter = ref MemoryMarshal.AsRef<Enter>(buffer.AsSpan(0, Enter.Length));
                             enter = new(ServerTick.Now, (short)player.Id, player.Name, player.Squad, player.Ship, player.Freq);
 
                             ad.RecorderQueue!.Add(new RecordBuffer(buffer, Enter.Length));
@@ -867,7 +867,7 @@ namespace SS.Replay
                             && player.Attached != -1)
                         {
                             byte[] buffer = _recordBufferPool.Rent(AttachChange.Length);
-                            ref AttachChange attachChange = ref MemoryMarshal.AsRef<AttachChange>(buffer);
+                            ref AttachChange attachChange = ref MemoryMarshal.AsRef<AttachChange>(buffer.AsSpan(0, AttachChange.Length));
                             attachChange = new(ServerTick.Now, (short)player.Id, player.Attached);
 
                             ad.RecorderQueue!.Add(new RecordBuffer(buffer, AttachChange.Length));
@@ -882,7 +882,7 @@ namespace SS.Replay
                             && player.Packet.HasCrown)
                         {
                             byte[] buffer = _recordBufferPool.Rent(CrownToggle.Length);
-                            ref CrownToggle crownToggle = ref MemoryMarshal.AsRef<CrownToggle>(buffer);
+                            ref CrownToggle crownToggle = ref MemoryMarshal.AsRef<CrownToggle>(buffer.AsSpan(0, CrownToggle.Length));
                             crownToggle = new(ServerTick.Now, true, (short)player.Id);
 
                             ad.RecorderQueue!.Add(new RecordBuffer(buffer, CrownToggle.Length));
@@ -961,7 +961,7 @@ namespace SS.Replay
                         int ownersLength = flagCount * 2; // freq is an Int16
                         int eventLength = StaticFlagFullUpdate.Length + ownersLength;
                         byte[] buffer = _recordBufferPool.Rent(eventLength);
-                        ref StaticFlagFullUpdate fullUpdate = ref MemoryMarshal.AsRef<StaticFlagFullUpdate>(buffer);
+                        ref StaticFlagFullUpdate fullUpdate = ref MemoryMarshal.AsRef<StaticFlagFullUpdate>(buffer.AsSpan(0, StaticFlagFullUpdate.Length));
                         fullUpdate = new(ServerTick.Now, flagCount);
                         Span<Int16LittleEndian> fullUpdateOwners = MemoryMarshal.Cast<byte, Int16LittleEndian>(buffer.AsSpan(StaticFlagFullUpdate.Length, ownersLength));
                         for (int i = 0; i < flagCount; i++)
@@ -985,7 +985,7 @@ namespace SS.Replay
         private static void QueueCarryFlagOnMap(ArenaData ad, short flagId, TileCoordinates coordinates, short freq)
         {
             byte[] buffer = _recordBufferPool.Rent(CarryFlagOnMap.Length);
-            ref CarryFlagOnMap onMap = ref MemoryMarshal.AsRef<CarryFlagOnMap>(buffer);
+            ref CarryFlagOnMap onMap = ref MemoryMarshal.AsRef<CarryFlagOnMap>(buffer.AsSpan(0, CarryFlagOnMap.Length));
             onMap = new(ServerTick.Now, flagId, coordinates.X, coordinates.Y, freq);
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, CarryFlagOnMap.Length));
         }
@@ -993,7 +993,7 @@ namespace SS.Replay
         private static void QueueCarryFlagPickup(ArenaData ad, short flagId, Player player)
         {
             byte[] buffer = _recordBufferPool.Rent(CarryFlagPickup.Length);
-            ref CarryFlagPickup pickup = ref MemoryMarshal.AsRef<CarryFlagPickup>(buffer);
+            ref CarryFlagPickup pickup = ref MemoryMarshal.AsRef<CarryFlagPickup>(buffer.AsSpan(0, CarryFlagPickup.Length));
             pickup = new(ServerTick.Now, flagId, (short)player.Id);
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, CarryFlagPickup.Length));
         }

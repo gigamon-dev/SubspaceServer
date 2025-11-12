@@ -1488,7 +1488,7 @@ namespace SS.Core.Modules
                     nextNode = node.Next;
 
                     SubspaceBuffer checkBuffer = node.Value;
-                    ref ReliableHeader header = ref MemoryMarshal.AsRef<ReliableHeader>(checkBuffer.Bytes);
+                    ref readonly ReliableHeader header = ref MemoryMarshal.AsRef<ReliableHeader>(checkBuffer.Bytes);
                     if (header.SeqNum == seqNum)
                     {
                         buffer = checkBuffer;
@@ -3105,7 +3105,7 @@ namespace SS.Core.Modules
                         {
                             // The reliable sending/pending queue has at least one packet,
                             // Get the first one (lowest sequence number) and use that number to determine if there's room to add more.
-                            ref ReliableHeader min = ref MemoryMarshal.AsRef<ReliableHeader>(outlist.First!.Value.Bytes);
+                            ref readonly ReliableHeader min = ref MemoryMarshal.AsRef<ReliableHeader>(outlist.First!.Value.Bytes);
                             if ((conn.SeqNumOut - min.SeqNum) >= canSend)
                             {
                                 break;
@@ -3135,7 +3135,7 @@ namespace SS.Core.Modules
                                 groupedBuffer.LastTryTimestamp = null;
                                 groupedBuffer.Tries = 0;
 
-                                ref ReliableHeader groupedRelHeader = ref MemoryMarshal.AsRef<ReliableHeader>(groupedBuffer.Bytes);
+                                ref ReliableHeader groupedRelHeader = ref MemoryMarshal.AsRef<ReliableHeader>(groupedBuffer.Bytes.AsSpan(0, ReliableHeader.Length));
                                 groupedRelHeader = new(conn.SeqNumOut++);
 
                                 // Group up as many as possible
@@ -3205,7 +3205,7 @@ namespace SS.Core.Modules
                         }
 
                         // Write in the reliable header.
-                        ref ReliableHeader header = ref MemoryMarshal.AsRef<ReliableHeader>(b1.Bytes);
+                        ref ReliableHeader header = ref MemoryMarshal.AsRef<ReliableHeader>(b1.Bytes.AsSpan(0, ReliableHeader.Length));
                         header = new(conn.SeqNumOut++);
 
                         b1.NumBytes += ReliableHeader.Length;
@@ -3233,7 +3233,7 @@ namespace SS.Core.Modules
                     outlistlen++;
 
                     // check some invariants
-                    ref ReliableHeader rp = ref MemoryMarshal.AsRef<ReliableHeader>(buf.Bytes);
+                    ref readonly ReliableHeader rp = ref MemoryMarshal.AsRef<ReliableHeader>(buf.Bytes);
 
                     if (rp.T1 == 0x00 && rp.T2 == 0x03)
                         Debug.Assert(pri == (int)BandwidthPriority.Reliable);

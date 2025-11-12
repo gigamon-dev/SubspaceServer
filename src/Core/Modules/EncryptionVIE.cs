@@ -254,7 +254,7 @@ namespace SS.Core.Modules
                     if (key == 0)
                         return; // no encryption
 
-                    Span<Int16LittleEndian> myTable = MemoryMarshal.Cast<byte, Int16LittleEndian>(_table);
+                    Span<Int16LittleEndian> myTable = MemoryMarshal.Cast<byte, Int16LittleEndian>(_table.AsSpan());
 
                     for (int loop = 0; loop < 0x104; loop++)
                     {
