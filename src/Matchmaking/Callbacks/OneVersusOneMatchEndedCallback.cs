@@ -21,11 +21,12 @@ namespace SS.Matchmaking.Callbacks
     }
 
     /// <summary>
-    /// Callback for when a 1v1 match ends.
+    /// Callback delegate for when a 1v1 match has ended.
     /// </summary>
-    [CallbackHelper]
-    public static partial class OneVersusOneMatchEndedCallback
-    {
-        public delegate void OneVersusOneMatchEndedDelegate(Arena arena, int boxId, OneVersusOneMatchEndReason reason, string? winnerPlayerName);
-    }
+    /// <param name="arena"></param>
+    /// <param name="boxId"></param>
+    /// <param name="reason"></param>
+    /// <param name="winnerPlayerName"></param>
+    [ComponentCallback]
+    public delegate void OneVersusOneMatchEndedCallback(Arena arena, int boxId, OneVersusOneMatchEndReason reason, string? winnerPlayerName);
 }

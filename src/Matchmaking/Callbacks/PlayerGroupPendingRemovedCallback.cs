@@ -31,11 +31,11 @@ namespace SS.Matchmaking.Callbacks
     }
 
     /// <summary>
-    /// Callback for when a pending invite is removed from a <see cref="IPlayerGroup"/>.
+    /// Callback delegate for when a pending invite is removed from a <see cref="IPlayerGroup"/>.
     /// </summary>
-    [CallbackHelper]
-    public static partial class PlayerGroupPendingRemovedCallback
-    {
-        public delegate void PlayerGroupPendingRemovedDelegate(IPlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason);
-    }
+    /// <param name="group"></param>
+    /// <param name="player"></param>
+    /// <param name="reason"></param>
+    [ComponentCallback]
+    public delegate void PlayerGroupPendingRemovedCallback(IPlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason);
 }

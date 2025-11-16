@@ -38,15 +38,16 @@
     }
 
     /// <summary>
-    /// Helper for the <see cref="GameTimerChangedDelegate"/> callback.
+    /// Callback delegate for when a game timer is changed.
     /// </summary>
     /// <remarks>
     /// It is possible to tell when a timer completes by watching for a reason of <see cref="TimerChangeReason.Completion"/>, 
     /// in which case the timer either got <see cref="TimerChange.Started"/> back up or <see cref="TimerChange.Stopped"/>.
     /// </remarks>
-    [CallbackHelper]
-    public static partial class GameTimerChangedCallback
-    {
-        public delegate void GameTimerChangedDelegate(Arena arena, TimerChange change, TimerChangeReason reason, bool isTimedGame);
-    }
+    /// <param name="arena"></param>
+    /// <param name="change"></param>
+    /// <param name="reason"></param>
+    /// <param name="isTimedGame"></param>
+    [ComponentCallback]
+    public delegate void GameTimerChangedCallback(Arena arena, TimerChange change, TimerChangeReason reason, bool isTimedGame);
 }

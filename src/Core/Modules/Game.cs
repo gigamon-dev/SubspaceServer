@@ -386,14 +386,14 @@ namespace SS.Core.Modules
                         if (player.Ship == ShipType.Spec)
                             continue;
 
-                        SpawnCallback.SpawnReason flags = SpawnCallback.SpawnReason.ShipReset;
+                        PlayerSpawnReason flags = PlayerSpawnReason.ShipReset;
                         if (player.Flags.IsDead)
                         {
                             player.Flags.IsDead = false;
-                            flags |= SpawnCallback.SpawnReason.AfterDeath;
+                            flags |= PlayerSpawnReason.AfterDeath;
                         }
 
-                        DoSpawnCallback(player, flags);
+                        DoPlayerSpawnCallback(player, flags);
                     }
                 }
                 finally
@@ -918,7 +918,7 @@ namespace SS.Core.Modules
             {
                 if (player.Ship != ShipType.Spec)
                 {
-                    DoSpawnCallback(player, SpawnCallback.SpawnReason.Initial);
+                    DoPlayerSpawnCallback(player, PlayerSpawnReason.Initial);
                 }
             }
         }
@@ -963,15 +963,15 @@ namespace SS.Core.Modules
                         // So, no matter what, we can't guarantee being 100% accurate.
                         // We'll just assume that their ship was reset, regardless of being in a safe zone or not.
 
-                        SpawnCallback.SpawnReason reason = SpawnCallback.SpawnReason.FlagVictory | SpawnCallback.SpawnReason.ShipReset;
+                        PlayerSpawnReason reason = PlayerSpawnReason.FlagVictory | PlayerSpawnReason.ShipReset;
 
                         if (player.Flags.IsDead)
                         {
                             player.Flags.IsDead = false;
-                            reason |= SpawnCallback.SpawnReason.AfterDeath;
+                            reason |= PlayerSpawnReason.AfterDeath;
                         }
 
-                        DoSpawnCallback(player, reason);
+                        DoPlayerSpawnCallback(player, reason);
                     }
                 }
             }
@@ -1409,7 +1409,7 @@ namespace SS.Core.Modules
                     if (player.Flags.IsDead && gtc - player.LastDeath >= 50 && player.NextRespawn - gtc <= 50)
                     {
                         player.Flags.IsDead = false;
-                        DoSpawnCallback(player, SpawnCallback.SpawnReason.AfterDeath);
+                        DoPlayerSpawnCallback(player, PlayerSpawnReason.AfterDeath);
                     }
 
                     foreach (Player otherPlayer in _playerData.Players)
@@ -2004,12 +2004,12 @@ namespace SS.Core.Modules
             // now setup for the CB_SPAWN callback
             _playerData.Lock();
 
-            SpawnCallback.SpawnReason flags = SpawnCallback.SpawnReason.ShipChange;
+            PlayerSpawnReason flags = PlayerSpawnReason.ShipChange;
             try
             {
                 if (player.Flags.IsDead)
                 {
-                    flags |= SpawnCallback.SpawnReason.AfterDeath;
+                    flags |= PlayerSpawnReason.AfterDeath;
                 }
 
                 // a ship change will revive a dead player
@@ -2025,10 +2025,10 @@ namespace SS.Core.Modules
                 // flags = SpawnReason.ShipChange set at the top of the function
                 if (oldShip == ShipType.Spec)
                 {
-                    flags |= SpawnCallback.SpawnReason.Initial;
+                    flags |= PlayerSpawnReason.Initial;
                 }
 
-                DoSpawnCallback(player, flags);
+                DoPlayerSpawnCallback(player, flags);
             }
 
             _logManager.LogP(LogLevel.Info, nameof(Game), player, $"Changed ship/freq to ship {ship}, freq {freq}.");
@@ -2636,14 +2636,14 @@ namespace SS.Core.Modules
             }
         }
 
-        private void DoSpawnCallback(Player player, SpawnCallback.SpawnReason reason)
+        private void DoPlayerSpawnCallback(Player player, PlayerSpawnReason reason)
         {
             Arena? arena = player.Arena;
             if (arena is null)
                 return;
 
             _mainloop.QueueMainWorkItem(
-                MainloopWork_FireSpawnCallback,
+                MainloopWork_FirePlayerSpawnCallback,
                 new SpawnDTO()
                 {
                     Arena = arena,
@@ -2651,11 +2651,11 @@ namespace SS.Core.Modules
                     Reason = reason,
                 });
 
-            static void MainloopWork_FireSpawnCallback(SpawnDTO dto)
+            static void MainloopWork_FirePlayerSpawnCallback(SpawnDTO dto)
             {
                 if (dto.Arena == dto.Player.Arena)
                 {
-                    SpawnCallback.Fire(dto.Arena, dto.Player, dto.Reason);
+                    PlayerSpawnCallback.Fire(dto.Arena, dto.Player, dto.Reason);
                 }
             }
         }
@@ -2700,7 +2700,7 @@ namespace SS.Core.Modules
         {
             public required Arena Arena;
             public required Player Player;
-            public required SpawnCallback.SpawnReason Reason;
+            public required PlayerSpawnReason Reason;
         }
 
         private struct ShipFreqChangeDTO

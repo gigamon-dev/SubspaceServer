@@ -3,11 +3,12 @@
 namespace SS.Matchmaking.Callbacks
 {
     /// <summary>
-    /// Callback for when a 1v1 match starts.
+    /// Callback delegate for when a 1v1 match has started.
     /// </summary>
-    [CallbackHelper]
-    public static partial class OneVersusOneMatchStartedCallback
-    {
-        public delegate void OneVersusOneMatchStartedDelegate(Arena arena, int boxId, Player player1, Player player2);
-    }
+    /// <param name="arena"></param>
+    /// <param name="boxId"></param>
+    /// <param name="player1"></param>
+    /// <param name="player2"></param>
+    [ComponentCallback]
+    public delegate void OneVersusOneMatchStartedCallback(Arena arena, int boxId, Player player1, Player player2);
 }

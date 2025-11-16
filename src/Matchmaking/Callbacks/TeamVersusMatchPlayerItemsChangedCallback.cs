@@ -16,9 +16,11 @@ namespace SS.Matchmaking.Callbacks
         Portals = 64,
     }
 
-    [CallbackHelper]
-    public static partial class TeamVersusMatchPlayerItemsChangedCallback
-    {
-        public delegate void TeamVersusMatchPlayerItemsChangedDelegate(IPlayerSlot playerSlot, ItemChanges changes);
-    }
+    /// <summary>
+    /// Callback delegate for when the item count has changed for a player in a Team Versus match.
+    /// </summary>
+    /// <param name="playerSlot"></param>
+    /// <param name="changes"></param>
+    [ComponentCallback]
+    public delegate void TeamVersusMatchPlayerItemsChangedCallback(IPlayerSlot playerSlot, ItemChanges changes);
 }

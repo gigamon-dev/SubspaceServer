@@ -3,12 +3,10 @@
 namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
-    /// Helper class for the <see cref="PersistIntervalEndedDelegate"/> callback
-    /// which is fired by the <see cref="Modules.Persist"/> module after it ends an interval.
+    /// Callback delegate for when the <see cref="Modules.Persist"/> module has ended an interval.
     /// </summary>
-    [CallbackHelper]
-    public static partial class PersistIntervalEndedCallback
-    {
-        public delegate void PersistIntervalEndedDelegate(PersistInterval interval, string arenaGroup);
-    }
+    /// <param name="interval"></param>
+    /// <param name="arenaGroup"></param>
+    [ComponentCallback]
+    public delegate void PersistIntervalEndedCallback(PersistInterval interval, string arenaGroup);
 }

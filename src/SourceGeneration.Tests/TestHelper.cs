@@ -40,7 +40,7 @@ namespace SS.SourceGeneration.Tests
                 .Select(assembly => MetadataReference.CreateFromFile(assembly.Location))
                 .Concat(
                     [   
-                        MetadataReference.CreateFromFile(typeof(CallbackHelperAttribute).Assembly.Location), 
+                        MetadataReference.CreateFromFile(typeof(ComponentCallbackAttribute).Assembly.Location), 
                         MetadataReference.CreateFromFile(typeof(SS.Packets.Game.BallPacket).Assembly.Location)
                     ]);
 

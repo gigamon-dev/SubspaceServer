@@ -753,7 +753,7 @@ namespace SS.Matchmaking.Modules
                 ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
                 PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
                 BricksPlacedCallback.Register(arena, Callback_BricksPlaced);
-                SpawnCallback.Register(arena, Callback_Spawn);
+                PlayerSpawnCallback.Register(arena, Callback_PlayerSpawn);
 
                 // Register commands.
                 _commandManager.AddCommand(CommandNames.RequestSub, Command_requestsub, arena);
@@ -820,7 +820,7 @@ namespace SS.Matchmaking.Modules
                     ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
                     PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
                     BricksPlacedCallback.Unregister(arena, Callback_BricksPlaced);
-                    SpawnCallback.Unregister(arena, Callback_Spawn);
+                    PlayerSpawnCallback.Unregister(arena, Callback_PlayerSpawn);
 
                     // Unregister commands.
                     _commandManager.RemoveCommand(CommandNames.RequestSub, Command_requestsub, arena);
@@ -1660,7 +1660,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void Callback_Spawn(Player player, SpawnCallback.SpawnReason reasons)
+        private void Callback_PlayerSpawn(Player player, PlayerSpawnReason reasons)
         {
             if (player is null)
                 return;
@@ -1678,9 +1678,9 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            bool isAfterDeath = (reasons & SpawnCallback.SpawnReason.AfterDeath) == SpawnCallback.SpawnReason.AfterDeath;
-            bool isShipChange = (reasons & SpawnCallback.SpawnReason.ShipChange) == SpawnCallback.SpawnReason.ShipChange;
-            bool isInitial = (reasons & SpawnCallback.SpawnReason.Initial) == SpawnCallback.SpawnReason.Initial;
+            bool isAfterDeath = (reasons & PlayerSpawnReason.AfterDeath) == PlayerSpawnReason.AfterDeath;
+            bool isShipChange = (reasons & PlayerSpawnReason.ShipChange) == PlayerSpawnReason.ShipChange;
+            bool isInitial = (reasons & PlayerSpawnReason.Initial) == PlayerSpawnReason.Initial;
 
             MatchData matchData = slot.MatchData;
             if (isShipChange && !isInitial && IsStartingPhase(matchData.Status))

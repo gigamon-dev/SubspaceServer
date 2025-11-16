@@ -44,23 +44,16 @@ namespace SS.Core
     }
 
     /// <summary>
-    /// Attribute that instructs the source generator to write helper methods for registering, unregistering, and firing callbacks.
+    /// Attribute that instructs the source generator to write extension methods for a component callback (publisher/subscriber mechanism of an <see cref="IComponentBroker"/>).
     /// </summary>
     /// <remarks>
-    /// The class that is marked with this attribute must be static and partial.
-    /// The class name must end with Callback (e.g. FooCallback).
-    /// In the class, a public delegate must be declared with the same name as the class, with name ending with "Delegate" (e.g. if the class was FooCallback, it must contain FooDelegate).
-    /// <code>
-    /// [GenerateCallbackHelper]
-    /// public static partial class FooCallback
-    /// {
-    ///     public delegate void FooDelegate(int x, string y, readonly ref MyLargeStruct z);
-    /// }
-    /// </code>
-    /// The generator will create the Register, Unregister, and Fire methods.
+    /// The generator writes the Register, Unregister, and Fire methods.
+    /// These methods assist with performing those operations on an <see cref="IComponentBroker"/>.
+    /// This is especially true for the Fire method, which invokes each handler separately while catching exceptions,
+    /// and invokes the callback on all relevant scopes (Arena and Global) based on the broker.
     /// </remarks>
-    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-    public class CallbackHelperAttribute : Attribute
+    [AttributeUsage(AttributeTargets.Delegate, AllowMultiple = false, Inherited = false)]
+    public class ComponentCallbackAttribute : Attribute
     {
     }
 

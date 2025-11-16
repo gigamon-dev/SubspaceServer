@@ -487,14 +487,14 @@ Under the hood, a Component Callback is just a delegate that the `ComponentBroke
 
 > **Design note:** If you're familiar with other more robust Publisher-subscriber implementations, you might be wondering why doesn't it use weak references. The answer is, I just went for simplicity and speed.
 
-Each of the built-in Component Callbacks use a static helper class to assist with registering, unregistering, and firing. You can use the `ComponentBroker` directly, but the helper class makes it easier to use, especially for firing/invoking a callback. These helpers can be found in the [SS.Core.ComponentCallbacks](../src/Core/ComponentCallbacks) namespace.
+The built-in Component Callbacks use a source generator to assist with registering, unregistering, and firing. You can use the `ComponentBroker` directly to do those operations, but the source generated methods make it easier to use, especially for firing/invoking a callback. The built-in Component Callbacks be found in the [SS.Core.ComponentCallbacks](../src/Core/ComponentCallbacks) namespace.
 
 
 ### Registering/Unregistering for a Component Callback
 
 > If you register for a callback, make sure you unregister it at some point too. You don't want to have a leak. So, if you register for a callback in your module's `Load` method, remember to unregister it in the `Unload` method. 
 
-Here's an example of registering and unregistering for the PlayerAction callback. The player action callback is probably one of the most used callbacks. Here, I show how you can use it to tell when a player enters or leaves an arena.
+Here's an example of registering and unregistering for the PlayerAction callback. The player action callback is probably one of the most used callbacks. Here, is an example that uses it to tell when a player enters or leaves an arena.
 ```C#
 using SS.Core;
 using SS.Core.ComponentCallbacks;
@@ -535,7 +535,7 @@ public class RegistrationExample(IChat chat) : IModule
 > View the full example code at: [RegistrationExample](../src/Example/CallbackExamples/RegistrationExample.cs)
 
 ### Register for an Component Callback on an arena
-Registering for a Component Callback on an arena is similar, you just have to use the arena, not the root `ComponentBroker`. Here's an example where the `IArenaAttachableModule` interface (which was discussed [earlier](#iarenaattachablemodule)), is used to only register for the PlayerAction Component Callback on arenas that the module is attached to.
+The last example showed registering for a Component Callback globally, for all arenas. Registering for a Component Callback on an individual arena is similar, you just have to use the arena, not the root `ComponentBroker`. Here's an example where the `IArenaAttachableModule` interface (which was discussed [earlier](#iarenaattachablemodule)), is used to only register for the PlayerAction Component Callback on arenas that the module is attached to.
 
 ```C#
 using SS.Core;
@@ -589,46 +589,36 @@ public class ArenaRegistrationExample(IChat chat) : IModule, IArenaAttachableMod
 > View the full example code at: [ArenaRegistrationExample](../src/Example/CallbackExamples/ArenaRegistrationExample.cs)
 
 ### Creating a new Component Callback
-To create a new Component Callback, the bare minimum needed is to define a delegate. However, as mentioned earlier, it's nicer to wrap it all up in a static helper class and use the provided source generator. To use the source generator add a reference to your plug-in project's .csproj file. It'll look like this:
+To create a new Component Callback, the bare minimum needed is to define a delegate. However, a source generator is provided to assist, and using it is recommended. The source generator adds static methods to `Register`, `Unregister`, and `Fire` a callback. To use the source generator, add a reference to your plug-in project's .csproj file. It'll look like this:
 ```XML
 <ProjectReference Include="..\SourceGeneration\SourceGeneration.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 ```
 > Note: Your path may differ based on where your plug-in project is in relation to the source generator project. The above is from the Example project which is on the same directory level as the SourceGeneration project.
 
-Here's an example of using the source generator to create the static helper class:
+Here's an example of declaring the callback delegate and using the source generator:
 
 ```C#
 using SS.Core;
 
 /// <summary>
-/// A static helper class to assist with firing the Component Callback.
-/// It uses a source generator to generate the <see cref="Register"/>, <see cref="Unregister"/>, and <see cref="Fire"/> methods.
-/// Using the source generator is not necessary, but it helps write the methods for us.
 /// <para>
-/// To use the source generator the class:
-/// <list type="bullet">
-/// <item>is decorated with the <see cref="CallbackHelperAttribute"/></item>
-/// <item>is given the <see langword="partial"/> modifier so that the source generator can add methods for us</item>
-/// <item>is given a name ending with "Callback" (required by the source generator)</item>
-/// </list>
+/// This is the delegate itself. It is an example of a delegate that takes with 3 parameters.
+/// The delegate is just a regular delegate, so it can have whatever signature you want.
+/// Callbacks normally do not return values, as they act like events, and therefore have a void return type.
+/// The source generator expects the return type to be void.
+/// Note: If you think you need a return type, you probably want to use an Advisor instead of a Callback.
+/// </para>
+/// <para>
+/// The [ComponentCallback] attribute tells the source generator to generate the
+/// <see cref="Register"/>, <see cref="Unregister"/>, and <see cref="Fire"/> methods.
+/// Using the source generator is not necessary, but it helps write the methods for us.
 /// </para>
 /// </summary>
-[CallbackHelper]
-public static partial class MyExampleCallback
-{
-    // Here is the delegate itself.
-    // Since we're using the source generator, the delegate must be named after the class and be public.
-    // So, since the class is named MyExampleCallback, the delegate is named MyExampleDelegate.
-    // The source generator expects this naming convention. If not followed, it will not generate code.
-    // 
-    // The delegate is just a regular delegate, so it can have whatever signature you want.
-    // Callbacks normally do not return values, as they act like events, and therefore have a void return type.
-    // The source generator expects the return type to be void.
-    // Note: If you think you need a return type, you probably want to use an Advisor instead of a Callback.
-    //
-    // Here's an example of a delegate that takes with 3 parameters.
-    public delegate void MyExampleDelegate(int foo, string bar, bool baz);
-}
+/// <param name="foo">The first, int parameter.</param>
+/// <param name="bar">The second, string parameter.</param>
+/// <param name="baz">The third, bool parameter.</param>
+[ComponentCallback]
+public delegate void MyExampleCallback(int foo, string bar, bool baz);
 ```
 
 ### Firing a Component Callback

@@ -9,11 +9,10 @@ namespace SS.Matchmaking.Callbacks
     }
 
     /// <summary>
-    /// Callback for when there is a change to a matchmaking queue.
+    /// Callback delegate for when there is a change to a matchmaking queue.
     /// </summary>
-    [CallbackHelper]
-    public static partial class MatchmakingQueueChangedCallback
-    {
-        public delegate void MatchmakingQueueChangedDelegate(IMatchmakingQueue queue, QueueAction action);
-    }
+    /// <param name="queue"></param>
+    /// <param name="action"></param>
+    [ComponentCallback]
+    public delegate void MatchmakingQueueChangedCallback(IMatchmakingQueue queue, QueueAction action);
 }

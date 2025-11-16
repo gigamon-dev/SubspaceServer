@@ -3,11 +3,9 @@
 namespace SS.Matchmaking.Callbacks
 {
     /// <summary>
-    /// Callback for when a <see cref="IPlayerGroup"/> disbands.
+    /// Callback delegate for when a <see cref="IPlayerGroup"/> disbands.
     /// </summary>
-    [CallbackHelper]
-    public static partial class PlayerGroupDisbandedCallback
-    {
-        public delegate void PlayerGroupDisbandedDelegate(IPlayerGroup group);
-    }
+    /// <param name="group"></param>
+    [ComponentCallback]
+    public delegate void PlayerGroupDisbandedCallback(IPlayerGroup group);
 }

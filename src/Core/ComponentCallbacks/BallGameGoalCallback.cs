@@ -3,16 +3,16 @@
 namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
-    /// Helper class for the <see cref="BallGameGoalCallback"/>.
+    /// Callback delegate for when a goal is scored in a ball game.
     /// </summary>
     /// <remarks>
-    /// The difference between this and <see cref="BallGoalCallback"/> is that 
-    /// <see cref="BallGoalCallback"/> is fired when a ball goes into a goal.
-    /// Whereas this callback occurs later, after ball game scores have been updated.
+    /// The difference between <see cref="BallGoalCallback"/> and <see cref="BallGameGoalCallback"/> is that 
+    /// <see cref="BallGameGoalCallback"/> occurs later, after ball game scores have been updated.
     /// </remarks>
-    [CallbackHelper]
-    public static partial class BallGameGoalCallback
-    {
-        public delegate void BallGameGoalDelegate(Arena arena, Player player, byte ballId, TileCoordinates goalCoordinates);
-    }
+    /// <param name="arena">The arena the goal occured in.</param>
+    /// <param name="player">The player that scored the goal.</param>
+    /// <param name="ballId">The ball that was scored.</param>
+    /// <param name="goalCoordinates">The coordinates of the goal that the ball was scored in.</param>
+    [ComponentCallback]
+    public delegate void BallGameGoalCallback(Arena arena, Player player, byte ballId, TileCoordinates goalCoordinates);
 }

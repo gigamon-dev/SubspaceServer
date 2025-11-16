@@ -3,9 +3,12 @@ using SS.Matchmaking.TeamVersus;
 
 namespace SS.Matchmaking.Callbacks
 {
-    [CallbackHelper]
-    public static partial class TeamVersusMatchPlayerKilledCallback
-    {
-        public delegate void TeamVersusMatchPlayerKilledDelegate(IPlayerSlot killedSlot, IPlayerSlot killerSlot, bool isKnockout);
-    }
+    /// <summary>
+    /// Callback delegate for when a player is killed in a Team Versus match.
+    /// </summary>
+    /// <param name="killedSlot"></param>
+    /// <param name="killerSlot"></param>
+    /// <param name="isKnockout"></param>
+    [ComponentCallback]
+    public delegate void TeamVersusMatchPlayerKilledCallback(IPlayerSlot killedSlot, IPlayerSlot killerSlot, bool isKnockout);
 }
