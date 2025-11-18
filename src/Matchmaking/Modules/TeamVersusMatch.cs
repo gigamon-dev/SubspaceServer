@@ -5078,7 +5078,7 @@ namespace SS.Matchmaking.Modules
                 else
                 {
                     // Unassign the player's old slot first.
-                    UnassignSlot(playerData.AssignedSlot);
+                    UnassignSlot(playerData.AssignedSlot, true);
                 }
             }
 
@@ -5089,7 +5089,7 @@ namespace SS.Matchmaking.Modules
                 CancelSubInProgress(slot, true);
             }
 
-            UnassignSlot(slot);
+            UnassignSlot(slot, true);
 
             // Assign the slot.
             _playerSlotDictionary.Add(player.Name!, slot);
@@ -5104,7 +5104,7 @@ namespace SS.Matchmaking.Modules
             MatchAddPlayingCallback.Fire(_broker, slot.MatchData, player.Name!, player);
         }
 
-        private void UnassignSlot(PlayerSlot slot)
+        private void UnassignSlot(PlayerSlot slot, bool invokeCallbacks)
         {
             if (slot is null)
                 return;
@@ -5126,7 +5126,10 @@ namespace SS.Matchmaking.Modules
                 slot.Player = null;
             }
 
-            MatchRemovePlayingCallback.Fire(_broker, slot.MatchData, playerName, player);
+            if (invokeCallbacks)
+            {
+                MatchRemovePlayingCallback.Fire(_broker, slot.MatchData, playerName, player);
+            }
         }
 
         private void SetSlotInactive(PlayerSlot slot, SlotInactiveReason reason)
@@ -6438,6 +6441,11 @@ namespace SS.Matchmaking.Modules
             if (matchData.Status == MatchStatus.None)
                 return;
 
+            Arena? arena = _arenaManager.FindArena(matchData.ArenaName); // Note: this can be null (the arena can be destroyed before the match ends)
+            ArenaData? arenaData = null;
+            if (arena is not null)
+                _arenaDataDictionary.TryGetValue(arena, out arenaData);
+
             if (matchData.Status == MatchStatus.InProgress)
             {
                 // Change the status to stop any additional attempts to end the match while we're ending it.
@@ -6503,11 +6511,6 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                Arena? arena = _arenaManager.FindArena(matchData.ArenaName); // Note: this can be null (the arena can be destroyed before the match ends)
-                ArenaData? arenaData = null;
-                if (arena is not null)
-                    _arenaDataDictionary.TryGetValue(arena, out arenaData);
-
                 MatchEndedCallback.Fire(_broker, matchData);
                 TeamVersusMatchEndedCallback.Fire(arena ?? _broker, matchData, reason, winnerTeam);
 
@@ -6526,28 +6529,6 @@ namespace SS.Matchmaking.Modules
                     && !string.IsNullOrWhiteSpace(arenaData.ReplayRecordingFilePath))
                 {
                     StopRecordingReplay(arena, arenaData);
-                }
-
-                foreach (Team team in matchData.Teams)
-                {
-                    foreach (PlayerSlot slot in team.Slots)
-                    {
-                        if (slot.SubPlayer is not null)
-                        {
-                            CancelSubInProgress(slot, true);
-                        }
-
-                        if (slot.Player is not null
-                            && arena is not null
-                            && slot.Player.Arena == arena
-                            && (slot.Player.Ship != ShipType.Spec || slot.Player.Freq != arena.SpecFreq))
-                        {
-                            // Spec any remaining players
-                            _game.SetShipAndFreq(slot.Player, ShipType.Spec, arena.SpecFreq);
-                        }
-
-                        UnassignSlot(slot);
-                    }
                 }
 
                 //
@@ -6599,6 +6580,29 @@ namespace SS.Matchmaking.Modules
                 if (_teamVersusStatsBehavior is not null)
                 {
                     await _teamVersusStatsBehavior.MatchEndedAsync(matchData, reason, winnerTeam);
+                }
+            }
+
+            // Cleanup slots
+            foreach (Team team in matchData.Teams)
+            {
+                foreach (PlayerSlot slot in team.Slots)
+                {
+                    if (slot.SubPlayer is not null)
+                    {
+                        CancelSubInProgress(slot, true);
+                    }
+
+                    if (slot.Player is not null
+                        && arena is not null
+                        && slot.Player.Arena == arena
+                        && slot.Player.Freq == team.Freq)
+                    {
+                        // Move any remaining players to spec
+                        _game.SetShipAndFreq(slot.Player, ShipType.Spec, arena.SpecFreq);
+                    }
+
+                    UnassignSlot(slot, false);
                 }
             }
 
