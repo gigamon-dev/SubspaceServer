@@ -1,0 +1,15 @@
+<Solution>
+  <Project Path="Core/Core.csproj" />
+  <Project Path="Example/Example.csproj" />
+  <Project Path="Matchmaking/Matchmaking.csproj" />
+  <Project Path="Packets/Packets.csproj" />
+  <Project Path="Replay/Replay.csproj" />
+  <Project Path="SourceGeneration.Tests/SourceGeneration.Tests.csproj" />
+  <Project Path="SourceGeneration/SourceGeneration.csproj" />
+  <Project DefaultStartup="true" Path="SubspaceServer/SubspaceServer.csproj">
+    <BuildDependency Project="Example/Example.csproj" />
+    <BuildDependency Project="Matchmaking/Matchmaking.csproj" />
+    <BuildDependency Project="Replay/Replay.csproj" />
+  </Project>
+  <Project Path="Utilities/Utilities.csproj" />
+</Solution>
