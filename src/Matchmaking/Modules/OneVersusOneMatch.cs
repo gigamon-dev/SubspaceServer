@@ -19,7 +19,7 @@ namespace SS.Matchmaking.Modules
         Manages 1v1 matchmaking.
         Configuration: {nameof(OneVersusOneMatch)}.conf
         """)]
-    public class OneVersusOneMatch : IAsyncModule, IMatchmakingQueueAdvisor
+    public sealed class OneVersusOneMatch : IAsyncModule, IMatchmakingQueueAdvisor
     {
         private const string ConfigurationFileName = "1v1Versus.conf";
 

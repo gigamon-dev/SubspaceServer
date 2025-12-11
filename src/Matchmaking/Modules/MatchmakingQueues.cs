@@ -23,7 +23,7 @@ namespace SS.Matchmaking.Modules
     /// Other modules register queues through the <see cref="IMatchmakingQueues"/> interface.
     /// </remarks>
     [ModuleInfo("Manages matchmaking queues.")]
-    public class MatchmakingQueues : IAsyncModule, IMatchmakingQueues, IPlayerGroupAdvisor
+    public sealed class MatchmakingQueues : IAsyncModule, IMatchmakingQueues, IPlayerGroupAdvisor
     {
         // required dependencies
         private readonly IComponentBroker _broker;

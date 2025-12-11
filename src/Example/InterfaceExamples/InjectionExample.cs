@@ -6,7 +6,7 @@ namespace Example.InterfaceExamples;
 /// <summary>
 /// An example on how to inject a component interface dependency into a constructor.
 /// </summary>
-public class InjectionExample : IModule
+public sealed class InjectionExample : IModule
 {
     private readonly ILogManager _logManager;
 
@@ -19,7 +19,7 @@ public class InjectionExample : IModule
     bool IModule.Load(IComponentBroker broker)
     {
         // Use it.
-        _logManager.LogM(LogLevel.Info, nameof(ManualExample), "Subspace Server .NET is awesome!");
+        _logManager.LogM(LogLevel.Info, nameof(InjectionExample), "Subspace Server .NET is awesome!");
 
         return true;
     }

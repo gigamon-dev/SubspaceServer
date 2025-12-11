@@ -83,15 +83,10 @@ Here's what the .csproj file should like after the changes are made:
 To create a module, simply create a class and have it implement the `SS.Core.IModule` interface. Here's what it should look like:
 
 ```C#
-using SS.Core;
-using SS.Core.ComponentInterfaces;
-
-namespace Example.ModuleLifeCycleExamples;
-
 /// <summary>
 /// This is an example of the simplest form of loading and unloading a module.
 /// </summary>
-public class ExampleModule : IModule
+public sealed class ExampleModule : IModule
 {
     bool IModule.Load(IComponentBroker broker)
     {
@@ -159,13 +154,10 @@ The `IModuleLoaderAware` and `IAsyncModuleLoaderAware` interfaces provide a mech
 
 Here's an example of hooking into the PostLoad and PreUnload steps:
 ```C#
-using SS.Core;
-using SS.Core.ComponentInterfaces;
-
 /// <summary>
 /// This is an example of hooking into the PostLoad and PreUnload steps of the module life-cycle.
 /// </summary>
-public class LoaderAwareExample : IModule, IModuleLoaderAware
+public sealed class LoaderAwareExample : IModule, IModuleLoaderAware
 {
     public bool Load(IComponentBroker broker)
     {
@@ -208,34 +200,26 @@ This tells the server to look for the `Example.AnAttachableModule` and `Example.
 Here's an example of hooking into the *Attach to Arena* and *Detach from Arena* steps:
 
 ```C#
-using SS.Core;
-using SS.Core.ComponentInterfaces;
-
 /// <summary>
-/// This is an example of hooking into the PostLoad and PreUnload steps of the module life-cycle.
+/// This is an example of hooking into the AttachModule and DetachModule steps of the module life-cycle.
 /// </summary>
-/// <remarks>
-/// Configure the module to be attached in the arena.conf file:
-/// <code>
-/// [ Modules ]
-/// AttachModules = Example.ModuleLifeCycleExamples.LoaderAwareExample
-/// </code>
-/// </remarks>
-public class LoaderAwareExample : IModule, IModuleLoaderAware
+public sealed class ArenaAttachableExample : IModule, IArenaAttachableModule
 {
     public bool Load(IComponentBroker broker)
     {
         return true;
     }
 
-    public void PostLoad(IComponentBroker broker)
+    public bool AttachModule(Arena arena)
     {
-        // Do something after all modules have been loaded.
+        // Do something specifically for the arena.
+        return true;
     }
 
-    public void PreUnload(IComponentBroker broker)
+    public bool DetachModule(Arena arena)
     {
-        // Do something before all modules are to be unloaded.
+        // Do something specifically for the arena.
+        return true;
     }
 
     public bool Unload(IComponentBroker broker)
@@ -283,10 +267,10 @@ Dependencies that are **required** can be injected into a module's constructor. 
 Here is an example of using injection:
 
 ```C#
-using SS.Core;
-using SS.Core.ComponentInterfaces;
-
-public class InjectionExample : IModule
+/// <summary>
+/// An example on how to inject a component interface dependency into a constructor.
+/// </summary>
+public sealed class InjectionExample : IModule
 {
     private readonly ILogManager _logManager;
 
@@ -299,7 +283,7 @@ public class InjectionExample : IModule
     bool IModule.Load(IComponentBroker broker)
     {
         // Use it.
-        _logManager.LogM(LogLevel.Info, nameof(ExampleModule), "Subspace Server .NET is awesome!");
+        _logManager.LogM(LogLevel.Info, nameof(InjectionExample), "Subspace Server .NET is awesome!");
 
         return true;
     }
@@ -324,14 +308,11 @@ Component Interfaces can be manually gotten using the `GetInterface` method of `
 Here's an example of manually getting a Component Interface:
 
 ```C#
-using SS.Core;
-using SS.Core.ComponentInterfaces;
-
 /// <summary>
 /// This example shows a manually gotten Component Interface
 /// that is used for the entire life of the module.
 /// </summary>
-public class ManualExample : IModule
+public sealed class ManualExample : IModule
 {
     private ILogManager? _logManager;
 
@@ -370,7 +351,7 @@ Here's another variation of manually getting an interface and releasing it, but 
 /// This is an example that shows getting a Component Interface
 /// for a short period, using it, and releasing it when done.
 /// </summary>
-public class ManualExample2(IComponentBroker broker) : IModule
+public sealed class ManualExample2(IComponentBroker broker) : IModule
 {
     private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
 
@@ -435,7 +416,7 @@ Next, implement the interface. Normally, the module itself will implement the in
 
 Here's an example of registering an interface in the `Load` method and unregistering it in the `Unload` method:
 ```C#
-public class RegistrationExample : IModule, IMyExample
+public sealed class RegistrationExample : IModule, IMyExample
 {
     private InterfaceRegistrationToken<IMyExample>? _iMyExampleToken;
 
@@ -471,7 +452,7 @@ public class RegistrationExample : IModule, IMyExample
 }
 ```
 
-> View the full example code at: [ManualExample](../src/Example/InterfaceExamples/RegistrationExample.cs)
+> View the full example code at: [RegistrationExample](../src/Example/InterfaceExamples/RegistrationExample.cs)
 
 ### Arena-specific Component Interfaces
 As mentioned previously, an `Arena` is a `ComponentBroker`. Interfaces can be registered on an `Arena` to customize behavior for that arena. When `GetInterface` is called on an `Arena`, the `Arena` will try to find the interface locally, but if not found fall back to its parent, the root `ComponentBroker` to find it. This means there can be a "default" implementation registered on the root `ComponentBroker`, and `Arena`-specific implementations to override the default implementation.
@@ -496,11 +477,10 @@ Each of the built-in Component Callbacks use a static helper class to assist wit
 
 Here's an example of registering and unregistering for the PlayerAction callback. The player action callback is probably one of the most used callbacks. Here, I show how you can use it to tell when a player enters or leaves an arena.
 ```C#
-using SS.Core;
-using SS.Core.ComponentCallbacks;
-using SS.Core.ComponentInterfaces;
-
-public class RegistrationExample(IChat chat) : IModule
+/// <summary>
+/// An example on how to register and unregister a callback on root broker (zone-wide).
+/// </summary>
+public sealed class RegistrationExample(IChat chat) : IModule
 {
     private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
 
@@ -538,11 +518,11 @@ public class RegistrationExample(IChat chat) : IModule
 Registering for a Component Callback on an arena is similar, you just have to use the arena, not the root `ComponentBroker`. Here's an example where the `IArenaAttachableModule` interface (which was discussed [earlier](#iarenaattachablemodule)), is used to only register for the PlayerAction Component Callback on arenas that the module is attached to.
 
 ```C#
-using SS.Core;
-using SS.Core.ComponentCallbacks;
-using SS.Core.ComponentInterfaces;
-
-public class ArenaRegistrationExample(IChat chat) : IModule, IArenaAttachableModule
+/// <summary>
+/// An example on how to register and unregister a callback on an arena.
+/// </summary>
+/// <param name="chat"></param>
+public sealed class ArenaRegistrationExample(IChat chat) : IModule, IArenaAttachableModule
 {
     private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
 
@@ -688,13 +668,10 @@ public interface IMyExampleAdvisor : IComponentAdvisor
 
 ### Registering and Unregistering an instance of Component Advisor
 ```C#
-using SS.Core;
-using SS.Core.ComponentInterfaces;
-
 /// <summary>
 /// This is an example on how to register and unregister a custom advisor.
 /// </summary>
-public class RegistrationExample : IModule, IMyExampleAdvisor
+public sealed class RegistrationExample : IModule, IMyExampleAdvisor
 {
     private AdvisorRegistrationToken<IMyExampleAdvisor>? _iMyExampleAdvisorRegistrationToken;
 
@@ -732,16 +709,11 @@ public class RegistrationExample : IModule, IMyExampleAdvisor
 
 ### Using a Component Advisor to get advice.
 ```C#
-using SS.Core;
-using SS.Core.ComponentInterfaces;
-
-namespace Example.AdvisorExamples;
-
 /// <summary>
 /// An example on how to use an advisor.
 /// </summary>
 /// <param name="broker">The global (zone-wide) broker.</param>
-public class UseAdvisorExample(IComponentBroker broker) : IModule
+public sealed class UseAdvisorExample(IComponentBroker broker) : IModule
 {
     private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
 

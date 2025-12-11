@@ -7,7 +7,7 @@ namespace Example.CallbackExamples;
 /// <summary>
 /// An example on how to register and unregister a callback on root broker (zone-wide).
 /// </summary>
-public class RegistrationExample(IChat chat) : IModule
+public sealed class RegistrationExample(IChat chat) : IModule
 {
     private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
 

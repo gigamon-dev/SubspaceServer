@@ -51,7 +51,7 @@ namespace SS.Matchmaking.Modules
         Manages team versus matches.
         Configuration: {nameof(TeamVersusMatch)}.conf
         """)]
-    public class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IMatchFocusAdvisor, ILeagueGameMode, ILeagueHelp
+    public sealed class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IMatchFocusAdvisor, ILeagueGameMode, ILeagueHelp
     {
         private const string ConfigurationFileName = "TeamVersus.conf";
 

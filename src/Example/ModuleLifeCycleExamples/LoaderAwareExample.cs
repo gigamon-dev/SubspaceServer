@@ -13,7 +13,7 @@ namespace Example.ModuleLifeCycleExamples;
 /// AttachModules = Example.ModuleLifeCycleExamples.LoaderAwareExample
 /// </code>
 /// </remarks>
-public class LoaderAwareExample : IModule, IModuleLoaderAware
+public sealed class LoaderAwareExample : IModule, IModuleLoaderAware
 {
     public bool Load(IComponentBroker broker)
     {

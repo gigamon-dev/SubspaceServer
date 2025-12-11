@@ -18,7 +18,7 @@ namespace SS.Matchmaking.Modules
     /// <remarks>
     /// This module also provides logic for position packet filtering as an <see cref="IPlayerPositionAdvisor"/>.
     /// </remarks>
-    public class MatchFocus(
+    public sealed class MatchFocus(
         IComponentBroker broker,
         IGame game,
         ILogManager logManager,

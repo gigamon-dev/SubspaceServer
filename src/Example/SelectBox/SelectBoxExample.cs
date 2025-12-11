@@ -22,7 +22,7 @@ namespace Example.SelectBox;
 /// The Module.conf included with the server has it commented out. Umcomment it and run server.
 /// </para>
 /// </remarks>
-public class SelectBoxExample(
+public sealed class SelectBoxExample(
     IChat chat,
     IPrng prng,
     ISelectBox selectBox) : IModule

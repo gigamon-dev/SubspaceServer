@@ -35,7 +35,7 @@ public static partial class MyExampleCallback
     public delegate void MyExampleDelegate(int foo, string bar, bool baz);
 }
 
-public class CustomExample : IModule, IArenaAttachableModule
+public sealed class CustomExample : IModule, IArenaAttachableModule
 {
     bool IModule.Load(IComponentBroker broker)
     {

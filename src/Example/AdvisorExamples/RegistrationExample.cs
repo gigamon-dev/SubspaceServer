@@ -6,7 +6,7 @@ namespace Example.AdvisorExamples;
 /// <summary>
 /// This is an example on how to register and unregister a custom advisor.
 /// </summary>
-public class RegistrationExample : IModule, IMyExampleAdvisor
+public sealed class RegistrationExample : IModule, IMyExampleAdvisor
 {
     private AdvisorRegistrationToken<IMyExampleAdvisor>? _iMyExampleAdvisorRegistrationToken;
 

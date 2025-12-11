@@ -12,7 +12,7 @@ namespace SS.Core.Modules
     /// <summary>
     /// Module that gives the ability to control the select box user interface on players using a game client that support the <see cref="S2CPacketType.SelectBox"/> packet.
     /// </summary>
-    public class SelectBox(
+    public sealed class SelectBox(
         ICommandManager commandManager,
         INetwork network,
         IObjectPoolManager objectPoolManager,

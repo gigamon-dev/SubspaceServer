@@ -25,7 +25,7 @@ namespace SS.Matchmaking.Modules
         Tracks stats for team versus matches.
         For use with the {nameof(TeamVersusMatch)} module.
         """)]
-    public class TeamVersusStats : IModule, IArenaAttachableModule, ITeamVersusStatsBehavior, ILeagueHelp
+    public sealed class TeamVersusStats : IModule, IArenaAttachableModule, ITeamVersusStatsBehavior, ILeagueHelp
     {
         #region Static members
 

@@ -15,7 +15,7 @@ public interface IMyExample : IComponentInterface
     void DoSomething();
 }
 
-public class RegistrationExample : IModule, IMyExample
+public sealed class RegistrationExample : IModule, IMyExample
 {
     private InterfaceRegistrationToken<IMyExample>? _iMyExampleToken;
 

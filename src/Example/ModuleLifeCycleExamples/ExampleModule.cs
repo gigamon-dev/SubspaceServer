@@ -6,7 +6,7 @@ namespace Example.ModuleLifeCycleExamples;
 /// <summary>
 /// This is an example of the simplest form of loading and unloading a module.
 /// </summary>
-public class ExampleModule : IModule
+public sealed class ExampleModule : IModule
 {
     bool IModule.Load(IComponentBroker broker)
     {

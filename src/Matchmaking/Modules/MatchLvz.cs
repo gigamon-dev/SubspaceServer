@@ -14,7 +14,7 @@ namespace SS.Matchmaking.Modules
     /// Module for controlling lvz objects for matches.
     /// This includes the statbox, scoreboard, and timer.
     /// </summary>
-    public class MatchLvz(
+    public sealed class MatchLvz(
         IConfigManager configManager,
         ILvzObjects lvzObjects,
         IMainloopTimer mainloopTimer,

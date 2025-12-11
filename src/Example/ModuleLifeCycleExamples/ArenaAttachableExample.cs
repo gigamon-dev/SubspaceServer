@@ -6,7 +6,7 @@ namespace Example.ModuleLifeCycleExamples;
 /// <summary>
 /// This is an example of hooking into the AttachModule and DetachModule steps of the module life-cycle.
 /// </summary>
-public class ArenaAttachableExample : IModule, IArenaAttachableModule
+public sealed class ArenaAttachableExample : IModule, IArenaAttachableModule
 {
     public bool Load(IComponentBroker broker)
     {

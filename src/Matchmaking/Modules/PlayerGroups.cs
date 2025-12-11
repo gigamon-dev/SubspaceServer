@@ -20,7 +20,7 @@ namespace SS.Matchmaking.Modules
         Designed to be used with the {nameof(MatchmakingQueues)} module,
         but functionality is separate and could find other uses.
         """)]
-    public class PlayerGroups : IModule, IPlayerGroups
+    public sealed class PlayerGroups : IModule, IPlayerGroups
     {
         // required dependencies
         private readonly IComponentBroker _broker;

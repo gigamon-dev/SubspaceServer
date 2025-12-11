@@ -8,7 +8,7 @@ namespace Example.CallbackExamples;
 /// An example on how to register and unregister a callback on an arena.
 /// </summary>
 /// <param name="chat"></param>
-public class ArenaRegistrationExample(IChat chat) : IModule, IArenaAttachableModule
+public sealed class ArenaRegistrationExample(IChat chat) : IModule, IArenaAttachableModule
 {
     private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
 

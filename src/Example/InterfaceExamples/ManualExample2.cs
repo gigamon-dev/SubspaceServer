@@ -7,7 +7,7 @@ namespace Example.InterfaceExamples;
 /// This is an example that shows getting a Component Interface
 /// for a short period, using it, and releasing it when done.
 /// </summary>
-public class ManualExample2(IComponentBroker broker) : IModule
+public sealed class ManualExample2(IComponentBroker broker) : IModule
 {
     private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
 

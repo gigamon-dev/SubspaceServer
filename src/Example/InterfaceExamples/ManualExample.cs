@@ -7,7 +7,7 @@ namespace Example.InterfaceExamples;
 /// This example shows a manually gotten Component Interface
 /// that is used for the entire life of the module.
 /// </summary>
-public class ManualExample : IModule
+public sealed class ManualExample : IModule
 {
     private ILogManager? _logManager;
 

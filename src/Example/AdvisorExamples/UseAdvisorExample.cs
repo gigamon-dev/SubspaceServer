@@ -7,7 +7,7 @@ namespace Example.AdvisorExamples;
 /// An example on how to use an advisor.
 /// </summary>
 /// <param name="broker">The global (zone-wide) broker.</param>
-public class UseAdvisorExample(IComponentBroker broker) : IModule
+public sealed class UseAdvisorExample(IComponentBroker broker) : IModule
 {
     private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
 
