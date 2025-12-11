@@ -992,33 +992,47 @@ namespace SS.Matchmaking.Modules
                         TimeSpan gameTime = matchData.Started is not null ? timestamp - matchData.Started.Value : TimeSpan.Zero;
 
                         // Kill notification
-                        sb.Append($"{killedPlayerName} kb {killerPlayerName}");
-
-                        StringBuilder assistBuilder = _objectPoolManager.StringBuilderPool.Get();
+                        int killerDamage = 0;
+                        StringBuilder addBuilder = _objectPoolManager.StringBuilderPool.Get();
                         try
                         {
                             int assistCount = 0;
                             foreach ((string playerName, int damage) in damageList)
                             {
                                 if (string.Equals(killerPlayerName, playerName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    killerDamage += damage;
                                     continue;
+                                }
 
-                                if (assistBuilder.Length > 0)
-                                    assistBuilder.Append(", ");
+                                if (addBuilder.Length > 0)
+                                    addBuilder.Append(", ");
 
-                                assistBuilder.Append($"{playerName} ({damage})");
+                                addBuilder.Append($"{playerName} ({damage})");
                                 assistCount++;
+                            }
+
+                            sb.Append($"{killedPlayerName} kb {killerPlayerName}");
+
+                            if (killerDamage > 0)
+                            {
+                                sb.Append($" ({killerDamage})");
+                            }
+
+                            if (isTeamKill)
+                            {
+                                sb.Append(" [TEAMKILL]");
                             }
 
                             if (assistCount > 0)
                             {
-                                sb.Append($" -- {(assistCount == 1 ? "Assist" : "Assists")}: ");
-                                sb.Append(assistBuilder);
+                                sb.Append($" -- Add: ");
+                                sb.Append(addBuilder);
                             }
                         }
                         finally
                         {
-                            _objectPoolManager.StringBuilderPool.Return(assistBuilder);
+                            _objectPoolManager.StringBuilderPool.Return(addBuilder);
                         }
 
                         _chat.SendSetMessage(notifySet, sb);
