@@ -55,7 +55,7 @@ namespace SS.Utilities
         /// </summary>
         public static Pool<T> Default { get; set; } = new();
 
-        private readonly ConcurrentBag<T> _availableBag = [];
+        private readonly ConcurrentQueue<T> _available = [];
 
         public Type Type => typeof(T);
 
@@ -63,7 +63,7 @@ namespace SS.Utilities
 
         public int ObjectsCreated => _objectsCreated;
 
-        public int ObjectsAvailable => _availableBag.Count;
+        public int ObjectsAvailable => _available.Count;
 
         /// <summary>
         /// Initializes a new pool.
@@ -75,7 +75,7 @@ namespace SS.Utilities
 
         public T Get()
         {
-            if (!_availableBag.TryTake(out T? obj) || !obj.TrySetAvailability(false))
+            if (!_available.TryDequeue(out T? obj) || !obj.TrySetAvailability(false))
             {
                 // none available, create one
                 obj = new T()
@@ -98,7 +98,7 @@ namespace SS.Utilities
 
             if (obj.TrySetAvailability(true))
             {
-                _availableBag.Add(obj);
+                _available.Enqueue(obj);
             }
         }
 
