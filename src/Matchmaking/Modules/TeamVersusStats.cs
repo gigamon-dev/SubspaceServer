@@ -934,7 +934,7 @@ namespace SS.Matchmaking.Modules
                 float killedKillerRatingFactor =
                     killerMemberStats.InitialRating == 0
                         ? 1f
-                        : (float)Math.Sqrt(killedMemberStats.InitialRating / killerMemberStats.InitialRating);
+                        : (float)Math.Sqrt((double)killedMemberStats.InitialRating / killerMemberStats.InitialRating);
 
                 // Kill (killer)
                 if (isTeamKill)
