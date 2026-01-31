@@ -66,6 +66,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("standings", Command_standings);
             _commandManager.AddCommand("results", Command_results);
             _commandManager.AddCommand(StartLeagueMatchCommandName, Command_startleaguematch);
+            _commandManager.AddCommand("requestpermit", Command_requestpermit);
 
             // TODO: timer to periodically check for scheduled games and start them automatically when the time comes
 
@@ -84,6 +85,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("standings", Command_standings);
             _commandManager.RemoveCommand("results", Command_results);
             _commandManager.RemoveCommand(StartLeagueMatchCommandName, Command_startleaguematch);
+            _commandManager.RemoveCommand("requestpermit", Command_requestpermit);
 
             LeagueMatchEndedCallback.Unregister(broker, Callback_LeagueMatchEnded);
 
@@ -375,6 +377,48 @@ namespace SS.Matchmaking.Modules
             void PrintUsage(Player player)
             {
                 _chat.SendMessage(player, $"Usage: {StartLeagueMatchCommandName} <league game id>");
+            }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "",
+            Description = """
+                Submits a request to get a league permit to play.
+                """)]
+        private void Command_requestpermit(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            string? defaultSeasonIdStr = _configManager.GetStr(arena.Cfg!, "SS.Matchmaking.League", "DefaultSeasonId");
+            if (string.IsNullOrWhiteSpace(defaultSeasonIdStr))
+            {
+                _chat.SendMessage(player, "This arena is not configured for league.");
+                return;
+            }
+
+            if (long.TryParse(defaultSeasonIdStr, out long seasonId))
+                return;
+
+            //bool permitRequestEnabled = _configManager.GetBool(arena.Cfg!, "SS.Matchmaking.League", "PermitRequestEnabled", false);
+            //if (!permitRequestEnabled)
+            //{
+
+            //}
+
+            SubmitLeaguePermitRequest(player.Name!, seasonId);
+
+            async void SubmitLeaguePermitRequest(string playerName, long seasonId)
+            {
+                string message = await _leagueRepository.SubmitLeaguePermitRequestAsync(playerName, seasonId);
+
+                Player? player = _playerData.FindPlayer(playerName);
+                if (player is null)
+                    return;
+
+                //_chat.SendMessage(player, )
             }
         }
 

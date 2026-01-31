@@ -722,6 +722,18 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        async Task<string> ILeagueRepository.SubmitLeaguePermitRequestAsync(string playerName, long seasonId)
+        {
+            // Request submitted.
+            // Requesting a permit is not enabled for the current league.
+            // You already requested a league permit.
+            // You already have a league permit.
+            // You have been denied a permit. Follow up with a league manager if you think you've been denied in error.
+            // Error submitting request.
+
+            return "TODO";
+        }
+
         #endregion
 
         private async Task<long?> GetTeamIdAsync(long seasonId, string teamName)

@@ -59,5 +59,6 @@ namespace SS.Matchmaking.Interfaces
         /// <param name="teamName">The name of the team to get the roster for.</param>
         /// <returns></returns>
         Task PrintRosterAsync(string playerName, long seasonId, string teamName);
+        Task<string> SubmitLeaguePermitRequestAsync(string playerName, long seasonId);
     }
 }

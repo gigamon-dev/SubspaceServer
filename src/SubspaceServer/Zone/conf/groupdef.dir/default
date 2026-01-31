@@ -137,3 +137,4 @@ cmd_roster
 cmd_standings
 cmd_schedule
 cmd_results
+cmd_requestpermit
