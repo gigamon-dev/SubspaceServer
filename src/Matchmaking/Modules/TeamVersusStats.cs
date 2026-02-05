@@ -928,8 +928,17 @@ namespace SS.Matchmaking.Modules
                             ? -10 // KO
                             : -4; // normal
 
-                // TODO: review this, differs than current 4v4, needs to work for any # of players and any # of teams
-                float teammateEnemiesFactor = (float)Math.Sqrt(killedMemberStats.TeamStats!.RemainingSlots / Math.Max(1, killerMemberStats.TeamStats!.RemainingSlots));
+                // Teammate Enemies Factor is a weight that affects rating based on relative team sizes.
+                // That is, there is less of a rating change when a player on smaller team is killed 
+                // and more of a rating change when a player on a larger team is killed.
+                float teammateEnemiesFactor = (killedMemberStats.TeamStats!.RemainingSlots - killerMemberStats.TeamStats!.RemainingSlots) switch
+                {
+                    0 => 1, // Teams are of equal size
+                    -1 => 0.5f, // Killed player's team is behind by 1 player
+                    < -1 => 0.35f, // Killed player's team is behind by more than 1 player
+                    1 => 1.25f, // Killed player's team is ahead by 1 player
+                    > 1 => 1.4f // Killed player's team is ahead by more than 1 player
+                };
 
                 float killedKillerRatingFactor =
                     killerMemberStats.InitialRating == 0
@@ -960,7 +969,7 @@ namespace SS.Matchmaking.Modules
                             continue;
 
                         attackerMemberStats.RatingChange += ratingChangeDictionary[attacker.PlayerName] =
-                            assistPoints * (killedMemberStats.TeamStats.RemainingSlots / Math.Min(1, attackerTeamStats.RemainingSlots));
+                            assistPoints * ((float)killedMemberStats.TeamStats.RemainingSlots / Math.Min(1, attackerTeamStats.RemainingSlots));
                     }
                 }
 
@@ -968,7 +977,7 @@ namespace SS.Matchmaking.Modules
                 float killedKillerTeamRatingRatio =
                     killerMemberStats.TeamStats.AverageRating == 0
                         ? 1f
-                        : (killedMemberStats.InitialRating / killerMemberStats.TeamStats.AverageRating);
+                        : ((float)killedMemberStats.InitialRating / killerMemberStats.TeamStats.AverageRating);
 
                 killedMemberStats.RatingChange += ratingChangeDictionary[killedPlayerName] =
                     (killedKillerRatingFactor * teammateEnemiesFactor * deathPoints)
