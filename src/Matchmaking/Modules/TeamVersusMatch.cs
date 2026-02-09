@@ -668,6 +668,30 @@ namespace SS.Matchmaking.Modules
             return matchData;
         }
 
+        bool ILeagueGameMode.CancelMatch(ILeagueMatch match)
+        {
+            if (match is not MatchData matchData)
+            {
+                return false;
+            }
+
+            if (matchData.Status == MatchStatus.Initializing)
+            {
+                Arena? arena = matchData.Arena;
+
+                EndMatch(matchData, MatchEndReason.Cancelled, null);
+
+                if (arena is not null)
+                {
+                    _chat.SendArenaMessage(arena, "League match cancelled.");
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
         #endregion
 
         #region ILeagueHelp
@@ -6973,9 +6997,7 @@ namespace SS.Matchmaking.Modules
 
             public LeagueGameInfo? LeagueGame { get; }
 
-            public long? LeagueSeasonGameId => LeagueGame?.SeasonGameId;
-
-            long ILeagueMatch.SeasonGameId => LeagueGame?.SeasonGameId ?? throw new InvalidOperationException("Not a league match.");
+            LeagueGameInfo ILeagueMatch.LeagueGame => LeagueGame ?? throw new InvalidOperationException("Not a league match.");
 
             public bool IsForcedStart { get; set; } = false;
 

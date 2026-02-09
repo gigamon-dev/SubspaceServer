@@ -30,5 +30,16 @@ namespace SS.Matchmaking.Interfaces
         /// <param name="leagueGameInfo">Information about the game.</param>
         /// <returns>The match if successfully created. <see langword="null"/> if there was a problem creating the match.</returns>
         ILeagueMatch? CreateMatch(LeagueGameInfo leagueGameInfo);
+
+        /// <summary>
+        /// Cancels a league match.
+        /// </summary>
+        /// <remarks>
+        /// The underlying game mode determines whether the match is in a state which can be cancelled.
+        /// In general, if a match has not yet started, it can be cancelled.
+        /// </remarks>
+        /// <param name="match">The match to cancel.</param>
+        /// <returns><see langword="true"/> if the match was cancelled; otherwise <see langword="false"/>.</returns>
+        bool CancelMatch(ILeagueMatch match);
     }
 }

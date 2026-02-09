@@ -1290,7 +1290,7 @@ namespace SS.Matchmaking.Modules
                 if (matchData is null || matchStats is null)
                     return;
 
-                bool isLeagueMatch = matchData.LeagueSeasonGameId is not null;
+                bool isLeagueMatch = matchData.LeagueGame is not null;
                 if ((!isLeagueMatch && _gameStatsRepository is null) || (isLeagueMatch && _leagueRepository is null))
                     return;
 
@@ -1472,10 +1472,10 @@ namespace SS.Matchmaking.Modules
                 //gameJsonStream.Position = 0;
                 // DEBUG - REMOVE ME ***************************************************
 
-                if (matchData.LeagueSeasonGameId is null && _gameStatsRepository is not null)
+                if (matchData.LeagueGame is null && _gameStatsRepository is not null)
                     matchStats.GameId = await _gameStatsRepository.SaveGameAsync(gameJsonStream);
-                else if (matchData.LeagueSeasonGameId is not null && _leagueRepository is not null)
-                    matchStats.GameId = await _leagueRepository!.SaveGameAsync(matchData.LeagueSeasonGameId.Value, gameJsonStream);
+                else if (matchData.LeagueGame is not null && _leagueRepository is not null)
+                    matchStats.GameId = await _leagueRepository!.SaveGameAsync(matchData.LeagueGame.SeasonGameId, gameJsonStream);
 
                 if (matchStats.GameId is not null)
                 {

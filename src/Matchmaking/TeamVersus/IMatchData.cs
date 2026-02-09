@@ -1,4 +1,5 @@
 ﻿using SS.Core;
+using SS.Matchmaking.League;
 using System.Collections.ObjectModel;
 
 namespace SS.Matchmaking.TeamVersus
@@ -37,8 +38,8 @@ namespace SS.Matchmaking.TeamVersus
         DateTime? Started { get; }
         
         /// <summary>
-        /// ID of the game in the league database. <see langword="null"/> if not a league match.
+        /// League game info. <see langword="null"/> if not a league match.
         /// </summary>
-        long? LeagueSeasonGameId { get; }
+        LeagueGameInfo? LeagueGame { get; }
     }
 }

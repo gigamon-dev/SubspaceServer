@@ -9,11 +9,28 @@ namespace SS.Matchmaking.Interfaces
         /// <summary>
         /// Starts a league game.
         /// </summary>
+        /// <remarks>
+        /// This updates the game's status to "In Progress".
+        /// Normally, the game needs to be in the "Pending" state for this to succeed. 
+        /// However, if <paramref name="forceStart"/> is <see langword="true"/>,
+        /// then the game can already be in the "In Progress" state.
+        /// </remarks>
         /// <param name="seasonGameId">ID of the game to start.</param>
         /// <param name="forceStart">Whether to force starting the game (when it's already been started before).</param>
         /// <param name="cancellationToken"></param>
         /// <returns>A tuple containing the return status and, upon success, info about the league game.</returns>
+        /// <exception cref="Exception">Database error.</exception>
         Task<(GameStartStatus Status, LeagueGameInfo?)> StartGameAsync(long seasonGameId, bool forceStart, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Undo the start of a league game.
+        /// </summary>
+        /// <remarks>This updates the game's status from "In Progress" back to "Pending".</remarks>
+        /// <param name="seasonGameId">ID of the game to undo the start of.</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns>A status code that tells whether the update was successful.</returns>
+        /// <exception cref="Exception">Database error.</exception>
+        Task<GameStartStatus> UndoStartGameAsync(long seasonGameId, CancellationToken cancellationToken);
 
         /// <summary>
         /// Saves game stats to the database.

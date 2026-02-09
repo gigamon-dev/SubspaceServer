@@ -252,6 +252,35 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        async Task<GameStartStatus> ILeagueRepository.UndoStartGameAsync(long seasonGameId, CancellationToken cancellationToken)
+        {
+            if (_dataSource is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            try
+            {
+                await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+                NpgsqlCommand command = new("select league.undo_start_game($1)", connection);
+                await using (command.ConfigureAwait(false))
+                {
+                    command.Parameters.Add(new NpgsqlParameter<long>() { TypedValue = seasonGameId });
+
+                    await command.PrepareAsync(cancellationToken).ConfigureAwait(false);
+
+                    object? statusCodeObj = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                    if (statusCodeObj is null || statusCodeObj == DBNull.Value)
+                        throw new Exception("Expected an value.");
+
+                    return (GameStartStatus)statusCodeObj;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling league.undo_start_game (seasonGameId:{seasonGameId}). {ex}");
+                throw;
+            }
+        }
+
         async Task<long?> ILeagueRepository.SaveGameAsync(long seasonGameId, Stream jsonStream)
         {
             if (_dataSource is null)

@@ -24,7 +24,7 @@ namespace SS.Matchmaking.Modules
 
         private InterfaceRegistrationToken<ILeagueManager>? _leagueManagerRegistrationToken;
 
-        private const string StartLeagueMatchCommandName = "startleaguematch";
+        private const string InitLeagueMatchCommandName = "initleaguematch";
 
         private readonly string[] LeagueHelpKeys = [
             nameof(TeamVersusMatch), 
@@ -65,7 +65,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("schedule", Command_schedule);
             _commandManager.AddCommand("standings", Command_standings);
             _commandManager.AddCommand("results", Command_results);
-            _commandManager.AddCommand(StartLeagueMatchCommandName, Command_startleaguematch);
+            _commandManager.AddCommand(InitLeagueMatchCommandName, Command_initleaguematch);
 
             // TODO: timer to periodically check for scheduled games and start them automatically when the time comes
 
@@ -83,7 +83,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("schedule", Command_schedule);
             _commandManager.RemoveCommand("standings", Command_standings);
             _commandManager.RemoveCommand("results", Command_results);
-            _commandManager.RemoveCommand(StartLeagueMatchCommandName, Command_startleaguematch);
+            _commandManager.RemoveCommand(InitLeagueMatchCommandName, Command_initleaguematch);
 
             LeagueMatchEndedCallback.Unregister(broker, Callback_LeagueMatchEnded);
 
@@ -117,7 +117,7 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_LeagueMatchEnded(ILeagueMatch leagueMatch)
         {
-            _activeMatches.TryRemove(leagueMatch.SeasonGameId, out _);
+            _activeMatches.TryRemove(leagueMatch.LeagueGame.SeasonGameId, out _);
         }
 
         [CommandHelp(
@@ -277,16 +277,21 @@ namespace SS.Matchmaking.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "[-f] <match id>", 
+            Args = "[-f | -u] <match id>", 
             Description = """
-                Manually starts a league match.
-                This updates the match's state to "In Progress", initializes the match to be played, and announces it to the zone.
-                Normally, a game should be in the "Pending" state for it to be started.
-                However, if there was an issue and already is "In Progress", the -f argument can be used to force start.
+                Manually initializes a league match. This sets the match's state to "In Progress" in the database.
+                Normally, a match needs to be in the "Pending" state for it to be initialized.
+                However, if there was previously an issue and the match is already is "In Progress", the -f argument can be used to force it.
+                It is up to the underlying game mode as to what happens when initializing a match. In general,
+                a game mode will reserve an arena for the match, set up the match, including teams, and announce the match to the zone.
+                Use the -u argument to uninitialize a previously initialized league match. Whether a match can be uninitialized depends 
+                on the current state of the match and if the underlying game mode allows it. In general, an attempt to unitialize will 
+                succeed if the match hasn't already begun. When uninitialized, the match's state is updated back to "Pending" in the database.
                 """)]
-        private void Command_startleaguematch(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        private void Command_initleaguematch(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             bool force = false;
+            bool cancel = false;
             Span<Range> ranges = stackalloc Range[2];
             int numRanges = parameters.Split(ranges, ' ', StringSplitOptions.TrimEntries);
             ReadOnlySpan<char> idSpan;
@@ -297,14 +302,21 @@ namespace SS.Matchmaking.Modules
             }
             else if (numRanges == 2)
             {
-                if (!parameters[ranges[0]].Equals("-f", StringComparison.OrdinalIgnoreCase))
+                if (parameters[ranges[0]].Equals("-u", StringComparison.OrdinalIgnoreCase))
+                {
+                    cancel = true;
+                    idSpan = parameters[ranges[1]];
+                }
+                else if (parameters[ranges[0]].Equals("-f", StringComparison.OrdinalIgnoreCase))
+                {
+                    force = true;
+                    idSpan = parameters[ranges[1]];
+                }
+                else
                 {
                     PrintUsage(player);
                     return;
                 }
-
-                force = true;
-                idSpan = parameters[ranges[1]];
             }
             else
             {
@@ -318,9 +330,16 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            StartGame(player.Name!, seasonGameId, force);
+            if (cancel)
+            {
+                UninitializeGameAsync(player.Name!, seasonGameId);
+            }
+            else
+            {
+                InitializeGameAsync(player.Name!, seasonGameId, force);
+            }
 
-            async void StartGame(string playerName, long seasonGameId, bool force)
+            async void InitializeGameAsync(string playerName, long seasonGameId, bool force)
             {
                 // Call the database: league.start_game
                 // Deserialize the json into a game info object which has:
@@ -328,7 +347,22 @@ namespace SS.Matchmaking.Modules
                 // - which teams are participating in the match and their assigned freqs
                 // - and the rosters for each team (includes whether each player is captain)
                 // This should be enough info for the match to know which players can join each team's freq, and who is captain (additional commands).
-                (GameStartStatus status, LeagueGameInfo? gameStartInfo) = await _leagueRepository.StartGameAsync(seasonGameId, force, CancellationToken.None);
+                GameStartStatus status;
+                LeagueGameInfo? gameStartInfo;
+                try
+                {
+                    (status, gameStartInfo) = await _leagueRepository.StartGameAsync(seasonGameId, force, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    Player? player = _playerData.FindPlayer(playerName);
+                    if (player is not null)
+                    {
+                        _chat.SendMessage(player, $"Error initializing league game Id {seasonGameId}. Database error. {ex.Message}");
+                    }
+
+                    return;
+                }
 
                 if (gameStartInfo is null)
                 {
@@ -369,12 +403,63 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                _activeMatches[match.SeasonGameId] = match;
+                _activeMatches[match.LeagueGame.SeasonGameId] = match;
+            }
+
+            async void UninitializeGameAsync(string playerName, long seasonGameId)
+            {
+                // Find the match.
+                if (!_activeMatches.TryGetValue(seasonGameId, out ILeagueMatch? match))
+                {
+                    _chat.SendMessage(player, "Match not found.");
+                    return;
+                }
+
+                // Find the game mode.
+                if (!_registeredGameTypes.TryGetValue(match.LeagueGame.GameTypeId, out ILeagueGameMode? gameMode))
+                {
+                    _chat.SendMessage(player, "Match found, but the game mode is not registered.");
+                    return;
+                }
+
+                // Ask the game mode to cancel the match.
+                if (!gameMode.CancelMatch(match))
+                {
+                    _chat.SendMessage(player, "The match is not in a state which can be cancelled.");
+                    return;
+                }
+
+                // Successfully cancelled
+                _activeMatches.Remove(seasonGameId, out _);
+                _chat.SendMessage(player, $"League match {seasonGameId} uninitialized.");
+
+                // Update the match's database record (change state from "In Progress" to "Pending")
+                try
+                {
+                    GameStartStatus result = await _leagueRepository.UndoStartGameAsync(seasonGameId, CancellationToken.None);
+
+                    Player? player = _playerData.FindPlayer(playerName);
+                    if (player is not null)
+                    {
+                        if (result == GameStartStatus.NotFound)
+                            _chat.SendMessage(player, $"Database update failed: League game Id {seasonGameId} not found.");
+                        else if (result == GameStartStatus.Conflict)
+                            _chat.SendMessage(player, $"Database update failed: League game Id {seasonGameId} could not be updated due to it being in the wrong state.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Player? player = _playerData.FindPlayer(playerName);
+                    if (player is not null)
+                    {
+                        _chat.SendMessage(player, $"Database update failed for League game Id {seasonGameId}. {ex.Message}");
+                    }
+                }
             }
 
             void PrintUsage(Player player)
             {
-                _chat.SendMessage(player, $"Usage: {StartLeagueMatchCommandName} <league game id>");
+                _chat.SendMessage(player, $"Usage: {InitLeagueMatchCommandName} <league game id>");
             }
         }
 

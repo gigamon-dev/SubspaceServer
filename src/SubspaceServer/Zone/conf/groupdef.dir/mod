@@ -111,5 +111,5 @@ seeplayergroupdetails
 privcmd_nexthold
 
 ; Matchmaking (league)
-cmd_startleaguematch
+cmd_initleaguematch
 cmd_forcestart
