@@ -25,6 +25,7 @@ namespace SS.Matchmaking.Modules
         private InterfaceRegistrationToken<ILeagueManager>? _leagueManagerRegistrationToken;
 
         private const string StartLeagueMatchCommandName = "startleaguematch";
+        private const string RequestPermitCommandName = "requestpermit";
 
         private readonly string[] LeagueHelpKeys = [
             nameof(TeamVersusMatch), 
@@ -66,7 +67,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("standings", Command_standings);
             _commandManager.AddCommand("results", Command_results);
             _commandManager.AddCommand(StartLeagueMatchCommandName, Command_startleaguematch);
-            _commandManager.AddCommand("requestpermit", Command_requestpermit);
+            _commandManager.AddCommand(RequestPermitCommandName, Command_requestpermit);
 
             // TODO: timer to periodically check for scheduled games and start them automatically when the time comes
 
@@ -85,7 +86,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("standings", Command_standings);
             _commandManager.RemoveCommand("results", Command_results);
             _commandManager.RemoveCommand(StartLeagueMatchCommandName, Command_startleaguematch);
-            _commandManager.RemoveCommand("requestpermit", Command_requestpermit);
+            _commandManager.RemoveCommand(RequestPermitCommandName, Command_requestpermit);
 
             LeagueMatchEndedCallback.Unregister(broker, Callback_LeagueMatchEnded);
 
@@ -384,7 +385,11 @@ namespace SS.Matchmaking.Modules
             Targets = CommandTarget.None,
             Args = "",
             Description = """
-                Submits a request to get a league permit to play.
+                Certain matchmaking queues are for league practices and require a league permit to play.
+                Use this command to submit a request for permission to play.
+                This can only be used in an arena linked to a league that requires such permissions.
+                League staff will review the request. Each league's rules may differ.
+                However, generally a league only allows a single user name per player (in other words, no aliases allowed).
                 """)]
         private void Command_requestpermit(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -392,6 +397,9 @@ namespace SS.Matchmaking.Modules
             if (arena is null)
                 return;
 
+            // TODO: The command should proably take the queue name as a parameter and use that to figure out the league.
+
+            // Otherwise, look at the DefaultSeasonId setting to determine the league.
             string? defaultSeasonIdStr = _configManager.GetStr(arena.Cfg!, "SS.Matchmaking.League", "DefaultSeasonId");
             if (string.IsNullOrWhiteSpace(defaultSeasonIdStr))
             {
@@ -402,15 +410,16 @@ namespace SS.Matchmaking.Modules
             if (long.TryParse(defaultSeasonIdStr, out long seasonId))
                 return;
 
-            //bool permitRequestEnabled = _configManager.GetBool(arena.Cfg!, "SS.Matchmaking.League", "PermitRequestEnabled", false);
-            //if (!permitRequestEnabled)
-            //{
+            // bool permitRequestEnabled = _configManager.GetBool(arena.Cfg!, "SS.Matchmaking.League", "PermitRequestEnabled", false);
+            // if (!permitRequestEnabled)
+            // {
+            //     _chat.SendMessage(player, "This arena is not configured for requesting a permit to play.");
+            //     return;
+            // }
 
-            //}
+            RequestPermitAsync(player.Name!, seasonId);
 
-            SubmitLeaguePermitRequest(player.Name!, seasonId);
-
-            async void SubmitLeaguePermitRequest(string playerName, long seasonId)
+            async void RequestPermitAsync(string playerName, long seasonId)
             {
                 string message = await _leagueRepository.SubmitLeaguePermitRequestAsync(playerName, seasonId);
 
@@ -418,7 +427,7 @@ namespace SS.Matchmaking.Modules
                 if (player is null)
                     return;
 
-                //_chat.SendMessage(player, )
+                _chat.SendMessage(player, $"{RequestPermitCommandName}: {message}");
             }
         }
 
