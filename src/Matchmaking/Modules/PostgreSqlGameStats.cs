@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.ObjectPool;
+﻿using CommunityToolkit.HighPerformance.Buffers;
+using Microsoft.Extensions.ObjectPool;
 using Npgsql;
 using NpgsqlTypes;
 using SS.Core;
@@ -39,6 +40,8 @@ namespace SS.Matchmaking.Modules
         private bool _isDisposed;
 
         private readonly ObjectPool<List<string>> s_stringListPool = new DefaultObjectPool<List<string>>(new ListPooledObjectPolicy<string>() { InitialCapacity = Constants.TargetPlayerCount });
+
+        private static readonly long[] PracticePermitRoleFilter = [(long)LeagueRole.PracticePermit];
 
         #region Module members
 
@@ -722,16 +725,295 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        async Task<string> ILeagueRepository.SubmitLeaguePermitRequestAsync(string playerName, long seasonId)
+        async Task<(long? RequestId, string? ErrorMessage)> ILeagueRepository.RequestLeaguePermitAsync(string playerName, long leagueId, string? byPlayerName, CancellationToken cancellationToken)
         {
-            // Request submitted.
-            // Requesting a permit is not enabled for the current league.
-            // You already requested a league permit.
-            // You already have a league permit.
-            // You have been denied a permit. Follow up with a league manager if you think you've been denied in error.
-            // Error submitting request.
+            if (_dataSource is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
 
-            return "TODO";
+            if (string.IsNullOrWhiteSpace(playerName))
+                throw new ArgumentNullException(nameof(playerName));
+
+            try
+            {
+                await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+                NpgsqlCommand command = new("select * from league.insert_league_permit_request($1,$2,$3)", connection)
+                {
+                    Parameters = {
+                        new() { Value = playerName },
+                        new NpgsqlParameter<long>() { TypedValue = leagueId },
+                        new() { Value = (object?)byPlayerName ?? DBNull.Value },
+                    }
+                };
+
+                await using (command.ConfigureAwait(false))
+                {
+                    await command.PrepareAsync(cancellationToken).ConfigureAwait(false);
+
+                    var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                    await using (reader.ConfigureAwait(false))
+                    {
+                        int column_requestId = reader.GetOrdinal("league_player_role_request_id");
+                        int column_errorMessage = reader.GetOrdinal("error_message");
+
+                        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                            throw new Exception("Expected a row.");
+                        
+                        long? requestId = reader.IsDBNull(column_requestId) ? null : reader.GetInt64(column_requestId);
+                        string? errorMessage = reader.IsDBNull(column_errorMessage) ? null : reader.GetString(column_errorMessage);
+
+                        return (requestId, errorMessage);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling league.insert_league_permit_request. {ex}");
+                throw;
+            }
+        }
+
+        async Task ILeagueRepository.PrintPendingPermitRequestsAsync(string playerName, long leagueId)
+        {
+            if (_dataSource is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (string.IsNullOrWhiteSpace(playerName))
+                throw new ArgumentNullException(nameof(playerName));
+
+            try
+            {
+                NpgsqlConnection connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
+                await using (connection.ConfigureAwait(false))
+                {
+                    NpgsqlCommand command = new("select * from league.get_league_player_role_requests($1, $2)", connection)
+                    {
+                        Parameters = {
+                            new NpgsqlParameter<long>() { TypedValue = leagueId },
+                            new () { NpgsqlDbType = NpgsqlDbType.Bigint | NpgsqlDbType.Array , Value = PracticePermitRoleFilter },
+                        }
+                    };
+
+                    await using (command.ConfigureAwait(false))
+                    {
+                        await command.PrepareAsync();
+
+                        await using var reader = await command.ExecuteReaderAsync();
+
+                        int column_playerName = reader.GetOrdinal("player_name");
+                        int column_requestTimestamp = reader.GetOrdinal("request_timestamp");
+
+                        char[] nameArray = ArrayPool<char>.Shared.Rent(20);
+                        try
+                        {
+                            int count = 0;
+                            Player? player;
+
+                            while (await reader.ReadAsync())
+                            {
+                                long charsRead = reader.GetChars(column_playerName, 0, nameArray, 0, nameArray.Length);
+                                ReadOnlySpan<char> playerNameSpan = new(nameArray, 0, (int)charsRead);
+                                DateTime requestTimestamp = reader.GetDateTime(column_requestTimestamp);
+
+                                player = _playerData.FindPlayer(playerName); // Check that the player is still connected, between awaits.
+                                if (player is null)
+                                    return;
+
+                                if (count++ == 0)
+                                {
+                                    _chat.SendMessage(player, $"Request Timestamp    Player Name");
+                                    _chat.SendMessage(player, $"-------------------- --------------------");
+                                }
+
+                                _chat.SendMessage(player, $"{requestTimestamp:u} {playerNameSpan,-20}");
+                            }
+
+                            player = _playerData.FindPlayer(playerName); // Check that the player is still connected, between awaits.
+                            if (player is null)
+                                return;
+
+                            if (count == 0)
+                            {
+                                _chat.SendMessage(player, "No pending requests.");
+                            }
+                        }
+                        finally
+                        {
+                            ArrayPool<char>.Shared.Return(nameArray);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling league.get_pending_permit_requests. {ex}");
+                return;
+            }
+        }
+
+        async Task<bool> ILeagueRepository.InsertLeaguePlayerRoleAsync(ReadOnlyMemory<char> toPlayerName, long leagueId, LeagueRole role, string? executorPlayerName, ReadOnlyMemory<char> notes, CancellationToken cancellationToken)
+        {
+            if (_dataSource is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            try
+            {
+                NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+                await using (connection.ConfigureAwait(false))
+                {
+                    NpgsqlCommand command = new("select league.insert_league_player_role($1,$2,$3,$4,$5,$6)", connection)
+                    {
+                        Parameters =
+                        {
+                            new() { Value = toPlayerName },
+                            new NpgsqlParameter<long> { TypedValue = leagueId },
+                            new NpgsqlParameter<long> { TypedValue = (long)role },
+                            new() { NpgsqlDbType = NpgsqlDbType.Text, Value = (object?)executorPlayerName ?? DBNull.Value },
+                            new() { NpgsqlDbType = NpgsqlDbType.Text, Value = DBNull.Value },
+                            new() { NpgsqlDbType = NpgsqlDbType.Text, Value = (notes.Length > 0 ? (object?)notes : DBNull.Value) },
+                        }
+                    };
+
+                    await using (command.ConfigureAwait(false))
+                    {
+                        await command.PrepareAsync(cancellationToken).ConfigureAwait(false);
+
+                        object? retObj = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                        if (retObj is not bool ret)
+                            throw new Exception("Expected a bool return value.");
+
+                        return ret;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling league.insert_league_player_role. {ex}");
+                throw;
+            }
+        }
+
+        async Task<bool> ILeagueRepository.DeleteLeaguePlayerRoleAsync(ReadOnlyMemory<char> fromPlayerName, long leagueId, LeagueRole role, string? executorPlayerName, ReadOnlyMemory<char> notes, CancellationToken cancellationToken)
+        {
+            if (_dataSource is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            try
+            {
+                NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+                await using (connection.ConfigureAwait(false))
+                {
+                    NpgsqlCommand command = new("select league.delete_league_player_role($1,$2,$3,$4,$5,$6)", connection)
+                    {
+                        Parameters =
+                        {
+                            new() { Value = fromPlayerName },
+                            new NpgsqlParameter<long> { TypedValue = leagueId },
+                            new NpgsqlParameter<long> { TypedValue = (long)role },
+                            new() { NpgsqlDbType = NpgsqlDbType.Text, Value = executorPlayerName },
+                            new() { NpgsqlDbType = NpgsqlDbType.Text, Value = DBNull.Value },
+                            new() { NpgsqlDbType = NpgsqlDbType.Text, Value = (notes.Length > 0 ? (object?)notes : DBNull.Value) },
+                        }
+                    };
+
+                    await using (command.ConfigureAwait(false))
+                    {
+                        await command.PrepareAsync(cancellationToken).ConfigureAwait(false);
+
+                        object? retObj = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                        if (retObj is not bool ret)
+                            throw new Exception("Expected a bool return value.");
+
+                        return ret;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling league.delete_league_player_role. {ex}");
+                throw;
+            }
+        }
+
+        async Task<DateTime?> ILeagueRepository.GetLeaguePlayerRoleLastUpdatedAsync(long leagueId, LeagueRole role, CancellationToken cancellationToken)
+        {
+            if (_dataSource is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            try
+            {
+                await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+                NpgsqlCommand command = new("select league.get_league_player_role_last_updated($1,$2)", connection);
+                await using (command.ConfigureAwait(false))
+                {
+                    command.Parameters.Add(new NpgsqlParameter<long>() { TypedValue = leagueId });
+                    command.Parameters.Add(new NpgsqlParameter<long>() { TypedValue = (long)role });
+
+                    await command.PrepareAsync(cancellationToken).ConfigureAwait(false);
+
+                    var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                    await using (reader.ConfigureAwait(false))
+                    {
+                        if (!reader.Read())
+                            return null;
+
+                        if (reader.IsDBNull(0))
+                            return null;
+                        else
+                            return reader.GetDateTime(0);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling league.get_league_player_role_last_updated. {ex}");
+                return null;
+            }
+        }
+
+        async Task ILeagueRepository.GetLeaguePlayerRoleGrantsAsync(long leagueId, LeagueRole role, HashSet<string> grants, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(grants);
+
+            if (_dataSource is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            try
+            {
+                await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+                NpgsqlCommand command = new("select * from league.get_league_player_role_grants($1,$2)", connection);
+                await using (command.ConfigureAwait(false))
+                {
+                    command.Parameters.Add(new NpgsqlParameter<long>() { TypedValue = leagueId });
+                    command.Parameters.Add(new NpgsqlParameter<long>() { TypedValue = (long)role });
+
+                    await command.PrepareAsync(cancellationToken).ConfigureAwait(false);
+
+                    var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                    await using (reader.ConfigureAwait(false))
+                    {
+                        int column_playerName = reader.GetOrdinal("player_name");
+
+                        char[] nameArray = ArrayPool<char>.Shared.Rent(20);
+                        try
+                        {
+                            while (await reader.ReadAsync(cancellationToken))
+                            {
+                                long charsRead = reader.GetChars(column_playerName, 0, nameArray, 0, nameArray.Length);
+                                ReadOnlySpan<char> playerNameSpan = new(nameArray, 0, (int)charsRead);
+                                grants.Add(StringPool.Shared.GetOrAdd(playerNameSpan));
+                            }
+                        }
+                        finally
+                        {
+                            ArrayPool<char>.Shared.Return(nameArray);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling league.get_league_player_role_grants. {ex}");
+            }
         }
 
         #endregion

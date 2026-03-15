@@ -1771,7 +1771,7 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            if (matchConfiguration.LeagueId is not null && _leagueManager is not null && matchConfiguration.GameTypeId is not null)
+            if (matchConfiguration.LeagueEnabled && _leagueManager is not null && matchConfiguration.GameTypeId is not null)
             {
                 if (!_leagueMatchConfigurations.Remove(matchConfiguration.GameTypeId.Value))
                 {
@@ -3903,7 +3903,7 @@ namespace SS.Matchmaking.Modules
             }
 
             // league
-            if (matchConfiguration.LeagueId is not null && matchConfiguration.GameTypeId is not null)
+            if (matchConfiguration.LeagueEnabled && matchConfiguration.GameTypeId is not null)
             {
                 if (!_leagueMatchConfigurations.TryAdd(matchConfiguration.GameTypeId.Value, matchConfiguration))
                 {
@@ -4059,19 +4059,10 @@ namespace SS.Matchmaking.Modules
                 return null;
             }
 
-            long? leagueId;
-            string? leagueIdStr = _configManager.GetStr(ch, matchType, "LeagueId");
-            if (string.IsNullOrWhiteSpace(leagueIdStr))
+            bool leagueEnabled = _configManager.GetBool(ch, matchType, "LeagueEnabled", false);
+            if (leagueEnabled && gameTypeId is null)
             {
-                leagueId = null;
-            }
-            else if (long.TryParse(leagueIdStr, out long leagueIdLong))
-            {
-                leagueId = leagueIdLong;
-            }
-            else
-            {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid LeagueId for Match '{matchType}'.");
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Can't be LeagueEnabled without a GameTypeId for Match '{matchType}'.");
                 return null;
             }
 
@@ -4079,21 +4070,9 @@ namespace SS.Matchmaking.Modules
             if (string.IsNullOrWhiteSpace(queueName))
                 queueName = null; // consider empty or whitespace to just be null (as if the setting was completely omitted)
 
-            if (leagueId is null && queueName is null)
+            if (!leagueEnabled && queueName is null)
             {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"No LeagueID or Queue for Match '{matchType}'.");
-                return null;
-            }
-
-            if (leagueId is not null && queueName is not null)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Can't have both a LeagueId and a Queue for Match '{matchType}'.");
-                return null;
-            }
-
-            if (leagueId is not null && gameTypeId is null)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Can't have a LeagueId without a GameTypeId for Match '{matchType}'.");
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Not LeagueEnabled and no Queue specifed for Match '{matchType}'.");
                 return null;
             }
 
@@ -4115,6 +4094,12 @@ namespace SS.Matchmaking.Modules
             if (numBoxes <= 0)
             {
                 _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid NumBoxes for Match '{matchType}'.");
+                return null;
+            }
+
+            if (leagueEnabled && numBoxes != 1)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid NumBoxes for Match '{matchType}'. Only one box allowed when LeagueEnabled (one match per arena).");
                 return null;
             }
 
@@ -4261,7 +4246,7 @@ namespace SS.Matchmaking.Modules
             {
                 MatchType = matchType,
                 GameTypeId = gameTypeId,
-                LeagueId = leagueId,
+                LeagueEnabled = leagueEnabled,
                 QueueName = queueName,
                 ArenaBaseName = arenaBaseName,
                 MaxArenas = maxArenas,
@@ -4448,6 +4433,22 @@ namespace SS.Matchmaking.Modules
 
             bool allowAutoRequeue = _configManager.GetInt(ch, queueSection, "AllowAutoRequeue", 0) != 0;
 
+            long? permitLeagueId;
+            string? permitLeagueIdStr = _configManager.GetStr(ch, queueSection, "PermitLeagueId");
+            if (string.IsNullOrWhiteSpace(permitLeagueIdStr))
+            {
+                permitLeagueId = null;
+            }
+            else if (long.TryParse(permitLeagueIdStr, out long permitLeagueIdLong))
+            {
+                permitLeagueId = permitLeagueIdLong;
+            }
+            else
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Error parsing PermitLeagueId for Queue '{queueName}'.");
+                return null;
+            }
+
             QueueOptions options = new()
             {
                 AllowSolo = allowSolo,
@@ -4455,6 +4456,7 @@ namespace SS.Matchmaking.Modules
                 MinGroupSize = minGroupSize,
                 MaxGroupSize = maxGroupSize,
                 AllowAutoRequeue = allowAutoRequeue,
+                PermitLeagueId = permitLeagueId,
             };
 
             return new TeamVersusMatchmakingQueue(queueName, options, description);
@@ -6752,7 +6754,7 @@ namespace SS.Matchmaking.Modules
         {
             public required string MatchType { get; init; }
             public required long? GameTypeId { get; init; }
-            public required long? LeagueId { get; init; }
+            public required bool LeagueEnabled { get; init; }
             public required string? QueueName { get; init; }
             public required string ArenaBaseName { get; init; }
             public required int MaxArenas { get; init; }
