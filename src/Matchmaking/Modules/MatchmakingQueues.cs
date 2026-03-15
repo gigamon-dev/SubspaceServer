@@ -39,6 +39,7 @@ namespace SS.Matchmaking.Modules
         // optional dependencies
         private IHelp? _help;
         private IPersist? _persist;
+        private ILeagueAuthorization? _leagueAuthorization;
 
         private InterfaceRegistrationToken<IMatchmakingQueues>? _iMatchmakingQueuesToken;
 
@@ -48,6 +49,7 @@ namespace SS.Matchmaking.Modules
         private DelegatePersistentData<Player>? _persistRegistration;
 
         private readonly Dictionary<string, IMatchmakingQueue> _queues = new(16, StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, IMatchmakingQueue>.AlternateLookup<ReadOnlySpan<char>> _queuesLookup;
         private readonly Dictionary<IPlayerGroup, UsageData> _groupUsageDictionary = new(128);
 
         /// <summary>
@@ -95,6 +97,8 @@ namespace SS.Matchmaking.Modules
             IPlayerData playerData,
             IPlayerGroups playerGroups)
         {
+            _queuesLookup = _queues.GetAlternateLookup<ReadOnlySpan<char>>();
+
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
@@ -114,6 +118,7 @@ namespace SS.Matchmaking.Modules
         {
             _help = broker.GetInterface<IHelp>();
             _persist = broker.GetInterface<IPersist>();
+            _leagueAuthorization = broker.GetInterface<ILeagueAuthorization>();
 
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
             _puKey = _playerData.AllocatePlayerData(_usageDataPool);
@@ -167,6 +172,11 @@ namespace SS.Matchmaking.Modules
                 broker.ReleaseInterface(ref _persist);
             }
 
+            if (_leagueAuthorization is not null)
+            {
+                broker.ReleaseInterface(ref _leagueAuthorization);
+            }
+
             return true;
         }
 
@@ -185,7 +195,24 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
-            return _queues.TryAdd(queue.Name, queue);
+            if (queue.Options.PermitLeagueId is not null && _leagueAuthorization is null)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(MatchmakingQueues), $"Queue '{queue.Name}' has PermitLeagueId '{queue.Options.PermitLeagueId.Value}', but the required {nameof(ILeagueAuthorization)} service was not found.");
+                return false;
+            }
+
+            try
+            {
+                return _queues.TryAdd(queue.Name, queue);
+            }
+            finally
+            {
+                if (queue.Options.PermitLeagueId is not null && _leagueAuthorization is not null)
+                {
+                    _leagueAuthorization.Register(queue.Options.PermitLeagueId.Value, LeagueRole.PracticePermit);
+                    _leagueAuthorization.Register(queue.Options.PermitLeagueId.Value, LeagueRole.PermitManager);
+                }
+            }
         }
 
         bool IMatchmakingQueues.UnregisterQueue(IMatchmakingQueue queue)
@@ -200,6 +227,12 @@ namespace SS.Matchmaking.Modules
             {
                 _queues.Add(removedQueue.Name, removedQueue);
                 return false;
+            }
+
+            if (queue.Options.PermitLeagueId is not null && _leagueAuthorization is not null)
+            {
+                _leagueAuthorization.Unregister(queue.Options.PermitLeagueId.Value, LeagueRole.PracticePermit);
+                _leagueAuthorization.Unregister(queue.Options.PermitLeagueId.Value, LeagueRole.PermitManager);
             }
 
             //
@@ -240,6 +273,14 @@ namespace SS.Matchmaking.Modules
             }
 
             return true;
+        }
+
+        IMatchmakingQueue? IMatchmakingQueues.GetQueue(ReadOnlySpan<char> name)
+        {
+            if (_queuesLookup.TryGetValue(name, out IMatchmakingQueue? queue))
+                return queue;
+
+            return null;
         }
 
         void IMatchmakingQueues.SetPlaying(Player player)
@@ -1217,6 +1258,44 @@ namespace SS.Matchmaking.Modules
                     return false;
                 }
 
+                if (queue.Options.PermitLeagueId is not null && _leagueAuthorization is not null)
+                {
+                    StringBuilder namesBuilder = _objectPoolManager.StringBuilderPool.Get();
+                    try
+                    {
+                        foreach (Player groupPlayer in group.Members)
+                        {
+                            if (!_leagueAuthorization.IsInRole(player.Name!, queue.Options.PermitLeagueId.Value, LeagueRole.PracticePermit))
+                            {
+                                if (namesBuilder.Length > 0)
+                                    namesBuilder.Append(", ");
+
+                                namesBuilder.Append(groupPlayer.Name);
+                            }
+                        }
+
+                        if (namesBuilder.Length > 0)
+                        {
+                            StringBuilder messageBuilder = _objectPoolManager.StringBuilderPool.Get();
+                            try
+                            {
+                                messageBuilder.Append($"{NextCommandName}: A permit is required for queue '{queue.Name}'. The following group members do not have access: ");
+                                messageBuilder.Append(namesBuilder);
+                                _chat.SendMessage(player, messageBuilder);
+                                return false;
+                            }
+                            finally
+                            {
+                                _objectPoolManager.StringBuilderPool.Return(messageBuilder);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(namesBuilder);
+                    }
+                }
+
                 if (!usageData.AddQueue(queue, timestamp))
                 {
                     _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
@@ -1238,6 +1317,15 @@ namespace SS.Matchmaking.Modules
                 {
                     _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' does not allow solo play. Create or join a group first.");
                     return false;
+                }
+
+                if (queue.Options.PermitLeagueId is not null && _leagueAuthorization is not null)
+                {
+                    if (!_leagueAuthorization.IsInRole(player.Name!, queue.Options.PermitLeagueId.Value, LeagueRole.PracticePermit))
+                    {
+                        _chat.SendMessage(player, $"{NextCommandName}: You do not have permission to use queue '{queue.Name}'. To get access, use: ?leaguepermit request {queue.Name}");
+                        return false;
+                    }
                 }
 
                 if (!usageData.AddQueue(queue, timestamp))

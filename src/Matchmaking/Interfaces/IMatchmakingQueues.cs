@@ -23,6 +23,13 @@ namespace SS.Matchmaking.Interfaces
         /// <returns></returns>
         bool UnregisterQueue(IMatchmakingQueue queue);
 
+        /// <summary>
+        /// Searches for a queue by <paramref name="name"/>.
+        /// </summary>
+        /// <param name="name">The name of the queue to find.</param>
+        /// <returns>The queue, or <see langword="null"/> if not found.</returns>
+        IMatchmakingQueue? GetQueue(ReadOnlySpan<char> name);
+
         #endregion
 
         #region SetPlaying methods

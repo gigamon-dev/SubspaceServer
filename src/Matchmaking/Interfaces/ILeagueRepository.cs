@@ -76,5 +76,73 @@ namespace SS.Matchmaking.Interfaces
         /// <param name="teamName">The name of the team to get the roster for.</param>
         /// <returns></returns>
         Task PrintRosterAsync(string playerName, long seasonId, string teamName);
+
+        #region League Roles
+
+        /// <summary>
+        /// Requests a league 'Practice Permit' for a player.
+        /// </summary>
+        /// <param name="playerName">The player to request the permit for.</param>
+        /// <param name="leagueId">The league to request the permit for.</param>
+        /// <param name="byPlayerName">The name of the player submitting the request. This can be <see langword="null"/> for a self request.</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns>A tuple that may contain a RequestId and/or error message.</returns>
+        /// <exception cref="Exception">Database error.</exception>
+        Task<(long? RequestId, string? ErrorMessage)> RequestLeaguePermitAsync(string playerName, long leagueId, string? byPlayerName, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Prints pending 'Practice Permit' requests to a player via chat messages.
+        /// </summary>
+        /// <param name="playerName">The player to send results to.</param>
+        /// <param name="leagueId">The league to get requests for.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        Task PrintPendingPermitRequestsAsync(string playerName, long leagueId);
+
+        /// <summary>
+        /// Grants a league role to a player.
+        /// </summary>
+        /// <param name="toPlayerName">The player to grant.</param>
+        /// <param name="leagueId">The league to grant the role in.</param>
+        /// <param name="role">The role to grant.</param>
+        /// <param name="executorPlayerName">The player that is performing the action.</param>
+        /// <param name="notes">Notes to store in the log.</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception">Database error.</exception>
+        Task<bool> InsertLeaguePlayerRoleAsync(ReadOnlyMemory<char> toPlayerName, long leagueId, LeagueRole role, string? executorPlayerName, ReadOnlyMemory<char> notes, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Removes a league role and/or role request from a player.
+        /// </summary>
+        /// <param name="fromPlayerName">The player to revoke.</param>
+        /// <param name="leagueId">The league to revoke the role in.</param>
+        /// <param name="role">The role to revoke.</param>
+        /// <param name="executorPlayerName">The player that is performing the action.</param>
+        /// <param name="notes">Notes to store in the log.</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception">Database error.</exception>
+        Task<bool> DeleteLeaguePlayerRoleAsync(ReadOnlyMemory<char> fromPlayerName, long leagueId, LeagueRole role, string? executorPlayerName, ReadOnlyMemory<char> notes, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Gets the timestamp that a League + Role combination was last updated.
+        /// </summary>
+        /// <param name="leagueId">Id of the league to get data for.</param>
+        /// <param name="role">The role to get data for.</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        Task<DateTime?> GetLeaguePlayerRoleLastUpdatedAsync(long leagueId, LeagueRole role, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Gets the players that have a role for a league.
+        /// </summary>
+        /// <param name="leagueId">Id of the league to get data for.</param>
+        /// <param name="role">The role to get data for.</param>
+        /// <param name="grants">A set to populate with player names.</param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        Task GetLeaguePlayerRoleGrantsAsync(long leagueId, LeagueRole role, HashSet<string> grants, CancellationToken cancellationToken);
+
+        #endregion
     }
 }

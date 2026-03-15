@@ -82,6 +82,7 @@ namespace SS.Matchmaking.Modules
         private AdvisorRegistrationToken<IMatchFocusAdvisor>? _iMatchFocusAdvisorToken;
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor>? _iMatchmakingQueueAdvisorToken;
 
+        private ConfigHandle? _teamVersusConfig;
         private PlayerDataKey<PlayerData> _pdKey;
 
         private ClientSettingIdentifier _killEnterDelayClientSettingId;
@@ -222,8 +223,18 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
-            if (!await LoadConfigurationAsync().ConfigureAwait(false))
+            _teamVersusConfig = await _configManager.OpenConfigFileAsync(null, ConfigurationFileName);
+            if (_teamVersusConfig is null)
             {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error opening config file {ConfigurationFileName}.");
+                return false;
+            }
+
+            if (!LoadConfiguration())
+            {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error loading from config file {ConfigurationFileName}.");
+                _configManager.CloseConfigFile(_teamVersusConfig);
+                _teamVersusConfig = null;
                 return false;
             }
 
@@ -284,6 +295,12 @@ namespace SS.Matchmaking.Modules
             MatchmakingQueueChangedCallback.Unregister(broker, Callback_MatchmakingQueueChanged);
 
             _playerData.FreePlayerData(ref _pdKey);
+
+            if (_teamVersusConfig is not null)
+            {
+                _configManager.CloseConfigFile(_teamVersusConfig);
+                _teamVersusConfig = null;
+            }
 
             if (_teamVersusStatsBehavior is not null)
                 broker.ReleaseInterface(ref _teamVersusStatsBehavior);
@@ -1757,119 +1774,7 @@ namespace SS.Matchmaking.Modules
                 """)]
         private void Command_loadmatchtype(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            LoadMatchTypeAsync(parameters.ToString(), player.Name!);
-
-            // async local function since the command handler can't be made async
-            async void LoadMatchTypeAsync(string matchType, string playerName)
-            {
-                ConfigHandle? ch = await _configManager.OpenConfigFileAsync(null, ConfigurationFileName).ConfigureAwait(true); // resume on the mainloop thread
-
-                Player? player = _playerData.FindPlayer(playerName);
-                if (player is null)
-                    return;
-
-                if (ch is null)
-                {
-                    _chat.SendMessage(player, $"Error opening configuration file '{ConfigurationFileName}'.");
-                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error opening configuration file '{ConfigurationFileName}'.");
-                    return;
-                }
-
-                try
-                {
-                    MatchConfiguration? matchConfiguration = CreateMatchConfiguration(ch, matchType);
-                    if (matchConfiguration is null)
-                    {
-                        _chat.SendMessage(player, $"Error creating match configuration for match type '{matchType}' from '{ConfigurationFileName}'.");
-                        return;
-                    }
-
-                    // league
-                    if (matchConfiguration.LeagueId is not null && matchConfiguration.GameTypeId is not null)
-                    {
-                        if (!_leagueMatchConfigurations.TryAdd(matchConfiguration.GameTypeId.Value, matchConfiguration))
-                        {
-                            _chat.SendMessage(player, $"Unable to register game type {matchConfiguration.GameTypeId.Value} as a league match configuration for match type {matchConfiguration.MatchType}.");
-                        }
-                        else
-                        {
-                            if (_leagueManager is null)
-                            {
-                                _chat.SendMessage(player, $"No {nameof(ILeagueManager)} to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value}.");
-                            }
-                            else
-                            {
-                                if (!_leagueManager.Register(matchConfiguration.GameTypeId.Value, this))
-                                {
-                                    _chat.SendMessage(player, $"Failed to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value} on the {nameof(ILeagueManager)}.");
-                                }
-                            }
-                        }
-                    }
-
-                    string? queueName = matchConfiguration.QueueName;
-                    if (queueName is not null)
-                    {
-                        if (!_queueDictionary.TryGetValue(queueName, out TeamVersusMatchmakingQueue? queue))
-                        {
-                            queue = CreateQueue(ch, queueName);
-                            if (queue is null)
-                            {
-                                _chat.SendMessage(player, $"Error creating queue '{queueName}' for match type '{matchType}' from '{ConfigurationFileName}'.");
-                                return;
-                            }
-
-                            if (!_matchmakingQueues.RegisterQueue(queue))
-                            {
-                                _chat.SendMessage(player, $"Error registering queue '{queueName}' for match type '{matchType}' from '{ConfigurationFileName}'.");
-                                return;
-                            }
-
-                            _queueDictionary.Add(queueName, queue);
-                        }
-
-                        if (!_queueMatchConfigurations.TryGetValue(queueName, out List<MatchConfiguration>? matchConfigurationList))
-                        {
-                            matchConfigurationList = new List<MatchConfiguration>(1);
-                            _queueMatchConfigurations.Add(queueName, matchConfigurationList);
-                        }
-
-                        int index = matchConfigurationList.FindIndex(c => c.MatchType == matchType);
-                        if (index != -1)
-                        {
-                            matchConfigurationList.RemoveAt(index);
-                        }
-                        matchConfigurationList.Add(matchConfiguration);
-                    }
-
-                    _matchConfigurationDictionary[matchType] = matchConfiguration;
-
-                    // Remove existing matches.
-                    // Only remove inactive ones.
-                    // Ongoing matches will continue to run with their old configuration, but will be discarded when they complete.
-
-                    List<MatchIdentifier> toRemove = [];
-                    foreach ((MatchIdentifier matchIdentifier, MatchData matchData) in _matchDataDictionary)
-                    {
-                        if (string.Equals(matchIdentifier.MatchType, matchType, StringComparison.OrdinalIgnoreCase)
-                            && matchData.Status == MatchStatus.None)
-                        {
-                            toRemove.Add(matchIdentifier);
-                        }
-                    }
-
-                    foreach (MatchIdentifier matchIdentifier in toRemove)
-                    {
-                        _matchDataDictionary.Remove(matchIdentifier);
-                    }
-
-                    _chat.SendMessage(player, $"Loaded match type '{matchType}' from '{ConfigurationFileName}'.");
-                }
-                finally
-                {
-                    _configManager.CloseConfigFile(ch);
-                }
-            }
+            LoadMatchType(parameters.ToString(), player);
         }
 
         [CommandHelp(
@@ -1890,7 +1795,7 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            if (matchConfiguration.LeagueId is not null && _leagueManager is not null && matchConfiguration.GameTypeId is not null)
+            if (matchConfiguration.LeagueEnabled && _leagueManager is not null && matchConfiguration.GameTypeId is not null)
             {
                 if (!_leagueMatchConfigurations.Remove(matchConfiguration.GameTypeId.Value))
                 {
@@ -3953,117 +3858,210 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
-        private async Task<bool> LoadConfigurationAsync()
+        private bool LoadConfiguration()
         {
-            ConfigHandle? ch = await _configManager.OpenConfigFileAsync(null, ConfigurationFileName).ConfigureAwait(false);
+            ConfigHandle? ch = _teamVersusConfig;
             if (ch is null)
             {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error opening {ConfigurationFileName}.");
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Configuration file {ConfigurationFileName} is not open.");
                 return false;
             }
 
-            try
+            //
+            // General settings
+            //
+
+            int abandonStartPenaltySeconds = _configManager.GetInt(ch, "General", "AbandonStartPenalty", 300);
+            _abandonStartPenaltyDuration = TimeSpan.FromSeconds(abandonStartPenaltySeconds);
+
+            int notReadyStartPenaltySeconds = _configManager.GetInt(ch, "General", "NotReadyStartPenalty", 180);
+            _notReadyStartPenaltyDuration = TimeSpan.FromSeconds(notReadyStartPenaltySeconds);
+
+            //
+            // Match types
+            //
+
+            int i = 0;
+            string? matchType;
+            while (!string.IsNullOrWhiteSpace(matchType = _configManager.GetStr(ch, "Matchmaking", $"Match{++i}")))
             {
-                int abandonStartPenaltySeconds = _configManager.GetInt(ch, "General", "AbandonStartPenalty", 300);
-                _abandonStartPenaltyDuration = TimeSpan.FromSeconds(abandonStartPenaltySeconds);
-
-                int notReadyStartPenaltySeconds = _configManager.GetInt(ch, "General", "NotReadyStartPenalty", 180);
-                _notReadyStartPenaltyDuration = TimeSpan.FromSeconds(notReadyStartPenaltySeconds);
-
-                int i = 1;
-                string? matchType;
-                while (!string.IsNullOrWhiteSpace(matchType = _configManager.GetStr(ch, "Matchmaking", $"Match{i++}")))
+                if (_matchConfigurationDictionary.TryGetValue(matchType, out MatchConfiguration? matchConfiguration))
                 {
-                    if (_matchConfigurationDictionary.TryGetValue(matchType, out MatchConfiguration? matchConfiguration))
+                    _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Match {matchType} already exists. Check configuration for a duplicate (Matchmaking:Match{i}.");
+                    continue;
+                }
+
+                if (!LoadMatchType(matchType, null))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool LoadMatchType(string matchType, Player? player)
+        {
+            ConfigHandle? ch = _teamVersusConfig;
+            if (ch is null)
+            {
+                if (player is not null)
+                {
+                    _chat.SendMessage(player, $"Configuration file {ConfigurationFileName} is not open..");
+                }
+
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Configuration file {ConfigurationFileName} is not open.");
+                return false;
+            }
+
+            MatchConfiguration? matchConfiguration = CreateMatchConfiguration(ch, matchType);
+            if (matchConfiguration is null)
+            {
+                if (player is not null)
+                {
+                    _chat.SendMessage(player, $"Error creating match configuration for match type '{matchType}' from '{ConfigurationFileName}'.");
+                }
+
+                _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Error creating match configuration for match type '{matchType}' from '{ConfigurationFileName}'.");
+                return false;
+            }
+
+            // league
+            if (matchConfiguration.LeagueEnabled && matchConfiguration.GameTypeId is not null)
+            {
+                if (!_leagueMatchConfigurations.TryAdd(matchConfiguration.GameTypeId.Value, matchConfiguration))
+                {
+                    if (player is not null)
                     {
-                        _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Match {matchType} already exists. Check configuration for a duplicate.");
-                        continue;
+                        _chat.SendMessage(player, $"Unable to register game type {matchConfiguration.GameTypeId.Value} as a league match configuration for match type {matchConfiguration.MatchType}.");
                     }
 
-                    matchConfiguration = CreateMatchConfiguration(ch, matchType);
-                    if (matchConfiguration is null)
+                    _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Unable to register game type {matchConfiguration.GameTypeId.Value} as a league match configuration for match type {matchConfiguration.MatchType}.");
+                    return false;
+                }
+                else
+                {
+                    if (_leagueManager is null)
                     {
-                        continue;
+                        if (player is not null)
+                        {
+                            _chat.SendMessage(player, $"No {nameof(ILeagueManager)} to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value}.");
+                        }
+
+                        _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"No {nameof(ILeagueManager)} to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value}.");
+                        return false;
                     }
 
-                    // league
-                    if (matchConfiguration.LeagueId is not null && matchConfiguration.GameTypeId is not null)
+                    if (!_leagueManager.Register(matchConfiguration.GameTypeId.Value, this))
                     {
-                        if (!_leagueMatchConfigurations.TryAdd(matchConfiguration.GameTypeId.Value, matchConfiguration))
+                        if (player is not null)
                         {
-                            _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Unable to register game type {matchConfiguration.GameTypeId.Value} as a league match configuration for match type {matchConfiguration.MatchType}.");
-                        }
-                        else
-                        {
-                            if (_leagueManager is null)
-                            {
-                                _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"No {nameof(ILeagueManager)} to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value}.");
-                            }
-                            else
-                            {
-                                if (!_leagueManager.Register(matchConfiguration.GameTypeId.Value, this))
-                                {
-                                    _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Failed to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value} on the {nameof(ILeagueManager)}.");
-                                }
-                            }
-                        }
-                    }
-
-                    // matchmaking (queues)
-                    string? queueName = matchConfiguration.QueueName;
-                    if (!string.IsNullOrWhiteSpace(queueName))
-                    {
-                        if (!_queueDictionary.TryGetValue(queueName, out TeamVersusMatchmakingQueue? queue))
-                        {
-                            queue = CreateQueue(ch, queueName);
-                            if (queue is null)
-                                continue;
-
-                            // TODO: for now only allowing groups of the exact size needed (for simplified matching)
-                            if (queue.Options.AllowGroups
-                                && (queue.Options.MinGroupSize != matchConfiguration.PlayersPerTeam
-                                    || queue.Options.MaxGroupSize != matchConfiguration.PlayersPerTeam))
-                            {
-                                _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Unsupported configuration for match '{matchConfiguration.MatchType}'. Queue '{queueName}' can't be used (must only allow groups of exactly {matchConfiguration.PlayersPerTeam} players).");
-                                continue;
-                            }
-
-                            if (!_matchmakingQueues.RegisterQueue(queue))
-                            {
-                                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Failed to register queue '{queueName}' (used by match:{matchConfiguration.MatchType}).");
-                                return false;
-                            }
-
-                            _queueDictionary.Add(queueName, queue);
+                            _chat.SendMessage(player, $"Failed to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value} on the {nameof(ILeagueManager)}.");
                         }
 
-                        if (!_queueMatchConfigurations.TryGetValue(queueName, out List<MatchConfiguration>? matchConfigurationList))
-                        {
-                            matchConfigurationList = new List<MatchConfiguration>(1);
-                            _queueMatchConfigurations.Add(queueName, matchConfigurationList);
-                        }
-
-                        matchConfigurationList.Add(matchConfiguration);
-                    }
-
-                    _matchConfigurationDictionary.Add(matchType, matchConfiguration);
-
-                    if (!_arenaBaseDataDictionary.TryGetValue(matchConfiguration.ArenaBaseName, out ArenaBaseData? arenaBaseData))
-                    {
-                        arenaBaseData = new()
-                        {
-                            DefaultQueueName = queueName
-                        };
-
-                        _arenaBaseDataDictionary.Add(matchConfiguration.ArenaBaseName, arenaBaseData);
+                        _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Failed to register the {nameof(TeamVersusMatch)} module with for game type {matchConfiguration.GameTypeId.Value} on the {nameof(ILeagueManager)}.");
+                        return false;
                     }
                 }
             }
-            finally
+
+            // matchmaking (queues)
+            string? queueName = matchConfiguration.QueueName;
+            if (!string.IsNullOrWhiteSpace(queueName))
             {
-                _configManager.CloseConfigFile(ch);
+                if (!_queueDictionary.TryGetValue(queueName, out TeamVersusMatchmakingQueue? queue))
+                {
+                    queue = CreateQueue(ch, queueName);
+                    if (queue is null)
+                    {
+                        if (player is not null)
+                        {
+                            _chat.SendMessage(player, $"Error creating queue '{queueName}' for match type '{matchType}' from '{ConfigurationFileName}'.");
+                        }
+
+                        _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Error creating queue '{queueName}' for match type '{matchType}' from '{ConfigurationFileName}'.");
+                        return false;
+                    }
+
+                    // TODO: for now only allowing groups of the exact size needed (for simplified matching)
+                    if (queue.Options.AllowGroups
+                        && (queue.Options.MinGroupSize != matchConfiguration.PlayersPerTeam
+                            || queue.Options.MaxGroupSize != matchConfiguration.PlayersPerTeam))
+                    {
+                        if (player is not null)
+                        {
+                            _chat.SendMessage(player, $"Unsupported configuration for match '{matchConfiguration.MatchType}'. Queue '{queueName}' can't be used (must only allow groups of exactly {matchConfiguration.PlayersPerTeam} players).");
+                        }
+
+                        _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Unsupported configuration for match '{matchConfiguration.MatchType}'. Queue '{queueName}' can't be used (must only allow groups of exactly {matchConfiguration.PlayersPerTeam} players).");
+                        return false;
+                    }
+
+                    if (!_matchmakingQueues.RegisterQueue(queue))
+                    {
+                        if (player is not null)
+                        {
+                            _chat.SendMessage(player, $"Error registering queue '{queueName}' for match type '{matchType}'.");
+                        }
+
+                        _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error registering queue '{queueName}' for match type '{matchType}'.");
+                        return false;
+                    }
+
+                    _queueDictionary.Add(queueName, queue);
+                }
+
+                if (!_queueMatchConfigurations.TryGetValue(queueName, out List<MatchConfiguration>? matchConfigurationList))
+                {
+                    matchConfigurationList = new List<MatchConfiguration>(1);
+                    _queueMatchConfigurations.Add(queueName, matchConfigurationList);
+                }
+
+                int index = matchConfigurationList.FindIndex(c => string.Equals(c.MatchType, matchType, StringComparison.OrdinalIgnoreCase));
+                if (index != -1)
+                {
+                    matchConfigurationList.RemoveAt(index);
+                }
+                matchConfigurationList.Add(matchConfiguration);
             }
 
+            _matchConfigurationDictionary[matchType] = matchConfiguration;
+
+            // Remove existing matches.
+            // Only remove inactive ones.
+            // Ongoing matches will continue to run with their old configuration, but will be discarded when they complete.
+
+            List<MatchIdentifier> toRemove = [];
+            foreach ((MatchIdentifier matchIdentifier, MatchData matchData) in _matchDataDictionary)
+            {
+                if (string.Equals(matchIdentifier.MatchType, matchType, StringComparison.OrdinalIgnoreCase)
+                    && matchData.Status == MatchStatus.None)
+                {
+                    toRemove.Add(matchIdentifier);
+                }
+            }
+
+            foreach (MatchIdentifier matchIdentifier in toRemove)
+            {
+                _matchDataDictionary.Remove(matchIdentifier);
+            }
+
+            if (!_arenaBaseDataDictionary.TryGetValue(matchConfiguration.ArenaBaseName, out ArenaBaseData? arenaBaseData))
+            {
+                arenaBaseData = new()
+                {
+                    DefaultQueueName = queueName
+                };
+
+                _arenaBaseDataDictionary.Add(matchConfiguration.ArenaBaseName, arenaBaseData);
+            }
+
+            if (player is not null)
+            {
+                _chat.SendMessage(player, $"Loaded match type '{matchType}' from '{ConfigurationFileName}'.");
+            }
+
+            _logManager.LogM(LogLevel.Info, nameof(TeamVersusMatch), $"Loaded match type '{matchType}' from '{ConfigurationFileName}'.");
             return true;
         }
 
@@ -4085,19 +4083,10 @@ namespace SS.Matchmaking.Modules
                 return null;
             }
 
-            long? leagueId;
-            string? leagueIdStr = _configManager.GetStr(ch, matchType, "LeagueId");
-            if (string.IsNullOrWhiteSpace(leagueIdStr))
+            bool leagueEnabled = _configManager.GetBool(ch, matchType, "LeagueEnabled", false);
+            if (leagueEnabled && gameTypeId is null)
             {
-                leagueId = null;
-            }
-            else if (long.TryParse(leagueIdStr, out long leagueIdLong))
-            {
-                leagueId = leagueIdLong;
-            }
-            else
-            {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid LeagueId for Match '{matchType}'.");
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Can't be LeagueEnabled without a GameTypeId for Match '{matchType}'.");
                 return null;
             }
 
@@ -4105,21 +4094,9 @@ namespace SS.Matchmaking.Modules
             if (string.IsNullOrWhiteSpace(queueName))
                 queueName = null; // consider empty or whitespace to just be null (as if the setting was completely omitted)
 
-            if (leagueId is null && queueName is null)
+            if (!leagueEnabled && queueName is null)
             {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"No LeagueID or Queue for Match '{matchType}'.");
-                return null;
-            }
-
-            if (leagueId is not null && queueName is not null)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Can't have both a LeagueId and a Queue for Match '{matchType}'.");
-                return null;
-            }
-
-            if (leagueId is not null && gameTypeId is null)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Can't have a LeagueId without a GameTypeId for Match '{matchType}'.");
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Not LeagueEnabled and no Queue specifed for Match '{matchType}'.");
                 return null;
             }
 
@@ -4141,6 +4118,12 @@ namespace SS.Matchmaking.Modules
             if (numBoxes <= 0)
             {
                 _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid NumBoxes for Match '{matchType}'.");
+                return null;
+            }
+
+            if (leagueEnabled && numBoxes != 1)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Invalid NumBoxes for Match '{matchType}'. Only one box allowed when LeagueEnabled (one match per arena).");
                 return null;
             }
 
@@ -4287,7 +4270,7 @@ namespace SS.Matchmaking.Modules
             {
                 MatchType = matchType,
                 GameTypeId = gameTypeId,
-                LeagueId = leagueId,
+                LeagueEnabled = leagueEnabled,
                 QueueName = queueName,
                 ArenaBaseName = arenaBaseName,
                 MaxArenas = maxArenas,
@@ -4474,6 +4457,22 @@ namespace SS.Matchmaking.Modules
 
             bool allowAutoRequeue = _configManager.GetInt(ch, queueSection, "AllowAutoRequeue", 0) != 0;
 
+            long? permitLeagueId;
+            string? permitLeagueIdStr = _configManager.GetStr(ch, queueSection, "PermitLeagueId");
+            if (string.IsNullOrWhiteSpace(permitLeagueIdStr))
+            {
+                permitLeagueId = null;
+            }
+            else if (long.TryParse(permitLeagueIdStr, out long permitLeagueIdLong))
+            {
+                permitLeagueId = permitLeagueIdLong;
+            }
+            else
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(TeamVersusMatch), $"Error parsing PermitLeagueId for Queue '{queueName}'.");
+                return null;
+            }
+
             QueueOptions options = new()
             {
                 AllowSolo = allowSolo,
@@ -4481,6 +4480,7 @@ namespace SS.Matchmaking.Modules
                 MinGroupSize = minGroupSize,
                 MaxGroupSize = maxGroupSize,
                 AllowAutoRequeue = allowAutoRequeue,
+                PermitLeagueId = permitLeagueId,
             };
 
             return new TeamVersusMatchmakingQueue(queueName, options, description);
@@ -6778,7 +6778,7 @@ namespace SS.Matchmaking.Modules
         {
             public required string MatchType { get; init; }
             public required long? GameTypeId { get; init; }
-            public required long? LeagueId { get; init; }
+            public required bool LeagueEnabled { get; init; }
             public required string? QueueName { get; init; }
             public required string ArenaBaseName { get; init; }
             public required int MaxArenas { get; init; }

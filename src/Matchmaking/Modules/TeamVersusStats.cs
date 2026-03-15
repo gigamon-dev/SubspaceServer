@@ -1481,6 +1481,11 @@ namespace SS.Matchmaking.Modules
                 {
                     _logManager.LogM(LogLevel.Info, nameof(TeamVersusStats), $"Saved GameId {matchStats.GameId.Value} to the database.");
                 }
+                else
+                {
+                    // Error writing to the database.
+                    // TODO: Write to a file or message queue so that it can be retried later (either by another service or manual intervention).
+                }
 
 
                 void WriteLvlInfo(Utf8JsonWriter writer, IMatchData matchData)
