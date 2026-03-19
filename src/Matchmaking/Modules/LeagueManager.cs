@@ -154,10 +154,14 @@ namespace SS.Matchmaking.Modules
             PrintCommand(player, "results", "Print a team's match results.");
             PrintCommand(player, "roster", "Print a team's roster.");
 
+            _chat.SendMessage(player, "--- Permit --------------------------------------------------------------------");
+            PrintCommand(player, LeaguePermitCommandName, "Request a permit to play in league practices.");
+
             if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
             {
                 _chat.SendMessage(player, "--- Staff ---------------------------------------------------------------------");
-                PrintCommand(player, "startleaguematch", "Starts a league match (reserves an arena and announces the match)");
+                PrintCommand(player, InitLeagueMatchCommandName, "Initializes a league match (reserves an arena and announces the match)");
+                PrintCommand(player, LeaguePermitCommandName, "Manage permits that allow players to play in league practices.");
             }
 
             foreach (string key in LeagueHelpKeys)
@@ -182,7 +186,7 @@ namespace SS.Matchmaking.Modules
 
             void PrintCommand(Player player, string command, string description)
             {
-                _chat.SendMessage(player, $"?{command,-10}  {description}");
+                _chat.SendMessage(player, $"?{command,-16}  {description}");
             }
         }
 
