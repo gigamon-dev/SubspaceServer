@@ -1,5 +1,7 @@
 ﻿using CommunityToolkit.HighPerformance.Buffers;
 using Microsoft.Extensions.ObjectPool;
+using OpenSkillSharp;
+using OpenSkillSharp.Models;
 using SS.Core;
 using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
@@ -20,6 +22,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using System.Text.Json;
 
 namespace SS.Matchmaking.Modules
 {
@@ -4266,6 +4269,43 @@ namespace SS.Matchmaking.Modules
                 return null;
             }
 
+            OpenSkill.ModelType modelType = _configManager.GetEnum(ch, matchType, "OpenSkillModel", OpenSkill.ModelType.PlackettLuce);
+            string modelJson = _configManager.GetStr(ch, matchType, "OpenSkillModelJson") ?? "{}";
+            if (modelJson.IsWhiteSpace())
+                modelJson = "{}";
+
+            IOpenSkillModel? model;
+            switch (modelType)
+            {
+                case OpenSkill.ModelType.PlackettLuce:
+                    model = JsonSerializer.Deserialize<PlackettLuce>(modelJson) ?? new PlackettLuce();
+                    break;
+                case OpenSkill.ModelType.BradleyTerryFull:
+                    model = JsonSerializer.Deserialize<BradleyTerryFull>(modelJson) ?? new BradleyTerryFull();
+                    break;
+                case OpenSkill.ModelType.BradleyTerryPart:
+                    model = JsonSerializer.Deserialize<BradleyTerryPart>(modelJson) ?? new BradleyTerryPart();
+                    break;
+                case OpenSkill.ModelType.ThurstoneMostellerFull:
+                    model = JsonSerializer.Deserialize<ThurstoneMostellerFull>(modelJson) ?? new ThurstoneMostellerFull();
+                    break;
+                case OpenSkill.ModelType.ThurstoneMostellerPart:
+                    model = JsonSerializer.Deserialize<ThurstoneMostellerPart>(modelJson) ?? new ThurstoneMostellerPart();
+                    break;
+                default:
+                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Unsupported OpenSkillModel for Match '{matchType}'.");
+                    return null;
+            }
+
+            string? sigmaDecayPerDayStr = _configManager.GetStr(ch, matchType, "OpenSkillSigmaDecayPerDay");
+            double sigmaDecayPerDay = 0;
+            if (!string.IsNullOrWhiteSpace(sigmaDecayPerDayStr) && !double.TryParse(sigmaDecayPerDayStr, out sigmaDecayPerDay))
+            {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error parsing OpenSkillSigmaDecayPerDay for Match '{matchType}'.");
+                return null;
+            }
+            sigmaDecayPerDay = double.Abs(sigmaDecayPerDay);
+
             MatchConfiguration matchConfiguration = new()
             {
                 MatchType = matchType,
@@ -4300,6 +4340,8 @@ namespace SS.Matchmaking.Modules
                 AllowFillUnusedSlots = allowFillUnusedSlots,
                 ReplayRecordPath = replayRecordPath,
                 Boxes = new MatchBoxConfiguration[numBoxes],
+                OpenSkillModel = model,
+                OpenSkillSigmaDecayPerDay = sigmaDecayPerDay,
             };
 
             if (!LoadMatchBoxesConfiguration(ch, matchType, matchConfiguration))
@@ -6807,6 +6849,8 @@ namespace SS.Matchmaking.Modules
             public required bool BurnItemsOnSpawn { get; init; }
             public required bool AllowFillUnusedSlots { get; init; }
             public required string? ReplayRecordPath { get; init; }
+            public required IOpenSkillModel OpenSkillModel { get; init; }
+            public required double OpenSkillSigmaDecayPerDay { get; init; }
 
             public required MatchBoxConfiguration[] Boxes;
 

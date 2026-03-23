@@ -6,6 +6,7 @@ using SS.Core;
 using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Interfaces;
 using SS.Matchmaking.League;
+using SS.Matchmaking.OpenSkill;
 using SS.Packets.Game;
 using SS.Utilities.ObjectPool;
 using System.Buffers;
@@ -116,17 +117,20 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        async Task IGameStatsRepository.GetPlayerRatingsAsync(long gameTypeId, Dictionary<string, int> playerRatingDictionary)
+        async Task IGameStatsRepository.GetPlayerRatingsAsync(long gameTypeId, Dictionary<string, int> ratings)
         {
-            ArgumentNullException.ThrowIfNull(playerRatingDictionary);
+            ArgumentNullException.ThrowIfNull(ratings);
 
-            if (playerRatingDictionary.Comparer != StringComparer.OrdinalIgnoreCase)
-                throw new ArgumentException("Comparer must be StringComparer.OrdinalIgnoreCase.", nameof(playerRatingDictionary));
+            if (ratings.Comparer != StringComparer.OrdinalIgnoreCase)
+                throw new ArgumentException("Comparer must be StringComparer.OrdinalIgnoreCase.", nameof(ratings));
 
             if (_dataSource is null)
                 throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
 
-            if (playerRatingDictionary.Count == 0)
+            if (ratings.Count == 0)
+                return;
+
+            if (!ratings.TryGetAlternateLookup<ReadOnlySpan<char>>(out var ratingsLookup))
                 return;
 
             try
@@ -144,7 +148,7 @@ namespace SS.Matchmaking.Modules
                     {
                         command.Parameters.Add(new NpgsqlParameter<long>() { TypedValue = gameTypeId });
 
-                        foreach (string playerName in playerRatingDictionary.Keys)
+                        foreach (string playerName in ratings.Keys)
                             playerNameList.Add(playerName);
 
                         command.Parameters.AddWithValue(NpgsqlDbType.Array | NpgsqlDbType.Varchar, playerNameList);
@@ -162,11 +166,13 @@ namespace SS.Matchmaking.Modules
 
                                 while (await reader.ReadAsync().ConfigureAwait(false))
                                 {
-                                    string? playerName = GetPlayerName(reader, playerNameColumn, playerNameArray, playerNameList);
-                                    if (playerName is null)
-                                        continue;
+                                    long charsRead = reader.GetChars(playerNameColumn, 0, playerNameArray, 0, Constants.MaxPlayerNameLength);
+                                    ReadOnlySpan<char> playerNameSpan = playerNameArray.AsSpan(0, (int)charsRead);
 
-                                    playerRatingDictionary[playerName] = reader.GetInt32(ratingColumn);
+                                    if (!ratingsLookup.TryGetValue(playerNameSpan, out string? playerName, out _))
+                                        continue; // This shouldn't happen
+
+                                    ratings[playerName] = reader.GetInt32(ratingColumn);
                                 }
                             }
                             finally
@@ -183,23 +189,90 @@ namespace SS.Matchmaking.Modules
             }
             catch (Exception ex)
             {
-                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error getting player stats. {ex}");
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling ss.get_player_rating. {ex}");
             }
+        }
 
+        async Task IGameStatsRepository.GetPlayerOpenSkillRatingsAsync(long gameTypeId, Dictionary<string, PlayerRating> ratings)
+        {
+            ArgumentNullException.ThrowIfNull(ratings);
 
-            // Local function that reads the player name from the DataReader without allocating a string, instead reusing the existing string instance.
-            static string? GetPlayerName(NpgsqlDataReader reader, int ordinal, char[] buffer, List<string> playerNameList)
+            if (ratings.Comparer != StringComparer.OrdinalIgnoreCase)
+                throw new ArgumentException("Comparer must be StringComparer.OrdinalIgnoreCase.", nameof(ratings));
+
+            if (_dataSource is null)
+                throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            if (ratings.Count == 0)
+                return;
+
+            if (!ratings.TryGetAlternateLookup<ReadOnlySpan<char>>(out var ratingsLookup))
+                return;
+
+            // Rent a list so that we can pass the player names to the database without allocating.
+            // Reminder: I tried using ArrayPool<string> and passing it as a Memory<string>, but Npgsql would not accept it.
+            List<string> playerNameList = s_stringListPool.Get();
+            try
             {
-                long charsRead = reader.GetChars(ordinal, 0, buffer, 0, Constants.MaxPlayerNameLength); // unfortunately, no overload for Span<char> so have to use a pooled char[] as the buffer
-                ReadOnlySpan<char> playerNameSpan = buffer.AsSpan(0, (int)charsRead);
+                foreach (string playerName in ratings.Keys)
+                    playerNameList.Add(playerName);
 
-                foreach (string playerName in playerNameList)
+                await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
+                NpgsqlCommand command = new("select * from ss.get_openskill_ratings($1,$2)", connection)
                 {
-                    if (MemoryExtensions.Equals(playerName, playerNameSpan, StringComparison.OrdinalIgnoreCase))
-                        return playerName;
-                }
+                    Parameters =
+                    {
+                        new NpgsqlParameter<long>() { TypedValue = gameTypeId },
+                        new() { NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Varchar, Value = playerNameList},
+                    }
+                };
 
-                return null;
+                await using (command.ConfigureAwait(false))
+                {
+                    await command.PrepareAsync().ConfigureAwait(false);
+
+                    var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+                    await using (reader.ConfigureAwait(false))
+                    {
+                        // Rent an array so that we can read the player name from the database without allocating a string.
+                        char[] playerNameArray = ArrayPool<char>.Shared.Rent(Constants.MaxPlayerNameLength);
+
+                        try
+                        {
+                            int playerNameColumn = reader.GetOrdinal("player_name");
+                            int muColumn = reader.GetOrdinal("mu");
+                            int sigmaColumn = reader.GetOrdinal("sigma");
+                            int lastUpdatedColumn = reader.GetOrdinal("last_updated");
+
+                            while (await reader.ReadAsync().ConfigureAwait(false))
+                            {
+                                long charsRead = reader.GetChars(playerNameColumn, 0, playerNameArray, 0, Constants.MaxPlayerNameLength);
+                                ReadOnlySpan<char> playerNameSpan = playerNameArray.AsSpan(0, (int)charsRead);
+
+                                if (!ratingsLookup.TryGetValue(playerNameSpan, out PlayerRating? playerRating))
+                                    continue; // This shouldn't happen
+
+                                // Update the existing rating object.
+                                playerRating.Mu = reader.GetDouble(muColumn);
+                                playerRating.Sigma = reader.GetDouble(sigmaColumn);
+                                playerRating.LastUpdated = reader.IsDBNull(lastUpdatedColumn) ? null : reader.GetDateTime(lastUpdatedColumn);
+                            }
+                        }
+                        finally
+                        {
+                            ArrayPool<char>.Shared.Return(playerNameArray);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling ss.get_openskill_ratings. {ex}");
+                throw;
+            }
+            finally
+            {
+                s_stringListPool.Return(playerNameList);
             }
         }
 

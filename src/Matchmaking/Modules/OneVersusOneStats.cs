@@ -415,7 +415,14 @@ namespace SS.Matchmaking.Modules
                 //gameJsonStream.Position = 0;
                 // DEBUG - REMOVE ME ***************************************************
 
-                matchStats.GameId = await _gameStatsRepository.SaveGameAsync(gameJsonStream);
+                try
+                {
+                    matchStats.GameId = await _gameStatsRepository.SaveGameAsync(gameJsonStream);
+                }
+                catch
+                {
+                    // Error saving.
+                }
 
                 void WritePlayerInfo(PlayerStats playerStats)
                 {

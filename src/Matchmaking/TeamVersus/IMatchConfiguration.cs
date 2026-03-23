@@ -1,4 +1,6 @@
-﻿namespace SS.Matchmaking.TeamVersus
+﻿using OpenSkillSharp;
+
+namespace SS.Matchmaking.TeamVersus
 {
     /// <summary>
     /// Configuration settings for a match.
@@ -45,5 +47,15 @@
         /// Gets the configuration of the match boxes.
         /// </summary>
         ReadOnlySpan<IMatchBoxConfiguration> Boxes { get; }
+
+        /// <summary>
+        /// The OpenSkill model.
+        /// </summary>
+        IOpenSkillModel OpenSkillModel { get; }
+
+        /// <summary>
+        /// The amount of decay to add to an OpenSkill rating's sigma per day of inactivity.
+        /// </summary>
+        double OpenSkillSigmaDecayPerDay { get; }
     }
 }

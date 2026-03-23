@@ -6,6 +6,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Core.Map;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
+using SS.Matchmaking.OpenSkill;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
 using SS.Utilities;
@@ -15,6 +16,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json;
+using OpenSkillRating = OpenSkillSharp.Rating;
 
 namespace SS.Matchmaking.Modules
 {
@@ -122,6 +124,9 @@ namespace SS.Matchmaking.Modules
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = [];
 
         private readonly DefaultObjectPool<ArenaData> _arenaDataPool = new(new DefaultPooledObjectPolicy<ArenaData>(), Constants.TargetArenaCount);
+        private readonly ObjectPool<Dictionary<string, int>> _leaderboardRatingDictionaryPool = ObjectPool.Create(new DictionaryPooledObjectPolicy<string, int>() { InitialCapacity = 64, EqualityComparer = StringComparer.OrdinalIgnoreCase });
+        private readonly ObjectPool<Dictionary<string, PlayerRating>> _playerRatingDictionaryPool = ObjectPool.Create(new DictionaryPooledObjectPolicy<string, PlayerRating>() { InitialCapacity = 64, EqualityComparer = StringComparer.OrdinalIgnoreCase });
+        private readonly ObjectPool<List<(string PlayerName, double Ordinal)>> _playerOrdinalListPool = ObjectPool.Create(new ListPooledObjectPolicy<(string PlayerName, double Ordinal)>() { InitialCapacity = Constants.TargetPlayerCount });
 
         public TeamVersusStats(
             IArenaManager arenaManager,
@@ -340,74 +345,120 @@ namespace SS.Matchmaking.Modules
             if (_gameStatsRepository is null)
                 return false;
 
-            // Get ratings of each player.
-            Dictionary<string, int> playerRatingDictionary = new(StringComparer.OrdinalIgnoreCase); // TODO: pool
-
-            foreach (TeamLineup teamLineup in teamList)
+            Dictionary<string, PlayerRating> ratings = _playerRatingDictionaryPool.Get();
+            try
             {
-                foreach ((string playerName, _) in teamLineup.Players)
+                // Start all players out with the default rating from model.
+                foreach (TeamLineup teamLineup in teamList)
                 {
-                    playerRatingDictionary[playerName] = DefaultRating;
-                }
-            }
-
-            await _gameStatsRepository.GetPlayerRatingsAsync(matchConfiguration.GameTypeId.Value, playerRatingDictionary);
-
-            // Create a list of player ratings sorted by rating.
-            List<(string PlayerName, int Rating)> playerRatingList = []; // TODO: pool
-            foreach ((string playerName, int rating) in playerRatingDictionary)
-            {
-                playerRatingList.Add((playerName, rating));
-            }
-
-            playerRatingList.Sort(PlayerRatingComparison);
-
-            // Clear the existing teams so that we can reassign all the players.
-            foreach (TeamLineup teamLineup in teamList)
-            {
-                teamLineup.Players.Clear();
-            }
-
-            // Assign players to teams snaking back and forth.
-            // This should give a decent distribution of skill (by rating).
-            bool ascending = true;
-            int playerIndex = 0;
-            int teamIndex = 0;
-            while (playerIndex < playerRatingList.Count)
-            {
-                teamList[teamIndex].Players.Add(playerRatingList[playerIndex++].PlayerName, null);
-
-                if (ascending)
-                {
-                    if (teamIndex == teamList.Count - 1)
+                    foreach ((string playerName, _) in teamLineup.Players)
                     {
-                        ascending = false;
-                    }
-                    else
-                    {
-                        teamIndex++;
-                    }
-                }
-                else
-                {
-                    if (teamIndex == 0)
-                    {
-                        ascending = true;
-                    }
-                    else
-                    {
-                        teamIndex--;
+                        ratings[playerName] = new PlayerRating
+                        {
+                            PlayerName = playerName,
+                            Mu = matchConfiguration.OpenSkillModel.Mu,
+                            Sigma = matchConfiguration.OpenSkillModel.Sigma,
+                        };
                     }
                 }
 
+                // Get ratings of each player.
+                // This will update the ratings of the players that we have data for.
+                try
+                {
+                    await _gameStatsRepository.GetPlayerOpenSkillRatingsAsync(matchConfiguration.GameTypeId.Value, ratings);
+                }
+                catch
+                {
+                    // Error getting ratings. Balancing can't be done without them.
+                    return false;
+                }
+
+                // Adjust ratings based on player inactivity.
+                AdjustOpenSkillRatingsForDecay(matchConfiguration, ratings, DateTime.UtcNow);
+
+                // Snake draft
+                BalanceTeamsSnakeDraft(teamList, ratings);
+
+                // TODO: Add other team balancing algorithms and add the ability to configure it to randomize which are used with weights on each.
+
+                // 0-1 Knapsack -- Theoretically would give the most mathematically balanced teams
+                //BalanceTeamsKnapsack(teamList, ratings);
+
+                // Skill Tiers -- This is supposedly what 4v4 currently uses, but rather for the queue when matching players up.
+                //BalanceTeamsSkillTiers(teamList, ratings);
+
+                // Monte Carlo -- Generate random team combinations to find the smallest team rating difference
+                //BalanceTeamsMonteCarlo(teamList, ratings);
+
+                // Simulated Annealing -- Random swaps between teams to minimize team rating difference
+                //BalanceTeamsSimulatedAnnealing(teamList, ratings);
+            }
+            finally
+            {
+                _playerRatingDictionaryPool.Return(ratings);
             }
 
             return true;
 
-
-            static int PlayerRatingComparison((string PlayerName, int Rating) x, (string PlayerName, int Rating) y)
+            void BalanceTeamsSnakeDraft(IReadOnlyList<TeamLineup> teamList, Dictionary<string, PlayerRating> ratings)
             {
-                return -x.Rating.CompareTo(y.Rating); // rating desc
+                List<(string PlayerName, double Ordinal)> playerRatingList = _playerOrdinalListPool.Get();
+                try
+                {
+                    // Populate a list of player ratings.
+                    foreach (PlayerRating playerRating in ratings.Values)
+                    {
+                        playerRatingList.Add((playerRating.PlayerName, playerRating.GetOrdinal()));
+                    }
+
+                    // Sort by rating descending.
+                    playerRatingList.Sort(static (x, y) => -x.Ordinal.CompareTo(y.Ordinal));
+
+                    // Clear the existing teams so that we can reassign all the players.
+                    foreach (TeamLineup teamLineup in teamList)
+                    {
+                        teamLineup.Players.Clear();
+                    }
+
+                    // Assign players to teams snaking back and forth.
+                    // This should give a decent distribution of skill (by rating).
+                    bool ascending = true;
+                    int playerIndex = 0;
+                    int teamIndex = 0;
+                    while (playerIndex < playerRatingList.Count)
+                    {
+                        teamList[teamIndex].Players.Add(playerRatingList[playerIndex++].PlayerName, null);
+
+                        if (ascending)
+                        {
+                            if (teamIndex == teamList.Count - 1)
+                            {
+                                ascending = false;
+                            }
+                            else
+                            {
+                                teamIndex++;
+                            }
+                        }
+                        else
+                        {
+                            if (teamIndex == 0)
+                            {
+                                ascending = true;
+                            }
+                            else
+                            {
+                                teamIndex--;
+                            }
+                        }
+
+                    }
+                }
+                finally
+                {
+                    _playerOrdinalListPool.Return(playerRatingList);
+                }
             }
         }
 
@@ -430,61 +481,98 @@ namespace SS.Matchmaking.Modules
 
             matchStats.Initialize(matchData);
 
-            Dictionary<string, int> playerRatingDictionary = new(StringComparer.OrdinalIgnoreCase); // TOOD: pool
-
-            for (int teamIdx = 0; teamIdx < matchData.Teams.Count; teamIdx++)
+            DateTime now = DateTime.UtcNow;
+            Dictionary<string, int> leaderboardRatings = _leaderboardRatingDictionaryPool.Get();
+            try
             {
-                // Team
-                ITeam team = matchData.Teams[teamIdx];
-                TeamStats teamStats = new(); // TODO: get from a pool
-                teamStats.Initialize(matchStats, team);
-                matchStats.Teams.Add(team.Freq, teamStats);
-
-                for (int slotIdx = 0; slotIdx < team.Slots.Count; slotIdx++)
+                for (int teamIdx = 0; teamIdx < matchData.Teams.Count; teamIdx++)
                 {
-                    // Slot
-                    IPlayerSlot slot = team.Slots[slotIdx];
-                    SlotStats slotStats = new(); // TODO: get from a pool
-                    slotStats.Initialize(teamStats, slot);
-                    teamStats.Slots.Add(slotStats);
+                    // Team
+                    ITeam team = matchData.Teams[teamIdx];
+                    TeamStats teamStats = new(); // TODO: get from a pool
+                    teamStats.Initialize(matchStats, team);
+                    matchStats.Teams.Add(team.Freq, teamStats);
 
-                    // Member (only if the slot is filled)
-                    if (!string.IsNullOrWhiteSpace(slot.PlayerName))
+                    for (int slotIdx = 0; slotIdx < team.Slots.Count; slotIdx++)
                     {
-                        MemberStats memberStats = new(); // TODO: get from a pool
-                        memberStats.Initialize(slotStats, slot.PlayerName, true);
-                        slotStats.Members.Add(memberStats);
-                        slotStats.Current = memberStats;
+                        // Slot
+                        IPlayerSlot slot = team.Slots[slotIdx];
+                        SlotStats slotStats = new(); // TODO: get from a pool
+                        slotStats.Initialize(teamStats, slot);
+                        teamStats.Slots.Add(slotStats);
 
-                        _playerMemberDictionary[slot.PlayerName] = memberStats;
-                        playerRatingDictionary.Add(slot.PlayerName, DefaultRating);
-                    }
-                }
-            }
-
-            //
-            // Initialize the ratings for each team member
-            //
-
-            if (_gameStatsRepository is not null && matchData.Configuration.GameTypeId is not null)
-            {
-                await _gameStatsRepository.GetPlayerRatingsAsync(matchData.Configuration.GameTypeId.Value, playerRatingDictionary);
-            }
-
-            foreach (TeamStats teamStats in matchStats.Teams.Values)
-            {
-                foreach (SlotStats slotStats in teamStats.Slots)
-                {
-                    foreach (MemberStats memberStats in slotStats.Members)
-                    {
-                        if (!playerRatingDictionary.TryGetValue(memberStats.PlayerName!, out int rating))
+                        // Member (only if the slot is filled)
+                        if (!string.IsNullOrWhiteSpace(slot.PlayerName))
                         {
-                            rating = DefaultRating;
-                        }
+                            MemberStats memberStats = new(); // TODO: get from a pool
+                            memberStats.Initialize(slotStats, slot.PlayerName, true);
+                            slotStats.Members.Add(memberStats);
+                            slotStats.Current = memberStats;
+                            slotStats.AssignTimestamp = now; // set it just so that it's not null, we'll update it at start to be more accurate
 
-                        memberStats.InitialRating = rating;
+                            _playerMemberDictionary[slot.PlayerName] = memberStats;
+                            leaderboardRatings.Add(slot.PlayerName, DefaultRating);
+
+                            // Add to the OpenSkill ratings dictionary, with the default rating of the model.
+                            matchStats.OpenSkillRatings[slot.PlayerName] = new PlayerRating()
+                            {
+                                PlayerName = slot.PlayerName,
+                                Mu = matchData.Configuration.OpenSkillModel.Mu,
+                                Sigma = matchData.Configuration.OpenSkillModel.Sigma,
+                            };
+                        }
                     }
                 }
+
+                //
+                // Initialize the ratings for each team member
+                //
+
+                if (_gameStatsRepository is not null && matchData.Configuration.GameTypeId is not null)
+                {
+                    try
+                    {
+                        // Get leaderboard ratings.
+                        await _gameStatsRepository.GetPlayerRatingsAsync(matchData.Configuration.GameTypeId.Value, leaderboardRatings);
+                    }
+                    catch
+                    {
+                        // Error getting ratings. The default rating will be used.
+                    }
+
+                    try
+                    {
+                        // Get the current OpenSkill ratings. This will update the existing rating objects.
+                        await _gameStatsRepository.GetPlayerOpenSkillRatingsAsync(matchData.Configuration.GameTypeId.Value, matchStats.OpenSkillRatings);
+                    }
+                    catch
+                    {
+                        // Error getting ratings. The default rating will be used.
+                    }
+
+                    // Adjust ratings we got from the database for inactivity decay.
+                    AdjustOpenSkillRatingsForDecay(matchData.Configuration, matchStats.OpenSkillRatings, now);
+                }
+
+                foreach (TeamStats teamStats in matchStats.Teams.Values)
+                {
+                    foreach (SlotStats slotStats in teamStats.Slots)
+                    {
+                        foreach (MemberStats memberStats in slotStats.Members)
+                        {
+                            if (!leaderboardRatings.TryGetValue(memberStats.PlayerName!, out int rating))
+                            {
+                                rating = DefaultRating;
+                            }
+
+                            memberStats.InitialRating = rating;
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _leaderboardRatingDictionaryPool.Return(leaderboardRatings);
             }
         }
 
@@ -499,6 +587,11 @@ namespace SS.Matchmaking.Modules
             {
                 foreach (SlotStats slotStats in teamStats.Slots)
                 {
+                    if (slotStats.Current is not null)
+                    {
+                        slotStats.AssignTimestamp = matchStats.StartTimestamp;
+                    }
+
                     foreach (MemberStats memberStats in slotStats.Members)
                     {
                         IPlayerSlot slot = slotStats.Slot!;
@@ -533,6 +626,82 @@ namespace SS.Matchmaking.Modules
             }
 
             _mainloopTimer.SetTimer(MainloopTimer_ProcessPlayerDistances, 1000, 1000, matchStats, matchStats);
+
+            //
+            // Predictions
+            //
+
+            // Prepare the prediction calculation inputs.
+            List<OpenSkillRating.ITeam> teams = new(matchStats.Teams.Count);
+            foreach (TeamStats teamStats in matchStats.Teams.Values)
+            {
+                List<OpenSkillRating.IRating> players = new(matchData.Configuration.PlayersPerTeam);
+                teams.Add(new OpenSkillRating.Team() { Players = players });
+
+                foreach (SlotStats slotStats in teamStats.Slots)
+                {
+                    foreach (MemberStats memberStats in slotStats.Members)
+                    {
+                        // Rating
+                        if (memberStats.PlayerName is null
+                            || !matchStats.OpenSkillRatings.TryGetValue(memberStats.PlayerName!, out PlayerRating? rating))
+                        {
+                            continue;
+                        }
+
+                        players.Add(rating);
+                    }
+                }
+            }
+
+            // Calculate the win and draw probabilities.
+            IEnumerable<double> predictions = matchData.Configuration.OpenSkillModel.PredictWin(teams);
+            double drawProbabiilty = matchData.Configuration.OpenSkillModel.PredictDraw(teams);
+
+            // Send the predictions as chat.
+            StringBuilder predictionsBuilder = _objectPoolManager.StringBuilderPool.Get();
+            try
+            {
+                int teamIdx = 0;
+                foreach (double probability in predictions)
+                {
+                    if (predictionsBuilder.Length > 0)
+                        predictionsBuilder.Append(", ");
+
+                    predictionsBuilder.Append($"Freq {matchStats.Teams.Keys[teamIdx]} ({probability:0%})");
+                    teamIdx++;
+                }
+
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    sb.Append("Odds to win: ");
+                    sb.Append(predictionsBuilder);
+                    sb.Append('.');
+
+                    HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
+
+                    try
+                    {
+                        // Notification to players that have any association to the match, regardless of the arena they are in.
+                        _matchFocus.TryGetPlayers(matchStats.MatchData!, notifySet, MatchFocusReasons.Any, null);
+                        _chat.SendSetMessage(notifySet, sb);
+                        _chat.SendSetMessage(notifySet, $"Odds of a draw (match quality metric): {drawProbabiilty:0.##%}");
+                    }
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(notifySet);
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(predictionsBuilder);
+            }
 
             return Task.CompletedTask;
         }
@@ -1198,29 +1367,124 @@ namespace SS.Matchmaking.Modules
                 {
                     foreach (SlotStats slotStats in teamStats.Slots)
                     {
-                        foreach (MemberStats memberStats in slotStats.Members)
+                        if (slotStats.Current is not null)
                         {
-                            if (memberStats.IsCurrent)
+                            MemberStats memberStats = slotStats.Current;
+
+                            // Game time
+                            if (slotStats.AssignTimestamp is not null)
                             {
-                                // Play time
-                                ProcessPlayTime(memberStats, matchStats.EndTimestamp.Value);
+                                memberStats.GameTime += (matchStats.EndTimestamp.Value - slotStats.AssignTimestamp.Value);
+                            }
 
-                                // Ship usage
-                                ProcessShipUsage(memberStats, matchStats.EndTimestamp.Value, null);
+                            // Play time
+                            ProcessPlayTime(memberStats, matchStats.EndTimestamp.Value);
 
-                                // Wasted energy
-                                if (arena is not null)
+                            // Ship usage
+                            ProcessShipUsage(memberStats, matchStats.EndTimestamp.Value, null);
+
+                            // Wasted energy
+                            if (arena is not null)
+                            {
+                                Player? player = _playerData.FindPlayer(memberStats.PlayerName);
+                                if (player is not null
+                                    && player.Ship != ShipType.Spec
+                                    && player.Arena == arena)
                                 {
-                                    Player? player = _playerData.FindPlayer(memberStats.PlayerName);
-                                    if (player is not null
-                                        && player.Ship != ShipType.Spec
-                                        && player.Arena == arena)
-                                    {
-                                        ProcessWastedEnergy(player, memberStats, player.Ship, endTick);
-                                    }
+                                    ProcessWastedEnergy(player, memberStats, player.Ship, endTick);
                                 }
                             }
                         }
+                    }
+                }
+
+                //
+                // Rate players using the OpenSkill model.
+                //
+
+                // Prepare the rating calcuation inputs.
+                TimeSpan matchDuration = matchStats.EndTimestamp.Value - matchStats.StartTimestamp;
+                List<OpenSkillRating.ITeam> teams = new(matchStats.Teams.Count);
+                List<double> scores = new(matchStats.Teams.Count);
+                List<IList<double>> weights = new(matchStats.Teams.Count);
+
+                foreach (TeamStats teamStats in matchStats.Teams.Values)
+                {
+                    // Count how many played for this team.
+                    int teamPlayerCount = 0;
+                    foreach (SlotStats slotStats in teamStats.Slots)
+                    {
+                        foreach (MemberStats memberStats in slotStats.Members)
+                        {
+                            teamPlayerCount++;
+                        }
+                    }
+
+                    List<OpenSkillRating.IRating> players = new(teamPlayerCount);
+                    List<double> playerWeights = new(teamPlayerCount);
+
+                    foreach (SlotStats slotStats in teamStats.Slots)
+                    {
+                        foreach (MemberStats memberStats in slotStats.Members)
+                        {
+                            // Rating
+                            if (memberStats.PlayerName is null
+                                || !matchStats.OpenSkillRatings.TryGetValue(memberStats.PlayerName!, out PlayerRating? rating))
+                            {
+                                continue;
+                            }
+
+                            players.Add(rating);
+
+                            // Weight
+                            double playTimeRatio = (memberStats.GameTime >= matchDuration)
+                                ? playTimeRatio = 1.0 // full
+                                : memberStats.GameTime / matchDuration; // partial
+
+                            // TODO: Influence weight with rating? Would need to normalize it, ratings can be negative, but weight should not be.
+                            //memberStats.RatingChange
+
+                            playerWeights.Add(playTimeRatio);
+                        }
+                    }
+
+                    OpenSkillRating.Team team = new();
+                    team.Players = players;
+                    teams.Add(team);
+                    if (reason == MatchEndReason.Draw)
+                    {
+                        // For draws, give every team the same score.
+                        scores.Add(1.0);
+                    }
+                    else
+                    {
+                        // For decided matches, use the team's actual score.
+                        // TODO: for 2 teams this is probably ok, but for greater than 2 teams, probably need to rank since highest score doesn't necessarily equate to a win
+                        scores.Add(teamStats.Team!.Score);
+                    }
+                    weights.Add(playerWeights);
+                }
+
+                // Calculate the new ratings.
+                IEnumerable<OpenSkillRating.ITeam> rateResult = matchData.Configuration.OpenSkillModel.Rate(
+                    teams, 
+                    scores: scores,
+                    weights: weights);
+
+                // Copy the result back into the original rating objects.
+                foreach (OpenSkillRating.ITeam team in rateResult)
+                {
+                    foreach (OpenSkillRating.IRating rating in team.Players)
+                    {
+                        if (rating is not PlayerRating playerRating)
+                            continue;
+
+                        if (!matchStats.OpenSkillRatings.TryGetValue(playerRating.PlayerName, out PlayerRating? original))
+                            continue;
+
+                        // Update the original object with the newly calculated rating.
+                        original.Mu = playerRating.Mu;
+                        original.Sigma = playerRating.Sigma;
                     }
                 }
             }
@@ -1314,7 +1578,8 @@ namespace SS.Matchmaking.Modules
                 writer.WriteString("end_timestamp"u8, matchStats.EndTimestamp!.Value);
                 writer.WriteString("replay_path"u8, (string?)null); // TODO: add the ability automatically record games
 
-                writer.WriteStartObject("players");
+                // Player info
+                writer.WriteStartObject("players"u8);
                 foreach ((string playerName, PlayerInfo playerInfo) in matchStats.PlayerInfoDictionary)
                 {
                     writer.WriteStartObject(playerName); // player object
@@ -1330,6 +1595,33 @@ namespace SS.Matchmaking.Modules
                 }
                 writer.WriteEndObject(); // players object
 
+                // OpenSkill ratings
+                writer.WriteStartObject("openskill_ratings"u8);
+                foreach ((string playerName, PlayerRating? rating) in matchStats.OpenSkillRatings)
+                {
+                    if (rating is null)
+                        continue;
+
+                    writer.WriteStartObject(playerName);
+
+                    writer.WriteNumber("mu"u8, rating.Mu);
+                    writer.WriteNumber("sigma"u8, rating.Sigma);
+
+                    // last_updated is used by the database to tell whether the rating should be inserted or updated.
+                    // If null (omitted), the database considers it a new, initial rating that it should try to INSERT only (no update).
+                    // If not null, the database knows it should UPDATE the existing rating, but only if the timestamp matches.
+                    // This way, an existing rating won't get overwritten with an initial one (e.g. if it failed to get the current rating).
+                    // Also, it will not overwrite with old data (e.g. if this json were later used to backload/retry saving later on).
+                    if (rating.LastUpdated is not null)
+                    {
+                        writer.WriteString("last_updated"u8, rating.LastUpdated.Value);
+                    }
+
+                    writer.WriteEndObject(); // player rating object
+                }
+                writer.WriteEndObject(); // openskill_ratings object
+
+                // Team stats
                 writer.WriteStartArray("team_stats"u8); // team_stats array
 
                 foreach (TeamStats teamStats in matchStats.Teams.Values)
@@ -1351,7 +1643,7 @@ namespace SS.Matchmaking.Modules
                             writer.WriteString("player"u8, memberStats.PlayerName);
 
                             if (memberStats.PremadeGroupId is not null)
-                                writer.WriteNumber("premade_group", memberStats.PremadeGroupId.Value); // TODO: change the database to use this and track stats separately for solo vs grouped play
+                                writer.WriteNumber("premade_group"u8, memberStats.PremadeGroupId.Value); // TODO: change the database to use this and track stats separately for solo vs grouped play
 
                             writer.TryWriteTimeSpanAsISO8601("play_duration"u8, memberStats.PlayTime);
                             writer.WriteNumber("lag_outs"u8, memberStats.LagOuts);
@@ -1472,10 +1764,17 @@ namespace SS.Matchmaking.Modules
                 //gameJsonStream.Position = 0;
                 // DEBUG - REMOVE ME ***************************************************
 
-                if (matchData.LeagueGame is null && _gameStatsRepository is not null)
-                    matchStats.GameId = await _gameStatsRepository.SaveGameAsync(gameJsonStream);
-                else if (matchData.LeagueGame is not null && _leagueRepository is not null)
-                    matchStats.GameId = await _leagueRepository!.SaveGameAsync(matchData.LeagueGame.SeasonGameId, gameJsonStream);
+                try
+                {
+                    if (matchData.LeagueGame is null && _gameStatsRepository is not null)
+                        matchStats.GameId = await _gameStatsRepository.SaveGameAsync(gameJsonStream);
+                    else if (matchData.LeagueGame is not null && _leagueRepository is not null)
+                        matchStats.GameId = await _leagueRepository!.SaveGameAsync(matchData.LeagueGame.SeasonGameId, gameJsonStream);
+                }
+                catch
+                {
+                    // Error saving.
+                }
 
                 if (matchStats.GameId is not null)
                 {
@@ -1651,6 +1950,10 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
+            IMatchData? matchData = matchStats.MatchData;
+            if (matchData is null)
+                return;
+
             DateTime now = DateTime.UtcNow;
 
             SlotStats slotStats = teamStats.Slots[playerSlot.SlotIdx];
@@ -1671,6 +1974,14 @@ namespace SS.Matchmaking.Modules
                 {
                     SetStoppedPlaying(subOutPlayer, now);
                 }
+
+                if (slotStats.AssignTimestamp is not null)
+                {
+                    subOutStats.GameTime += (now - slotStats.AssignTimestamp.Value);
+                }
+
+                slotStats.Current = null;
+                slotStats.AssignTimestamp = null;
             }
 
             // Sub in
@@ -1686,6 +1997,7 @@ namespace SS.Matchmaking.Modules
                 }
 
                 slotStats.Current = memberStats;
+                slotStats.AssignTimestamp = now;
 
                 _playerMemberDictionary[subInPlayerName] = memberStats;
                 Player? subInPlayer = playerSlot.Player ?? _playerData.FindPlayer(subInPlayerName);
@@ -1701,24 +2013,71 @@ namespace SS.Matchmaking.Modules
 
                 matchStats.AddAssignSlotEvent(DateTime.UtcNow, playerSlot.Team.Freq, playerSlot.SlotIdx, subInPlayerName);
 
-                // Get the rating of the player subbing in.
-                Dictionary<string, int> playerRatingDictionary = new(StringComparer.OrdinalIgnoreCase) // TODO: pool
-                {
-                    [subInPlayerName] = DefaultRating
-                };
-
-                long? gameTypeId = matchStats.MatchData?.Configuration.GameTypeId;
+                long? gameTypeId = matchData.Configuration.GameTypeId;
 
                 if (_gameStatsRepository is not null && gameTypeId is not null)
                 {
-                    await _gameStatsRepository.GetPlayerRatingsAsync(gameTypeId.Value, playerRatingDictionary);
-                }
+                    // Get the rating of the player subbing in.
+                    Dictionary<string, int> leaderboardRatings = _leaderboardRatingDictionaryPool.Get();
+                    try
+                    {
+                        leaderboardRatings[subInPlayerName] = DefaultRating;
 
-                if (playerRatingDictionary.TryGetValue(subInPlayerName, out int rating))
-                    memberStats.InitialRating = rating;
+                        try
+                        {
+                            await _gameStatsRepository.GetPlayerRatingsAsync(gameTypeId.Value, leaderboardRatings);
+                        }
+                        catch
+                        {
+                            // Error getting the rating. The default rating will be used.
+                        }
+
+                        if (leaderboardRatings.TryGetValue(subInPlayerName, out int rating))
+                            memberStats.InitialRating = rating;
+                    }
+                    finally
+                    {
+                        _leaderboardRatingDictionaryPool.Return(leaderboardRatings);
+                    }
+                }
 
                 // Refresh the team's average rating.
                 teamStats.RefreshRemainingSlotsAndAverageRating();
+
+                // OpenSkill rating
+                if (!matchStats.OpenSkillRatings.TryGetValue(subInPlayerName, out PlayerRating? openSkillRating))
+                {
+                    openSkillRating = new PlayerRating()
+                    {
+                        PlayerName = subInPlayerName,
+                        Mu = matchData.Configuration.OpenSkillModel.Mu,
+                        Sigma = matchData.Configuration.OpenSkillModel.Sigma,
+                    };
+
+                    matchStats.OpenSkillRatings.Add(subInPlayerName, openSkillRating);
+                }
+
+                if (_gameStatsRepository is not null && gameTypeId is not null)
+                {
+                    Dictionary<string, PlayerRating> openSkillRatings = _playerRatingDictionaryPool.Get();
+                    try
+                    {
+                        // Get the OpenSkill rating of the player subbing in.
+                        openSkillRatings.Add(subInPlayerName, openSkillRating);
+                        await _gameStatsRepository.GetPlayerOpenSkillRatingsAsync(gameTypeId.Value, openSkillRatings);
+
+                        // Adjust the rating for inactivity decay.
+                        AdjustOpenSkillRatingsForDecay(matchData.Configuration, openSkillRatings, now);
+                    }
+                    catch
+                    {
+                        // Error getting rating. The default rating will be used.
+                    }
+                    finally
+                    {
+                        _playerRatingDictionaryPool.Return(openSkillRatings);
+                    }
+                }
             }
         }
 
@@ -2293,6 +2652,28 @@ namespace SS.Matchmaking.Modules
 
             matchStats.PlayerInfoDictionary.Remove(playerName); // using remove in case the player name changed [upper|lower]case
             matchStats.PlayerInfoDictionary.Add(playerName, playerInfo);
+        }
+
+        private static void AdjustOpenSkillRatingsForDecay(IMatchConfiguration matchConfiguration, Dictionary<string, PlayerRating> ratings, DateTime asOf)
+        {
+            if (matchConfiguration.OpenSkillSigmaDecayPerDay <= 0)
+                return;
+
+            foreach (PlayerRating rating in ratings.Values)
+            {
+                if (rating.LastUpdated is null)
+                    continue; // Not from the database.
+
+                double days = (asOf - rating.LastUpdated.Value).TotalDays;
+                if (days <= 0) // TODO: maybe add a setting for how many days after which decay starts taking effect?
+                    continue;
+
+                double sigmaWithDecay = rating.Sigma + (matchConfiguration.OpenSkillSigmaDecayPerDay * days);
+                if (sigmaWithDecay > matchConfiguration.OpenSkillModel.Sigma)
+                    sigmaWithDecay = matchConfiguration.OpenSkillModel.Sigma;
+
+                rating.Sigma = sigmaWithDecay;
+            }
         }
 
         private void SetStartedPlaying(Player player, MemberStats memberStats, DateTime asOf)
@@ -2902,7 +3283,21 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public readonly HashSet<PlayerData> PlayerDataSet = new(32);
 
-            public readonly Dictionary<string, PlayerInfo> PlayerInfoDictionary = new(StringComparer.OrdinalIgnoreCase);
+            /// <summary>
+            /// Info about each player that is participating or has participated in the match.
+            /// </summary>
+            /// <remarks>
+            /// Key = player name
+            /// </remarks>
+            public readonly Dictionary<string, PlayerInfo> PlayerInfoDictionary = new(32, StringComparer.OrdinalIgnoreCase);
+
+            /// <summary>
+            /// OpenSkill ratings for all players that have participated in the match.
+            /// </summary>
+            /// <remarks>
+            /// Key = player name
+            /// </remarks>
+            public readonly Dictionary<string, PlayerRating> OpenSkillRatings = new(32, StringComparer.OrdinalIgnoreCase);
 
             public DateTime StartTimestamp;
             public DateTime? EndTimestamp;
@@ -2947,6 +3342,7 @@ namespace SS.Matchmaking.Modules
                 MatchData = null;
                 Teams.Clear();
                 PlayerInfoDictionary.Clear();
+                OpenSkillRatings.Clear();
                 StartTimestamp = DateTime.MinValue;
                 EndTimestamp = null;
                 GameId = null;
@@ -3048,14 +3444,14 @@ namespace SS.Matchmaking.Modules
                 _eventsJsonWriter.WriteNumber("killed_ship"u8, (int)killedShip);
                 _eventsJsonWriter.WriteNumber("killer_ship"u8, (int)killerShip);
 
-                _eventsJsonWriter.WriteStartArray("score");
+                _eventsJsonWriter.WriteStartArray("score"u8);
                 foreach (var teamStats in Teams.Values)
                 {
                     _eventsJsonWriter.WriteNumberValue(teamStats.Team!.Score);
                 }
                 _eventsJsonWriter.WriteEndArray();
 
-                _eventsJsonWriter.WriteStartArray("remaining_slots");
+                _eventsJsonWriter.WriteStartArray("remaining_slots"u8);
                 foreach (var teamStats in Teams.Values)
                 {
                     int remainingSlots = 0;
@@ -3084,7 +3480,7 @@ namespace SS.Matchmaking.Modules
 
                 if (damageList is not null && damageList.Count > 0)
                 {
-                    _eventsJsonWriter.WriteStartObject("damage_stats");
+                    _eventsJsonWriter.WriteStartObject("damage_stats"u8);
                     foreach ((string playerName, int damage) in damageList)
                     {
                         _eventsJsonWriter.WriteNumber(playerName, damage);
@@ -3100,7 +3496,7 @@ namespace SS.Matchmaking.Modules
 
                 if (ratingChangeDictionary is not null && ratingChangeDictionary.Count > 0)
                 {
-                    _eventsJsonWriter.WriteStartObject("rating_changes");
+                    _eventsJsonWriter.WriteStartObject("rating_changes"u8);
                     foreach ((string playerName, float rating) in ratingChangeDictionary)
                     {
                         _eventsJsonWriter.WriteNumber(playerName, rating);
@@ -3205,6 +3601,11 @@ namespace SS.Matchmaking.Modules
             /// Stats of the player that currently holds the slot.
             /// </summary>
             public MemberStats? Current;
+
+            /// <summary>
+            /// Timestamp that <see cref="Current"/> was assigned.
+            /// </summary>
+            public DateTime? AssignTimestamp;
 
             public void Initialize(TeamStats teamStats, IPlayerSlot slot)
             {
@@ -3450,7 +3851,16 @@ namespace SS.Matchmaking.Modules
             public short ForcedReps;
 
             /// <summary>
-            /// Duration of play.
+            /// Duration that the player was assigned to a slot in the game.
+            /// Being Knocked Out has no impact on this; the time is included since the slot is still assigned to the player.
+            /// </summary>
+            /// <remarks>
+            /// This duration is used to calculate what percent of a game the player gets credit for, which will not be 100% if sub-in occurs.
+            /// </remarks>
+            public TimeSpan GameTime;
+
+            /// <summary>
+            /// Duration that the player was playing in a ship.
             /// </summary>
             public TimeSpan PlayTime;
 
@@ -3469,7 +3879,7 @@ namespace SS.Matchmaking.Modules
             /// </remarks>
             public DateTime? StartTime;
 
-            #region Rating
+            #region Rating for Leaderboard(s)
 
             /// <summary>
             /// The player's rating at the start of the match.
@@ -3481,19 +3891,6 @@ namespace SS.Matchmaking.Modules
             /// This is an indicator of the player's individual performance in a match.
             /// </summary>
             public float RatingChange;
-
-            #endregion
-
-            #region Ranking
-
-            // Matchmaking rating for the ranking system.
-            //public int RankingMMR;
-
-            // Standard deviation in the player's current MMR rank.
-            //public int RankingReliabilityDeviation;
-
-            // Volatility in the player's current MMR rank.
-            //public int RankingVolatility;
 
             #endregion
 

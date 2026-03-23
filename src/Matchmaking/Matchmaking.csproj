@@ -19,6 +19,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageReference Include="Npgsql" Version="9.0.3" />
+    <PackageReference Include="OpenSkillSharp" Version="1.1.0" />
   </ItemGroup>
 
   <ItemGroup>
