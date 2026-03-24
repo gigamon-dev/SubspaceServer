@@ -4306,6 +4306,8 @@ namespace SS.Matchmaking.Modules
             }
             sigmaDecayPerDay = double.Abs(sigmaDecayPerDay);
 
+            bool useScoresWhenPossible = _configManager.GetBool(ch, matchType, "OpenSkillUseScoresWhenPossible", false);
+
             MatchConfiguration matchConfiguration = new()
             {
                 MatchType = matchType,
@@ -4339,9 +4341,10 @@ namespace SS.Matchmaking.Modules
                 BurnItemsOnSpawn = burnItemsOnSpawn,
                 AllowFillUnusedSlots = allowFillUnusedSlots,
                 ReplayRecordPath = replayRecordPath,
-                Boxes = new MatchBoxConfiguration[numBoxes],
                 OpenSkillModel = model,
                 OpenSkillSigmaDecayPerDay = sigmaDecayPerDay,
+                OpenSkillUseScoresWhenPossible = useScoresWhenPossible,
+                Boxes = new MatchBoxConfiguration[numBoxes],
             };
 
             if (!LoadMatchBoxesConfiguration(ch, matchType, matchConfiguration))
@@ -6851,6 +6854,7 @@ namespace SS.Matchmaking.Modules
             public required string? ReplayRecordPath { get; init; }
             public required IOpenSkillModel OpenSkillModel { get; init; }
             public required double OpenSkillSigmaDecayPerDay { get; init; }
+            public required bool OpenSkillUseScoresWhenPossible { get; init; }
 
             public required MatchBoxConfiguration[] Boxes;
 

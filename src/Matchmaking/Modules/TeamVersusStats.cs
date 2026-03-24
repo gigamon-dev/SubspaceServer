@@ -1348,7 +1348,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        async Task<bool> ITeamVersusStatsBehavior.MatchEndedAsync(IMatchData matchData, MatchEndReason reason, ITeam? winnerTeam)
+        async Task<bool> ITeamVersusStatsBehavior.MatchEndedAsync(IMatchData matchData, MatchEndReason reason, ITeam? winningTeam)
         {
             if (!_matchStatsDictionary.Remove(matchData.MatchIdentifier, out MatchStats? matchStats))
                 return false;
@@ -1405,8 +1405,24 @@ namespace SS.Matchmaking.Modules
                 // Prepare the rating calcuation inputs.
                 TimeSpan matchDuration = matchStats.EndTimestamp.Value - matchStats.StartTimestamp;
                 List<OpenSkillRating.ITeam> teams = new(matchStats.Teams.Count);
-                List<double> scores = new(matchStats.Teams.Count);
+                List<double>? ranks = null;
+                List<double>? scores = null;
                 List<IList<double>> weights = new(matchStats.Teams.Count);
+
+                // Check whether to rate using ranks or scores.
+                if (reason == MatchEndReason.Decided
+                    && winningTeam is not null
+                    && matchData.Configuration.OpenSkillUseScoresWhenPossible
+                    && WinningTeamHasHighestScore(winningTeam, matchStats))
+                {
+                    // Use scores. This allows having a score margin set on the model to improve accuracy.
+                    scores = new(matchStats.Teams.Count);
+                }
+                else
+                {
+                    // Use ranks.
+                    ranks = new(matchStats.Teams.Count);
+                }
 
                 foreach (TeamStats teamStats in matchStats.Teams.Values)
                 {
@@ -1448,26 +1464,34 @@ namespace SS.Matchmaking.Modules
                         }
                     }
 
-                    OpenSkillRating.Team team = new();
-                    team.Players = players;
-                    teams.Add(team);
-                    if (reason == MatchEndReason.Draw)
+                    teams.Add(new OpenSkillRating.Team() { Players = players });
+
+                    if (ranks is not null)
                     {
-                        // For draws, give every team the same score.
-                        scores.Add(1.0);
+                        if (reason == MatchEndReason.Draw)
+                        {
+                            // For draws, give every team the same rank.
+                            ranks.Add(1.0);
+                        }
+                        else
+                        {
+                            // Decided. The winning team is rank 1, all others are rank 2.
+                            ranks.Add((teamStats.Team == winningTeam) ? 1.0 : 2.0);
+                        }
                     }
                     else
                     {
-                        // For decided matches, use the team's actual score.
-                        // TODO: for 2 teams this is probably ok, but for greater than 2 teams, probably need to rank since highest score doesn't necessarily equate to a win
-                        scores.Add(teamStats.Team!.Score);
+                        // Decided
+                        scores?.Add(teamStats.Team!.Score);
                     }
+                    
                     weights.Add(playerWeights);
                 }
 
                 // Calculate the new ratings.
                 IEnumerable<OpenSkillRating.ITeam> rateResult = matchData.Configuration.OpenSkillModel.Rate(
-                    teams, 
+                    teams,
+                    ranks: ranks,
                     scores: scores,
                     weights: weights);
 
@@ -1525,7 +1549,7 @@ namespace SS.Matchmaking.Modules
 
             if (reason != MatchEndReason.Cancelled)
             {
-                await SaveGameToDatabase(matchData, winnerTeam, matchStats);
+                await SaveGameToDatabase(matchData, winningTeam, matchStats);
 
                 // Send game stat as chat notifications.
                 HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
@@ -1534,7 +1558,7 @@ namespace SS.Matchmaking.Modules
                 {
                     // Notification to players that have any association to the match, regardless of the arena they are in.
                     _matchFocus.TryGetPlayers(matchStats.MatchData!, notifySet, MatchFocusReasons.Any, null);
-                    PrintMatchStats(notifySet, matchStats, reason, winnerTeam);
+                    PrintMatchStats(notifySet, matchStats, reason, winningTeam);
                 }
                 finally
                 {
@@ -1547,9 +1571,23 @@ namespace SS.Matchmaking.Modules
 
             return true;
 
+            // local function that checks whether the team that won has a higher score than all other teams.
+            static bool WinningTeamHasHighestScore(ITeam winningTeam, MatchStats matchStats)
+            {
+                foreach (TeamStats otherTeam in matchStats.Teams.Values)
+                {
+                    if (otherTeam.Team == winningTeam)
+                        continue;
+
+                    if (otherTeam.Team?.Score >= winningTeam.Score)
+                        return false;
+                }
+
+                return true;
+            }
 
             // local function that saves match stats to the database
-            async Task SaveGameToDatabase(IMatchData matchData, ITeam? winnerTeam, MatchStats matchStats)
+            async Task SaveGameToDatabase(IMatchData matchData, ITeam? winningTeam, MatchStats matchStats)
             {
                 if (matchData is null || matchStats is null)
                     return;
@@ -1628,7 +1666,7 @@ namespace SS.Matchmaking.Modules
                 {
                     writer.WriteStartObject(); // team object
                     writer.WriteNumber("freq"u8, teamStats.Team!.Freq);
-                    writer.WriteBoolean("is_winner"u8, teamStats.Team == winnerTeam);
+                    writer.WriteBoolean("is_winner"u8, teamStats.Team == winningTeam);
                     writer.WriteNumber("score"u8, teamStats.Team.Score);
                     writer.WriteStartArray("player_slots"u8); // player_slots array
 
@@ -2842,7 +2880,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void PrintMatchStats(HashSet<Player> notifySet, MatchStats matchStats, MatchEndReason? reason, ITeam? winnerTeam)
+        private void PrintMatchStats(HashSet<Player> notifySet, MatchStats matchStats, MatchEndReason? reason, ITeam? winningTeam)
         {
             if (notifySet is null || matchStats is null)
                 return;
@@ -2878,9 +2916,9 @@ namespace SS.Matchmaking.Modules
                     switch (reason.Value)
                     {
                         case MatchEndReason.Decided:
-                            if (winnerTeam is not null)
+                            if (winningTeam is not null)
                             {
-                                sb.Append($" Freq {winnerTeam.Freq}");
+                                sb.Append($" Freq {winningTeam.Freq}");
                             }
                             break;
 

@@ -57,5 +57,10 @@ namespace SS.Matchmaking.TeamVersus
         /// The amount of decay to add to an OpenSkill rating's sigma per day of inactivity.
         /// </summary>
         double OpenSkillSigmaDecayPerDay { get; }
+
+        /// <summary>
+        /// Whether to rate using scores, rather than ranks, when it's possible.
+        /// </summary>
+        bool OpenSkillUseScoresWhenPossible { get; }
     }
 }
