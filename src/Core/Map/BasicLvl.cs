@@ -143,7 +143,7 @@ namespace SS.Core.Map
                     int tileSize = tile.TileSize;
                     if (tileSize == 1)
                     {
-                        _tiles.Add(coordinates, tile);
+                        _tiles[coordinates] = tile;
                     }
                     else if (tileSize > 1)
                     {
