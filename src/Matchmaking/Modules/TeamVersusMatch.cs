@@ -741,7 +741,7 @@ namespace SS.Matchmaking.Modules
 
             void PrintCommand(Player player, string command, string description)
             {
-                _chat.SendMessage(player, $"?{command,-10}  {description}");
+                _chat.SendMessage(player, $"?{command,-16}  {description}");
             }
         }
 

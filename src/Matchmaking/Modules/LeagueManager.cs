@@ -30,9 +30,19 @@ namespace SS.Matchmaking.Modules
 
         private InterfaceRegistrationToken<ILeagueManager>? _leagueManagerRegistrationToken;
 
-        private const string InitLeagueMatchCommandName = "initleaguematch";
-        private const string LeaguePermitCommandName = "leaguepermit";
+        private static class CommandNames
+        {
+            public const string LeagueHelp = "leaguehelp";
+            public const string Roster = "roster";
+            public const string Schedule = "schedule";
+            public const string Standings = "standings";
+            public const string Results = "results";
+            public const string InitLeagueMatch = "initleaguematch";
+            public const string LeaguePermit = "leaguepermit";
+        }
 
+        // The order here affects the order that the help is printed in.
+        // That is why it's using named interfaces instead of being advisors.
         private readonly string[] LeagueHelpKeys = [
             nameof(TeamVersusMatch), 
             nameof(TeamVersusStats)
@@ -73,13 +83,13 @@ namespace SS.Matchmaking.Modules
         {
             LeagueMatchEndedCallback.Register(broker, Callback_LeagueMatchEnded);
 
-            _commandManager.AddCommand("leaguehelp", Command_leaguehelp);
-            _commandManager.AddCommand("roster", Command_roster);
-            _commandManager.AddCommand("schedule", Command_schedule);
-            _commandManager.AddCommand("standings", Command_standings);
-            _commandManager.AddCommand("results", Command_results);
-            _commandManager.AddCommand(InitLeagueMatchCommandName, Command_initleaguematch);
-            _commandManager.AddCommand(LeaguePermitCommandName, Command_leaguepermit);
+            _commandManager.AddCommand(CommandNames.LeagueHelp, Command_leaguehelp);
+            _commandManager.AddCommand(CommandNames.Roster, Command_roster);
+            _commandManager.AddCommand(CommandNames.Schedule, Command_schedule);
+            _commandManager.AddCommand(CommandNames.Standings, Command_standings);
+            _commandManager.AddCommand(CommandNames.Results, Command_results);
+            _commandManager.AddCommand(CommandNames.InitLeagueMatch, Command_initleaguematch);
+            _commandManager.AddCommand(CommandNames.LeaguePermit, Command_leaguepermit);
 
             // TODO: timer to periodically check for scheduled games and start them automatically when the time comes
 
@@ -92,13 +102,13 @@ namespace SS.Matchmaking.Modules
             if (broker.UnregisterInterface(ref _leagueManagerRegistrationToken) != 0)
                 return false;
 
-            _commandManager.RemoveCommand("leaguehelp", Command_leaguehelp);
-            _commandManager.RemoveCommand("roster", Command_roster);
-            _commandManager.RemoveCommand("schedule", Command_schedule);
-            _commandManager.RemoveCommand("standings", Command_standings);
-            _commandManager.RemoveCommand("results", Command_results);
-            _commandManager.RemoveCommand(InitLeagueMatchCommandName, Command_initleaguematch);
-            _commandManager.RemoveCommand(LeaguePermitCommandName, Command_leaguepermit);
+            _commandManager.RemoveCommand(CommandNames.LeagueHelp, Command_leaguehelp);
+            _commandManager.RemoveCommand(CommandNames.Roster, Command_roster);
+            _commandManager.RemoveCommand(CommandNames.Schedule, Command_schedule);
+            _commandManager.RemoveCommand(CommandNames.Standings, Command_standings);
+            _commandManager.RemoveCommand(CommandNames.Results, Command_results);
+            _commandManager.RemoveCommand(CommandNames.InitLeagueMatch, Command_initleaguematch);
+            _commandManager.RemoveCommand(CommandNames.LeaguePermit, Command_leaguepermit);
 
             LeagueMatchEndedCallback.Unregister(broker, Callback_LeagueMatchEnded);
 
@@ -149,19 +159,19 @@ namespace SS.Matchmaking.Modules
 
             // TODO: maybe include info about what targets each accepts (A - arena/none, P - player, T - team)
             _chat.SendMessage(player, "--- General Information -------------------------------------------------------");
-            PrintCommand(player, "schedule", "Print upcoming or recent league matches.");
-            PrintCommand(player, "standings", "Print the current league standings.");
-            PrintCommand(player, "results", "Print a team's match results.");
-            PrintCommand(player, "roster", "Print a team's roster.");
+            PrintCommand(player, CommandNames.Schedule, "Print upcoming or recent league matches.");
+            PrintCommand(player, CommandNames.Standings, "Print the current league standings.");
+            PrintCommand(player, CommandNames.Results, "Print a team's match results.");
+            PrintCommand(player, CommandNames.Roster, "Print a team's roster.");
 
             _chat.SendMessage(player, "--- Permit --------------------------------------------------------------------");
-            PrintCommand(player, LeaguePermitCommandName, "Request a permit to play in league practices.");
+            PrintCommand(player, CommandNames.LeaguePermit, "Request a permit to play in league practices.");
 
             if (_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff))
             {
                 _chat.SendMessage(player, "--- Staff ---------------------------------------------------------------------");
-                PrintCommand(player, InitLeagueMatchCommandName, "Initializes a league match (reserves an arena and announces the match)");
-                PrintCommand(player, LeaguePermitCommandName, "Manage permits that allow players to play in league practices.");
+                PrintCommand(player, CommandNames.InitLeagueMatch, "Initializes a league match (reserves an arena and announces the match)");
+                PrintCommand(player, CommandNames.LeaguePermit, "Manage permits that allow players to play in league practices.");
             }
 
             foreach (string key in LeagueHelpKeys)
@@ -207,7 +217,7 @@ namespace SS.Matchmaking.Modules
 
             if (parameters.IsWhiteSpace())
             {
-                _chat.SendMessage(player, "Usage: ?roster <team name>");
+                _chat.SendMessage(player, $"Usage: ?{CommandNames.Roster} <team name>");
                 return;
             }
 
@@ -282,7 +292,7 @@ namespace SS.Matchmaking.Modules
 
             if (parameters.IsWhiteSpace())
             {
-                _chat.SendMessage(player, "Usage: ?results <team name>");
+                _chat.SendMessage(player, $"Usage: ?{CommandNames.Results} <team name>");
                 return;
             }
 
@@ -478,7 +488,7 @@ namespace SS.Matchmaking.Modules
 
             void PrintUsage(Player player)
             {
-                _chat.SendMessage(player, $"Usage: {InitLeagueMatchCommandName} <league game id>");
+                _chat.SendMessage(player, $"Usage: ?{CommandNames.InitLeagueMatch} <league game id>");
             }
         }
 
@@ -558,7 +568,7 @@ namespace SS.Matchmaking.Modules
                     ReadOnlySpan<char> remaining = parameters[ranges[1]];
                     if (remaining.Split(ranges, ' ', StringSplitOptions.None) != 2)
                     {
-                        _chat.SendMessage(player, $"{LeaguePermitCommandName}: A target player must be specified.");
+                        _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: A target player must be specified.");
                         return;
                     }
 
@@ -580,7 +590,7 @@ namespace SS.Matchmaking.Modules
 
             void PrintUsage(Player player)
             {
-                _chat.SendMessage(player, $"{LeaguePermitCommandName}: Invalid syntax. For information on how to use the command, see: ?man {LeaguePermitCommandName}");
+                _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: Invalid syntax. For information on how to use the command, see: ?man {CommandNames.LeaguePermit}");
             }
 
             bool TryGetLeagueIdByQueueName(ReadOnlySpan<char> queueName, out long leagueId)
@@ -588,14 +598,14 @@ namespace SS.Matchmaking.Modules
                 IMatchmakingQueue? queue = _matchmakingQueues.GetQueue(queueName);
                 if (queue is null)
                 {
-                    _chat.SendMessage(player, $"{LeaguePermitCommandName}: Queue '{queueName}' not found.");
+                    _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: Queue '{queueName}' not found.");
                     leagueId = default;
                     return false;
                 }
 
                 if (queue.Options.PermitLeagueId is null)
                 {
-                    _chat.SendMessage(player, $"{LeaguePermitCommandName}: Queue '{queueName}' does not require a league permit.");
+                    _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: Queue '{queueName}' does not require a league permit.");
                     leagueId = default;
                     return false;
                 }
@@ -608,7 +618,7 @@ namespace SS.Matchmaking.Modules
             {
                 if (!_leagueAuthorization.IsInRole(player.Name!, leagueId, LeagueRole.PermitManager))
                 {
-                    _chat.SendMessage(player, $"{LeaguePermitCommandName}: You are not authorized for the league of the specified queue.");
+                    _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: You are not authorized for the league of the specified queue.");
                     return false;
                 }
 
@@ -632,7 +642,7 @@ namespace SS.Matchmaking.Modules
                     if (player is null)
                         return;
 
-                    _chat.SendMessage(player, $"{LeaguePermitCommandName}: Database error.");
+                    _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: Database error.");
                     return;
                 }
 
@@ -645,7 +655,7 @@ namespace SS.Matchmaking.Modules
                     StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                     try
                     {
-                        sb.Append($"{LeaguePermitCommandName}: {errorMessage}");
+                        sb.Append($"{CommandNames.LeaguePermit}: {errorMessage}");
 
                         if (requestId is not null)
                         {
@@ -670,11 +680,11 @@ namespace SS.Matchmaking.Modules
 
                     if (isSelfRequest)
                     {
-                        _chat.SendMessage(player, $"{LeaguePermitCommandName}: Submitted league permit request #{requestId.Value}.");
+                        _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: Submitted league permit request #{requestId.Value}.");
                     }
                     else
                     {
-                        _chat.SendMessage(player, $"{LeaguePermitCommandName}: Submitted league permit request #{requestId.Value} for {playerName}.");
+                        _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: Submitted league permit request #{requestId.Value} for {playerName}.");
                     }
 
                     if (!isSelfRequest)
@@ -683,7 +693,7 @@ namespace SS.Matchmaking.Modules
                         if (player is null)
                             return;
 
-                        _chat.SendMessage(player, $"{LeaguePermitCommandName}: {byPlayerName} submitted league permit request #{requestId.Value} on your behalf.");
+                        _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: {byPlayerName} submitted league permit request #{requestId.Value} on your behalf.");
                     }
                 }
             }
@@ -726,11 +736,11 @@ namespace SS.Matchmaking.Modules
                     {
                         if (errorMessage is null)
                         {
-                            _chat.SendMessage(player, $"{LeaguePermitCommandName}: {(isGrant ? "Granted" : "Revoked")} permit to {targetPlayerNameMemory.Span}.");
+                            _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: {(isGrant ? "Granted" : "Revoked")} permit to {targetPlayerNameMemory.Span}.");
                         }
                         else
                         {
-                            _chat.SendMessage(player, $"{LeaguePermitCommandName}: Failed to {(isGrant ? "grant permit to" : "revoke permit from")} {targetPlayerNameMemory.Span}. {errorMessage}");
+                            _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: Failed to {(isGrant ? "grant permit to" : "revoke permit from")} {targetPlayerNameMemory.Span}. {errorMessage}");
                         }
                     }
 
