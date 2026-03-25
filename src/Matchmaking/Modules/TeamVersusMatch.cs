@@ -4611,7 +4611,14 @@ namespace SS.Matchmaking.Modules
             }
 
             // Send arena notifications.
-            _chat.SendArenaMessage(arena, $"All teams are ready. Starting in {matchData.StartCountdown} seconds!");
+            if (matchData.IsForcedStart)
+            {
+                _chat.SendArenaMessage(arena, $"The match is being forced to start. Starting in {matchData.StartCountdown} seconds!");
+            }
+            else
+            {
+                _chat.SendArenaMessage(arena, $"All teams are ready. Starting in {matchData.StartCountdown} seconds!");
+            }
 
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
             try
