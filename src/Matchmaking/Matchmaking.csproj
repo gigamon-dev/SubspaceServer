@@ -12,13 +12,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
-    <PackageReference Include="Google.Protobuf" Version="3.30.1" />
-    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="9.0.3">
+    <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.1" />
+    <PackageReference Include="Google.Protobuf" Version="3.34.1" />
+    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="10.0.5">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
-    <PackageReference Include="Npgsql" Version="9.0.3" />
+    <PackageReference Include="Npgsql" Version="10.0.2" />
     <PackageReference Include="OpenSkillSharp" Version="1.1.0" />
   </ItemGroup>
 
