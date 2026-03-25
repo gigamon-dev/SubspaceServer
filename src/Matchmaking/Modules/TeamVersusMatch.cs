@@ -3490,6 +3490,9 @@ namespace SS.Matchmaking.Modules
             if (matchData is null)
                 return;
 
+            if (matchData.Status != MatchStatus.Initializing)
+                return;
+
             matchData.IsForcedStart = true;
             BeginLeagueMatchStartupSequence(matchData);
         }
