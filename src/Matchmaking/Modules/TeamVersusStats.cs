@@ -3952,15 +3952,59 @@ namespace SS.Matchmaking.Modules
 
             public void RemoveOldRecentDamage(short maximumEnergy, short rechargeRate)
             {
-                // How many ticks it takes for the player's ship to reach full energy from empty (maximum energy and recharge rate assumed).
-                uint fullEnergyTicks = (uint)float.Ceiling(maximumEnergy * 1000f / rechargeRate);
+                // Starting from the oldest damage event, we cull the event if the damage that was incurred
+                // has already been recharged. The rechargeRate parameterizes how long instances of damage
+                // stay in the RecentDamageTaken list, a higher recharge rate means that each damage event
+                // has a shorter lifetime in this list.
 
-                // Remove nodes that are too old to be relevant.
-                ServerTick cutoff = ServerTick.Now - fullEnergyTicks;
+                ServerTick now = ServerTick.Now;
+
+                // Collect EMP freeze intervals and merge any that overlap. EMPs refresh the freeze timer
+                // rather than accumulating, so overlapping intervals must not be double-counted.
+                // RecentDamageTaken is ordered oldest to newest, so EMP intervals are already sorted by start time.
+                List<(ServerTick Start, ServerTick End)> mergedEmpIntervals = [];
                 LinkedListNode<DamageInfo>? node = RecentDamageTaken.First;
                 while (node is not null)
                 {
-                    if (node.ValueRef.Timestamp + node.ValueRef.EmpBombShutdownTicks < cutoff)
+                    if (node.ValueRef.EmpBombShutdownTicks > 0)
+                    {
+                        ServerTick empStart = node.ValueRef.Timestamp;
+                        ServerTick empEnd = empStart + node.ValueRef.EmpBombShutdownTicks;
+                        if (mergedEmpIntervals.Count == 0 || empStart > mergedEmpIntervals[^1].End)
+                        {
+                            mergedEmpIntervals.Add((empStart, empEnd));
+                        }
+                        else
+                        {
+                            // Overlapping: merge by extending the end of the last interval if needed.
+                            (ServerTick lastStart, ServerTick lastEnd) = mergedEmpIntervals[^1];
+                            if (empEnd > lastEnd)
+                                mergedEmpIntervals[^1] = (lastStart, empEnd);
+                        }
+                    }
+                    node = node.Next;
+                }
+
+                node = RecentDamageTaken.First;
+                while (node is not null)
+                {
+                    uint recoveryTicksNeeded = (uint)float.Ceiling(node.ValueRef.Damage * 1000f / rechargeRate);
+                    ServerTick damageTimestamp = node.ValueRef.Timestamp;
+
+                    // Compute how many ticks since this damage could not be used for recharging due to EMP freeze.
+                    // This is the total length of the merged EMP intervals clipped to [damageTimestamp, now].
+                    uint frozenTicks = 0;
+                    foreach ((ServerTick empStart, ServerTick empEnd) in mergedEmpIntervals)
+                    {
+                        ServerTick clampedStart = empStart > damageTimestamp ? empStart : damageTimestamp;
+                        ServerTick clampedEnd = empEnd < now ? empEnd : now;
+                        if (clampedStart < clampedEnd)
+                            frozenTicks += (uint)(clampedEnd - clampedStart);
+                    }
+
+                    int actualRechargeTicksElapsed = (int)(now - damageTimestamp) - (int)frozenTicks;
+
+                    if (actualRechargeTicksElapsed >= (int)recoveryTicksNeeded)
                     {
                         // The node represents damage taken from too long ago.
                         // Discard the node and continue with the next node.
