@@ -2301,6 +2301,25 @@ namespace SS.Matchmaking.Modules
                             attackerStats.SlotStats!.Slot!.SlotIdx),
                     };
                     playerStats.AddRecentDamageTaken(node);
+
+                    if (empShutdownTicks > 0 && player.Freq != attackerPlayer.Freq)
+                    {
+                        // Credit the attacker only for the ticks by which this EMP extends the active freeze window.
+                        // If a freeze is already in progress, the first attacker already holds those ticks;
+                        // the new attacker earns only the extension beyond what remains.
+                        uint remaining = playerStats.FreezeEndTick > timestamp ? (uint)(playerStats.FreezeEndTick - timestamp) : 0u;
+                        uint extension = empShutdownTicks > remaining ? empShutdownTicks - remaining : 0u;
+                        if (extension > 0)
+                        {
+                            int freezeDamage = (int)(extension * maximumRecharge / 1000f);
+                            playerStats.DamageTakenBombs += freezeDamage;
+                            attackerStats.DamageDealtBombs += freezeDamage;
+                        }
+
+                        ServerTick newFreezeEnd = timestamp + empShutdownTicks;
+                        if (newFreezeEnd > playerStats.FreezeEndTick)
+                            playerStats.FreezeEndTick = newFreezeEnd;
+                    }
                 }
 
                 //
@@ -3708,6 +3727,12 @@ namespace SS.Matchmaking.Modules
 
             private readonly LinkedList<DamageInfo> _recentDamageTaken = new();
 
+            /// <summary>
+            /// The tick at which the current EMP freeze on this player expires. Default (0) means no active freeze.
+            /// Updated whenever an EMP hit arrives; used to compute how much a new EMP extends the freeze window.
+            /// </summary>
+            public ServerTick FreezeEndTick;
+
             public void AddRecentDamageTaken(LinkedListNode<DamageInfo> node)
             {
                 _recentDamageTaken.AddLast(node);
@@ -4022,6 +4047,7 @@ namespace SS.Matchmaking.Modules
                 KillDamage = 0;
                 TeamKillDamage = 0;
                 ClearRecentDamage();
+                FreezeEndTick = default;
 
                 // accuracy fields
                 GunFireCount = 0;
