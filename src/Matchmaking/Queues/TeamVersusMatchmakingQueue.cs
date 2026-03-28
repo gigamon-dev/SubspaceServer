@@ -185,7 +185,8 @@ namespace SS.Matchmaking.Queues
             int playersPerTeam = matchConfiguration.PlayersPerTeam;
 
             // TODO: logic is simplified when only allowing groups of the exact size, add support for other group sizes later
-            if (playersPerTeam != Options.MinGroupSize || playersPerTeam != Options.MaxGroupSize)
+            if (Options.AllowGroups
+                && (playersPerTeam != Options.MinGroupSize || playersPerTeam != Options.MaxGroupSize))
             {
                 return false;
             }
