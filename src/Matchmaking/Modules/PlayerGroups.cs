@@ -430,6 +430,8 @@ namespace SS.Matchmaking.Modules
                 playerData.Group = group;
                 playerData.PendingGroups.Remove(group);
 
+                PlayerGroupMemberAddedCallback.Fire(_broker, group, player);
+
                 // Decline all other invites.
                 while (playerData.PendingGroups.Count > 0)
                 {
