@@ -106,9 +106,10 @@ privcmd_nav
 privcmd_available
 privcmd_av
 
-; Matchmaking (PlayerGroups module)
+; Matchmaking
 seeplayergroupdetails
 privcmd_nexthold
+privcmd_manageplayingstate
 
 ; Matchmaking (league)
 cmd_initleaguematch
