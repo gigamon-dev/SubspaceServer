@@ -56,6 +56,13 @@ namespace SS.Matchmaking.Modules
         private const int DefaultRating = 500;
         private const int MinimumRating = 100;
 
+        /// <summary>
+        /// The energy window used when attributing a forced repel. Only damage dealt within the
+        /// equivalent recharge time for this much energy is considered when computing each attacker's
+        /// proportional share of the repel credit.
+        /// </summary>
+        private const short ForcedRepEnergyWindow = 800;
+
         private readonly IArenaManager _arenaManager;
         private readonly IChat _chat;
         private readonly IClientSettings _clientSettings;
@@ -1691,7 +1698,7 @@ namespace SS.Matchmaking.Modules
                             writer.WriteNumber("knockouts"u8, memberStats.Knockouts);
                             writer.WriteNumber("solo_kills"u8, memberStats.SoloKills);
                             writer.WriteNumber("assists"u8, memberStats.Assists);
-                            writer.WriteNumber("forced_reps"u8, memberStats.ForcedReps);
+                            writer.WriteNumber("forced_reps"u8, RoundToHalf(memberStats.ForcedReps));
                             writer.WriteNumber("gun_damage_dealt"u8, memberStats.DamageDealtBullets);
                             writer.WriteNumber("bomb_damage_dealt"u8, memberStats.DamageDealtBombs);
                             writer.WriteNumber("team_damage_dealt"u8, memberStats.DamageDealtTeam);
@@ -2532,7 +2539,15 @@ namespace SS.Matchmaking.Modules
 
                     try
                     {
-                        CalculateDamageSources(ServerTick.Now, memberStats, player.Ship, damageDictionary);
+                        CalculateDamageSources(ServerTick.Now, memberStats, player.Ship, damageDictionary, ForcedRepEnergyWindow);
+
+                        // Sum enemy damage to use as the denominator for proportional ForcedReps attribution.
+                        int totalEnemyDamage = 0;
+                        foreach ((PlayerTeamSlot attacker, int damage) in damageDictionary)
+                        {
+                            if (memberStats.TeamStats!.Team!.Freq != attacker.Freq)
+                                totalEnemyDamage += damage;
+                        }
 
                         // Update attacker stats.
                         foreach ((PlayerTeamSlot attacker, int damage) in damageDictionary)
@@ -2548,7 +2563,8 @@ namespace SS.Matchmaking.Modules
                                     continue;
 
                                 attackerMemberStats.ForcedRepDamage += damage;
-                                attackerMemberStats.ForcedReps++; // TODO: do we want more criteria (a certain amount of damage or an even smaller damage window)?
+                                if (totalEnemyDamage > 0)
+                                    attackerMemberStats.ForcedReps += (float)damage / totalEnemyDamage;
 
                                 // Rating for forced rep to the attacker.
                                 float ratingRatio =
@@ -2792,7 +2808,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void CalculateDamageSources(ServerTick asOfTick, MemberStats memberStats, ShipType ship, Dictionary<PlayerTeamSlot, uint> damageDictionary)
+        private void CalculateDamageSources(ServerTick asOfTick, MemberStats memberStats, ShipType ship, Dictionary<PlayerTeamSlot, int> damageDictionary, short? energyWindowOverride = null)
         {
             if (memberStats is null || damageDictionary is null)
                 return;
@@ -2809,7 +2825,7 @@ namespace SS.Matchmaking.Modules
 
             ShipSettings killedShipSettings = arenaSettings.ShipSettings[(int)ship];
             short rechargeRate = killedShipSettings.MaximumRecharge;
-            short maximumEnergy = killedShipSettings.MaximumEnergy;
+            short maximumEnergy = energyWindowOverride ?? killedShipSettings.MaximumEnergy;
 
             // Only damage within the recharge window is still relevant at asOfTick.
             uint fullEnergyTicks = (uint)float.Ceiling(maximumEnergy * 1000f / rechargeRate);
@@ -2828,11 +2844,11 @@ namespace SS.Matchmaking.Modules
                 while (node is not null)
                 {
                     ref DamageInfo damageInfo = ref node.ValueRef;
-                    uint damage = 0;
+                    int damage = 0;
 
                     // Count direct weapon damage only if it falls within the recharge window.
                     if (damageInfo.Timestamp >= cutoff)
-                        damage += (uint)damageInfo.Damage;
+                        damage += damageInfo.Damage;
 
                     // Convert EMP freeze ticks to an energy damage equivalent: the energy the victim
                     // would have recharged had the freeze not occurred. Clip the freeze window to
@@ -2845,12 +2861,12 @@ namespace SS.Matchmaking.Modules
                             empEnd = asOfTick;
 
                         int empTicks = empShutdownCalculator.Add(empStart, empEnd);
-                        damage += (uint)(rechargeRate / 1000f * empTicks);
+                        damage += (int)(rechargeRate / 1000f * empTicks);
                     }
 
                     if (damage > 0)
                     {
-                        if (damageDictionary.TryGetValue(damageInfo.Attacker, out uint existingDamage))
+                        if (damageDictionary.TryGetValue(damageInfo.Attacker, out int existingDamage))
                             damageDictionary[damageInfo.Attacker] = existingDamage + damage;
                         else
                             damageDictionary.Add(damageInfo.Attacker, damage);
@@ -2864,6 +2880,9 @@ namespace SS.Matchmaking.Modules
                 s_tickRangeCalculatorPool.Return(empShutdownCalculator);
             }
         }
+
+        /// <summary>Rounds a value to the nearest 0.5.</summary>
+        private static float RoundToHalf(float value) => MathF.Round(value * 2f) / 2f;
 
         private void PrintMatchStats(HashSet<Player> notifySet, MatchStats matchStats, MatchEndReason? reason, ITeam? winningTeam)
         {
@@ -2951,7 +2970,7 @@ namespace SS.Matchmaking.Modules
                 int totalTeamKills = 0;
                 int totalSoloKills = 0;
                 int totalAssists = 0;
-                int totalForcedReps = 0;
+                float totalForcedReps = 0f;
                 int totalWastedRepels = 0;
                 int totalWastedRockets = 0;
                 int totalLagOuts = 0;
@@ -3043,7 +3062,7 @@ namespace SS.Matchmaking.Modules
                             $" {memberStats.TeamKills,2}" +
                             $" {memberStats.SoloKills,2}" +
                             $" {memberStats.Assists,2}" +
-                            $" {memberStats.ForcedReps,2}" +
+                            $" {RoundToHalf(memberStats.ForcedReps),4:F1}" +
                             $" {memberStats.WastedRepels,2}" +
                             $" {memberStats.WastedRockets,3}" +
                             $" {wastedEnergy,4}" +
@@ -3071,7 +3090,7 @@ namespace SS.Matchmaking.Modules
                     $" {totalTeamKills,2}" +
                     $" {totalSoloKills,2}" +
                     $" {totalAssists,2}" +
-                    $" {totalForcedReps,2}" +
+                    $" {RoundToHalf(totalForcedReps),4:F1}" +
                     $" {totalWastedRepels,2}" +
                     $" {totalWastedRockets,3}" +
                     $"     " +
@@ -3880,8 +3899,10 @@ namespace SS.Matchmaking.Modules
 
             /// <summary>
             /// Repels forced out of enemy players.
+            /// Accumulated as fractional contributions: each repel event adds each attacker's share
+            /// of the recent enemy damage (their damage / total enemy damage in the window).
             /// </summary>
-            public short ForcedReps;
+            public float ForcedReps;
 
             /// <summary>
             /// Duration that the player was assigned to a slot in the game.
