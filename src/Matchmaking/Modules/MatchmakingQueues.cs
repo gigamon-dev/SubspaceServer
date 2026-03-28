@@ -131,6 +131,7 @@ namespace SS.Matchmaking.Modules
             }
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
+            PlayerGroupMemberAddedCallback.Register(broker, Callback_PlayerGroupMemberAdded);
             PlayerGroupMemberRemovedCallback.Register(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Register(broker, Callback_PlayerGroupDisbanded);
 
@@ -153,6 +154,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand(NextHoldCommandName, Command_nextHold);
 
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
+            PlayerGroupMemberAddedCallback.Unregister(broker, Callback_PlayerGroupMemberAdded);
             PlayerGroupMemberRemovedCallback.Unregister(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Unregister(broker, Callback_PlayerGroupDisbanded);
 
@@ -624,20 +626,13 @@ namespace SS.Matchmaking.Modules
             if (player is null || !player.TryGetExtraData(_puKey, out UsageData? usageData))
                 return true;
 
-            if (usageData.State == QueueState.Queued)
+            if (usageData.State == QueueState.Playing)
             {
-                message?.Append("Cannot accept an invite while searching for a match. To accept, stop the search first.");
+                message?.Append("Cannot accept an invite while playing in a match. To accept, complete the current match.");
                 return false;
             }
-            else if (usageData.State == QueueState.Playing)
-            {
-                message?.Append("Cannot accept an invite while while playing in a match. To accept, complete the current match.");
-                return false;
-            }
-            else
-            {
-                return true;
-            }
+
+            return true;
         }
 
         #endregion
@@ -762,6 +757,18 @@ namespace SS.Matchmaking.Modules
                         _pendingPlayHolds[player.Name!] = remainingDuration;
                     }
                 }
+            }
+        }
+
+        private void Callback_PlayerGroupMemberAdded(IPlayerGroup group, Player player)
+        {
+            if (!player.TryGetExtraData(_puKey, out UsageData? usageData))
+                return;
+
+            if (usageData.State == QueueState.Queued)
+            {
+                // The player was individually searching for a match. Cancel the search now that they've joined a group.
+                RemoveFromAllQueues(player, null, usageData, true);
             }
         }
 
