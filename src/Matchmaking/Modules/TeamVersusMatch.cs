@@ -4889,11 +4889,13 @@ namespace SS.Matchmaking.Modules
                             // End the match and perform cleanup to allow another match to start.
                             EndMatch(matchData, MatchEndReason.Cancelled, null);
 
+                            // For the players that disconnected, penalize with a delay.
+                            // This must happen before UnsetPlayingDueToCancel so that abandoned players are removed from
+                            // _playersPlaying before the group state check runs for their groupmates.
+                            _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
+
                             // Unset players that were found such that they get added back to the queues in their original positions.
                             _matchmakingQueues.UnsetPlayingDueToCancel(playersByName.Values);
-
-                            // For the players that disconnected, penalize with a delay.
-                            _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
 
                             return;
                         }
@@ -5586,12 +5588,14 @@ namespace SS.Matchmaking.Modules
 
                         EndMatch(matchData, MatchEndReason.Cancelled, null);
 
+                        // Players that abandoned the match are penalized with a delay.
+                        // This must happen before UnsetPlayingDueToCancel so that abandoned players are removed from
+                        // _playersPlaying before the group state check runs for their groupmates.
+                        _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
+
                         // Players that did not abandon the match are placed back into their queues and keep their original position in the queues.
                         readyPlayers.UnionWith(waitingPlayers);
                         _matchmakingQueues.UnsetPlayingDueToCancel(readyPlayers);
-
-                        // Players that abandoned the match are penalized with a delay.
-                        _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
                         return;
                     }
 
@@ -5753,12 +5757,14 @@ namespace SS.Matchmaking.Modules
 
                         EndMatch(matchData, MatchEndReason.Cancelled, null);
 
+                        // Players that abandoned the match are penalized with a delay.
+                        // This must happen before UnsetPlayingDueToCancel so that abandoned players are removed from
+                        // _playersPlaying before the group state check runs for their groupmates.
+                        _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
+
                         // Players that did not abandon the match are placed back into their queues and keep their original position in the queues.
                         readyPlayers.UnionWith(waitingPlayers);
                         _matchmakingQueues.UnsetPlayingDueToCancel(readyPlayers);
-
-                        // Players that abandoned the match are penalized with a delay.
-                        _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
 
                         return;
                     }
@@ -5798,17 +5804,19 @@ namespace SS.Matchmaking.Modules
 
                             EndMatch(matchData, MatchEndReason.Cancelled, null);
 
-                            // Players that were ready are placed back into their queues and keep their original position in the queues.
-                            _matchmakingQueues.UnsetPlayingDueToCancel(readyPlayers);
-
                             // Players that we were still waiting for took too long to ready up.
                             // They are penalized with a delay to discourage from attempting to cherry pick their matches (didn't like their teammates) or trolling.
+                            // This must happen before UnsetPlayingDueToCancel so that penalized players are removed from
+                            // _playersPlaying before the group state check runs for their groupmates.
                             foreach (Player player in waitingPlayers)
                             {
                                 abandonedPlayerNames.Add(player.Name!);
                             }
 
                             _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _notReadyStartPenaltyDuration);
+
+                            // Players that were ready are placed back into their queues and keep their original position in the queues.
+                            _matchmakingQueues.UnsetPlayingDueToCancel(readyPlayers);
 
                             return;
                         }
@@ -5949,11 +5957,13 @@ namespace SS.Matchmaking.Modules
 
                             EndMatch(matchData, MatchEndReason.Cancelled, null);
 
+                            // Players that abandoned the match are penalized with a delay.
+                            // This must happen before UnsetPlayingDueToCancel so that abandoned players are removed from
+                            // _playersPlaying before the group state check runs for their groupmates.
+                            _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
+
                             // Players that did not abandon the match are placed back into their queues and keep their original position in the queues.
                             _matchmakingQueues.UnsetPlayingDueToCancel(players);
-
-                            // Players that abandoned the match are penalized with a delay.
-                            _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
 
                             return;
                         }

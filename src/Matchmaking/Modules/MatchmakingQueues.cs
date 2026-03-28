@@ -544,8 +544,8 @@ namespace SS.Matchmaking.Modules
                 if (!member.TryGetExtraData(_puKey, out UsageData? memberUsageData))
                     continue;
 
-                if (memberUsageData.State == QueueState.Playing)
-                    return; // consider the group to still be playing if at least one member is playing
+                if (memberUsageData.State == QueueState.Playing && _playersPlaying.Contains(member.Name!))
+                    return; // consider the group to still be playing if at least one member is actively playing in a match
             }
 
             if (!_groupUsageDictionary.TryGetValue(group, out UsageData? usageData))
