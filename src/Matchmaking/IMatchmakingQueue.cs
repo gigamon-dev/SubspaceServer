@@ -80,6 +80,16 @@ namespace SS.Matchmaking
         /// <param name="groups">A set to populate with the groups that are in the queue.</param>
         void GetQueued(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups);
 
+        /// <summary>
+        /// Gets the 1-based queue position of a solo player or group.
+        /// </summary>
+        /// <param name="player">The solo player to look up, or <see langword="null"/>.</param>
+        /// <param name="group">The group to look up, or <see langword="null"/>.</param>
+        /// <param name="position">The 1-based position in the queue (by entry order), or 0 if not found.</param>
+        /// <param name="totalEntries">The total number of entries currently in the queue.</param>
+        /// <returns><see langword="true"/> if the player or group was found in the queue.</returns>
+        bool TryGetPosition(Player? player, IPlayerGroup? group, out int position, out int totalEntries);
+
         #region Statistics
 
         /// <summary>

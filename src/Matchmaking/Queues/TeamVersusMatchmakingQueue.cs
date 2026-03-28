@@ -165,6 +165,24 @@ namespace SS.Matchmaking.Queues
             }
         }
 
+        public bool TryGetPosition(Player? player, IPlayerGroup? group, out int position, out int totalEntries)
+        {
+            totalEntries = _queue.Count;
+            position = 0;
+            int i = 0;
+            foreach (QueuedPlayerOrGroup pog in _queue)
+            {
+                i++;
+                if ((player is not null && pog.Player == player)
+                    || (group is not null && pog.Group == group))
+                {
+                    position = i;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         /// <summary>
         /// Gets participants for a team versus match.
         /// </summary>
