@@ -817,7 +817,7 @@ namespace SS.Matchmaking.Modules
         // ?next pb3h,pbmini
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<none> | <queue name>[, <queue name>[, ...]]] | [ -status | -s ] | [ -list | -l ] [-listall | -la] | [-auto | -a ]",
+            Args = "<none> | <queue name>[, <queue name>[, ...]]] | [ -status | -s ] | [ -list | -l ] | [-listall | -la] | [-auto | -a ]",
             Description = """
                 Control matchmaking for you, or your group.
 
