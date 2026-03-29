@@ -805,7 +805,7 @@ namespace SS.Matchmaking.Modules
         #region Commands
 
         // ?next --> add the player to the current arena's default queue if there is one
-        // /?next --> mods can see queue info for another player
+        // TODO: /?next --> mods can see queue info for another player
         // ?next 1v1
         // ?next 2v2
         // ?next 3v3
@@ -817,7 +817,7 @@ namespace SS.Matchmaking.Modules
         // ?next pb3h,pbmini
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<none> | <queue name>[, <queue name>[, ...]]] | [ -status | -s ] | [ -list | -l ] | [-listall | -la] | [-auto | -a ]",
+            Args = "<none> | <queue name>[, <queue name>[, ...]]] | [ -status | -s ] | [ -list | -l ] | [-auto | -a ]",
             Description = """
                 Control matchmaking for you, or your group.
 
@@ -825,9 +825,8 @@ namespace SS.Matchmaking.Modules
                 Or, use without any parameters to begin searching on your arena's default queue.
 
                 Use -status (or -s) to print your current matchmaking status.
-                Use -list (or -l) to list queue information.
-                  When searching, shows only your active queues with your position and wait time.
-                  Use -listall or -la to show all queues regardless of search status.
+                  When searching, shows your active queues with your position and wait time.
+                Use -list (or -l) to list all available matchmaking queues.
                 Use -auto (or -a) to toggle automatic re-queuing (automatically search again after completing a match).
                 """)]
         private void Command_next(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -854,7 +853,7 @@ namespace SS.Matchmaking.Modules
                     return;
             }
 
-            if (parameters.Equals("-status", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-s", StringComparison.OrdinalIgnoreCase))
+            if (parameters.StartsWith("-status", StringComparison.OrdinalIgnoreCase) || parameters.StartsWith("-s", StringComparison.OrdinalIgnoreCase))
             {
                 // Print usage details.
                 StringBuilder sb;
@@ -868,15 +867,35 @@ namespace SS.Matchmaking.Modules
                         sb = _objectPoolManager.StringBuilderPool.Get();
                         try
                         {
-                            foreach (var queuedInfo in usageData.Queued)
+                            _chat.SendMessage(player, $"{CommandNames.Next}: {(group is null ? "You are" : "Your group is")} searching for a game on the following queues:");
+
+                            // Show only the queues the player is actively in, with position and wait time.
+                            DateTime now = DateTime.UtcNow;
+                            foreach (QueuedInfo queuedInfo in usageData.Queued)
                             {
-                                if (sb.Length > 0)
-                                    sb.Append(", ");
+                                IMatchmakingQueue queue = queuedInfo.Queue;
+                                sb.Clear();
+                                sb.Append($"{CommandNames.Next}: {queue.Name,8} -- ");
 
-                                sb.Append(queuedInfo.Queue.Name);
+                                if (queue.TryGetPosition(player, group, out int position, out int totalEntries))
+                                {
+                                    sb.Append($"At position {position} of {totalEntries}");
+                                }
+                                else
+                                {
+                                    sb.Append($"{totalEntries} entr{(totalEntries == 1 ? "y" : "ies")}");
+                                }
+
+                                TimeSpan waited = now - queuedInfo.Timestamp;
+                                sb.Append(" (waited ");
+                                sb.AppendFriendlyTimeSpan(waited);
+                                sb.Append(')');
+
+                                if (!string.IsNullOrWhiteSpace(queue.Description))
+                                    sb.Append($" - {queue.Description}");
+
+                                _chat.SendMessage(player, sb);
                             }
-
-                            _chat.SendMessage(player, $"{CommandNames.Next}: {(group is null ? "You are" : "Your group is")} searching for a game on the following queues: {sb}");
                         }
                         finally
                         {
@@ -960,80 +979,40 @@ namespace SS.Matchmaking.Modules
 
                 return;
             }
-            else if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-l", StringComparison.OrdinalIgnoreCase)
-                || parameters.StartsWith("-list ", StringComparison.OrdinalIgnoreCase) || parameters.StartsWith("-l ", StringComparison.OrdinalIgnoreCase)
-                || parameters.Contains("-listall", StringComparison.OrdinalIgnoreCase) || parameters.Contains("-la", StringComparison.OrdinalIgnoreCase))
+            else if (parameters.StartsWith("-list", StringComparison.OrdinalIgnoreCase) || parameters.StartsWith("-l", StringComparison.OrdinalIgnoreCase))
             {
-                // Check for the -listall : show all queues even when the player is actively searching.
-                bool verbose = parameters.Contains("-listall", StringComparison.OrdinalIgnoreCase) || parameters.Contains("-la", StringComparison.OrdinalIgnoreCase);
-
-                bool isSearching = usageData.State == QueueState.Queued;
-
                 StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                 HashSet<Player> soloPlayers = _objectPoolManager.PlayerSetPool.Get();
                 HashSet<IPlayerGroup> groups = _playerGroupSetPool.Get();
 
                 try
                 {
-                    if (isSearching && !verbose)
+                    // Show all queues with general occupancy info.
+                    foreach (IMatchmakingQueue queue in _queues.Values)
                     {
-                        // Show only the queues the player is actively in, with position and wait time.
-                        DateTime now = DateTime.UtcNow;
-                        foreach (QueuedInfo queuedInfo in usageData.Queued)
+                        sb.Clear();
+                        soloPlayers.Clear();
+                        groups.Clear();
+
+                        queue.GetQueued(soloPlayers, groups);
+
+                        int totalPlayersQueued = soloPlayers.Count;
+                        foreach (IPlayerGroup playerGroup in groups)
                         {
-                            IMatchmakingQueue queue = queuedInfo.Queue;
-                            sb.Clear();
-                            sb.Append($"{CommandNames.Next}: {queue.Name,8} - ");
-
-                            if (queue.TryGetPosition(player, group, out int position, out int totalEntries))
-                            {
-                                sb.Append($"#{position} of {totalEntries} entr{(totalEntries == 1 ? "y" : "ies")}");
-                            }
-                            else
-                            {
-                                sb.Append($"{totalEntries} entr{(totalEntries == 1 ? "y" : "ies")}");
-                            }
-
-                            TimeSpan waited = now - queuedInfo.Timestamp;
-                            sb.Append(" (waited ");
-                            sb.AppendFriendlyTimeSpan(waited);
-                            sb.Append(')');
-
-                            if (!string.IsNullOrWhiteSpace(queue.Description))
-                                sb.Append($" - {queue.Description}");
-
-                            _chat.SendMessage(player, sb);
+                            totalPlayersQueued += playerGroup.Members.Count;
                         }
-                    }
-                    else
-                    {
-                        // Show all queues with general occupancy info.
-                        foreach (IMatchmakingQueue queue in _queues.Values)
+
+                        sb.Append($"{CommandNames.Next}: {queue.Name,8} - {totalPlayersQueued,2} player{(totalPlayersQueued == 1 ? " " : "s")}");
+
+                        if (groups.Count > 0)
                         {
-                            sb.Clear();
-                            soloPlayers.Clear();
-                            groups.Clear();
-
-                            queue.GetQueued(soloPlayers, groups);
-
-                            int totalPlayersQueued = soloPlayers.Count;
-                            foreach (IPlayerGroup playerGroup in groups)
-                            {
-                                totalPlayersQueued += playerGroup.Members.Count;
-                            }
-
-                            sb.Append($"{CommandNames.Next}: {queue.Name,8} - {totalPlayersQueued,2} player{(totalPlayersQueued == 1 ? " " : "s")}");
-
-                            if (groups.Count > 0)
-                            {
-                                sb.Append($" ({groups.Count} group{(groups.Count == 1 ? "" : "s")})");
-                            }
-
-                            if (!string.IsNullOrWhiteSpace(queue.Description))
-                                sb.Append($" - {queue.Description}");
-
-                            _chat.SendMessage(player, sb);
+                            sb.Append($" ({groups.Count} group{(groups.Count == 1 ? "" : "s")})");
                         }
+
+                        if (!string.IsNullOrWhiteSpace(queue.Description))
+                            sb.Append($" - {queue.Description}");
+
+                        _chat.SendMessage(player, sb);
                     }
                 }
                 finally
@@ -1045,7 +1024,7 @@ namespace SS.Matchmaking.Modules
 
                 return;
             }
-            else if (parameters.Equals("-auto", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-a", StringComparison.OrdinalIgnoreCase))
+            else if (parameters.StartsWith("-auto", StringComparison.OrdinalIgnoreCase) || parameters.StartsWith("-a", StringComparison.OrdinalIgnoreCase))
             {
                 if (group is not null)
                 {
