@@ -817,7 +817,7 @@ namespace SS.Matchmaking.Modules
         // ?next pb3h,pbmini
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<none> | <queue name>[, <queue name>[, ...]]] | [ -status | -s ] | [ -list | -l ] [-v] | [-auto | -a ]",
+            Args = "<none> | <queue name>[, <queue name>[, ...]]] | [ -status | -s ] | [ -list | -l ] [-listall | -la] | [-auto | -a ]",
             Description = """
                 Control matchmaking for you, or your group.
 
@@ -827,7 +827,7 @@ namespace SS.Matchmaking.Modules
                 Use -status (or -s) to print your current matchmaking status.
                 Use -list (or -l) to list queue information.
                   When searching, shows only your active queues with your position and wait time.
-                  Add -v to show all queues regardless of search status.
+                  Use -listall or -la to show all queues regardless of search status.
                 Use -auto (or -a) to toggle automatic re-queuing (automatically search again after completing a match).
                 """)]
         private void Command_next(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -961,10 +961,11 @@ namespace SS.Matchmaking.Modules
                 return;
             }
             else if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-l", StringComparison.OrdinalIgnoreCase)
-                || parameters.StartsWith("-list ", StringComparison.OrdinalIgnoreCase) || parameters.StartsWith("-l ", StringComparison.OrdinalIgnoreCase))
+                || parameters.StartsWith("-list ", StringComparison.OrdinalIgnoreCase) || parameters.StartsWith("-l ", StringComparison.OrdinalIgnoreCase)
+                || parameters.Contains("-listall", StringComparison.OrdinalIgnoreCase) || parameters.Contains("-la", StringComparison.OrdinalIgnoreCase))
             {
-                // Check for the -v (verbose) flag: show all queues even when the player is actively searching.
-                bool verbose = parameters.Contains("-v", StringComparison.OrdinalIgnoreCase);
+                // Check for the -listall : show all queues even when the player is actively searching.
+                bool verbose = parameters.Contains("-listall", StringComparison.OrdinalIgnoreCase) || parameters.Contains("-la", StringComparison.OrdinalIgnoreCase);
 
                 bool isSearching = usageData.State == QueueState.Queued;
 
@@ -982,7 +983,7 @@ namespace SS.Matchmaking.Modules
                         {
                             IMatchmakingQueue queue = queuedInfo.Queue;
                             sb.Clear();
-                            sb.Append($"{NextCommandName}: {queue.Name,8} - ");
+                            sb.Append($"{CommandNames.Next}: {queue.Name,8} - ");
 
                             if (queue.TryGetPosition(player, group, out int position, out int totalEntries))
                             {
@@ -1021,7 +1022,7 @@ namespace SS.Matchmaking.Modules
                                 totalPlayersQueued += playerGroup.Members.Count;
                             }
 
-                            sb.Append($"{NextCommandName}: {queue.Name,8} - {totalPlayersQueued,2} player{(totalPlayersQueued == 1 ? " " : "s")}");
+                            sb.Append($"{CommandNames.Next}: {queue.Name,8} - {totalPlayersQueued,2} player{(totalPlayersQueued == 1 ? " " : "s")}");
 
                             if (groups.Count > 0)
                             {
