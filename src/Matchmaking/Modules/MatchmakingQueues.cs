@@ -817,15 +817,17 @@ namespace SS.Matchmaking.Modules
         // ?next pb3h,pbmini
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<none> | <queue name>[, <queue name>[, ...]]] | [ -status | -s ] | [ -list | -l ] | [-auto | -a ]",
+            Args = "<none> | <queue name>[, <queue name>[, ...]]] | [ -status | -s ] | [ -list | -l ] | [-listall | -la] | [-auto | -a ]",
             Description = """
                 Control matchmaking for you, or your group.
 
                 To begin searching for a match, specify 1 or more queue names.
                 Or, use without any parameters to begin searching on your arena's default queue.
-                
+
                 Use -status (or -s) to print your current matchmaking status.
-                Use -list (or -l) to list all available matchmaking queues.
+                Use -list (or -l) to list queue information.
+                  When searching, shows only your active queues with your position and wait time.
+                  Use -listall or -la to show all queues regardless of search status.
                 Use -auto (or -a) to toggle automatic re-queuing (automatically search again after completing a match).
                 """)]
         private void Command_next(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -958,39 +960,80 @@ namespace SS.Matchmaking.Modules
 
                 return;
             }
-            else if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-l", StringComparison.OrdinalIgnoreCase))
+            else if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-l", StringComparison.OrdinalIgnoreCase)
+                || parameters.StartsWith("-list ", StringComparison.OrdinalIgnoreCase) || parameters.StartsWith("-l ", StringComparison.OrdinalIgnoreCase)
+                || parameters.Contains("-listall", StringComparison.OrdinalIgnoreCase) || parameters.Contains("-la", StringComparison.OrdinalIgnoreCase))
             {
+                // Check for the -listall : show all queues even when the player is actively searching.
+                bool verbose = parameters.Contains("-listall", StringComparison.OrdinalIgnoreCase) || parameters.Contains("-la", StringComparison.OrdinalIgnoreCase);
+
+                bool isSearching = usageData.State == QueueState.Queued;
+
                 StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                 HashSet<Player> soloPlayers = _objectPoolManager.PlayerSetPool.Get();
                 HashSet<IPlayerGroup> groups = _playerGroupSetPool.Get();
 
                 try
                 {
-                    foreach (IMatchmakingQueue queue in _queues.Values)
+                    if (isSearching && !verbose)
                     {
-                        sb.Clear();
-                        soloPlayers.Clear();
-                        groups.Clear();
-
-                        queue.GetQueued(soloPlayers, groups);
-
-                        int totalPlayersQueued = soloPlayers.Count;
-                        foreach (IPlayerGroup playerGroup in groups)
+                        // Show only the queues the player is actively in, with position and wait time.
+                        DateTime now = DateTime.UtcNow;
+                        foreach (QueuedInfo queuedInfo in usageData.Queued)
                         {
-                            totalPlayersQueued += playerGroup.Members.Count;
+                            IMatchmakingQueue queue = queuedInfo.Queue;
+                            sb.Clear();
+                            sb.Append($"{CommandNames.Next}: {queue.Name,8} - ");
+
+                            if (queue.TryGetPosition(player, group, out int position, out int totalEntries))
+                            {
+                                sb.Append($"#{position} of {totalEntries} entr{(totalEntries == 1 ? "y" : "ies")}");
+                            }
+                            else
+                            {
+                                sb.Append($"{totalEntries} entr{(totalEntries == 1 ? "y" : "ies")}");
+                            }
+
+                            TimeSpan waited = now - queuedInfo.Timestamp;
+                            sb.Append(" (waited ");
+                            sb.AppendFriendlyTimeSpan(waited);
+                            sb.Append(')');
+
+                            if (!string.IsNullOrWhiteSpace(queue.Description))
+                                sb.Append($" - {queue.Description}");
+
+                            _chat.SendMessage(player, sb);
                         }
-
-                        sb.Append($"{CommandNames.Next}: {queue.Name,8} - {totalPlayersQueued,2} player{(totalPlayersQueued == 1 ? " " : "s")}");
-
-                        if (groups.Count > 0)
+                    }
+                    else
+                    {
+                        // Show all queues with general occupancy info.
+                        foreach (IMatchmakingQueue queue in _queues.Values)
                         {
-                            sb.Append($" ({groups.Count} group{(groups.Count == 1 ? "" : "s")})");
+                            sb.Clear();
+                            soloPlayers.Clear();
+                            groups.Clear();
+
+                            queue.GetQueued(soloPlayers, groups);
+
+                            int totalPlayersQueued = soloPlayers.Count;
+                            foreach (IPlayerGroup playerGroup in groups)
+                            {
+                                totalPlayersQueued += playerGroup.Members.Count;
+                            }
+
+                            sb.Append($"{CommandNames.Next}: {queue.Name,8} - {totalPlayersQueued,2} player{(totalPlayersQueued == 1 ? " " : "s")}");
+
+                            if (groups.Count > 0)
+                            {
+                                sb.Append($" ({groups.Count} group{(groups.Count == 1 ? "" : "s")})");
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(queue.Description))
+                                sb.Append($" - {queue.Description}");
+
+                            _chat.SendMessage(player, sb);
                         }
-
-                        if (!string.IsNullOrWhiteSpace(queue.Description))
-                            sb.Append($" - {queue.Description}");
-
-                        _chat.SendMessage(player, sb);
                     }
                 }
                 finally
