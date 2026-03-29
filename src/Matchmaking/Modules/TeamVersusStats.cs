@@ -990,6 +990,16 @@ namespace SS.Matchmaking.Modules
             short xCoord = killed.Position.X;
             short yCoord = killed.Position.Y;
 
+            // Capture the killed player's maximumRecharge before the delay, for EMP overcounting correction at death.
+            short killedMaximumRecharge = 0;
+            if (killedShip != ShipType.Spec
+                && killed.Arena is not null
+                && _arenaSettings.TryGetValue(killed.Arena.BaseName, out ArenaSettings? killedArenaSettings))
+            {
+                int shipIndex = (int)killedShip;
+                killedMaximumRecharge = GetClientSetting(killed, _shipClientSettingIds[shipIndex].MaximumRechargeId, killedArenaSettings.ShipSettings[shipIndex].MaximumRecharge);
+            }
+
             //
             // Delay processing the kill to allow time for the final C2S damage packet to make it to the server.
             // This gives a chance for C2S Damage packets to make it to the server and therefore more accurate damage stats.
@@ -1017,6 +1027,18 @@ namespace SS.Matchmaking.Modules
 
             try
             {
+                // Correct any EMP freeze damage that was overcounted for ticks extending past the player's death.
+                if (killedMaximumRecharge > 0 && killedMemberStats.FreezeEndTick > timestampTick)
+                {
+                    uint overcountedTicks = (uint)(killedMemberStats.FreezeEndTick - timestampTick);
+                    int overcountedDamage = (int)(overcountedTicks * killedMaximumRecharge / 1000f);
+                    killedMemberStats.DamageTakenBombs = Math.Max(0, killedMemberStats.DamageTakenBombs - overcountedDamage);
+                    if (killedMemberStats.FreezeHolder is not null)
+                        killedMemberStats.FreezeHolder.DamageDealtBombs = Math.Max(0, killedMemberStats.FreezeHolder.DamageDealtBombs - overcountedDamage);
+                }
+                killedMemberStats.FreezeEndTick = default;
+                killedMemberStats.FreezeHolder = null;
+
                 // Calculate damage stats.
                 CalculateDamageSources(timestampTick, killedMemberStats, killedShip, damageDictionary);
                 killedMemberStats.ClearRecentDamage();
@@ -2325,7 +2347,10 @@ namespace SS.Matchmaking.Modules
 
                         ServerTick newFreezeEnd = timestamp + empShutdownTicks;
                         if (newFreezeEnd > playerStats.FreezeEndTick)
+                        {
                             playerStats.FreezeEndTick = newFreezeEnd;
+                            playerStats.FreezeHolder = attackerStats;
+                        }
                     }
                 }
 
@@ -3752,6 +3777,12 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public ServerTick FreezeEndTick;
 
+            /// <summary>
+            /// The <see cref="MemberStats"/> of the attacker who last extended the EMP freeze window on this player.
+            /// Used at death time to correct any overcounted freeze damage for ticks that extended past the death.
+            /// </summary>
+            public MemberStats? FreezeHolder;
+
             public void AddRecentDamageTaken(LinkedListNode<DamageInfo> node)
             {
                 _recentDamageTaken.AddLast(node);
@@ -4069,6 +4100,7 @@ namespace SS.Matchmaking.Modules
                 TeamKillDamage = 0;
                 ClearRecentDamage();
                 FreezeEndTick = default;
+                FreezeHolder = null;
 
                 // accuracy fields
                 GunFireCount = 0;
