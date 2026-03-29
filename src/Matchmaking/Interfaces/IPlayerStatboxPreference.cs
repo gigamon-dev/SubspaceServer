@@ -3,7 +3,7 @@ using SS.Core.ComponentInterfaces;
 
 namespace SS.Matchmaking.Interfaces
 {
-    public enum ScoreboardPreference
+    public enum StatboxPreference
     {
         /// <summary>
         /// Show the full statbox with lives, repels, and rockets.
@@ -16,16 +16,16 @@ namespace SS.Matchmaking.Interfaces
         Simple,
 
         /// <summary>
-        /// Hide the scoreboard entirely.
+        /// Hide the statbox entirely.
         /// </summary>
         Off,
     }
 
-    public interface IPlayerScoreboardPreference : IComponentInterface
+    public interface IPlayerStatboxPreference : IComponentInterface
     {
         /// <summary>
-        /// Gets the scoreboard display preference for a player.
+        /// Gets the statbox display preference for a player.
         /// </summary>
-        ScoreboardPreference GetPreference(Player player);
+        StatboxPreference GetPreference(Player player);
     }
 }

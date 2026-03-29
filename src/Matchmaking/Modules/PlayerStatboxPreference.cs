@@ -8,11 +8,11 @@ using SS.Matchmaking.Persist;
 namespace SS.Matchmaking.Modules
 {
     /// <summary>
-    /// Module that manages the per-player scoreboard display preference.
-    /// Provides the ?scoreboard command and persists the preference globally.
+    /// Module that manages the per-player statbox display preference.
+    /// Provides the ?statbox command and persists the preference globally.
     /// </summary>
-    [ModuleInfo("Manages per-player scoreboard display preference.")]
-    public sealed class PlayerScoreboardPreference : IAsyncModule, IPlayerScoreboardPreference
+    [ModuleInfo("Manages per-player statbox display preference.")]
+    public sealed class PlayerStatboxPreference : IAsyncModule, IPlayerStatboxPreference
     {
         private readonly IChat _chat;
         private readonly ICommandManager _commandManager;
@@ -22,13 +22,13 @@ namespace SS.Matchmaking.Modules
 
         private PlayerDataKey<PlayerPreferenceData> _pdKey;
         private DelegatePersistentData<Player>? _persistRegistration;
-        private InterfaceRegistrationToken<IPlayerScoreboardPreference>? _iToken;
+        private InterfaceRegistrationToken<IPlayerStatboxPreference>? _iToken;
 
         private IComponentBroker? _broker;
 
-        private const string CommandName = "scoreboard";
+        private const string CommandName = "statbox";
 
-        public PlayerScoreboardPreference(
+        public PlayerStatboxPreference(
             IChat chat,
             ICommandManager commandManager,
             IPlayerData playerData)
@@ -48,7 +48,7 @@ namespace SS.Matchmaking.Modules
             if (_persist is not null)
             {
                 _persistRegistration = new DelegatePersistentData<Player>(
-                    (int)Persist.PersistKey.PlayerScoreboardPreference,
+                    (int)Persist.PersistKey.PlayerStatboxPreference,
                     PersistInterval.Forever,
                     PersistScope.Global,
                     Persist_GetData,
@@ -58,9 +58,9 @@ namespace SS.Matchmaking.Modules
                 await _persist.RegisterPersistentDataAsync(_persistRegistration);
             }
 
-            _commandManager.AddCommand(CommandName, Command_Scoreboard);
+            _commandManager.AddCommand(CommandName, Command_Statbox);
 
-            _iToken = broker.RegisterInterface<IPlayerScoreboardPreference>(this);
+            _iToken = broker.RegisterInterface<IPlayerStatboxPreference>(this);
             return true;
         }
 
@@ -69,7 +69,7 @@ namespace SS.Matchmaking.Modules
             if (_iToken is not null)
                 broker.UnregisterInterface(ref _iToken);
 
-            _commandManager.RemoveCommand(CommandName, Command_Scoreboard);
+            _commandManager.RemoveCommand(CommandName, Command_Statbox);
 
             if (_persist is not null && _persistRegistration is not null)
             {
@@ -85,10 +85,10 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        ScoreboardPreference IPlayerScoreboardPreference.GetPreference(Player player)
+        StatboxPreference IPlayerStatboxPreference.GetPreference(Player player)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerPreferenceData? data))
-                return ScoreboardPreference.Detailed;
+                return StatboxPreference.Detailed;
 
             return data.Preference;
         }
@@ -101,7 +101,7 @@ namespace SS.Matchmaking.Modules
                 return;
 
             // Only write if non-default.
-            if (data.Preference == ScoreboardPreference.Detailed)
+            if (data.Preference == StatboxPreference.Detailed)
                 return;
 
             outStream.WriteByte((byte)data.Preference);
@@ -116,9 +116,9 @@ namespace SS.Matchmaking.Modules
             if (value < 0)
                 return;
 
-            ScoreboardPreference pref = (ScoreboardPreference)value;
+            StatboxPreference pref = (StatboxPreference)value;
             if (!Enum.IsDefined(pref))
-                pref = ScoreboardPreference.Detailed;
+                pref = StatboxPreference.Detailed;
 
             data.Preference = pref;
         }
@@ -128,7 +128,7 @@ namespace SS.Matchmaking.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerPreferenceData? data))
                 return;
 
-            data.Preference = ScoreboardPreference.Detailed;
+            data.Preference = StatboxPreference.Detailed;
         }
 
         #endregion
@@ -139,30 +139,30 @@ namespace SS.Matchmaking.Modules
             Targets = CommandTarget.None,
             Args = "[off | simple | detailed]",
             Description = """
-                Controls which scoreboard display style you see during matches.
+                Controls which statbox display style you see during matches.
                 - detailed: Shows names, lives remaining, repels, and rockets (default).
                 - simple: Shows names with kills and deaths columns.
-                - off: Hides the scoreboard entirely.
+                - off: Hides the statbox entirely.
                 Use with no argument to see your current setting.
                 """)]
-        private void Command_Scoreboard(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        private void Command_Statbox(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerPreferenceData? data))
                 return;
 
             if (parameters.IsEmpty)
             {
-                _chat.SendMessage(player, $"Your scoreboard preference is currently: {data.Preference.ToString().ToLowerInvariant()}");
+                _chat.SendMessage(player, $"Your statbox preference is currently: {data.Preference.ToString().ToLowerInvariant()}");
                 return;
             }
 
-            ScoreboardPreference newPref;
+            StatboxPreference newPref;
             if (parameters.Equals("off", StringComparison.OrdinalIgnoreCase))
-                newPref = ScoreboardPreference.Off;
+                newPref = StatboxPreference.Off;
             else if (parameters.Equals("simple", StringComparison.OrdinalIgnoreCase))
-                newPref = ScoreboardPreference.Simple;
+                newPref = StatboxPreference.Simple;
             else if (parameters.Equals("detailed", StringComparison.OrdinalIgnoreCase))
-                newPref = ScoreboardPreference.Detailed;
+                newPref = StatboxPreference.Detailed;
             else
             {
                 _chat.SendMessage(player, $"Unknown option '{parameters}'. Use: off, simple, or detailed.");
@@ -171,22 +171,22 @@ namespace SS.Matchmaking.Modules
 
             if (newPref == data.Preference)
             {
-                _chat.SendMessage(player, $"Your scoreboard preference is already set to: {newPref.ToString().ToLowerInvariant()}");
+                _chat.SendMessage(player, $"Your statbox preference is already set to: {newPref.ToString().ToLowerInvariant()}");
                 return;
             }
 
             data.Preference = newPref;
-            _chat.SendMessage(player, $"Scoreboard preference set to: {newPref.ToString().ToLowerInvariant()}");
+            _chat.SendMessage(player, $"Statbox preference set to: {newPref.ToString().ToLowerInvariant()}");
 
             if (_broker is not null)
-                ScoreboardPreferenceChangedCallback.Fire(_broker, player, newPref);
+                StatboxPreferenceChangedCallback.Fire(_broker, player, newPref);
         }
 
         #endregion
 
         private sealed class PlayerPreferenceData
         {
-            public ScoreboardPreference Preference = ScoreboardPreference.Detailed;
+            public StatboxPreference Preference = StatboxPreference.Detailed;
         }
     }
 }

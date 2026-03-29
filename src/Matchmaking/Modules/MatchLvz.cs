@@ -22,7 +22,7 @@ namespace SS.Matchmaking.Modules
         IObjectPoolManager objectPoolManager) : IModule, IArenaAttachableModule
     {
         private IComponentBroker? _broker;
-        private IPlayerScoreboardPreference? _scoreboardPreference;
+        private IPlayerStatboxPreference? _statboxPreference;
         #region Constants
 
         /// <summary>
@@ -197,8 +197,8 @@ namespace SS.Matchmaking.Modules
         bool IModule.Load(IComponentBroker broker)
         {
             _broker = broker;
-            _scoreboardPreference = broker.GetInterface<IPlayerScoreboardPreference>();
-            ScoreboardPreferenceChangedCallback.Register(broker, Callback_ScoreboardPreferenceChanged);
+            _statboxPreference = broker.GetInterface<IPlayerStatboxPreference>();
+            StatboxPreferenceChangedCallback.Register(broker, Callback_StatboxPreferenceChanged);
             return true;
         }
 
@@ -241,10 +241,10 @@ namespace SS.Matchmaking.Modules
 
         bool IModule.Unload(IComponentBroker broker)
         {
-            ScoreboardPreferenceChangedCallback.Unregister(broker, Callback_ScoreboardPreferenceChanged);
+            StatboxPreferenceChangedCallback.Unregister(broker, Callback_StatboxPreferenceChanged);
 
-            if (_scoreboardPreference is not null)
-                broker.ReleaseInterface(ref _scoreboardPreference);
+            if (_statboxPreference is not null)
+                broker.ReleaseInterface(ref _statboxPreference);
 
             _broker = null;
             return true;
@@ -331,11 +331,11 @@ namespace SS.Matchmaking.Modules
                 if (matchData.Arena != arena) // sanity check
                     return;
 
-                ScoreboardPreference pref = _scoreboardPreference?.GetPreference(player) ?? ScoreboardPreference.Detailed;
+                StatboxPreference pref = _statboxPreference?.GetPreference(player) ?? StatboxPreference.Detailed;
                 newState = pref switch
                 {
-                    ScoreboardPreference.Simple => arenaData.TryGetSimpleMatch(matchData.MatchIdentifier),
-                    ScoreboardPreference.Off => null,
+                    StatboxPreference.Simple => arenaData.TryGetSimpleMatch(matchData.MatchIdentifier),
+                    StatboxPreference.Off => null,
                     _ => arenaData.TryGetMatch(matchData.MatchIdentifier),
                 };
             }
@@ -666,7 +666,7 @@ namespace SS.Matchmaking.Modules
             // Note: SIMPLE state does not display repels/rockets, so no update needed there.
         }
 
-        private void Callback_ScoreboardPreferenceChanged(Player player, ScoreboardPreference newPreference)
+        private void Callback_StatboxPreferenceChanged(Player player, StatboxPreference newPreference)
         {
             // Re-send the match LVZ for this player using their new preference.
             IMatchData? matchData = _matchFocus.GetFocusedMatch(player) as IMatchData;
