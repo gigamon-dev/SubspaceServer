@@ -10,5 +10,6 @@
     public enum PersistKey
     {
         MatchmakingQueuesPlayerData = 10000,
+        PlayerStatboxPreference = 10001,
     }
 }

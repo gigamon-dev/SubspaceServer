@@ -94,6 +94,9 @@ cmd_speedstats
 cmd_best
 privcmd_best
 
+; Matchmaking (General)
+cmd_statbox
+
 ; Matchmaking (PlayerGroups and MatchmakingQueues modules)
 cmd_group
 privcmd_group

@@ -111,6 +111,28 @@ namespace SS.Matchmaking.Queues
             }
         }
 
+        public bool TryGetPosition(Player? player, IPlayerGroup? group, out int position, out int totalEntries)
+        {
+            totalEntries = Queue.Count;
+            position = 0;
+            if (player is null)
+                return false;
+
+            int i = 0;
+            LinkedListNode<QueuedPlayer>? node = Queue.First;
+            while (node is not null)
+            {
+                i++;
+                if (node.ValueRef.Player == player)
+                {
+                    position = i;
+                    return true;
+                }
+                node = node.Next;
+            }
+            return false;
+        }
+
         /// <summary>
         /// Represents a player in the queue and the timestamp that the player originally entered the queue.
         /// </summary>

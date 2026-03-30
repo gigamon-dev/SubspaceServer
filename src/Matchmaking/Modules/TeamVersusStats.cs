@@ -999,6 +999,10 @@ namespace SS.Matchmaking.Modules
                 int shipIndex = (int)killedShip;
                 killedMaximumRecharge = GetClientSetting(killed, _shipClientSettingIds[shipIndex].MaximumRechargeId, killedArenaSettings.ShipSettings[shipIndex].MaximumRecharge);
             }
+            // Notify listeners of the updated kills/deaths stats (e.g., for Simple statbox display).
+            Arena? matchArena = matchData.Arena;
+            if (matchArena is not null)
+                TeamVersusStatsPlayerKilledCallback.Fire(matchArena, killedSlot, killedMemberStats, killerSlot, killerMemberStats, isKnockout);
 
             //
             // Delay processing the kill to allow time for the final C2S damage packet to make it to the server.
@@ -3130,6 +3134,64 @@ namespace SS.Matchmaking.Modules
 
             SendHorizonalRule(notifySet);
 
+            if (reason is not null)
+            {
+                // Find the highest and lowest rating changes across all players.
+                int maxRatingChange = int.MinValue;
+                int minRatingChange = int.MaxValue;
+
+                foreach (TeamStats teamStats in matchStats.Teams.Values)
+                    foreach (SlotStats slotStats in teamStats.Slots)
+                        foreach (MemberStats memberStats in slotStats.Members)
+                        {
+                            int rc = (int)memberStats.RatingChange;
+                            if (rc > maxRatingChange) maxRatingChange = rc;
+                            if (rc < minRatingChange) minRatingChange = rc;
+                        }
+
+                StringBuilder mvpSb = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    if (maxRatingChange > 0)
+                    {
+                        mvpSb.Append("MVP: ");
+                        bool first = true;
+                        foreach (TeamStats teamStats in matchStats.Teams.Values)
+                            foreach (SlotStats slotStats in teamStats.Slots)
+                                foreach (MemberStats memberStats in slotStats.Members)
+                                    if ((int)memberStats.RatingChange == maxRatingChange)
+                                    {
+                                        if (!first) mvpSb.Append(", ");
+                                        mvpSb.Append($"{memberStats.PlayerName} (+{maxRatingChange})");
+                                        first = false;
+                                    }
+
+                        _chat.SendSetMessage(notifySet, mvpSb);
+                        mvpSb.Clear();
+                    }
+
+                    if (minRatingChange < 0)
+                    {
+                        mvpSb.Append("LVP: ");
+                        bool first = true;
+                        foreach (TeamStats teamStats in matchStats.Teams.Values)
+                            foreach (SlotStats slotStats in teamStats.Slots)
+                                foreach (MemberStats memberStats in slotStats.Members)
+                                    if ((int)memberStats.RatingChange == minRatingChange)
+                                    {
+                                        if (!first) mvpSb.Append(", ");
+                                        mvpSb.Append($"{memberStats.PlayerName} ({minRatingChange})");
+                                        first = false;
+                                    }
+
+                        _chat.SendSetMessage(notifySet, mvpSb);
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(mvpSb);
+                }
+            }
 
             void SendHorizonalRule(HashSet<Player> notifySet)
             {
@@ -3559,7 +3621,7 @@ namespace SS.Matchmaking.Modules
                     _eventsJsonWriter.WriteStartObject("rating_changes"u8);
                     foreach ((string playerName, float rating) in ratingChangeDictionary)
                     {
-                        _eventsJsonWriter.WriteNumber(playerName, rating);
+                        _eventsJsonWriter.WriteNumber(playerName, float.IsFinite(rating) ? rating : 0f);
                     }
                     _eventsJsonWriter.WriteEndObject(); // rating_changes object
                 }

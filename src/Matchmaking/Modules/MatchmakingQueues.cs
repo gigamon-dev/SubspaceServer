@@ -78,13 +78,7 @@ namespace SS.Matchmaking.Modules
 
         private readonly DefaultObjectPool<UsageData> _usageDataPool = new(new DefaultPooledObjectPolicy<UsageData>(), Constants.TargetPlayerCount * 2);
         private readonly DefaultObjectPool<List<IMatchmakingQueue>> _iMatchmakingQueueListPool = new(new ListPooledObjectPolicy<IMatchmakingQueue>() { InitialCapacity = 32 });
-        private readonly DefaultObjectPool<List<PlayerOrGroup>> _playerOrGroupListPool = new(new ListPooledObjectPolicy<PlayerOrGroup>() { InitialCapacity = Constants.TargetPlayerCount });
         private readonly DefaultObjectPool<HashSet<IPlayerGroup>> _playerGroupSetPool = new(new HashSetPooledObjectPolicy<IPlayerGroup>() { InitialCapacity = 64 });
-
-        private const string NextCommandName = "next";
-        private const string CancelCommandName = "cancelnext";
-        private const string CancelCommandNameAlt = "cnext";
-        private const string NextHoldCommandName = "nexthold";
 
         public MatchmakingQueues(
             IComponentBroker broker,
@@ -131,13 +125,15 @@ namespace SS.Matchmaking.Modules
             }
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
+            PlayerGroupMemberAddedCallback.Register(broker, Callback_PlayerGroupMemberAdded);
             PlayerGroupMemberRemovedCallback.Register(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Register(broker, Callback_PlayerGroupDisbanded);
 
-            _commandManager.AddCommand(NextCommandName, Command_next);
-            _commandManager.AddCommand(CancelCommandName, Command_cancelnext);
-            _commandManager.AddCommand(CancelCommandNameAlt, Command_cancelnext);
-            _commandManager.AddCommand(NextHoldCommandName, Command_nextHold);
+            _commandManager.AddCommand(CommandNames.Next, Command_next);
+            _commandManager.AddCommand(CommandNames.CancelNext, Command_cancelnext);
+            _commandManager.AddCommand(CommandNames.CancelNextAlt, Command_cancelnext);
+            _commandManager.AddCommand(CommandNames.NextHold, Command_nextHold);
+            _commandManager.AddCommand(CommandNames.ManagePlayingState, Command_manageplayingstate);
 
             _iMatchmakingQueuesToken = broker.RegisterInterface<IMatchmakingQueues>(this);
             return true;
@@ -147,12 +143,14 @@ namespace SS.Matchmaking.Modules
         {
             broker.UnregisterInterface(ref _iMatchmakingQueuesToken);
 
-            _commandManager.RemoveCommand(NextCommandName, Command_next);
-            _commandManager.RemoveCommand(CancelCommandName, Command_cancelnext);
-            _commandManager.RemoveCommand(CancelCommandNameAlt, Command_cancelnext);
-            _commandManager.RemoveCommand(NextHoldCommandName, Command_nextHold);
+            _commandManager.RemoveCommand(CommandNames.Next, Command_next);
+            _commandManager.RemoveCommand(CommandNames.CancelNext, Command_cancelnext);
+            _commandManager.RemoveCommand(CommandNames.CancelNextAlt, Command_cancelnext);
+            _commandManager.RemoveCommand(CommandNames.NextHold, Command_nextHold);
+            _commandManager.RemoveCommand(CommandNames.ManagePlayingState, Command_manageplayingstate);
 
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
+            PlayerGroupMemberAddedCallback.Unregister(broker, Callback_PlayerGroupMemberAdded);
             PlayerGroupMemberRemovedCallback.Unregister(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Unregister(broker, Callback_PlayerGroupDisbanded);
 
@@ -541,11 +539,12 @@ namespace SS.Matchmaking.Modules
 
             foreach (Player member in group.Members)
             {
-                if (!member.TryGetExtraData(_puKey, out UsageData? memberUsageData))
-                    continue;
-
-                if (memberUsageData.State == QueueState.Playing)
-                    return; // consider the group to still be playing if at least one member is playing
+                if (member.TryGetExtraData(_puKey, out UsageData? memberUsageData)
+                    && memberUsageData.State == QueueState.Playing)
+                {
+                    // Consider the group to still be playing if at least one member is playing.
+                    return;
+                }
             }
 
             if (!_groupUsageDictionary.TryGetValue(group, out UsageData? usageData))
@@ -591,8 +590,8 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        string IMatchmakingQueues.NextCommandName => NextCommandName;
-        string IMatchmakingQueues.CancelCommandName => CancelCommandName;
+        string IMatchmakingQueues.NextCommandName => CommandNames.Next;
+        string IMatchmakingQueues.CancelCommandName => CommandNames.CancelNext;
 
         #endregion
 
@@ -624,20 +623,13 @@ namespace SS.Matchmaking.Modules
             if (player is null || !player.TryGetExtraData(_puKey, out UsageData? usageData))
                 return true;
 
-            if (usageData.State == QueueState.Queued)
+            if (usageData.State == QueueState.Playing)
             {
-                message?.Append("Cannot accept an invite while searching for a match. To accept, stop the search first.");
+                message?.Append("Cannot accept an invite while playing in a match. To accept, complete the current match.");
                 return false;
             }
-            else if (usageData.State == QueueState.Playing)
-            {
-                message?.Append("Cannot accept an invite while while playing in a match. To accept, complete the current match.");
-                return false;
-            }
-            else
-            {
-                return true;
-            }
+
+            return true;
         }
 
         #endregion
@@ -765,6 +757,18 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        private void Callback_PlayerGroupMemberAdded(IPlayerGroup group, Player player)
+        {
+            if (!player.TryGetExtraData(_puKey, out UsageData? usageData))
+                return;
+
+            if (usageData.State == QueueState.Queued)
+            {
+                // The player was individually searching for a match. Cancel the search now that they've joined a group.
+                RemoveFromAllQueues(player, null, usageData, true);
+            }
+        }
+
         private void Callback_PlayerGroupMemberRemoved(IPlayerGroup group, Player player, PlayerGroupMemberRemovedReason reason)
         {
             if (!_groupUsageDictionary.TryGetValue(group, out UsageData? usageData))
@@ -801,7 +805,7 @@ namespace SS.Matchmaking.Modules
         #region Commands
 
         // ?next --> add the player to the current arena's default queue if there is one
-        // /?next --> mods can see queue info for another player
+        // TODO: /?next --> mods can see queue info for another player
         // ?next 1v1
         // ?next 2v2
         // ?next 3v3
@@ -819,8 +823,9 @@ namespace SS.Matchmaking.Modules
 
                 To begin searching for a match, specify 1 or more queue names.
                 Or, use without any parameters to begin searching on your arena's default queue.
-                
+
                 Use -status (or -s) to print your current matchmaking status.
+                  When searching, shows your active queues with your position and wait time.
                 Use -list (or -l) to list all available matchmaking queues.
                 Use -auto (or -a) to toggle automatic re-queuing (automatically search again after completing a match).
                 """)]
@@ -848,29 +853,49 @@ namespace SS.Matchmaking.Modules
                     return;
             }
 
-            if (parameters.Equals("-status", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-s", StringComparison.OrdinalIgnoreCase))
+            if (parameters.StartsWith("-status", StringComparison.OrdinalIgnoreCase) || parameters.StartsWith("-s", StringComparison.OrdinalIgnoreCase))
             {
                 // Print usage details.
                 StringBuilder sb;
                 switch (usageData.State)
                 {
                     case QueueState.None:
-                        _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} not searching for a game yet.");
+                        _chat.SendMessage(player, $"{CommandNames.Next}: {(group is null ? "You are" : "Your group is")} not searching for a game yet.");
                         break;
 
                     case QueueState.Queued:
                         sb = _objectPoolManager.StringBuilderPool.Get();
                         try
                         {
-                            foreach (var queuedInfo in usageData.Queued)
+                            _chat.SendMessage(player, $"{CommandNames.Next}: {(group is null ? "You are" : "Your group is")} searching for a game on the following queues:");
+
+                            // Show only the queues the player is actively in, with position and wait time.
+                            DateTime now = DateTime.UtcNow;
+                            foreach (QueuedInfo queuedInfo in usageData.Queued)
                             {
-                                if (sb.Length > 0)
-                                    sb.Append(", ");
+                                IMatchmakingQueue queue = queuedInfo.Queue;
+                                sb.Clear();
+                                sb.Append($"{CommandNames.Next}: {queue.Name,8} -- ");
 
-                                sb.Append(queuedInfo.Queue.Name);
+                                if (queue.TryGetPosition(player, group, out int position, out int totalEntries))
+                                {
+                                    sb.Append($"At position {position} of {totalEntries}");
+                                }
+                                else
+                                {
+                                    sb.Append($"{totalEntries} entr{(totalEntries == 1 ? "y" : "ies")}");
+                                }
+
+                                TimeSpan waited = now - queuedInfo.Timestamp;
+                                sb.Append(" (waited ");
+                                sb.AppendFriendlyTimeSpan(waited);
+                                sb.Append(')');
+
+                                if (!string.IsNullOrWhiteSpace(queue.Description))
+                                    sb.Append($" - {queue.Description}");
+
+                                _chat.SendMessage(player, sb);
                             }
-
-                            _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} searching for a game on the following queues: {sb}");
                         }
                         finally
                         {
@@ -890,7 +915,7 @@ namespace SS.Matchmaking.Modules
 
                                 if (duration > TimeSpan.Zero)
                                 {
-                                    sb.Append($"{NextCommandName}: You can't search for a game due to dropping out of one recently. Remaining time: ");
+                                    sb.Append($"{CommandNames.Next}: You can't search for a game due to dropping out of one recently. Remaining time: ");
                                     sb.AppendFriendlyTimeSpan(duration);
                                     _chat.SendMessage(player, sb);
                                     return;
@@ -907,11 +932,11 @@ namespace SS.Matchmaking.Modules
 
                             if (sb.Length > 0)
                             {
-                                _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} currently playing in a match: {sb}");
+                                _chat.SendMessage(player, $"{CommandNames.Next}: {(group is null ? "You are" : "Your group is")} currently playing in a match: {sb}");
                             }
                             else
                             {
-                                _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} currently playing in a match.");
+                                _chat.SendMessage(player, $"{CommandNames.Next}: {(group is null ? "You are" : "Your group is")} currently playing in a match.");
                             }
                         }
                         finally
@@ -934,7 +959,7 @@ namespace SS.Matchmaking.Modules
                                         sb.Append(queuedInfo.Queue.Name);
                                     }
 
-                                    _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} set to automatically requeue to: {sb}");
+                                    _chat.SendMessage(player, $"{CommandNames.Next}: {(group is null ? "You are" : "Your group is")} set to automatically requeue to: {sb}");
                                 }
                                 finally
                                 {
@@ -943,7 +968,7 @@ namespace SS.Matchmaking.Modules
                             }
                             else
                             {
-                                _chat.SendMessage(player, $"{NextCommandName}: {(group is null ? "You are" : "Your group is")} set to automatically requeue.");
+                                _chat.SendMessage(player, $"{CommandNames.Next}: {(group is null ? "You are" : "Your group is")} set to automatically requeue.");
                             }
                         }
                         break;
@@ -954,7 +979,7 @@ namespace SS.Matchmaking.Modules
 
                 return;
             }
-            else if (parameters.Equals("-list", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-l", StringComparison.OrdinalIgnoreCase))
+            else if (parameters.StartsWith("-list", StringComparison.OrdinalIgnoreCase) || parameters.StartsWith("-l", StringComparison.OrdinalIgnoreCase))
             {
                 StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                 HashSet<Player> soloPlayers = _objectPoolManager.PlayerSetPool.Get();
@@ -962,6 +987,7 @@ namespace SS.Matchmaking.Modules
 
                 try
                 {
+                    // Show all queues with general occupancy info.
                     foreach (IMatchmakingQueue queue in _queues.Values)
                     {
                         sb.Clear();
@@ -976,7 +1002,7 @@ namespace SS.Matchmaking.Modules
                             totalPlayersQueued += playerGroup.Members.Count;
                         }
 
-                        sb.Append($"{NextCommandName}: {queue.Name,8} - {totalPlayersQueued,2} player{(totalPlayersQueued == 1 ? " " : "s")}");
+                        sb.Append($"{CommandNames.Next}: {queue.Name,8} - {totalPlayersQueued,2} player{(totalPlayersQueued == 1 ? " " : "s")}");
 
                         if (groups.Count > 0)
                         {
@@ -998,7 +1024,7 @@ namespace SS.Matchmaking.Modules
 
                 return;
             }
-            else if (parameters.Equals("-auto", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-a", StringComparison.OrdinalIgnoreCase))
+            else if (parameters.StartsWith("-auto", StringComparison.OrdinalIgnoreCase) || parameters.StartsWith("-a", StringComparison.OrdinalIgnoreCase))
             {
                 if (group is not null)
                 {
@@ -1011,7 +1037,7 @@ namespace SS.Matchmaking.Modules
                         try
                         {
                             members.UnionWith(group.Members);
-                            _chat.SendSetMessage(members, $"{NextCommandName}: Automatic requeuing disabled by {player.Name}.");
+                            _chat.SendSetMessage(members, $"{CommandNames.Next}: Automatic requeuing disabled by {player.Name}.");
                         }
                         finally
                         {
@@ -1022,7 +1048,7 @@ namespace SS.Matchmaking.Modules
                     {
                         if (group.Leader != player)
                         {
-                            _chat.SendMessage(player, $"{NextCommandName}: Only the group leader can enable automatic requeuing.");
+                            _chat.SendMessage(player, $"{CommandNames.Next}: Only the group leader can enable automatic requeuing.");
                         }
                         else
                         {
@@ -1033,7 +1059,7 @@ namespace SS.Matchmaking.Modules
                             try
                             {
                                 members.UnionWith(group.Members);
-                                _chat.SendSetMessage(members, $"{NextCommandName}: Automatic requeuing enabled by {player.Name}.");
+                                _chat.SendSetMessage(members, $"{CommandNames.Next}: Automatic requeuing enabled by {player.Name}.");
                             }
                             finally
                             {
@@ -1045,7 +1071,7 @@ namespace SS.Matchmaking.Modules
                 else
                 {
                     usageData.AutoRequeue = !usageData.AutoRequeue;
-                    _chat.SendMessage(player, $"{NextCommandName}: Automatic requeuing {(usageData.AutoRequeue ? "enabled" : "disabled")}.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Automatic requeuing {(usageData.AutoRequeue ? "enabled" : "disabled")}.");
                 }
 
                 return;
@@ -1064,7 +1090,7 @@ namespace SS.Matchmaking.Modules
                     StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                     try
                     {
-                        sb.Append($"{NextCommandName}: You can't search for a game due to dropping out of one recently. Remaining time: ");
+                        sb.Append($"{CommandNames.Next}: You can't search for a game due to dropping out of one recently. Remaining time: ");
                         sb.AppendFriendlyTimeSpan(duration);
                         _chat.SendMessage(player, sb);
                     }
@@ -1080,13 +1106,13 @@ namespace SS.Matchmaking.Modules
             {
                 if (player != group.Leader)
                 {
-                    _chat.SendMessage(player, $"{NextCommandName}: Only the group leader can start a search.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Only the group leader can start a search.");
                     return;
                 }
 
                 if (group.PendingMembers.Count > 0)
                 {
-                    _chat.SendMessage(player, $"{NextCommandName}: Can't start a search while there are pending invites to the group.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Can't start a search while there are pending invites to the group.");
                     return;
                 }
 
@@ -1094,9 +1120,8 @@ namespace SS.Matchmaking.Modules
 
                 try
                 {
-                    int playingCount = 0;
-
                     // Notify if a member has a hold.
+                    int holdCount = 0;
                     foreach (Player member in group.Members)
                     {
                         if (GetRefreshedPlayHold(member) is not null)
@@ -1105,21 +1130,23 @@ namespace SS.Matchmaking.Modules
                                 sb.Append(", ");
 
                             sb.Append(member.Name);
+                            holdCount++;
                         }
                     }
 
-                    if (playingCount == 1)
+                    if (holdCount == 1)
                     {
-                        _chat.SendMessage(player, $"{NextCommandName}: Can't start a search because {sb} is currently has a hold due to dropping out of a match.");
+                        _chat.SendMessage(player, $"{CommandNames.Next}: Can't start a search because {sb} is currently has a hold due to dropping out of a match.");
                         return;
                     }
-                    else if (playingCount > 1)
+                    else if (holdCount > 1)
                     {
-                        _chat.SendMessage(player, $"{NextCommandName}: Can't start a search because the following members have a hold due to dropping out of a match: {sb}");
+                        _chat.SendMessage(player, $"{CommandNames.Next}: Can't start a search because the following members have a hold due to dropping out of a match: {sb}");
                         return;
                     }
 
                     // Notify if a member is playing.
+                    int playingCount = 0;
                     foreach (Player member in group.Members)
                     {
                         if (member.TryGetExtraData(_puKey, out UsageData? memberUsage)
@@ -1129,19 +1156,18 @@ namespace SS.Matchmaking.Modules
                                 sb.Append(", ");
 
                             sb.Append(member.Name);
-
                             playingCount++;
                         }
                     }
 
                     if (playingCount == 1)
                     {
-                        _chat.SendMessage(player, $"{NextCommandName}: Can't start a search because {sb} is currently playing.");
+                        _chat.SendMessage(player, $"{CommandNames.Next}: Can't start a search because {sb} is currently playing.");
                         return;
                     }
                     else if (playingCount > 1)
                     {
-                        _chat.SendMessage(player, $"{NextCommandName}: Can't start a search because the following members are currently playing: {sb}");
+                        _chat.SendMessage(player, $"{CommandNames.Next}: Can't start a search because the following members are currently playing: {sb}");
                         return;
                     }
                 }
@@ -1153,7 +1179,7 @@ namespace SS.Matchmaking.Modules
 
             if (usageData.State == QueueState.Playing)
             {
-                _chat.SendMessage(player, $"{NextCommandName}: Can't start a search while playing in a match.");
+                _chat.SendMessage(player, $"{CommandNames.Next}: Can't start a search while playing in a match.");
                 return;
             }
 
@@ -1172,7 +1198,7 @@ namespace SS.Matchmaking.Modules
 
                 if (parameters.IsWhiteSpace())
                 {
-                    _chat.SendMessage(player, $"{NextCommandName}: You must specify which queue(s) to search on.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: You must specify which queue(s) to search on.");
                     return;
                 }
             }
@@ -1225,7 +1251,7 @@ namespace SS.Matchmaking.Modules
 
                 if (queue is null)
                 {
-                    _chat.SendMessage(player, $"{NextCommandName}: Queue '{queueName}' not found.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Queue '{queueName}' not found.");
                     return null;
                 }
 
@@ -1243,7 +1269,7 @@ namespace SS.Matchmaking.Modules
                 // group search
                 if (!queue.Options.AllowGroups)
                 {
-                    _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' does not allow premade groups.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Queue '{queue.Name}' does not allow premade groups.");
                     return false;
                 }
 
@@ -1251,9 +1277,9 @@ namespace SS.Matchmaking.Modules
                     || group.Members.Count > queue.Options.MaxGroupSize)
                 {
                     if (queue.Options.MinGroupSize == queue.Options.MaxGroupSize)
-                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' allows groups with exactly {queue.Options.MinGroupSize} players, but your group has {group.Members.Count} players.");
+                        _chat.SendMessage(player, $"{CommandNames.Next}: Queue '{queue.Name}' allows groups with exactly {queue.Options.MinGroupSize} players, but your group has {group.Members.Count} players.");
                     else
-                        _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' allows groups sized from {queue.Options.MinGroupSize} to {queue.Options.MaxGroupSize} players, but your group has {group.Members.Count} players.");
+                        _chat.SendMessage(player, $"{CommandNames.Next}: Queue '{queue.Name}' allows groups sized from {queue.Options.MinGroupSize} to {queue.Options.MaxGroupSize} players, but your group has {group.Members.Count} players.");
 
                     return false;
                 }
@@ -1279,7 +1305,7 @@ namespace SS.Matchmaking.Modules
                             StringBuilder messageBuilder = _objectPoolManager.StringBuilderPool.Get();
                             try
                             {
-                                messageBuilder.Append($"{NextCommandName}: A permit is required for queue '{queue.Name}'. The following group members do not have access: ");
+                                messageBuilder.Append($"{CommandNames.Next}: A permit is required for queue '{queue.Name}'. The following group members do not have access: ");
                                 messageBuilder.Append(namesBuilder);
                                 _chat.SendMessage(player, messageBuilder);
                                 return false;
@@ -1298,13 +1324,13 @@ namespace SS.Matchmaking.Modules
 
                 if (!usageData.AddQueue(queue, timestamp))
                 {
-                    _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Already searching for a game on queue '{queue.Name}'.");
                     return false;
                 }
                 else if (!queue.Add(group, timestamp))
                 {
                     usageData.RemoveQueue(queue);
-                    _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Error adding to the '{queue.Name}' queue.");
                     return false;
                 }
 
@@ -1315,7 +1341,7 @@ namespace SS.Matchmaking.Modules
                 // solo search
                 if (!queue.Options.AllowSolo)
                 {
-                    _chat.SendMessage(player, $"{NextCommandName}: Queue '{queue.Name}' does not allow solo play. Create or join a group first.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Queue '{queue.Name}' does not allow solo play. Create or join a group first.");
                     return false;
                 }
 
@@ -1323,20 +1349,20 @@ namespace SS.Matchmaking.Modules
                 {
                     if (!_leagueAuthorization.IsInRole(player.Name!, queue.Options.PermitLeagueId.Value, LeagueRole.PracticePermit))
                     {
-                        _chat.SendMessage(player, $"{NextCommandName}: You do not have permission to use queue '{queue.Name}'. To get access, use: ?leaguepermit request {queue.Name}");
+                        _chat.SendMessage(player, $"{CommandNames.Next}: You do not have permission to use queue '{queue.Name}'. To get access, use: ?leaguepermit request {queue.Name}");
                         return false;
                     }
                 }
 
                 if (!usageData.AddQueue(queue, timestamp))
                 {
-                    _chat.SendMessage(player, $"{NextCommandName}: Already searching for a game on queue '{queue.Name}'.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Already searching for a game on queue '{queue.Name}'.");
                     return false;
                 }
                 else if (!queue.Add(player, timestamp))
                 {
                     usageData.RemoveQueue(queue);
-                    _chat.SendMessage(player, $"{NextCommandName}: Error adding to the '{queue.Name}' queue.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Error adding to the '{queue.Name}' queue.");
                     return false;
                 }
 
@@ -1368,7 +1394,7 @@ namespace SS.Matchmaking.Modules
                     {
                         members.UnionWith(group.Members);
 
-                        _chat.SendSetMessage(members, $"{NextCommandName}: Started searching for a game on queue{((addedQueues.Count == 1) ? "" : "s")}: {sb}.");
+                        _chat.SendSetMessage(members, $"{CommandNames.Next}: Started searching for a game on queue{((addedQueues.Count == 1) ? "" : "s")}: {sb}.");
                     }
                     finally
                     {
@@ -1378,7 +1404,7 @@ namespace SS.Matchmaking.Modules
                 else if (player is not null)
                 {
                     // Notify the player that a search has started.
-                    _chat.SendMessage(player, $"{NextCommandName}: Started searching for a game on queue{((addedQueues.Count == 1) ? "" : "s")}: {sb}.");
+                    _chat.SendMessage(player, $"{CommandNames.Next}: Started searching for a game on queue{((addedQueues.Count == 1) ? "" : "s")}: {sb}.");
                 }
             }
             finally
@@ -1448,7 +1474,7 @@ namespace SS.Matchmaking.Modules
             {
                 if (player != group.Leader)
                 {
-                    _chat.SendMessage(player, $"{CancelCommandName}: Only the group leader can cancel a search.");
+                    _chat.SendMessage(player, $"{CommandNames.CancelNext}: Only the group leader can cancel a search.");
                     return;
                 }
 
@@ -1469,13 +1495,13 @@ namespace SS.Matchmaking.Modules
                 if (usageData.State == QueueState.Playing && usageData.AutoRequeue)
                 {
                     usageData.AutoRequeue = false;
-                    _chat.SendMessage(player, $"{CancelCommandName}: Automatic requeuing disabled.");
+                    _chat.SendMessage(player, $"{CommandNames.CancelNext}: Automatic requeuing disabled.");
                     return;
                 }
 
                 if (usageData.Queued.Count == 0)
                 {
-                    _chat.SendMessage(player, $"{CancelCommandName}: There are no active searches to cancel.");
+                    _chat.SendMessage(player, $"{CommandNames.CancelNext}: There are no active searches to cancel.");
                     return;
                 }
 
@@ -1513,13 +1539,13 @@ namespace SS.Matchmaking.Modules
 
                     if (queue is null)
                     {
-                        _chat.SendMessage(player, $"{CancelCommandName}: Queue '{queueName}' not found.");
+                        _chat.SendMessage(player, $"{CommandNames.CancelNext}: Queue '{queueName}' not found.");
                         continue;
                     }
 
                     if (!usageData.RemoveQueue(queue))
                     {
-                        _chat.SendMessage(player, $"{CancelCommandName}: There is no active search to cancel on queue '{queue.Name}'.");
+                        _chat.SendMessage(player, $"{CommandNames.CancelNext}: There is no active search to cancel on queue '{queue.Name}'.");
                         return;
                     }
                     else
@@ -1537,7 +1563,7 @@ namespace SS.Matchmaking.Modules
                         try
                         {
                             members.UnionWith(group.Members);
-                            _chat.SendSetMessage(members, $"{CancelCommandName}: Search stopped on queue: {queue.Name}.");
+                            _chat.SendSetMessage(members, $"{CommandNames.CancelNext}: Search stopped on queue: {queue.Name}.");
                         }
                         finally
                         {
@@ -1546,7 +1572,7 @@ namespace SS.Matchmaking.Modules
                     }
                     else
                     {
-                        _chat.SendMessage(player, $"{CancelCommandName}: Search stopped on queue: {queue.Name}.");
+                        _chat.SendMessage(player, $"{CommandNames.CancelNext}: Search stopped on queue: {queue.Name}.");
                     }
 
                     ScheduleQueueChangedCallbacks(queue, QueueAction.Remove);
@@ -1582,7 +1608,7 @@ namespace SS.Matchmaking.Modules
                             usageData.UnsetPlaying(out _);
                         }
 
-                        _chat.SendMessage(player, $"{NextHoldCommandName}: Removed hold from {targetPlayer.Name}.");
+                        _chat.SendMessage(player, $"{CommandNames.NextHold}: Removed hold from {targetPlayer.Name}.");
                         return;
                     }
                 }
@@ -1595,13 +1621,45 @@ namespace SS.Matchmaking.Modules
 
                 if (duration > TimeSpan.Zero)
                 {
-                    _chat.SendMessage(player, $"{NextHoldCommandName}: {(targetPlayer == player ? "You" : targetPlayer.Name)} will be able to use ?{NextCommandName} after: {duration}");
+                    _chat.SendMessage(player, $"{CommandNames.NextHold}: {(targetPlayer == player ? "You" : targetPlayer.Name)} will be able to use ?{CommandNames.Next} after: {duration}");
                 }
                 else
                 {
-                    _chat.SendMessage(player, $"{NextHoldCommandName}: There is no hold on {(targetPlayer == player ? "you" : targetPlayer.Name)}.");
+                    _chat.SendMessage(player, $"{CommandNames.NextHold}: There is no hold on {(targetPlayer == player ? "you" : targetPlayer.Name)}.");
                 }
             }
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.Player,
+            Args = "<none> | -r",
+            Description = """
+                For staff members to investigate and work-around when a player gets stuck in the "Already playing in a match" state.
+                When used with no args, it prints out whether the player is in the playing state.
+                When used with -r it removes the playing state from the targeted player.
+                """)]
+        private void Command_manageplayingstate(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
+            {
+                _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: A target player is required.");
+                return;
+            }
+
+            if (!targetPlayer.TryGetExtraData(_puKey, out UsageData? usageData))
+                return;
+
+            if (parameters.Equals("-r", StringComparison.OrdinalIgnoreCase))
+            {
+                if (usageData.State == QueueState.Playing)
+                {
+                    UnsetPlaying(player, false, false);
+                    _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: Unset {targetPlayer.Name} from the {QueueState.Playing} state.");
+                }
+            }
+
+            // No matter what, always output the player's state.
+            _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: {targetPlayer.Name} is in the '{usageData.State}' state.");
         }
 
         #endregion
@@ -1649,7 +1707,7 @@ namespace SS.Matchmaking.Modules
                             foreach (Player member in group.Members)
                                 members.Add(member);
 
-                            _chat.SendSetMessage(members, $"{CancelCommandName}: Search stopped.");
+                            _chat.SendSetMessage(members, $"{CommandNames.CancelNext}: Search stopped.");
                         }
                         finally
                         {
@@ -1658,7 +1716,7 @@ namespace SS.Matchmaking.Modules
                     }
                     else if (player is not null)
                     {
-                        _chat.SendMessage(player, $"{CancelCommandName}: Search stopped.");
+                        _chat.SendMessage(player, $"{CommandNames.CancelNext}: Search stopped.");
                     }
                 }
 
@@ -1944,6 +2002,15 @@ namespace SS.Matchmaking.Modules
         {
             public readonly IMatchmakingQueue Queue = Queue ?? throw new ArgumentNullException(nameof(Queue));
             public readonly QueueAction Action = Action;
+        }
+
+        private static class CommandNames
+        {
+            public const string Next = "next";
+            public const string CancelNext = "cancelnext";
+            public const string CancelNextAlt = "cnext";
+            public const string NextHold = "nexthold";
+            public const string ManagePlayingState = "manageplayingstate";
         }
 
         #endregion
