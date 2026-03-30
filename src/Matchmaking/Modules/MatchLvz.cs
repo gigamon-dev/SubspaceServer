@@ -297,7 +297,6 @@ namespace SS.Matchmaking.Modules
                 return;
 
             MatchLvzState? newState = null;
-            bool justStarted = false;
 
             if (matchData is not null)
             {
@@ -306,13 +305,20 @@ namespace SS.Matchmaking.Modules
 
                 StatboxPreference pref = _statboxPreference?.GetPreference(player) ?? StatboxPreference.Detailed;
                 newState = arenaData.GetOrAddMatch(matchData.MatchIdentifier, pref);
+
                 if (!newState.IsInitialized && matchData.Started is not null)
                 {
                     Span<LvzObjectChange> initChanges = stackalloc LvzObjectChange[Initialize_MaxChanges];
                     Span<LvzObjectToggle> initToggles = stackalloc LvzObjectToggle[Initialize_MaxToggles];
                     newState.Start(matchData, initChanges, out _, initToggles, out _);
-                    justStarted = true;
                     // Purposely ignore changes/toggles — player hasn't been added yet.
+                }
+
+                if (!newState.IsInitialized)
+                {
+                    // Match hasn't started yet. Don't track the player — they'll be picked up properly
+                    // when the match starts and SetAndSendMatchLvz is called again for all players.
+                    return;
                 }
             }
 
@@ -327,32 +333,19 @@ namespace SS.Matchmaking.Modules
                     Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
                     Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[GetDifferences_MaxToggles];
                     MatchLvzState.GetDifferences(oldState, arenaData.DefaultLvzState!, changes, out int changesWritten, toggles, out int togglesWritten);
-                    changes = changes[..changesWritten];
-                    toggles = toggles[..togglesWritten];
-                    _lvzObjects.SetAndToggle(player, changes, toggles);
+                    _lvzObjects.SetAndToggle(player, changes[..changesWritten], toggles[..togglesWritten]);
                 }
             }
             else
             {
-                if (newState == oldState && !justStarted)
-                {
-                    // Already on the match. Nothing to do. This shouldn't happen.
-                    return;
-                }
+                if (newState == oldState)
+                    return; // Already on this state. Nothing to do. This shouldn't happen.
 
-                if (newState.IsInitialized)
-                {
-                    // Send the differences from the prior state to the new state.
-                    // When justStarted && newState == oldState, transition from default to re-initialize the display with correct data.
-                    MatchLvzState fromState = (newState == oldState || oldState is null) ? arenaData.DefaultLvzState! : oldState;
-                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
-                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[GetDifferences_MaxToggles];
-                    MatchLvzState.GetDifferences(fromState, newState, changes, out int changesWritten, toggles, out int togglesWritten);
-                    changes = changes[..changesWritten];
-                    toggles = toggles[..togglesWritten];
-                    _lvzObjects.SetAndToggle(player, changes, toggles);
-                }
-                // else: Match hasn't started yet. Track the player but no LVZ changes to send yet.
+                MatchLvzState fromState = oldState ?? arenaData.DefaultLvzState!;
+                Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
+                Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[GetDifferences_MaxToggles];
+                MatchLvzState.GetDifferences(fromState, newState, changes, out int changesWritten, toggles, out int togglesWritten);
+                _lvzObjects.SetAndToggle(player, changes[..changesWritten], toggles[..togglesWritten]);
             }
 
             oldState?.Players.Remove(player);
