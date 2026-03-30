@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentAdvisors
+﻿using System.Collections.Generic;
+
+namespace SS.Core.ComponentAdvisors
 {
     /// <summary>
     /// Interface for an adivsor on kill activities.
@@ -24,5 +26,16 @@
         /// <param name="killed">The player who got killed.</param>
         /// <param name="bounty">The number displayed in the kill message.</param>
         void EditDeath(Arena arena, ref Player killer, ref Player killed, ref short bounty) { }
+
+        /// <summary>
+        /// Filters which players in the arena receive the S2C Kill notification packet.
+        /// </summary>
+        /// <param name="arena">The arena the kill took place in.</param>
+        /// <param name="killer">The player who made the kill.</param>
+        /// <param name="killed">The player who got killed.</param>
+        /// <param name="recipients">
+        /// The set of players who will receive the kill notification. Remove players from this set to suppress the packet for them.
+        /// </param>
+        void FilterKillNotification(Arena arena, Player killer, Player killed, HashSet<Player> recipients) { }
     }
 }

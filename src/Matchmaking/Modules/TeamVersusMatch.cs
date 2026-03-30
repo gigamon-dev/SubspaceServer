@@ -54,7 +54,7 @@ namespace SS.Matchmaking.Modules
         Manages team versus matches.
         Configuration: {nameof(TeamVersusMatch)}.conf
         """)]
-    public sealed class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IMatchFocusAdvisor, ILeagueGameMode, ILeagueHelp
+    public sealed class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IMatchFocusAdvisor, IKillAdvisor, ILeagueGameMode, ILeagueHelp
     {
         private const string ConfigurationFileName = "TeamVersus.conf";
 
@@ -84,6 +84,7 @@ namespace SS.Matchmaking.Modules
 
         private AdvisorRegistrationToken<IMatchFocusAdvisor>? _iMatchFocusAdvisorToken;
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor>? _iMatchmakingQueueAdvisorToken;
+        private AdvisorRegistrationToken<IKillAdvisor>? _iKillAdvisorToken;
 
         private ConfigHandle? _teamVersusConfig;
         private PlayerDataKey<PlayerData> _pdKey;
@@ -252,6 +253,7 @@ namespace SS.Matchmaking.Modules
 
             _iMatchFocusAdvisorToken = broker.RegisterAdvisor<IMatchFocusAdvisor>(this);
             _iMatchmakingQueueAdvisorToken = broker.RegisterAdvisor<IMatchmakingQueueAdvisor>(this);
+            _iKillAdvisorToken = broker.RegisterAdvisor<IKillAdvisor>(this);
             return true;
 
             bool GetSpawnClientSettingIdentifiers()
@@ -288,6 +290,9 @@ namespace SS.Matchmaking.Modules
                 return Task.FromResult(false);
 
             if (!broker.UnregisterAdvisor(ref _iMatchmakingQueueAdvisorToken))
+                return Task.FromResult(false);
+
+            if (!broker.UnregisterAdvisor(ref _iKillAdvisorToken))
                 return Task.FromResult(false);
 
             _commandManager.RemoveCommand("loadmatchtype", Command_loadmatchtype);
@@ -619,6 +624,33 @@ namespace SS.Matchmaking.Modules
                 return null;
 
             return playerData.AssignedSlot?.MatchData;
+        }
+
+        #endregion
+
+        #region IKillAdvisor
+
+        void IKillAdvisor.FilterKillNotification(Arena arena, Player killer, Player killed, HashSet<Player> recipients)
+        {
+            // Determine which match this kill belongs to.
+            if (!killed.TryGetExtraData(_pdKey, out PlayerData? killedData) || killedData.AssignedSlot is null)
+                return; // Not a matchmaking kill — don't filter.
+
+            IMatch killedMatch = killedData.AssignedSlot.MatchData;
+
+            // Remove any player that is focused on a different match.
+            // Players with no focused match (e.g. unaffiliated spectators) are left in.
+            List<Player>? toRemove = null;
+            foreach (Player recipient in recipients)
+            {
+                IMatch? focusedMatch = _matchFocus.GetFocusedMatch(recipient);
+                if (focusedMatch is not null && focusedMatch != killedMatch)
+                    (toRemove ??= new()).Add(recipient);
+            }
+
+            if (toRemove is not null)
+                foreach (Player p in toRemove)
+                    recipients.Remove(p);
         }
 
         #endregion

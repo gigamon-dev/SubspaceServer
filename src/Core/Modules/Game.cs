@@ -2306,7 +2306,32 @@ namespace SS.Core.Modules
                 return;
 
             S2C_Kill packet = new(green, (short)killer.Id, (short)killed.Id, pts, flagCount);
-            _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
+
+            var killAdvisors = arena.GetAdvisors<IKillAdvisor>();
+            if (!killAdvisors.IsEmpty)
+            {
+                HashSet<Player> recipients = new();
+                _playerData.Lock();
+                try
+                {
+                    foreach (Player p in _playerData.Players)
+                    {
+                        if (p.Status == PlayerState.Playing && p.Arena == arena)
+                            recipients.Add(p);
+                    }
+                }
+                finally { _playerData.Unlock(); }
+
+                foreach (var advisor in killAdvisors)
+                    advisor.FilterKillNotification(arena, killer, killed, recipients);
+
+                _network.SendToSet(recipients, ref packet, NetSendFlags.Reliable);
+            }
+            else
+            {
+                _network.SendToArena(arena, null, ref packet, NetSendFlags.Reliable);
+            }
+
             _chatNetwork?.SendToArena(arena, null, $"KILL:{killer.Name}:{killed.Name}:{pts:D}:{flagCount:D}");
         }
 
