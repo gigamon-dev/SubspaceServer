@@ -636,15 +636,18 @@ namespace SS.Matchmaking.Modules
             if (!killed.TryGetExtraData(_pdKey, out PlayerData? killedData) || killedData.AssignedSlot is null)
                 return; // Not a matchmaking kill — don't filter.
 
-            IMatch killedMatch = killedData.AssignedSlot.MatchData;
+            MatchData killedMatch = killedData.AssignedSlot.MatchData;
 
-            // Remove any player that is focused on a different match.
-            // Players with no focused match (e.g. unaffiliated spectators) are left in.
+            // Only suppress players who are assigned to a different match.
+            // Spectators (no assigned slot) are left in and receive all kill messages.
             List<Player>? toRemove = null;
             foreach (Player recipient in recipients)
             {
-                IMatch? focusedMatch = _matchFocus.GetFocusedMatch(recipient);
-                if (focusedMatch is not null && focusedMatch != killedMatch)
+                if (!recipient.TryGetExtraData(_pdKey, out PlayerData? recipientData))
+                    continue;
+
+                MatchData? recipientMatch = recipientData.AssignedSlot?.MatchData;
+                if (recipientMatch is not null && recipientMatch != killedMatch)
                     (toRemove ??= new()).Add(recipient);
             }
 

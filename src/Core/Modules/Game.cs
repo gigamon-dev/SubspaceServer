@@ -2310,22 +2310,26 @@ namespace SS.Core.Modules
             var killAdvisors = arena.GetAdvisors<IKillAdvisor>();
             if (!killAdvisors.IsEmpty)
             {
-                HashSet<Player> recipients = new();
-                _playerData.Lock();
+                HashSet<Player> recipients = _objectPoolManager.PlayerSetPool.Get();
                 try
                 {
-                    foreach (Player p in _playerData.Players)
+                    _playerData.Lock();
+                    try
                     {
-                        if (p.Status == PlayerState.Playing && p.Arena == arena)
-                            recipients.Add(p);
+                        foreach (Player p in _playerData.Players)
+                        {
+                            if (p.Status == PlayerState.Playing && p.Arena == arena)
+                                recipients.Add(p);
+                        }
                     }
+                    finally { _playerData.Unlock(); }
+
+                    foreach (var advisor in killAdvisors)
+                        advisor.FilterKillNotification(arena, killer, killed, recipients);
+
+                    _network.SendToSet(recipients, ref packet, NetSendFlags.Reliable);
                 }
-                finally { _playerData.Unlock(); }
-
-                foreach (var advisor in killAdvisors)
-                    advisor.FilterKillNotification(arena, killer, killed, recipients);
-
-                _network.SendToSet(recipients, ref packet, NetSendFlags.Reliable);
+                finally { _objectPoolManager.PlayerSetPool.Return(recipients); }
             }
             else
             {
