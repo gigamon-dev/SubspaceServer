@@ -775,11 +775,12 @@ namespace SS.Matchmaking.Modules
                 _ => 0,
             };
 
-            private static Color GetColumnColor(StatboxColumn column, byte value) => column switch
+            private static Color GetColumnColor(StatboxColumn column, byte value, int livesPerPlayer = 0) => column switch
             {
                 StatboxColumn.Lives => value <= 1 ? Color.Red : Color.Yellow,
                 StatboxColumn.Repels or StatboxColumn.Rockets => value == 0 ? Color.Red : Color.Yellow,
-                StatboxColumn.Kills or StatboxColumn.Deaths => Color.Yellow,
+                StatboxColumn.Kills => Color.Yellow,
+                StatboxColumn.Deaths => livesPerPlayer > 0 && value >= livesPerPlayer - 1 ? Color.Red : Color.Yellow,
                 _ => value == 0 ? Color.Neutral : Color.Yellow,
             };
 
@@ -1715,7 +1716,7 @@ namespace SS.Matchmaking.Modules
                     return;
 
                 byte cappedValue = (byte)Math.Min((int)value, 99);
-                Color color = GetColumnColor(column, cappedValue);
+                Color color = GetColumnColor(column, cappedValue, _matchData.Configuration.LivesPerPlayer);
                 Span<LvzState> charStates = SliceColumn(_lines[GetLineIdx(slot)], colIdx).Span;
                 Set2DigitNumber(cappedValue, color, charStates, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
             }
