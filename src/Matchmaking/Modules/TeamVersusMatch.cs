@@ -632,6 +632,9 @@ namespace SS.Matchmaking.Modules
 
         void IKillAdvisor.FilterKillNotification(Arena arena, Player killer, Player killed, HashSet<Player> recipients)
         {
+            if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData) || !arenaData.FilterKillPackets)
+                return;
+
             // Determine which match this kill belongs to.
             if (!killed.TryGetExtraData(_pdKey, out PlayerData? killedData) || killedData.AssignedSlot is null)
                 return; // Not a matchmaking kill — don't filter.
@@ -786,6 +789,8 @@ namespace SS.Matchmaking.Modules
 
         [ConfigHelp<bool>("SS.Matchmaking.TeamVersusMatch", "PublicPlayEnabled", ConfigScope.Arena, Default = false,
             Description = "Whether to allow players into ships without being in a match.")]
+        [ConfigHelp<bool>("SS.Matchmaking.TeamVersusMatch", "FilterKillPackets", ConfigScope.Arena, Default = false,
+            Description = "Whether to suppress kill notification packets for players assigned to a different match. Spectators (not assigned to any match) always receive all kill notifications.")]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
             bool isRegisteredArena = false;
@@ -825,6 +830,7 @@ namespace SS.Matchmaking.Modules
                 }
 
                 arenaData.PublicPlayEnabled = _configManager.GetBool(ch, "SS.Matchmaking.TeamVersusMatch", "PublicPlayEnabled", false);
+                arenaData.FilterKillPackets = _configManager.GetBool(ch, "SS.Matchmaking.TeamVersusMatch", "FilterKillPackets", false);
 
                 // Register callbacks.
                 KillCallback.Register(arena, Callback_Kill);
@@ -7648,6 +7654,11 @@ namespace SS.Matchmaking.Modules
             public bool PublicPlayEnabled = false;
 
             /// <summary>
+            /// Whether kill notification packets are suppressed for players assigned to a different match.
+            /// </summary>
+            public bool FilterKillPackets = false;
+
+            /// <summary>
             /// A league match reserves control over the entire arena.
             /// </summary>
             public MatchData? LeagueMatch;
@@ -7660,6 +7671,7 @@ namespace SS.Matchmaking.Modules
                 ILeagueHelpToken = null;
                 Array.Clear(ShipSettings);
                 PublicPlayEnabled = false;
+                FilterKillPackets = false;
                 ReplayRecordingFilePath = null;
 
                 return true;
