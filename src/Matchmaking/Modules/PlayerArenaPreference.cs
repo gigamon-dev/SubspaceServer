@@ -18,6 +18,7 @@ namespace SS.Matchmaking.Modules
         private readonly IArenaManager _arenaManager;
         private readonly IChat _chat;
         private readonly ICommandManager _commandManager;
+        private readonly ILogManager _logManager;
         private readonly IPlayerData _playerData;
 
         private IPersist? _persist;
@@ -33,11 +34,13 @@ namespace SS.Matchmaking.Modules
             IArenaManager arenaManager,
             IChat chat,
             ICommandManager commandManager,
+            ILogManager logManager,
             IPlayerData playerData)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
         }
 
@@ -45,6 +48,9 @@ namespace SS.Matchmaking.Modules
         {
             _broker = broker;
             _persist = broker.GetInterface<IPersist>();
+
+            if (_persist is null)
+                _logManager.LogM(LogLevel.Warn, nameof(PlayerArenaPreference), "IPersist not available — arena preference will not be saved across sessions.");
 
             _pdKey = _playerData.AllocatePlayerData<PlayerPreferenceData>();
 
@@ -134,7 +140,10 @@ namespace SS.Matchmaking.Modules
 
             string arenaName = Encoding.ASCII.GetString(buffer[..bytesRead]);
             if (arenaName.Length > Constants.MaxArenaNameLength)
+            {
+                _logManager.LogP(LogLevel.Warn, nameof(PlayerArenaPreference), player, $"Persist_SetData: stored arena name '{arenaName}' exceeds max length, ignoring.");
                 return;
+            }
 
             data.PreferredArena = arenaName;
         }
