@@ -3106,6 +3106,64 @@ namespace SS.Matchmaking.Modules
 
             SendHorizonalRule(notifySet);
 
+            if (reason is not null)
+            {
+                // Find the highest and lowest rating changes across all players.
+                int maxRatingChange = int.MinValue;
+                int minRatingChange = int.MaxValue;
+
+                foreach (TeamStats teamStats in matchStats.Teams.Values)
+                    foreach (SlotStats slotStats in teamStats.Slots)
+                        foreach (MemberStats memberStats in slotStats.Members)
+                        {
+                            int rc = (int)memberStats.RatingChange;
+                            if (rc > maxRatingChange) maxRatingChange = rc;
+                            if (rc < minRatingChange) minRatingChange = rc;
+                        }
+
+                StringBuilder mvpSb = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    if (maxRatingChange > 0)
+                    {
+                        mvpSb.Append("MVP: ");
+                        bool first = true;
+                        foreach (TeamStats teamStats in matchStats.Teams.Values)
+                            foreach (SlotStats slotStats in teamStats.Slots)
+                                foreach (MemberStats memberStats in slotStats.Members)
+                                    if ((int)memberStats.RatingChange == maxRatingChange)
+                                    {
+                                        if (!first) mvpSb.Append(", ");
+                                        mvpSb.Append($"{memberStats.PlayerName} (+{maxRatingChange})");
+                                        first = false;
+                                    }
+
+                        _chat.SendSetMessage(notifySet, mvpSb);
+                        mvpSb.Clear();
+                    }
+
+                    if (minRatingChange < 0)
+                    {
+                        mvpSb.Append("LVP: ");
+                        bool first = true;
+                        foreach (TeamStats teamStats in matchStats.Teams.Values)
+                            foreach (SlotStats slotStats in teamStats.Slots)
+                                foreach (MemberStats memberStats in slotStats.Members)
+                                    if ((int)memberStats.RatingChange == minRatingChange)
+                                    {
+                                        if (!first) mvpSb.Append(", ");
+                                        mvpSb.Append($"{memberStats.PlayerName} ({minRatingChange})");
+                                        first = false;
+                                    }
+
+                        _chat.SendSetMessage(notifySet, mvpSb);
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(mvpSb);
+                }
+            }
 
             void SendHorizonalRule(HashSet<Player> notifySet)
             {
