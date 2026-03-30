@@ -106,7 +106,7 @@ namespace SS.Matchmaking.Modules
         private const int RefreshForKill_MaxToggles = Scoreboard_Score_MaxToggles + StatBox_RefreshForKill_MaxToggles;
 
         private const int StatBox_RefreshForKill_MaxChanges = StatBox_SetColumn_MaxChanges;
-        private const int StatBox_RefreshForKill_MaxToggles = StatBox_SetColumn_MaxToggles + StatBoxStrikethroughObjectsPerLine;
+        private const int StatBox_RefreshForKill_MaxToggles = StatBox_NumColumns * StatBox_SetColumn_MaxToggles + StatBoxStrikethroughObjectsPerLine;
 
         private const int StatBox_RefreshHeaderAndFrame_MaxToggles = (StatBoxMaxFrames * StatBoxObjectsPerFrame) + StatBoxObjectsPerHeader;
 
@@ -1061,6 +1061,17 @@ namespace SS.Matchmaking.Modules
 
                     SetColumn(killedSlot, livesColIdx, (short)killedSlot.Lives, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
                     SetStrikethrough(killedSlot, ref toggles, ref togglesWritten);
+
+                    if (killedSlot.Lives == 0)
+                    {
+                        // Blank out remaining columns on knockdown.
+                        for (int c = 0; c < StatBox_NumColumns; c++)
+                        {
+                            if (c == livesColIdx)
+                                continue;
+                            SetColumn(killedSlot, c, 0, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
+                        }
+                    }
                 }
             }
 
@@ -1715,10 +1726,26 @@ namespace SS.Matchmaking.Modules
                 if (_matchData != slot.MatchData)
                     return;
 
+                if (slot.Lives == 0 && _preference == StatboxPreference.Detailed)
+                {
+                    // Knocked-out players show blank columns in detailed mode.
+                    Span<LvzState> charStates = SliceColumn(_lines[GetLineIdx(slot)], colIdx).Span;
+                    for (int i = 0; i < charStates.Length; i++)
+                    {
+                        if (ClearChar(ref charStates[i], out _, out bool toggled) && toggled)
+                        {
+                            toggles[0] = new LvzObjectToggle(charStates[i].Current.Id, false);
+                            toggles = toggles[1..];
+                            togglesWritten++;
+                        }
+                    }
+                    return;
+                }
+
                 byte cappedValue = (byte)Math.Min((int)value, 99);
                 Color color = GetColumnColor(column, cappedValue, _matchData.Configuration.LivesPerPlayer);
-                Span<LvzState> charStates = SliceColumn(_lines[GetLineIdx(slot)], colIdx).Span;
-                Set2DigitNumber(cappedValue, color, charStates, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
+                Span<LvzState> charStates2 = SliceColumn(_lines[GetLineIdx(slot)], colIdx).Span;
+                Set2DigitNumber(cappedValue, color, charStates2, ref changes, ref changesWritten, ref toggles, ref togglesWritten);
             }
 
             private static void Set2DigitNumber(byte value, Color color, Span<LvzState> charStates, ref Span<LvzObjectChange> changes, ref int changesWritten, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
