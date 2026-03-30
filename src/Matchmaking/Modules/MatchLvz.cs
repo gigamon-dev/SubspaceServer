@@ -68,7 +68,7 @@ namespace SS.Matchmaking.Modules
         /// <summary>
         /// The # of objects that make up the header (labels and icons).
         /// </summary>
-        private const int StatBoxObjectsPerHeader = 4;
+        private const int StatBoxObjectsPerHeader = 6; // 0-3 (Detailed), 4-5 (Simple K/D), all tracked per-preference
 
         /// <summary>
         /// The # of objects that the header + frames
@@ -638,6 +638,7 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public ReadOnlyMemory<ObjectData> CharacterObjects => _characterObjects;
 
+
             /// <summary>
             /// The default lvz state (nothing being displayed).
             /// </summary>
@@ -738,6 +739,7 @@ namespace SS.Matchmaking.Modules
             private static readonly int[] _headerObjectIds = [0, 1, 2, 3];
             private readonly HashSet<short> _headerAndFrameEnabledObjects = new(StatBoxHeaderAndFramesObjectCount);
 
+
             // Statbox characters
             private readonly LvzState[] _characterObjects = new LvzState[StatBoxCharactersPerLine * StatBoxNumLines];
             private readonly Memory<LvzState>[] _lines = new Memory<LvzState>[StatBoxNumLines];
@@ -784,6 +786,7 @@ namespace SS.Matchmaking.Modules
             {
                 StatboxColumn.Lives => value <= 1 ? Color.Red : Color.Yellow,
                 StatboxColumn.Repels or StatboxColumn.Rockets => value == 0 ? Color.Red : Color.Yellow,
+                StatboxColumn.Kills or StatboxColumn.Deaths => Color.Yellow,
                 _ => value == 0 ? Color.Neutral : Color.Yellow,
             };
 
@@ -792,7 +795,7 @@ namespace SS.Matchmaking.Modules
                 _preference = preference;
                 (StatboxColumn col0, StatboxColumn col1, StatboxColumn col2) = preference switch
                 {
-                    StatboxPreference.Simple => (StatboxColumn.Kills, StatboxColumn.Deaths, StatboxColumn.Blank),
+                    StatboxPreference.Simple => (StatboxColumn.Blank, StatboxColumn.Kills, StatboxColumn.Deaths),
                     _ => (StatboxColumn.Lives, StatboxColumn.Repels, StatboxColumn.Rockets),
                 };
                 _col0 = col0;
@@ -808,6 +811,7 @@ namespace SS.Matchmaking.Modules
                 {
                     _lines[lineIdx] = _characterObjects.AsMemory(lineIdx * StatBoxCharactersPerLine, StatBoxCharactersPerLine);
                 }
+
             }
 
             public void Start(IMatchData matchData, Span<LvzObjectChange> changes, out int changesWritten, Span<LvzObjectToggle> toggles, out int togglesWritten)
@@ -1478,7 +1482,23 @@ namespace SS.Matchmaking.Modules
                 //
 
                 // Header labels and icons
-                ToggleObjects(0, 3, 0, ref toggles, ref togglesWritten);
+                if (_preference == StatboxPreference.Simple)
+                {
+                    // Object 0 (Name label): ON; Objects 1-3 (Detailed icons): OFF; Objects 4-5 (K, D icons): ON
+                    ToggleObject(0, true, ref toggles, ref togglesWritten);
+                    ToggleObject(1, false, ref toggles, ref togglesWritten);
+                    ToggleObject(2, false, ref toggles, ref togglesWritten);
+                    ToggleObject(3, false, ref toggles, ref togglesWritten);
+                    ToggleObject(4, true, ref toggles, ref togglesWritten);
+                    ToggleObject(5, true, ref toggles, ref togglesWritten);
+                }
+                else
+                {
+                    // Objects 0-3 (all header labels/icons): ON; Objects 4-5 (Simple K/D icons): OFF
+                    ToggleObjects(0, 3, 0, ref toggles, ref togglesWritten);
+                    ToggleObject(4, false, ref toggles, ref togglesWritten);
+                    ToggleObject(5, false, ref toggles, ref togglesWritten);
+                }
 
                 // Adjust the width of the frames based on the length of the longest name.
                 RefreshNameDisplayLength(matchData);
@@ -1555,6 +1575,22 @@ namespace SS.Matchmaking.Modules
                         _nameDisplayLength = StatBoxNameLength;
                 }
 
+                void ToggleObject(short objectId, bool enable, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
+                {
+                    bool isEnabled = _headerAndFrameEnabledObjects.Contains(objectId);
+                    if (enable == isEnabled)
+                        return;
+
+                    toggles[0] = new(objectId, enable);
+                    toggles = toggles[1..];
+                    togglesWritten++;
+
+                    if (enable)
+                        _headerAndFrameEnabledObjects.Add(objectId);
+                    else
+                        _headerAndFrameEnabledObjects.Remove(objectId);
+                }
+
                 void ToggleObjects(short fromIds, short toIds, int skip, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
                 {
                     short enableStart = (short)(fromIds + skip);
@@ -1581,6 +1617,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
             }
+
 
             private void SetName(IPlayerSlot slot, ref Span<LvzObjectChange> changes, ref int changesWritten, ref Span<LvzObjectToggle> toggles, ref int togglesWritten)
             {

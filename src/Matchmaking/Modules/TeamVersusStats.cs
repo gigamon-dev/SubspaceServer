@@ -983,6 +983,11 @@ namespace SS.Matchmaking.Modules
             short xCoord = killed.Position.X;
             short yCoord = killed.Position.Y;
 
+            // Notify listeners of the updated kills/deaths stats (e.g., for Simple statbox display).
+            Arena? matchArena = matchData.Arena;
+            if (matchArena is not null)
+                TeamVersusStatsPlayerKilledCallback.Fire(matchArena, killedSlot, killedMemberStats, killerSlot, killerMemberStats, isKnockout);
+
             //
             // Delay processing the kill to allow time for the final C2S damage packet to make it to the server.
             // This gives a chance for C2S Damage packets to make it to the server and therefore more accurate damage stats.
