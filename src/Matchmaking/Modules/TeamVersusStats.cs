@@ -3537,7 +3537,7 @@ namespace SS.Matchmaking.Modules
                     _eventsJsonWriter.WriteStartObject("rating_changes"u8);
                     foreach ((string playerName, float rating) in ratingChangeDictionary)
                     {
-                        _eventsJsonWriter.WriteNumber(playerName, rating);
+                        _eventsJsonWriter.WriteNumber(playerName, float.IsFinite(rating) ? rating : 0f);
                     }
                     _eventsJsonWriter.WriteEndObject(); // rating_changes object
                 }
