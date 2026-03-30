@@ -1,3 +1,4 @@
+using Microsoft.Extensions.ObjectPool;
 using SS.Core;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
@@ -152,7 +153,7 @@ namespace SS.Matchmaking.Modules
 
             if (parameters.IsEmpty)
             {
-                _chat.SendMessage(player, $"Your statbox preference is currently: {data.Preference.ToString().ToLowerInvariant()}");
+                _chat.SendMessage(player, $"Your statbox preference is currently: {data.Preference}");
                 return;
             }
 
@@ -171,12 +172,12 @@ namespace SS.Matchmaking.Modules
 
             if (newPref == data.Preference)
             {
-                _chat.SendMessage(player, $"Your statbox preference is already set to: {newPref.ToString().ToLowerInvariant()}");
+                _chat.SendMessage(player, $"Your statbox preference is already set to: {newPref}");
                 return;
             }
 
             data.Preference = newPref;
-            _chat.SendMessage(player, $"Statbox preference set to: {newPref.ToString().ToLowerInvariant()}");
+            _chat.SendMessage(player, $"Statbox preference set to: {newPref}");
 
             if (_broker is not null)
                 StatboxPreferenceChangedCallback.Fire(_broker, player, newPref);
@@ -184,9 +185,15 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
-        private sealed class PlayerPreferenceData
+        private sealed class PlayerPreferenceData : IResettable
         {
             public StatboxPreference Preference = StatboxPreference.Detailed;
+
+            bool IResettable.TryReset()
+            {
+                Preference = StatboxPreference.Detailed;
+                return true;
+            }
         }
     }
 }
