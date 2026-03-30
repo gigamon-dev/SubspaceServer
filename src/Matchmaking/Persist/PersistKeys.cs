@@ -11,5 +11,6 @@
     {
         MatchmakingQueuesPlayerData = 10000,
         PlayerStatboxPreference = 10001,
+        PlayerArenaPreference = 10002,
     }
 }

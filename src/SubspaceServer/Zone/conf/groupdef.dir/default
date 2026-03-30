@@ -94,6 +94,9 @@ cmd_speedstats
 cmd_best
 privcmd_best
 
+; Player Zone Preferences
+cmd_defaultarena
+
 ; Matchmaking (General)
 cmd_statbox
 
