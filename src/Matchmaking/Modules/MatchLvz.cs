@@ -297,6 +297,7 @@ namespace SS.Matchmaking.Modules
                 return;
 
             MatchLvzState? newState = null;
+            bool justStarted = false;
 
             if (matchData is not null)
             {
@@ -305,11 +306,12 @@ namespace SS.Matchmaking.Modules
 
                 StatboxPreference pref = _statboxPreference?.GetPreference(player) ?? StatboxPreference.Detailed;
                 newState = arenaData.GetOrAddMatch(matchData.MatchIdentifier, pref);
-                if (!newState.IsInitialized)
+                if (!newState.IsInitialized && matchData.Started is not null)
                 {
                     Span<LvzObjectChange> initChanges = stackalloc LvzObjectChange[Initialize_MaxChanges];
                     Span<LvzObjectToggle> initToggles = stackalloc LvzObjectToggle[Initialize_MaxToggles];
                     newState.Start(matchData, initChanges, out _, initToggles, out _);
+                    justStarted = true;
                     // Purposely ignore changes/toggles — player hasn't been added yet.
                 }
             }
@@ -332,34 +334,25 @@ namespace SS.Matchmaking.Modules
             }
             else
             {
-                if (newState == oldState)
+                if (newState == oldState && !justStarted)
                 {
                     // Already on the match. Nothing to do. This shouldn't happen.
                     return;
                 }
 
-                if (oldState is null)
+                if (newState.IsInitialized)
                 {
-                    // The player wasn't focused on a match yet.
-                    // Send the differences from the default state to the new state.
+                    // Send the differences from the prior state to the new state.
+                    // When justStarted && newState == oldState, transition from default to re-initialize the display with correct data.
+                    MatchLvzState fromState = (newState == oldState || oldState is null) ? arenaData.DefaultLvzState! : oldState;
                     Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
                     Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[GetDifferences_MaxToggles];
-                    MatchLvzState.GetDifferences(arenaData.DefaultLvzState!, newState, changes, out int changesWritten, toggles, out int togglesWritten);
+                    MatchLvzState.GetDifferences(fromState, newState, changes, out int changesWritten, toggles, out int togglesWritten);
                     changes = changes[..changesWritten];
                     toggles = toggles[..togglesWritten];
                     _lvzObjects.SetAndToggle(player, changes, toggles);
                 }
-                else
-                {
-                    // The player was already focused on a match.
-                    // Send the differences from the old state and the new state.
-                    Span<LvzObjectChange> changes = stackalloc LvzObjectChange[Initialize_MaxChanges];
-                    Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[GetDifferences_MaxToggles];
-                    MatchLvzState.GetDifferences(oldState, newState, changes, out int changesWritten, toggles, out int togglesWritten);
-                    changes = changes[..changesWritten];
-                    toggles = toggles[..togglesWritten];
-                    _lvzObjects.SetAndToggle(player, changes, toggles);
-                }
+                // else: Match hasn't started yet. Track the player but no LVZ changes to send yet.
             }
 
             oldState?.Players.Remove(player);
