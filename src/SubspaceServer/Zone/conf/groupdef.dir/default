@@ -105,7 +105,7 @@ cmd_cancelnext
 cmd_cnext
 cmd_nexthold
 
-; Matchmaking (TeamVersusMatch)
+; Matchmaking (TeamVersusMatch and TeamVersusStats)
 cmd_requestsub
 cmd_sub
 cmd_cancelsub
@@ -117,6 +117,7 @@ cmd_draw
 cmd_sc
 cmd_items
 cmd_chart
+cmd_charthelp
 cmd_freqinfo
 cmd_matchinfo
 

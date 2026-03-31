@@ -292,12 +292,14 @@ namespace SS.Matchmaking.Modules
             ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
             SpawnCallback.Register(arena, Callback_Spawn);
 
-            _commandManager.AddCommand("chart", Command_chart, arena);
+            _commandManager.AddCommand(CommandNames.Chart, Command_chart, arena);
+            _commandManager.AddCommand(CommandNames.ChartHelp, Command_charthelp, arena);
 
             arenaData.ILeagueHelpToken = arena.RegisterInterface<ILeagueHelp>(this, nameof(TeamVersusStats));
 
             return true;
         }
+
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
             if (!_arenaDataDictionary.Remove(arena, out ArenaData? arenaData))
@@ -313,7 +315,8 @@ namespace SS.Matchmaking.Modules
                 _arenaDataPool.Return(arenaData);
             }
 
-            _commandManager.RemoveCommand("chart", Command_chart, arena);
+            _commandManager.RemoveCommand(CommandNames.Chart, Command_chart, arena);
+            _commandManager.RemoveCommand(CommandNames.ChartHelp, Command_charthelp, arena);
 
             TeamVersusMatchPlayerLagOutCallback.Unregister(arena, Callback_TeamVersusMatchPlayerLagOut);
             TeamVersusMatchPlayerShipChangedCallback.Unregister(arena, Callback_TeamVersusMatchPlayerShipChanged);
@@ -1859,7 +1862,8 @@ namespace SS.Matchmaking.Modules
         void ILeagueHelp.PrintHelp(Player player)
         {
             _chat.SendMessage(player, "--- Stats Information ---------------------------------------------------------");
-            PrintCommand(player, "chart", "Prints the stats chart for the current match.");
+            PrintCommand(player, CommandNames.Chart, "Prints the stats chart for the currently focused match.");
+            PrintCommand(player, CommandNames.ChartHelp, $"Prints out information about what the ?{CommandNames.Chart} contains.");
 
             void PrintCommand(Player player, string command, string description)
             {
@@ -2659,6 +2663,8 @@ namespace SS.Matchmaking.Modules
         #endregion
 
         #region Commands
+
+        [CommandHelp(Description = "Prints stats for the currently focused match.")]
         private void Command_chart(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
@@ -2682,6 +2688,39 @@ namespace SS.Matchmaking.Modules
             {
                 _objectPoolManager.PlayerSetPool.Return(notifySet);
             }
+        }
+
+        [CommandHelp(Description = $"Prints out information about what the ?{CommandNames.Chart} contains.")]
+        private void Command_charthelp(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            _chat.SendMessage(player, "Stat    Name                       Description");
+            _chat.SendMessage(player, "----    ----                       -----------");
+            _chat.SendMessage(player, "Ki      Kills                      # of kills (final hit on an enemy resulting in death)");
+            _chat.SendMessage(player, "De      Deaths                     # of deaths");
+            _chat.SendMessage(player, "TK      Team Kills                 # of team kills (final hit on a teammate resulting in death)");
+            _chat.SendMessage(player, "SK      Solo Kills                 # of kills without assistance from another player (including enemy of enemy)");
+            _chat.SendMessage(player, "AS      Assists                    # of enemy players that died after being inflicted by recent damage *");
+            _chat.SendMessage(player, "FR      Forced Repels              # of times an enemy player used a repel after being inflicted by recent damage *");
+            _chat.SendMessage(player, "WR      Wasted Repels              # of repels that went unused due to taking a death");
+            _chat.SendMessage(player, "WRk     Wasted Rockets             # of rockets that went unused due to taking a death");
+            _chat.SendMessage(player, "WEPM    Wasted Energy Per Minute   Total energy that could have been recharged if not for being at full energy ^");
+            _chat.SendMessage(player, "dE      Average Distance to Enemy  Average # of tiles to the closest enemy (sampled 1/s)");
+            _chat.SendMessage(player, "Mi      Mines Used                 # of mines used");
+            _chat.SendMessage(player, "LO      Lag Outs                   # of times was in a ship and changed to spectator mode, left arena, or disconnected");
+            _chat.SendMessage(player, "PTime   Play Time                  Amount of time in a ship");
+            _chat.SendMessage(player, "DDealt  Damage Dealt               Amount of damage dealt to enemy players");
+            _chat.SendMessage(player, "DTaken  Damage Taken               Amount of damage taken (all sources, including team or self)");
+            _chat.SendMessage(player, "DmgE    Damage Efficiency          Damage Dealt / (Damage Dealt + Damage Taken)");
+            _chat.SendMessage(player, "KiDmg   Kill Damage                Amount of recent inflicted damage to an enemy that died *");
+            _chat.SendMessage(player, "FRDmg   Forced Repel Damage        Amount of recent inflicted damage to an enemy that repelled *");
+            _chat.SendMessage(player, "TmDmg   Team Damage                Amount of damage inflicted to teammates");
+            _chat.SendMessage(player, "AcB     Accuracy of Bombs          # hits / # fired -- Includes: Bombs, Mines, and Thors");
+            _chat.SendMessage(player, "AcG     Accuracy of Guns           Bullets hits / bullets fired -- Burst bullets not included");
+            _chat.SendMessage(player, "Rat     Rating Change              Change in leaderboard rating");
+            _chat.SendMessage(player, "TRat    Total Rating               Leaderboard rating at the start of the match + Rating Change");
+            // TODO: _chat.SendMessage(player, "ERat    Elo Rating                 OpenSkill rating represented as an Elo-like form (approximate)");
+            _chat.SendMessage(player, "* The recent damage window is the amount of time it takes for a ship to go from 0 to max energy.");
+            _chat.SendMessage(player, "^ Accounts for active utility drain: Stealth, Cloak, X-Radar, and Anti-Warp.");
         }
 
         #endregion
@@ -4415,6 +4454,12 @@ namespace SS.Matchmaking.Modules
                 ILeagueHelpToken = null;
                 return true;
             }
+        }
+
+        private static class CommandNames
+        {
+            public const string Chart = "chart";
+            public const string ChartHelp = "charthelp";
         }
 
         #endregion
