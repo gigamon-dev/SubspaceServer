@@ -6555,9 +6555,6 @@ namespace SS.Matchmaking.Modules
 
         private async void EndMatch(MatchData matchData, MatchEndReason reason, Team? winnerTeam)
         {
-            if (matchData is null)
-                return;
-
             if (matchData.Status == MatchStatus.None)
                 return;
 
@@ -6566,94 +6563,97 @@ namespace SS.Matchmaking.Modules
             if (arena is not null)
                 _arenaDataDictionary.TryGetValue(arena, out arenaData);
 
-            if (matchData.Status == MatchStatus.InProgress)
+
+            bool wasInProgress = matchData.Status == MatchStatus.InProgress;
+
+            // Change the status to stop any additional attempts to end the match while we're ending it.
+            matchData.Status = MatchStatus.Complete;
+
+            MatchEndingCallback.Fire(_broker, matchData);
+
+            bool isNotificationHandled = false;
+
+            if (_teamVersusStatsBehavior is not null)
             {
-                // Change the status to stop any additional attempts to end the match while we're ending it.
-                matchData.Status = MatchStatus.Complete;
+                // Tell the stats module to process the end of a match.
+                // It may, or may not, attempt to save data to a database.
+                // If it tries to save to the database, that work is done asynchronously.
+                // Otherwise, it's done synchronously.
+                // We can't tear down the object model of the match until it's done, so we await it.
+                isNotificationHandled = await _teamVersusStatsBehavior.MatchEndedAsync(matchData, reason, winnerTeam);
+            }
 
-                MatchEndingCallback.Fire(_broker, matchData);
+            if (!isNotificationHandled)
+            {
+                // Send a basic notification that the match ended.
+                HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
+                StringBuilder scoreBuilder = _objectPoolManager.StringBuilderPool.Get();
 
-                bool isNotificationHandled = false;
-
-                if (_teamVersusStatsBehavior is not null)
+                try
                 {
-                    // Tell the stats module to process the end of a match.
-                    // It may, or may not, attempt to save data to a database.
-                    // If it tries to save to the database, that work is done asynchronously.
-                    // Otherwise, it's done synchronously.
-                    // We can't tear down the object model of the match until it's done, so we await it.
-                    isNotificationHandled = await _teamVersusStatsBehavior.MatchEndedAsync(matchData, reason, winnerTeam);
-                }
+                    // Notification to players that have any association to the match, regardless of the arena they are in.
+                    _matchFocus.TryGetPlayers(matchData, notifySet, MatchFocusReasons.Any, null);
 
-                if (!isNotificationHandled)
-                {
-                    // Send a basic notification that the match ended.
-                    HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
-                    StringBuilder scoreBuilder = _objectPoolManager.StringBuilderPool.Get();
-
-                    try
+                    foreach (Team team in matchData.Teams)
                     {
-                        // Notification to players that have any association to the match, regardless of the arena they are in.
-                        _matchFocus.TryGetPlayers(matchData, notifySet, MatchFocusReasons.Any, null);
+                        if (scoreBuilder.Length > 0)
+                            scoreBuilder.Append('-');
 
-                        foreach (Team team in matchData.Teams)
-                        {
-                            if (scoreBuilder.Length > 0)
-                                scoreBuilder.Append('-');
-
-                            scoreBuilder.Append(team.Score);
-                        }
-
-                        switch (reason)
-                        {
-                            case MatchEndReason.Decided:
-                                if (winnerTeam is not null)
-                                {
-                                    scoreBuilder.Append($" Freq {winnerTeam.Freq}");
-                                }
-                                break;
-
-                            case MatchEndReason.Draw:
-                                scoreBuilder.Append(" DRAW");
-                                break;
-
-                            case MatchEndReason.Cancelled:
-                                scoreBuilder.Append(" CANCELLED");
-                                break;
-                        }
-
-                        _chat.SendSetMessage(notifySet, $"Final {matchData.MatchIdentifier.MatchType} Score: {scoreBuilder}");
+                        scoreBuilder.Append(team.Score);
                     }
-                    finally
+
+                    switch (reason)
                     {
-                        _objectPoolManager.PlayerSetPool.Return(notifySet);
-                        _objectPoolManager.StringBuilderPool.Return(scoreBuilder);
+                        case MatchEndReason.Decided:
+                            if (winnerTeam is not null)
+                            {
+                                scoreBuilder.Append($" Freq {winnerTeam.Freq}");
+                            }
+                            break;
+
+                        case MatchEndReason.Draw:
+                            scoreBuilder.Append(" DRAW");
+                            break;
+
+                        case MatchEndReason.Cancelled:
+                            scoreBuilder.Append(" CANCELLED");
+                            break;
                     }
+
+                    _chat.SendSetMessage(notifySet, $"Final {matchData.MatchIdentifier.MatchType} Score: {scoreBuilder}");
                 }
-
-                MatchEndedCallback.Fire(_broker, matchData);
-                TeamVersusMatchEndedCallback.Fire(arena ?? _broker, matchData, reason, winnerTeam);
-
-                if (matchData.LeagueGame is not null)
+                finally
                 {
-                    LeagueMatchEndedCallback.Fire(_broker, matchData);
-
-                    if (arenaData is not null && arenaData.LeagueMatch == matchData)
-                    {
-                        arenaData.LeagueMatch = null;
-                    }
+                    _objectPoolManager.PlayerSetPool.Return(notifySet);
+                    _objectPoolManager.StringBuilderPool.Return(scoreBuilder);
                 }
+            }
 
-                if (arena is not null 
-                    && arenaData is not null 
-                    && !string.IsNullOrWhiteSpace(arenaData.ReplayRecordingFilePath))
+            MatchEndedCallback.Fire(_broker, matchData);
+            TeamVersusMatchEndedCallback.Fire(arena ?? _broker, matchData, reason, winnerTeam);
+
+            if (matchData.LeagueGame is not null)
+            {
+                LeagueMatchEndedCallback.Fire(_broker, matchData);
+
+                if (arenaData is not null && arenaData.LeagueMatch == matchData)
                 {
-                    StopRecordingReplay(arena, arenaData);
+                    arenaData.LeagueMatch = null;
                 }
+            }
 
-                //
+            if (arena is not null 
+                && arenaData is not null 
+                && !string.IsNullOrWhiteSpace(arenaData.ReplayRecordingFilePath))
+            {
+                StopRecordingReplay(arena, arenaData);
+            }
+
+            if (wasInProgress)
+            {
                 // Clear the 'Playing' state of all players that were associated with the now completed match.
-                //
+                // This is only for when the match was "In Progress" because when a match is cancelled before it can start,
+                // there is separate logic that decides who to requeue and who to penalize with play holds.
 
                 // Note: since the order matters, this uses an array.
                 string[] playerNames = ArrayPool<string>.Shared.Rent(matchData.ParticipationList.Count);
@@ -6693,13 +6693,6 @@ namespace SS.Matchmaking.Modules
                 finally
                 {
                     ArrayPool<string>.Shared.Return(playerNames, true);
-                }
-            }
-            else
-            {
-                if (_teamVersusStatsBehavior is not null)
-                {
-                    await _teamVersusStatsBehavior.MatchEndedAsync(matchData, reason, winnerTeam);
                 }
             }
 
