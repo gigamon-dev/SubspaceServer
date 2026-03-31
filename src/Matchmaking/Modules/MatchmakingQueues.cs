@@ -58,7 +58,7 @@ namespace SS.Matchmaking.Modules
         /// <remarks>
         /// Can't use Player objects since it needs to exist even if the player disconnects.
         /// </remarks>
-        private readonly HashSet<string> _playersPlaying = new(256, StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _playersPlaying = new(Constants.TargetPlayerCount, StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Pending play holds on players that have disconnected.
@@ -125,6 +125,7 @@ namespace SS.Matchmaking.Modules
             }
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
+            PlayerGroupCreatedCallback.Register(broker, Callback_PlayerGroupCreated);
             PlayerGroupMemberAddedCallback.Register(broker, Callback_PlayerGroupMemberAdded);
             PlayerGroupMemberRemovedCallback.Register(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Register(broker, Callback_PlayerGroupDisbanded);
@@ -150,6 +151,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand(CommandNames.ManagePlayingState, Command_manageplayingstate);
 
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
+            PlayerGroupCreatedCallback.Unregister(broker, Callback_PlayerGroupCreated);
             PlayerGroupMemberAddedCallback.Unregister(broker, Callback_PlayerGroupMemberAdded);
             PlayerGroupMemberRemovedCallback.Unregister(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Unregister(broker, Callback_PlayerGroupDisbanded);
@@ -409,6 +411,7 @@ namespace SS.Matchmaking.Modules
             if (player is not null)
             {
                 SetPlayHold(player, delay);
+                UnsetPlaying(player, false, false);
             }
             else
             {
@@ -757,15 +760,37 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void Callback_PlayerGroupMemberAdded(IPlayerGroup group, Player player)
+        private void Callback_PlayerGroupCreated(IPlayerGroup group)
         {
-            if (!player.TryGetExtraData(_puKey, out UsageData? usageData))
+            if (!group.Leader.TryGetExtraData(_puKey, out UsageData? playerUsage))
                 return;
 
-            if (usageData.State == QueueState.Queued)
+            if (playerUsage.State == QueueState.Queued)
             {
-                // The player was individually searching for a match. Cancel the search now that they've joined a group.
-                RemoveFromAllQueues(player, null, usageData, true);
+                // The group leader (player creating the group) is queued as a solo. Cancel the search now that they've created a group.
+                RemoveFromAllQueues(group.Leader, null, playerUsage, true);
+            }
+        }
+
+        private void Callback_PlayerGroupMemberAdded(IPlayerGroup group, Player player)
+        {
+            if (_groupUsageDictionary.TryGetValue(group, out UsageData? groupUsage))
+            {
+                if (groupUsage.State == QueueState.Queued)
+                {
+                    // This shouldn't happen since invites should not be possible when searching.
+                    // The group was searching for a match. Cancel the search now that another player joined the group.
+                    RemoveFromAllQueues(null, group, groupUsage, true);
+                }
+            }
+
+            if (player.TryGetExtraData(_puKey, out UsageData? playerUsage))
+            {
+                if (playerUsage.State == QueueState.Queued)
+                {
+                    // The player was individually searching for a match. Cancel the search now that they've joined a group.
+                    RemoveFromAllQueues(player, null, playerUsage, true);
+                }
             }
         }
 
@@ -1124,24 +1149,26 @@ namespace SS.Matchmaking.Modules
                     int holdCount = 0;
                     foreach (Player member in group.Members)
                     {
-                        if (GetRefreshedPlayHold(member) is not null)
+                        DateTime now = DateTime.UtcNow;
+                        DateTime? holdExpiration = GetRefreshedPlayHold(member);
+                        if (holdExpiration is not null)
                         {
                             if (sb.Length > 0)
                                 sb.Append(", ");
 
                             sb.Append(member.Name);
+                            sb.Append(" (");
+                            sb.AppendFriendlyTimeSpan(now - holdExpiration.Value);
+                            sb.Append(')');
+
                             holdCount++;
                         }
                     }
 
-                    if (holdCount == 1)
+                    if (holdCount > 0)
                     {
-                        _chat.SendMessage(player, $"{CommandNames.Next}: Can't start a search because {sb} is currently has a hold due to dropping out of a match.");
-                        return;
-                    }
-                    else if (holdCount > 1)
-                    {
-                        _chat.SendMessage(player, $"{CommandNames.Next}: Can't start a search because the following members have a hold due to dropping out of a match: {sb}");
+                        _chat.SendMessage(player, $"{CommandNames.Next}: Can't start a search. The following {(holdCount > 1 ? "members have" : "member has")} a hold due to dropping out of a match:");
+                        _chat.SendWrappedText(player, sb);
                         return;
                     }
 
@@ -1211,9 +1238,7 @@ namespace SS.Matchmaking.Modules
                 ReadOnlySpan<char> token;
                 while ((token = remaining.GetToken(", ", out remaining)).Length > 0)
                 {
-                    string queueName = token.ToString(); // FIXME: string allocation needed to search dictionary
-
-                    IMatchmakingQueue? queue = AddToQueue(player, group, usageData, queueName);
+                    IMatchmakingQueue? queue = AddToQueue(player, group, usageData, token);
                     if (queue is not null)
                     {
                         addedQueues.Add(queue);
@@ -1227,9 +1252,9 @@ namespace SS.Matchmaking.Modules
                 _iMatchmakingQueueListPool.Return(addedQueues);
             }
 
-            IMatchmakingQueue? AddToQueue(Player player, IPlayerGroup? group, UsageData usageData, string queueName)
+            IMatchmakingQueue? AddToQueue(Player player, IPlayerGroup? group, UsageData usageData, ReadOnlySpan<char> queueName)
             {
-                if (!_queues.TryGetValue(queueName, out IMatchmakingQueue? queue))
+                if (!_queuesLookup.TryGetValue(queueName, out IMatchmakingQueue? queue))
                 {
                     // Did not find a queue with the name provided.
                     // Check if the name provided is an alias.
@@ -1515,9 +1540,9 @@ namespace SS.Matchmaking.Modules
                 ReadOnlySpan<char> token;
                 while ((token = remaining.GetToken(", ", out remaining)).Length > 0)
                 {
-                    string queueName = token.ToString(); // FIXME: string allocation needed to search dictionary
+                    ReadOnlySpan<char> queueName = token;
 
-                    if (!_queues.TryGetValue(queueName, out IMatchmakingQueue? queue))
+                    if (!_queuesLookup.TryGetValue(queueName, out IMatchmakingQueue? queue))
                     {
                         // Did not find a queue with the name provided.
                         // Check if the name provided is an alias.
@@ -1955,6 +1980,14 @@ namespace SS.Matchmaking.Modules
 
             public void SetPlaying(bool isSub)
             {
+                if (State == QueueState.Playing)
+                {
+                    // Already playing.
+                    // This can happen if it's a group since it will get called for each member.
+                    // We only want to do run it once, otherwise the previous queues will be cleared.
+                    return; 
+                }
+
                 State = QueueState.Playing;
                 IsPlayingAsSub = isSub;
 

@@ -10,7 +10,7 @@ namespace SS.Matchmaking.Advisors
         /// A matchmaking module can define a default queue for the arena(s) it manages.
         /// </summary>
         /// <param name="arena">The arena to get the default queue for.</param>
-        /// <returns>The name of the default queue. Otherwise, null.</returns>
+        /// <returns>The name of the default queue. Otherwise,  <see langword="null"/>.</returns>
         string? GetDefaultQueue(Arena arena) => null;
 
         /// <summary>
@@ -19,8 +19,8 @@ namespace SS.Matchmaking.Advisors
         /// </summary>
         /// <param name="arena">The arena to get the alias for.</param>
         /// <param name="alias">The alias to check.</param>
-        /// <returns>The queue name if one was found. Otherwise, null.</returns>
-        string? GetQueueNameByAlias(Arena arena, string alias) => null;
+        /// <returns>The queue name if one was found. Otherwise,  <see langword="null"/>.</returns>
+        string? GetQueueNameByAlias(Arena arena, ReadOnlySpan<char> alias) => null;
 
         /// <summary>
         /// Gets information about the player's current match.

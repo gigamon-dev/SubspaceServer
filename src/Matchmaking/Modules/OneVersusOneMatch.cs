@@ -153,7 +153,7 @@ namespace SS.Matchmaking.Modules
             return null;
         }
 
-        string? IMatchmakingQueueAdvisor.GetQueueNameByAlias(Arena arena, string alias)
+        string? IMatchmakingQueueAdvisor.GetQueueNameByAlias(Arena arena, ReadOnlySpan<char> alias)
         {
             if (!string.Equals(arena.BaseName, _arenaBaseName, StringComparison.OrdinalIgnoreCase)
                 || _boxConfigs is null

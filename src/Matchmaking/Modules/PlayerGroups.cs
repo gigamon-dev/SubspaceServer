@@ -222,7 +222,7 @@ namespace SS.Matchmaking.Modules
 
             ReadOnlySpan<char> remaining = parameters;
             ReadOnlySpan<char> token = remaining.GetToken(' ', out remaining);
-            if (MemoryExtensions.Equals(token, "invite", StringComparison.OrdinalIgnoreCase))
+            if (token.Equals("invite", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup? group = playerData.Group;
                 if (group is not null)
@@ -311,6 +311,8 @@ namespace SS.Matchmaking.Modules
                     group.Leader = player;
                     group.Members.Add(player);
                     _groups.Add(group);
+
+                    PlayerGroupCreatedCallback.Fire(_broker, group);
                 }
 
                 group.PendingMembers.Add(targetPlayer);
@@ -319,7 +321,7 @@ namespace SS.Matchmaking.Modules
                 _chat.SendMessage(targetPlayer, $"{player.Name} has invited you to a group. To accept: ?group accept {player.Name}. To decline: ?group decline {player.Name}");
                 _chat.SendMessage(player, $"{GroupCommandName}: {targetPlayer.Name} has been invited. To cancel the invite, use: ?{GroupCommandName} uninvite {targetPlayer.Name}");
             }
-            else if (MemoryExtensions.Equals(token, "uninvite", StringComparison.OrdinalIgnoreCase))
+            else if (token.Equals("uninvite", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup? group = playerData.Group;
                 if (group is null)
@@ -356,7 +358,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
             }
-            else if (MemoryExtensions.Equals(token, "accept", StringComparison.OrdinalIgnoreCase))
+            else if (token.Equals("accept", StringComparison.OrdinalIgnoreCase))
             {
                 if (playerData.Group is not null)
                 {
@@ -451,7 +453,7 @@ namespace SS.Matchmaking.Modules
                 _chat.SendMessage(player, $"{GroupCommandName}: Joined group:");
                 PrintDetailedGroupInfo(player, group);
             }
-            else if (MemoryExtensions.Equals(token, "decline", StringComparison.OrdinalIgnoreCase))
+            else if (token.Equals("decline", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup? group;
 
@@ -499,7 +501,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
             }
-            else if (MemoryExtensions.Equals(token, "leave", StringComparison.OrdinalIgnoreCase))
+            else if (token.Equals("leave", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup? group = playerData.Group;
                 if (group is null)
@@ -510,7 +512,7 @@ namespace SS.Matchmaking.Modules
 
                 RemoveMember(group, player, PlayerGroupMemberRemovedReason.Leave);
             }
-            else if (MemoryExtensions.Equals(token, "kick", StringComparison.OrdinalIgnoreCase))
+            else if (token.Equals("kick", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup? group = playerData.Group;
                 if (group is null)
@@ -553,7 +555,7 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
             }
-            else if (MemoryExtensions.Equals(token, "leader", StringComparison.OrdinalIgnoreCase))
+            else if (token.Equals("leader", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup? group = playerData.Group;
                 if (group is null)
@@ -612,7 +614,7 @@ namespace SS.Matchmaking.Modules
                     _objectPoolManager.PlayerSetPool.Return(set);
                 }
             }
-            else if (MemoryExtensions.Equals(token, "disband", StringComparison.OrdinalIgnoreCase))
+            else if (token.Equals("disband", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup? group = playerData.Group;
                 if (group is null)
