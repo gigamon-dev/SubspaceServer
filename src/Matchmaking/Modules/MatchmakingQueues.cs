@@ -402,7 +402,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        void IMatchmakingQueues.UnsetPlayingAfterDelay(string playerName, TimeSpan delay)
+        void IMatchmakingQueues.UnsetPlayingWithHold(string playerName, TimeSpan duration)
         {
             if (!_playersPlaying.Remove(playerName))
                 return;
@@ -410,29 +410,29 @@ namespace SS.Matchmaking.Modules
             Player? player = _playerData.FindPlayer(playerName);
             if (player is not null)
             {
-                SetPlayHold(player, delay);
+                SetPlayHold(player, duration);
                 UnsetPlaying(player, false, false);
             }
             else
             {
                 // The player is not logged on.
                 // However, we still want to remember that the player should have a play hold if they reconnect.
-                if (!_pendingPlayHolds.TryGetValue(playerName, out TimeSpan duration)
-                    || duration < delay)
+                if (!_pendingPlayHolds.TryGetValue(playerName, out TimeSpan existingDuration)
+                    || existingDuration < duration)
                 {
-                    _pendingPlayHolds[playerName] = delay;
+                    _pendingPlayHolds[playerName] = duration;
                 }
             }
         }
 
-        void IMatchmakingQueues.UnsetPlayingAfterDelay<T>(T playerNames, TimeSpan delay)
+        void IMatchmakingQueues.UnsetPlayingWithHold<T>(T playerNames, TimeSpan duration)
         {
             if (playerNames is null)
                 return;
 
             foreach (string playerName in playerNames)
             {
-                ((IMatchmakingQueues)this).UnsetPlayingAfterDelay(playerName, delay);
+                ((IMatchmakingQueues)this).UnsetPlayingWithHold(playerName, duration);
             }
         }
 

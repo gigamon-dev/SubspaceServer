@@ -4934,7 +4934,7 @@ namespace SS.Matchmaking.Modules
                             _matchmakingQueues.UnsetPlayingDueToCancel(playersByName.Values);
 
                             // For the players that disconnected, penalize with a delay.
-                            _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
+                            _matchmakingQueues.UnsetPlayingWithHold(abandonedPlayerNames, _abandonStartPenaltyDuration);
 
                             return;
                         }
@@ -5632,7 +5632,7 @@ namespace SS.Matchmaking.Modules
                         _matchmakingQueues.UnsetPlayingDueToCancel(readyPlayers);
 
                         // Players that abandoned the match are penalized with a delay.
-                        _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
+                        _matchmakingQueues.UnsetPlayingWithHold(abandonedPlayerNames, _abandonStartPenaltyDuration);
                         return;
                     }
 
@@ -5799,7 +5799,7 @@ namespace SS.Matchmaking.Modules
                         _matchmakingQueues.UnsetPlayingDueToCancel(readyPlayers);
 
                         // Players that abandoned the match are penalized with a delay.
-                        _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
+                        _matchmakingQueues.UnsetPlayingWithHold(abandonedPlayerNames, _abandonStartPenaltyDuration);
 
                         return;
                     }
@@ -5849,7 +5849,7 @@ namespace SS.Matchmaking.Modules
                                 abandonedPlayerNames.Add(player.Name!);
                             }
 
-                            _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _notReadyStartPenaltyDuration);
+                            _matchmakingQueues.UnsetPlayingWithHold(abandonedPlayerNames, _notReadyStartPenaltyDuration);
 
                             return;
                         }
@@ -5994,7 +5994,7 @@ namespace SS.Matchmaking.Modules
                             _matchmakingQueues.UnsetPlayingDueToCancel(players);
 
                             // Players that abandoned the match are penalized with a delay.
-                            _matchmakingQueues.UnsetPlayingAfterDelay(abandonedPlayerNames, _abandonStartPenaltyDuration);
+                            _matchmakingQueues.UnsetPlayingWithHold(abandonedPlayerNames, _abandonStartPenaltyDuration);
 
                             return;
                         }

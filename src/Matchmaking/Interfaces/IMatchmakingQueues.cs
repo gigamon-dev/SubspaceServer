@@ -125,41 +125,38 @@ namespace SS.Matchmaking.Interfaces
         void UnsetPlayingByName<T>(T playerNames, bool allowAutoRequeue) where T : IReadOnlyCollection<string>;
 
         /// <summary>
-        /// Removes the 'Playing' state of a player after a <paramref name="delay"/>.
+        /// Removes the 'Playing' state from a player and penalizes the player by placing a hold that prevents joining another match for a specified <paramref name="duration"/>.
         /// </summary>
         /// <remarks>
-        /// This can be useful for penalizing a player for leaving a match without being subbed, 
-        /// preferably called when the match ends so that the <paramref name="delay"/> is relative to the match ending time.
-        /// Also, this should probably also only be used if the player was not on a pre-made group.
+        /// This can be useful for penalizing a player for:
+        /// <list type="bullet">
+        ///     <item>not readying up or disconnecting before a match starts</item>
+        ///     <item>
+        ///         leaving a match without being subbed, preferably called when the match ends so that the <paramref name="duration"/> is relative to the match ending time.
+        ///     </item>
+        /// </list>
         /// <para>
-        /// The delay will persist even if the player disconnects/reconnects.
+        /// A hold persists even if the player disconnects and reconnects.
         /// For example, if a player has 1 minute remaining and disconnects, 
         /// the remaining duration will be restored when the player reconnects.
         /// This should help dissuade players from switching names to avoid penalties.
         /// </para>
         /// </remarks>
-        /// <param name="playerName">The name of the player to unset from the 'Playing' state.</param>
-        /// <param name="delay">How long to hold the player in 'Playing'.</param>
-        void UnsetPlayingAfterDelay(string playerName, TimeSpan delay);
+        /// <param name="playerName">The name of the player to affect.</param>
+        /// <param name="duration">How long to place a hold for.</param>
+        void UnsetPlayingWithHold(string playerName, TimeSpan duration);
 
         /// <summary>
-        /// Removes the 'Playing' state of a set of players after a <paramref name="delay"/>.
+        /// Removes the 'Playing' state from a set of players and penalizes them with holds that prevent them from joining another match for a specified <paramref name="duration"/>
         /// </summary>
         /// <remarks>
-        /// This can be useful for penalizing a player for leaving a match without being subbed, 
-        /// preferably called when the match ends so that the <paramref name="delay"/> is relative to the match ending time.
-        /// Also, this should probably also only be used if the player was not on a pre-made group.
-        /// <para>
-        /// The delay will persist even if the player disconnects/reconnects.
-        /// For example, if a player has 1 minute remaining and disconnects, 
-        /// the remaining duration will be restored when the player reconnects.
-        /// This should help dissuade players from switching names to avoid penalties.
-        /// </para>
+        /// <inheritdoc cref="UnsetPlayingWithHold(string, TimeSpan)" path="/remarks"/>
+        /// <para>This method is generic to prevent boxing of the collection enumerator.</para>
         /// </remarks>
         /// <typeparam name="T">A collection of player names.</typeparam>
-        /// <param name="playerNames">The names of players to unset from the 'Playing' state.</param>
-        /// <param name="delay">How long to hold the player in 'Playing'.</param>
-        void UnsetPlayingAfterDelay<T>(T playerNames, TimeSpan delay) where T : IReadOnlyCollection<string>;
+        /// <param name="playerNames">The names of the players to affect.</param>
+        /// <param name="duration">How long to place a hold for.</param>
+        void UnsetPlayingWithHold<T>(T playerNames, TimeSpan duration) where T : IReadOnlyCollection<string>;
 
         #endregion
 
