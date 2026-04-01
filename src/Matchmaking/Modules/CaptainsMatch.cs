@@ -321,7 +321,10 @@ namespace SS.Matchmaking.Modules
             // ?chart is managed by TeamVersusStats.
 
             foreach (MatchCountdown c in arenaData.PendingCountdowns)
+            {
+                _mainloopTimer.ClearTimer<MatchCountdown>(Timer_PreCountdown, c);
                 _mainloopTimer.ClearTimer<MatchCountdown>(Timer_Countdown, c);
+            }
 
             foreach (ActiveMatch m in arenaData.ActiveMatches)
             {
@@ -458,6 +461,9 @@ namespace SS.Matchmaking.Modules
 
             _game.SetShipAndFreq(killed, ShipType.Spec, killed.Freq);
 
+            // Track in SpecOutSlots (lives=0) so EndMatch can clean up PlayerToMatch correctly.
+            killedMatch.SpecOutSlots[killed] = killedSlot;
+
             if (killerSlot is not null && _tvStatsBehavior is not null && matchIsActive)
                 _ = _tvStatsBehavior.PlayerKilledAsync(ServerTick.Now, DateTime.UtcNow, killedMatch.MatchData, killed, killedSlot, killer!, killerSlot, isKnockout);
 
@@ -509,7 +515,12 @@ namespace SS.Matchmaking.Modules
                 // Player re-entering from spec — restore their slot if they specced out voluntarily.
                 if (match.SpecOutSlots.TryGetValue(player, out CaptainsPlayerSlot? slot))
                 {
-                    if (newFreq == slot.Team.Freq && slot.Lives > 0)
+                    if (slot.Lives <= 0)
+                    {
+                        // Knocked out — cannot re-enter.
+                        _game.SetShipAndFreq(player, ShipType.Spec, newFreq);
+                    }
+                    else if (newFreq == slot.Team.Freq)
                     {
                         // Enforce MaxLagOuts.
                         if (slot.LagOuts > arenaData.Config.MaxLagOuts)
@@ -534,7 +545,7 @@ namespace SS.Matchmaking.Modules
                         if (newShip != targetShip)
                             _game.SetShipAndFreq(player, targetShip, newFreq);
                     }
-                    else if (newFreq != slot.Team.Freq)
+                    else
                     {
                         // Trying to switch teams mid-match — reject.
                         _game.SetShipAndFreq(player, ShipType.Spec, newFreq);
@@ -589,9 +600,14 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            if (GetPlayerFormation(arenaData, player) is not null || IsPlayerInMatch(arenaData, player))
+            if (GetPlayerFormation(arenaData, player) is not null)
             {
-                _chat.SendMessage(player, "You are already in a team or active match.");
+                _chat.SendMessage(player, "You are already in a team formation. Use ?leave or ?disband to leave first.");
+                return;
+            }
+            if (IsPlayerInMatch(arenaData, player))
+            {
+                _chat.SendMessage(player, "You are already in an active match.");
                 return;
             }
 
@@ -617,9 +633,14 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            if (GetPlayerFormation(arenaData, player) is not null || IsPlayerInMatch(arenaData, player))
+            if (GetPlayerFormation(arenaData, player) is not null)
             {
-                _chat.SendMessage(player, "You are already in a team or active match.");
+                _chat.SendMessage(player, "You are already in a team formation. Use ?leave or ?disband to leave first.");
+                return;
+            }
+            if (IsPlayerInMatch(arenaData, player))
+            {
+                _chat.SendMessage(player, "You are already in an active match.");
                 return;
             }
 
@@ -1008,6 +1029,12 @@ namespace SS.Matchmaking.Modules
             if (playerSlot is null)
             {
                 _chat.SendMessage(player, "You are not in the active match.");
+                return;
+            }
+
+            if (!(playerSlot.Team is CaptainsTeam ct && ct.OriginalCaptain == player))
+            {
+                _chat.SendMessage(player, "Only the team captain can forfeit.");
                 return;
             }
 
@@ -1457,9 +1484,31 @@ namespace SS.Matchmaking.Modules
 
         private void BeginCountdown(Arena arena, ArenaData arenaData, MatchCountdown countdown)
         {
+            // Warp all players to their start positions immediately when both teams are ready.
+            if (arenaData.Config.StartLocations.Count > 0)
+            {
+                foreach (var (p, slot) in countdown.ActiveMatch.ActiveSlots)
+                {
+                    if (arenaData.Config.StartLocations.TryGetValue(slot.Team.Freq, out (short X, short Y) loc))
+                        _game.WarpTo(p, loc.X, loc.Y);
+                }
+            }
+
+            _chat.SendArenaMessage(arena, "Match starting in 15 seconds!");
+            // 12 seconds before the 3-second countdown begins = 15 seconds total to GO!
+            _mainloopTimer.SetTimer(Timer_PreCountdown, 12000, Timeout.Infinite, countdown, countdown);
+        }
+
+        private bool Timer_PreCountdown(MatchCountdown countdown)
+        {
+            Arena? arena = countdown.Arena;
+            if (arena is null)
+                return false;
+
             countdown.Seconds = 3;
             _chat.SendArenaMessage(arena, "-3-");
             _mainloopTimer.SetTimer(Timer_Countdown, 1000, 1000, countdown, countdown);
+            return false;
         }
 
         /// <summary>
@@ -1565,16 +1614,6 @@ namespace SS.Matchmaking.Modules
                 : string.Empty;
             _chat.SendArenaMessage(arena, $"Match started! Freq {match.Freq1} vs Freq {match.Freq2}. Each player has {arenaData.Config.LivesPerPlayer} lives.{timeMsg}");
 
-            // Warp each player to their freq's configured start location.
-            if (arenaData.Config.StartLocations.Count > 0)
-            {
-                foreach (var (p, slot) in match.ActiveSlots)
-                {
-                    if (arenaData.Config.StartLocations.TryGetValue(slot.Team.Freq, out (short X, short Y) loc))
-                        _game.WarpTo(p, loc.X, loc.Y);
-                }
-            }
-
             if (arenaData.Config.TimeLimit is { } tl)
                 _mainloopTimer.SetTimer<ActiveMatch>(Timer_MatchTimeExpired, (int)tl.TotalMilliseconds, Timeout.Infinite, match, match);
         }
@@ -1648,6 +1687,41 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
+            // Rebuild the losing team as a Formation so they can re-challenge.
+            ITeam? loserTeam = match.MatchData.Teams.FirstOrDefault(t => t.Freq == losingFreq);
+            if (loserTeam is CaptainsTeam loserCaptainsTeam)
+            {
+                Player? loserCaptain = loserCaptainsTeam.OriginalCaptain;
+                var loserPlayers = new HashSet<Player>();
+
+                foreach (var (p, slot) in match.ActiveSlots)
+                    if (slot.Team.Freq == losingFreq)
+                        loserPlayers.Add(p);
+                foreach (var (p, slot) in match.SpecOutSlots)
+                    if (slot.Team.Freq == losingFreq)
+                        loserPlayers.Add(p);
+
+                if (loserCaptain is null || !loserPlayers.Contains(loserCaptain))
+                    loserCaptain = loserPlayers.FirstOrDefault();
+
+                if (loserCaptain is not null && loserPlayers.Count > 0)
+                {
+                    var loserFormation = new Formation
+                    {
+                        Captain = loserCaptain,
+                    };
+                    foreach (Player p in loserPlayers)
+                    {
+                        loserFormation.Members.Add(p);
+                        if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
+                            pd.ManagedArena = arena;
+                    }
+
+                    arenaData.Formations[loserCaptain] = loserFormation;
+                    _chat.SendArenaMessage(arena, $"Freq {losingFreq} ({loserCaptain.Name}'s team) is regrouping. Challenge them: ?challenge {loserCaptain.Name}");
+                }
+            }
+
             // Remove extra position data watches for winning team players and remove from PlayerToMatch.
             foreach (var (p, _) in match.ActiveSlots)
                 RemoveExtraPositionDataWatch(p);
@@ -1707,6 +1781,7 @@ namespace SS.Matchmaking.Modules
                     c => c.Formation1 == formation || c.Formation2 == formation);
                 if (countdown is not null)
                 {
+                    _mainloopTimer.ClearTimer<MatchCountdown>(Timer_PreCountdown, countdown);
                     _mainloopTimer.ClearTimer<MatchCountdown>(Timer_Countdown, countdown);
                     arenaData.PendingCountdowns.Remove(countdown);
 
