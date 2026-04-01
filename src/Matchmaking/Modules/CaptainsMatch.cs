@@ -1213,7 +1213,7 @@ namespace SS.Matchmaking.Modules
                         foreach (IPlayerSlot iSlot in team.Slots)
                         {
                             var slot = (CaptainsPlayerSlot)iSlot;
-                            string status = slot.Lives > 0 ? $"{slot.Lives} live{(slot.Lives != 1 ? "s" : "")}" : "eliminated";
+                            string status = slot.Lives > 0 ? $"{slot.Lives} {(slot.Lives != 1 ? "lives" : "life")}" : "eliminated";
                             _chat.SendMessage(player, $"  {slot.PlayerName}: {status}");
                         }
                     }
@@ -1494,7 +1494,13 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            _chat.SendArenaMessage(arena, "Match starting in 15 seconds!");
+            string timeMsg = arenaData.Config.TimeLimit is { } tl
+                ? $" Time limit: {(int)tl.TotalMinutes}m."
+                : string.Empty;
+            int lives = arenaData.Config.LivesPerPlayer;
+            _chat.SendArenaMessage(arena,
+                $"Match starting in 15 seconds! Freq {countdown.ActiveMatch.Freq1} vs Freq {countdown.ActiveMatch.Freq2}. " +
+                $"Each player has {lives} {(lives != 1 ? "lives" : "life")}.{timeMsg}");
             // 12 seconds before the 3-second countdown begins = 15 seconds total to GO!
             _mainloopTimer.SetTimer(Timer_PreCountdown, 12000, Timeout.Infinite, countdown, countdown);
         }
@@ -1608,11 +1614,6 @@ namespace SS.Matchmaking.Modules
 
             if (_tvStatsBehavior is not null)
                 _ = _tvStatsBehavior.MatchStartedAsync(matchData);
-
-            string timeMsg = arenaData.Config.TimeLimit is { } tlMsg
-                ? $" Time limit: {(int)tlMsg.TotalMinutes}m."
-                : string.Empty;
-            _chat.SendArenaMessage(arena, $"Match started! Freq {match.Freq1} vs Freq {match.Freq2}. Each player has {arenaData.Config.LivesPerPlayer} lives.{timeMsg}");
 
             if (arenaData.Config.TimeLimit is { } tl)
                 _mainloopTimer.SetTimer<ActiveMatch>(Timer_MatchTimeExpired, (int)tl.TotalMilliseconds, Timeout.Infinite, match, match);
