@@ -733,14 +733,24 @@ namespace SS.Matchmaking.Modules
 
             foreach ((short freq, TeamStats teamStats) in matchStats.Teams)
             {
+                ITeam? team = teamStats.Team;
+                if (team is null)
+                    continue;
+
                 foreach (SlotStats slotStats in teamStats.Slots)
                 {
+                    if (slotStats.Slot is null || slotStats.Slot.Status != PlayerSlotStatus.Playing)
+                        continue;
+
                     MemberStats? memberStats = slotStats.Current;
                     if (memberStats is null)
                         continue;
 
                     Player? player = _playerData.FindPlayer(memberStats.PlayerName);
                     if (player is null 
+                        || player.Arena != arena
+                        || player.Freq != team.Freq
+                        || player.Ship == ShipType.Spec
                         || player.Flags.IsDead
                         || (playRegion is not null && !_mapData.RegionsAt(arena, (short)(player.Position.X / 16), (short)(player.Position.Y / 16)).Contains(playRegion)))
                     {
@@ -754,12 +764,18 @@ namespace SS.Matchmaking.Modules
                         if (slotStats == otherSlotStats)
                             continue;
 
+                        if (otherSlotStats.Slot is null || otherSlotStats.Slot.Status != PlayerSlotStatus.Playing)
+                            continue;
+
                         MemberStats? otherMemberStats = otherSlotStats.Current;
                         if (otherMemberStats is null)
                             continue;
 
                         Player? otherPlayer = _playerData.FindPlayer(otherMemberStats.PlayerName);
                         if (otherPlayer is null
+                            || otherPlayer.Arena != arena
+                            || otherPlayer.Freq != team.Freq
+                            || otherPlayer.Ship == ShipType.Spec
                             || otherPlayer.Flags.IsDead
                             || (playRegion is not null && !_mapData.RegionsAt(arena, (short)(otherPlayer.Position.X / 16), (short)(otherPlayer.Position.Y / 16)).Contains(playRegion)))
                         {
@@ -796,14 +812,24 @@ namespace SS.Matchmaking.Modules
                         if (teamStats == otherTeamStats)
                             continue;
 
+                        ITeam? otherTeam = otherTeamStats.Team;
+                        if (otherTeam is null)
+                            continue;
+
                         foreach (SlotStats otherSlotStats in otherTeamStats.Slots)
                         {
+                            if (otherSlotStats.Slot is null || otherSlotStats.Slot.Status != PlayerSlotStatus.Playing)
+                                continue;
+
                             MemberStats? otherMemberStats = otherSlotStats.Current;
                             if (otherMemberStats is null)
                                 continue;
 
                             Player? otherPlayer = _playerData.FindPlayer(otherMemberStats.PlayerName);
                             if (otherPlayer is null
+                                || otherPlayer.Arena != arena
+                                || otherPlayer.Freq != otherTeam.Freq
+                                || otherPlayer.Ship == ShipType.Spec
                                 || otherPlayer.Flags.IsDead
                                 || (playRegion is not null && !_mapData.RegionsAt(arena, (short)(otherPlayer.Position.X / 16), (short)(otherPlayer.Position.Y / 16)).Contains(playRegion)))
                             {

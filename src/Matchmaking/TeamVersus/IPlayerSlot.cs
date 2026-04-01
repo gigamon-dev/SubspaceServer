@@ -20,6 +20,11 @@ namespace SS.Matchmaking.TeamVersus
         int SlotIdx { get; }
 
         /// <summary>
+        /// The slot's status.
+        /// </summary>
+        public PlayerSlotStatus Status { get; }
+
+        /// <summary>
         /// The name of the player that is currently assigned to the slot.
         /// </summary>
         string? PlayerName { get; }

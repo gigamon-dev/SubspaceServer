@@ -7243,29 +7243,6 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private enum PlayerSlotStatus
-        {
-            /// <summary>
-            /// The slot is unused and should not be filled.
-            /// </summary>
-            None,
-
-            /// <summary>
-            /// The slot is waiting to be filled or refilled.
-            /// </summary>
-            Waiting,
-
-            /// <summary>
-            /// The slot is filled.
-            /// </summary>
-            Playing,
-
-            /// <summary>
-            /// The slot was defeated.
-            /// </summary>
-            KnockedOut,
-        }
-
         /// <summary>
         /// The reason why a player is allowed a limited time to ship change.
         /// </summary>
@@ -7306,12 +7283,7 @@ namespace SS.Matchmaking.Modules
 
             public int SlotIdx { get; }
 
-            /// <summary>
-            /// The slot's status.
-            /// Used to tell whether the slot needs to be filled with a player.
-            /// and whether the slot is knocked out (when checking for a win condition).
-            /// </summary>
-            public PlayerSlotStatus Status;
+            public PlayerSlotStatus Status { get; set; }
 
             public string? PlayerName { get; set; }
 
