@@ -5371,9 +5371,9 @@ namespace SS.Matchmaking.Modules
                     if (remainingTeamCount < 2)
                     {
                         if (remainingTeamCount == 0)
-                            _chat.SendSetMessage(players, $"There are no remaining active teams. The game with automatically end in {matchData.Configuration.InactiveTeamsMatchCompletionDelay.TotalSeconds} seconds if not refilled.");
+                            _chat.SendSetMessage(players, $"There are no remaining active teams. The game will automatically end in {matchData.Configuration.InactiveTeamsMatchCompletionDelay.TotalSeconds} seconds if not refilled.");
                         else
-                            _chat.SendSetMessage(players, $"There is a single remaining active team. The game with automatically end in {matchData.Configuration.InactiveTeamsMatchCompletionDelay.TotalSeconds} seconds if not refilled.");
+                            _chat.SendSetMessage(players, $"There is a single remaining active team. The game will automatically end in {matchData.Configuration.InactiveTeamsMatchCompletionDelay.TotalSeconds} seconds if not refilled.");
 
                         // Schedule a timer to check for match completion.
                         // The timer is to allow player(s) to ?return before the check happens. (e.g. server lag spike kicking all players to spec)
