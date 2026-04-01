@@ -1508,7 +1508,8 @@ namespace SS.Matchmaking.Modules
             short freq2 = formation2.AssignedFreq!.Value;
 
             var config = new CaptainsMatchConfiguration(arenaData.Config);
-            var matchData = new CaptainsMatchData(arena, config, freq1);
+            int pairIdx = arenaData.Config.FreqPairs.FindIndex(p => p.F1 == freq1 || p.F2 == freq1);
+            var matchData = new CaptainsMatchData(arena, config, (short)(pairIdx >= 0 ? pairIdx : 0));
 
             var activeMatch = new ActiveMatch
             {
@@ -2089,10 +2090,26 @@ namespace SS.Matchmaking.Modules
 
         // TeamVersus-compatible match data model used by MatchLvz and MatchFocus.
 
+        /// <summary>No play-area mechanics for captains matches; all regions are null.</summary>
+        private sealed class CaptainsMatchBoxConfiguration : IMatchBoxConfiguration
+        {
+            public string? PlayAreaMapRegion => null;
+        }
+
         private sealed class CaptainsMatchConfiguration : IMatchConfiguration
         {
             private readonly ArenaConfig _config;
-            public CaptainsMatchConfiguration(ArenaConfig config) => _config = config;
+            private readonly IMatchBoxConfiguration[] _boxes;
+
+            public CaptainsMatchConfiguration(ArenaConfig config)
+            {
+                _config = config;
+                // One box per freq pair so that BoxIdx (pair index) is always a valid index.
+                _boxes = new IMatchBoxConfiguration[Math.Max(1, config.FreqPairs.Count)];
+                for (int i = 0; i < _boxes.Length; i++)
+                    _boxes[i] = new CaptainsMatchBoxConfiguration();
+            }
+
             public long? GameTypeId => _config.GameTypeId;
             public int NumTeams => 2;
             public int PlayersPerTeam => _config.PlayersPerTeam;
@@ -2102,7 +2119,7 @@ namespace SS.Matchmaking.Modules
             public TimeSpan WinConditionDelay => _config.WinConditionDelay;
             public int TimeLimitWinBy => _config.TimeLimitWinBy;
             public int MaxLagOuts => _config.MaxLagOuts;
-            public ReadOnlySpan<IMatchBoxConfiguration> Boxes => default;
+            public ReadOnlySpan<IMatchBoxConfiguration> Boxes => _boxes;
             public IOpenSkillModel OpenSkillModel => _config.OpenSkillModel;
             public double OpenSkillSigmaDecayPerDay => _config.OpenSkillSigmaDecayPerDay;
             public bool OpenSkillUseScoresWhenPossible => _config.OpenSkillUseScoresWhenPossible;
