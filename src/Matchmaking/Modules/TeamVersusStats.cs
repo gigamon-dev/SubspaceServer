@@ -3357,10 +3357,11 @@ namespace SS.Matchmaking.Modules
         /// <param name="asOfTick">Timestamp (ticks) that the wasted energy should be calculated as of.</param>
         private void ProcessWastedEnergy(Player player, MemberStats memberStats, ShipType ship, ServerTick asOfTick)
         {
-            if (player is null)
+            Arena? arena = player.Arena;
+            if (arena is null || arena != memberStats.MatchStats?.MatchData?.Arena)
                 return;
 
-            if (memberStats is null)
+            if (player.Freq != memberStats.TeamStats?.Team?.Freq)
                 return;
 
             //ShipType ship = memberStats.CurrentShip ?? memberStats.PreviousShip ?? ShipType.Spec;
@@ -3368,9 +3369,7 @@ namespace SS.Matchmaking.Modules
             if (memberStats.FullEnergyStartTime is not null)
             {
                 // Add
-                Arena? arena = player.Arena;
                 if (ship != ShipType.Spec
-                    && arena is not null
                     && _arenaSettings.TryGetValue(arena.BaseName, out ArenaSettings? arenaSettings))
                 {
                     int shipIndex = (int)ship;
