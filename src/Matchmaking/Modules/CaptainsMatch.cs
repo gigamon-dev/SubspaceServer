@@ -2177,6 +2177,7 @@ namespace SS.Matchmaking.Modules
             public Player? Player { get; set; }
             public int? PremadeGroupId => null;
             public int LagOuts { get; set; }
+            public PlayerSlotStatus Status => Lives <= 0 ? PlayerSlotStatus.KnockedOut : Player is not null ? PlayerSlotStatus.Playing : PlayerSlotStatus.Waiting;
             public int Lives { get; set; }
             public ShipType Ship { get; set; }
             public byte Bursts { get; set; }
