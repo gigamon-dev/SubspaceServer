@@ -1216,28 +1216,6 @@ namespace SS.Matchmaking.Modules
                 _chat.SendMessage(player, "No active teams or matches. Type ?captain to form a team!");
         }
 
-        private void Command_Chart(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
-        {
-            Arena? arena = player.Arena;
-            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
-                return;
-
-            if (arenaData.ActiveMatches.Count == 0)
-            {
-                _chat.SendMessage(player, "No active match.");
-                return;
-            }
-
-            // Show the player's own match if they are in one; otherwise show the first active match.
-            ActiveMatch targetMatch;
-            if (arenaData.PlayerToMatch.TryGetValue(player, out ActiveMatch? playerMatch) && arenaData.ActiveMatches.Contains(playerMatch))
-                targetMatch = playerMatch;
-            else
-                targetMatch = arenaData.ActiveMatches[0];
-
-            PrintMatchChart(player, arena, targetMatch.MatchData, -1);
-        }
-
         #endregion
 
         #region Timers
@@ -1606,7 +1584,6 @@ namespace SS.Matchmaking.Modules
             short winningFreq = match.Freq1 == losingFreq ? match.Freq2 : match.Freq1;
 
             _chat.SendArenaMessage(arena, $"Freq {winningFreq} wins! Freq {losingFreq} has been eliminated.");
-            PrintMatchChart(null, arena, match.MatchData, winningFreq);
 
             ITeam? winnerTeam = match.MatchData.Teams.FirstOrDefault(t => t.Freq == winningFreq);
             TeamVersusMatchEndedCallback.Fire(arena, match.MatchData, MatchEndReason.Decided, winnerTeam);
@@ -1691,7 +1668,6 @@ namespace SS.Matchmaking.Modules
         /// </summary>
         private void EndMatchDraw(Arena arena, ArenaData arenaData, ActiveMatch match)
         {
-            PrintMatchChart(null, arena, match.MatchData, -1);
 
             TeamVersusMatchEndedCallback.Fire(arena, match.MatchData, MatchEndReason.Draw, null);
 
@@ -1899,55 +1875,6 @@ namespace SS.Matchmaking.Modules
             {
                 _playerData.Unlock();
             }
-        }
-
-        /// <summary>
-        /// Prints the match stats chart. Pass <paramref name="winnerFreq"/> = -1 when match is still in progress.
-        /// When <paramref name="recipient"/> is null the chart is sent to the whole arena.
-        /// </summary>
-        private void PrintMatchChart(Player? recipient, Arena arena, CaptainsMatchData matchData, short winnerFreq)
-        {
-            void Send(string line)
-            {
-                if (recipient is not null)
-                    _chat.SendMessage(recipient, line);
-                else
-                    _chat.SendArenaMessage(arena, line);
-            }
-
-            Send("+--- Match Results ------------------------- K --- D ---+");
-
-            int mvpKills = -1, lvpDeaths = -1;
-            string? mvpName = null, lvpName = null;
-
-            foreach (ITeam team in matchData.Teams)
-            {
-                bool isWinner = winnerFreq > 0 && team.Freq == winnerFreq;
-                Send($"| Freq {team.Freq}{(isWinner ? " (W)" : "    ")}                                 K     D |");
-
-                int teamKills = 0, teamDeaths = 0;
-                foreach (IPlayerSlot iSlot in team.Slots)
-                {
-                    var slot = (CaptainsPlayerSlot)iSlot;
-                    string name = (slot.PlayerName ?? "?").Length > 26 ? (slot.PlayerName ?? "?")[..26] : (slot.PlayerName ?? "?");
-                    Send($"|   {name,-26}               {slot.Kills,3}   {slot.Deaths,3} |");
-                    teamKills += slot.Kills;
-                    teamDeaths += slot.Deaths;
-
-                    if (slot.Kills > mvpKills) { mvpKills = slot.Kills; mvpName = slot.PlayerName; }
-                    if (slot.Deaths > lvpDeaths) { lvpDeaths = slot.Deaths; lvpName = slot.PlayerName; }
-                }
-
-                Send($"|   {"Total",-26}               {teamKills,3}   {teamDeaths,3} |");
-                Send("|                                                        |");
-            }
-
-            Send("+--------------------------------------------------------+");
-
-            if (mvpKills > 0 && mvpName is not null)
-                Send($"MVP: {mvpName} ({mvpKills} kill{(mvpKills != 1 ? "s" : "")})");
-            if (lvpDeaths > 0 && lvpName is not null)
-                Send($"LVP: {lvpName} ({lvpDeaths} death{(lvpDeaths != 1 ? "s" : "")})");
         }
 
         #endregion
