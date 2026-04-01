@@ -43,7 +43,6 @@ namespace SS.Matchmaking.Modules
         private AdvisorRegistrationToken<IMatchFocusAdvisor>? _iMatchFocusAdvisorToken;
 
         // optional
-        private ICaptainsMatchStatsBehavior? _statsBehavior;
         private ITeamVersusStatsBehavior? _tvStatsBehavior;
 
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = [];
@@ -76,7 +75,6 @@ namespace SS.Matchmaking.Modules
         bool IModule.Load(IComponentBroker broker)
         {
             _broker = broker;
-            _statsBehavior = broker.GetInterface<ICaptainsMatchStatsBehavior>();
             _tvStatsBehavior = broker.GetInterface<ITeamVersusStatsBehavior>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
@@ -95,9 +93,6 @@ namespace SS.Matchmaking.Modules
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             _playerData.FreePlayerData(ref _pdKey);
-
-            if (_statsBehavior is not null)
-                broker.ReleaseInterface(ref _statsBehavior);
 
             if (_tvStatsBehavior is not null)
                 broker.ReleaseInterface(ref _tvStatsBehavior);
@@ -427,9 +422,6 @@ namespace SS.Matchmaking.Modules
                 }
             }
             killedSlot.Deaths++;
-
-            if (killer is not null)
-                _statsBehavior?.PlayerKilled(arena, killer, killed);
 
             bool isKnockout = killedSlot.Lives <= 1;
             killedSlot.Lives--;
@@ -1579,8 +1571,6 @@ namespace SS.Matchmaking.Modules
             if (_tvStatsBehavior is not null)
                 _ = _tvStatsBehavior.MatchStartedAsync(matchData);
 
-            _statsBehavior?.MatchStarted(arena, match.Freq1, formation1.Members, match.Freq2, formation2.Members);
-
             string timeMsg = arenaData.Config.TimeLimit is { } tlMsg
                 ? $" Time limit: {(int)tlMsg.TotalMinutes}m."
                 : string.Empty;
@@ -1612,8 +1602,6 @@ namespace SS.Matchmaking.Modules
 
             if (_tvStatsBehavior is not null)
                 _ = _tvStatsBehavior.MatchEndedAsync(match.MatchData, MatchEndReason.Decided, winnerTeam);
-            else if (_statsBehavior is not null)
-                _ = _statsBehavior.MatchEndedAsync(arena, winningFreq, losingFreq);
 
             MatchEndedCallback.Fire(_broker!, match.MatchData);
 
