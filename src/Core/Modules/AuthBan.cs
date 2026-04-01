@@ -156,7 +156,7 @@ namespace SS.Core.Modules
         {
             if (!target.TryGetPlayerTarget(out Player? targetPlayer))
             {
-                _chat.SendMessage(player, "This comand only operates when targeting a specific player.");
+                _chat.SendMessage(player, "This command only operates when targeting a specific player.");
                 return;
             }
 
