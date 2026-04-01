@@ -153,5 +153,5 @@ cmd_refuse
 cmd_ready
 cmd_rdy
 cmd_join
-cmd_kick
+cmd_remove
 cmd_disband

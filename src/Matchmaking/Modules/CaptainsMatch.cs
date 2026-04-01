@@ -3,7 +3,6 @@ using OpenSkillSharp;
 using OpenSkillSharp.Models;
 using SS.Core;
 using System.Text.Json;
-using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Advisors;
@@ -13,7 +12,6 @@ using SS.Matchmaking.League;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
 using SS.Utilities;
-using SS.Utilities.ObjectPool;
 using System.Collections.ObjectModel;
 
 namespace SS.Matchmaking.Modules
@@ -26,7 +24,7 @@ namespace SS.Matchmaking.Modules
     /// Supports multiple simultaneous matches when multiple freq pairs are configured.
     /// </summary>
     [ModuleInfo("Captain-based team formation with challenge system.")]
-    public sealed class CaptainsMatch : IModule, IMatchFocusAdvisor
+    public sealed class CaptainsMatch : IModule, IArenaAttachableModule, IMatchFocusAdvisor
     {
         private readonly IChat _chat;
         private readonly ICommandManager _commandManager;
@@ -45,7 +43,7 @@ namespace SS.Matchmaking.Modules
         // optional
         private ITeamVersusStatsBehavior? _tvStatsBehavior;
 
-        private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = [];
+        private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new(Constants.TargetArenaCount);
         private static readonly DefaultObjectPool<ArenaData> _arenaDataPool = new(new DefaultPooledObjectPolicy<ArenaData>(), Constants.TargetArenaCount);
 
         public CaptainsMatch(
@@ -77,7 +75,6 @@ namespace SS.Matchmaking.Modules
             _broker = broker;
             _tvStatsBehavior = broker.GetInterface<ITeamVersusStatsBehavior>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
-            ArenaActionCallback.Register(broker, Callback_ArenaAction);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             _iMatchFocusAdvisorToken = broker.RegisterAdvisor<IMatchFocusAdvisor>(this);
             return true;
@@ -90,7 +87,6 @@ namespace SS.Matchmaking.Modules
 
             _mainloop.WaitForMainWorkItemDrain();
 
-            ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             _playerData.FreePlayerData(ref _pdKey);
 
@@ -98,6 +94,226 @@ namespace SS.Matchmaking.Modules
                 broker.ReleaseInterface(ref _tvStatsBehavior);
 
             _broker = null;
+            return true;
+        }
+
+        [ConfigHelp("CaptainsMatch", "ArenaBaseName", ConfigScope.Arena,
+            Description = "Base name of the arena to manage. Required.")]
+        [ConfigHelp<int>("CaptainsMatch", "PlayersPerTeam", ConfigScope.Arena, Default = 4,
+            Description = "Number of players required per team (including the captain).")]
+        [ConfigHelp<int>("CaptainsMatch", "LivesPerPlayer", ConfigScope.Arena, Default = 3,
+            Description = "Number of lives each player starts with per match.")]
+        [ConfigHelp<int>("CaptainsMatch", "DefaultShip", ConfigScope.Arena, Default = 1,
+            Description = "Ship (1-8) assigned to players when they are moved to a freq (1=Warbird).")]
+        [ConfigHelp<int>("CaptainsMatch", "Freq1", ConfigScope.Arena, Default = 100,
+            Description = "Frequency for the first slot of match pair 1. Add Freq3/Freq4, Freq5/Freq6, etc. for additional simultaneous match slots.")]
+        [ConfigHelp<int>("CaptainsMatch", "Freq2", ConfigScope.Arena, Default = 200,
+            Description = "Frequency for the second slot of match pair 1.")]
+        [ConfigHelp<int>("CaptainsMatch", "KickCooldownSeconds", ConfigScope.Arena, Default = 60,
+            Description = "Seconds a kicked player must wait before they can ?join again. Resets when the current match ends.")]
+        [ConfigHelp("CaptainsMatch", "TimeLimit", ConfigScope.Arena,
+            Description = "Duration (TimeSpan, e.g. 00:30:00) of each match. Empty = untimed. When time expires the team whose score leads by TimeLimitWinBy wins; otherwise overtime or draw.")]
+        [ConfigHelp("CaptainsMatch", "OverTimeLimit", ConfigScope.Arena,
+            Description = "Duration (TimeSpan) of overtime when no team leads by TimeLimitWinBy at the end of regular time. Requires TimeLimit. Empty = no overtime (draw instead).")]
+        [ConfigHelp("CaptainsMatch", "WinConditionDelay", ConfigScope.Arena, Default = "00:00:02",
+            Description = "Delay (TimeSpan) after a knockout before checking for team elimination. Allows double-KO draws.")]
+        [ConfigHelp<int>("CaptainsMatch", "TimeLimitWinBy", ConfigScope.Arena, Default = 2,
+            Description = "Minimum score lead required for a time-limit win. If neither team leads by this amount, overtime begins (if configured) or the match draws.")]
+        [ConfigHelp<int>("CaptainsMatch", "MaxLagOuts", ConfigScope.Arena, Default = 3,
+            Description = "Maximum number of times a player may voluntarily spec out during a match before they cannot re-enter.")]
+        [ConfigHelp("CaptainsMatch", "OpenSkillModel", ConfigScope.Arena, Default = "PlackettLuce",
+            Description = "OpenSkill rating model. Options: PlackettLuce, BradleyTerryFull, BradleyTerryPart, ThurstoneMostellerFull, ThurstoneMostellerPart.")]
+        [ConfigHelp("CaptainsMatch", "OpenSkillModelJson", ConfigScope.Arena,
+            Description = "JSON parameters for the OpenSkill model (e.g. { \"Mu\":25.0, \"Sigma\":8.33 }). Empty uses model defaults.")]
+        [ConfigHelp("CaptainsMatch", "OpenSkillSigmaDecayPerDay", ConfigScope.Arena, Default = "0",
+            Description = "Amount added to a player's sigma per day of inactivity (rating uncertainty growth).")]
+        [ConfigHelp<bool>("CaptainsMatch", "OpenSkillUseScoresWhenPossible", ConfigScope.Arena, Default = false,
+            Description = "Whether to rate teams using kill scores rather than ranks when possible.")]
+        [ConfigHelp("CaptainsMatch", "FreqNStartLocation", ConfigScope.Arena,
+            Description = "Tile coordinates (x,y) to warp freq N's players to at match start. E.g., Freq100StartLocation = 354,354. Optional; omit to skip warping.")]
+        bool IArenaAttachableModule.AttachModule(Arena arena)
+        {
+            ConfigHandle ch = arena.Cfg!;
+
+            // Read freq pairs: Freq1/Freq2, Freq3/Freq4, Freq5/Freq6, ...
+            var freqPairs = new List<(short F1, short F2)>();
+            for (int i = 1; ; i += 2)
+            {
+                int f1 = _configManager.GetInt(ch, "CaptainsMatch", $"Freq{i}", i == 1 ? 100 : 0);
+                int f2 = _configManager.GetInt(ch, "CaptainsMatch", $"Freq{i + 1}", i == 1 ? 200 : 0);
+                if (f1 <= 0 || f2 <= 0)
+                    break;
+                freqPairs.Add(((short)f1, (short)f2));
+            }
+
+            if (freqPairs.Count == 0)
+                freqPairs.Add((100, 200));
+
+            // Read optional start locations: FreqNStartLocation = x,y for each freq in each pair.
+            var startLocations = new Dictionary<short, (short X, short Y)>();
+            foreach ((short f1, short f2) in freqPairs)
+            {
+                foreach (short freq in new[] { f1, f2 })
+                {
+                    string? raw = _configManager.GetStr(ch, "CaptainsMatch", $"Freq{freq}StartLocation");
+                    if (string.IsNullOrWhiteSpace(raw))
+                        continue;
+                    int comma = raw.IndexOf(',');
+                    if (comma <= 0)
+                        continue;
+                    if (short.TryParse(raw.AsSpan(0, comma).Trim(), out short sx) &&
+                        short.TryParse(raw.AsSpan(comma + 1).Trim(), out short sy))
+                    {
+                        startLocations[freq] = (sx, sy);
+                    }
+                }
+            }
+
+            ArenaData arenaData = _arenaDataPool.Get();
+            arenaData.Arena = arena;
+            // TimeLimit
+            TimeSpan? timeLimit = null;
+            string? timeLimitStr = _configManager.GetStr(ch, "CaptainsMatch", "TimeLimit");
+            if (!string.IsNullOrWhiteSpace(timeLimitStr))
+            {
+                if (!TimeSpan.TryParse(timeLimitStr, out TimeSpan tl))
+                    _logManager.LogA(LogLevel.Warn, nameof(CaptainsMatch), arena, "Invalid CaptainsMatch.TimeLimit; treated as untimed.");
+                else
+                    timeLimit = tl;
+            }
+
+            // OverTimeLimit (only meaningful when TimeLimit is set)
+            TimeSpan? overTimeLimit = null;
+            if (timeLimit is not null)
+            {
+                string? otlStr = _configManager.GetStr(ch, "CaptainsMatch", "OverTimeLimit");
+                if (!string.IsNullOrWhiteSpace(otlStr))
+                {
+                    if (!TimeSpan.TryParse(otlStr, out TimeSpan otl))
+                        _logManager.LogA(LogLevel.Warn, nameof(CaptainsMatch), arena, "Invalid CaptainsMatch.OverTimeLimit; no overtime.");
+                    else
+                        overTimeLimit = otl;
+                }
+            }
+
+            // WinConditionDelay (default 2 seconds)
+            TimeSpan winConditionDelay = TimeSpan.FromSeconds(2);
+            string? wcdStr = _configManager.GetStr(ch, "CaptainsMatch", "WinConditionDelay");
+            if (!string.IsNullOrWhiteSpace(wcdStr) && !TimeSpan.TryParse(wcdStr, out winConditionDelay))
+            {
+                _logManager.LogA(LogLevel.Warn, nameof(CaptainsMatch), arena, "Invalid CaptainsMatch.WinConditionDelay; defaulting to 2s.");
+                winConditionDelay = TimeSpan.FromSeconds(2);
+            }
+
+            // OpenSkill model
+            OpenSkill.ModelType modelType = _configManager.GetEnum(ch, "CaptainsMatch", "OpenSkillModel", OpenSkill.ModelType.PlackettLuce);
+            string modelJson = _configManager.GetStr(ch, "CaptainsMatch", "OpenSkillModelJson") ?? "{}";
+            if (string.IsNullOrWhiteSpace(modelJson))
+                modelJson = "{}";
+
+            IOpenSkillModel openSkillModel = modelType switch
+            {
+                OpenSkill.ModelType.PlackettLuce         => JsonSerializer.Deserialize<PlackettLuce>(modelJson) ?? new PlackettLuce(),
+                OpenSkill.ModelType.BradleyTerryFull     => JsonSerializer.Deserialize<BradleyTerryFull>(modelJson) ?? new BradleyTerryFull(),
+                OpenSkill.ModelType.BradleyTerryPart     => JsonSerializer.Deserialize<BradleyTerryPart>(modelJson) ?? new BradleyTerryPart(),
+                OpenSkill.ModelType.ThurstoneMostellerFull => JsonSerializer.Deserialize<ThurstoneMostellerFull>(modelJson) ?? new ThurstoneMostellerFull(),
+                OpenSkill.ModelType.ThurstoneMostellerPart => JsonSerializer.Deserialize<ThurstoneMostellerPart>(modelJson) ?? new ThurstoneMostellerPart(),
+                _ => new PlackettLuce(),
+            };
+
+            string? sigmaDecayStr = _configManager.GetStr(ch, "CaptainsMatch", "OpenSkillSigmaDecayPerDay");
+            double sigmaDecayPerDay = 0;
+            if (!string.IsNullOrWhiteSpace(sigmaDecayStr) && !double.TryParse(sigmaDecayStr, out sigmaDecayPerDay))
+            {
+                _logManager.LogA(LogLevel.Warn, nameof(CaptainsMatch), arena, "Invalid CaptainsMatch.OpenSkillSigmaDecayPerDay; defaulting to 0.");
+                sigmaDecayPerDay = 0;
+            }
+            sigmaDecayPerDay = double.Abs(sigmaDecayPerDay);
+
+            arenaData.Config = new ArenaConfig
+            {
+                PlayersPerTeam = _configManager.GetInt(ch, "CaptainsMatch", "PlayersPerTeam", 4),
+                LivesPerPlayer = _configManager.GetInt(ch, "CaptainsMatch", "LivesPerPlayer", 3),
+                DefaultShip = (ShipType)Math.Clamp(_configManager.GetInt(ch, "CaptainsMatch", "DefaultShip", 1) - 1, 0, 7),
+                FreqPairs = freqPairs,
+                KickCooldown = TimeSpan.FromSeconds(_configManager.GetInt(ch, "CaptainsMatch", "KickCooldownSeconds", 60)),
+                TimeLimit = timeLimit,
+                OverTimeLimit = overTimeLimit,
+                WinConditionDelay = winConditionDelay,
+                TimeLimitWinBy = Math.Max(1, _configManager.GetInt(ch, "CaptainsMatch", "TimeLimitWinBy", 2)),
+                MaxLagOuts = _configManager.GetInt(ch, "CaptainsMatch", "MaxLagOuts", 3),
+                OpenSkillModel = openSkillModel,
+                OpenSkillSigmaDecayPerDay = sigmaDecayPerDay,
+                OpenSkillUseScoresWhenPossible = _configManager.GetBool(ch, "CaptainsMatch", "OpenSkillUseScoresWhenPossible", false),
+                StartLocations = startLocations,
+            };
+
+            _arenaDataDictionary[arena] = arenaData;
+
+            KillCallback.Register(arena, Callback_Kill);
+            ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
+            PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
+
+            _commandManager.AddCommand("captain", Command_Captain, arena);
+            _commandManager.AddCommand("cap", Command_Captain, arena);
+            _commandManager.AddCommand("join", Command_Join, arena);
+            _commandManager.AddCommand("challenge", Command_Challenge, arena);
+            _commandManager.AddCommand("accept", Command_Accept, arena);
+            _commandManager.AddCommand("ready", Command_Ready, arena);
+            _commandManager.AddCommand("rdy", Command_Ready, arena);
+            _commandManager.AddCommand("remove", Command_Remove, arena);
+            _commandManager.AddCommand("leave", Command_Leave, arena);
+            _commandManager.AddCommand("end", Command_End, arena);
+            _commandManager.AddCommand("sc", Command_Sc, arena);
+            _commandManager.AddCommand("items", Command_Items, arena);
+            _commandManager.AddCommand("freqinfo", Command_FreqInfo, arena);
+            _commandManager.AddCommand("refuse", Command_Refuse, arena);
+            _commandManager.AddCommand("disband", Command_Disband, arena);
+            // ?chart is provided by TeamVersusStats when it is attached to the arena.
+
+            return true;
+        }
+
+        bool IArenaAttachableModule.DetachModule(Arena arena)
+        {
+            if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return false;
+
+            _arenaDataDictionary.Remove(arena);
+
+            KillCallback.Unregister(arena, Callback_Kill);
+            ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
+            PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
+
+            _commandManager.RemoveCommand("captain", Command_Captain, arena);
+            _commandManager.RemoveCommand("cap", Command_Captain, arena);
+            _commandManager.RemoveCommand("join", Command_Join, arena);
+            _commandManager.RemoveCommand("challenge", Command_Challenge, arena);
+            _commandManager.RemoveCommand("accept", Command_Accept, arena);
+            _commandManager.RemoveCommand("ready", Command_Ready, arena);
+            _commandManager.RemoveCommand("rdy", Command_Ready, arena);
+            _commandManager.RemoveCommand("remove", Command_Remove, arena);
+            _commandManager.RemoveCommand("leave", Command_Leave, arena);
+            _commandManager.RemoveCommand("end", Command_End, arena);
+            _commandManager.RemoveCommand("sc", Command_Sc, arena);
+            _commandManager.RemoveCommand("items", Command_Items, arena);
+            _commandManager.RemoveCommand("freqinfo", Command_FreqInfo, arena);
+            _commandManager.RemoveCommand("refuse", Command_Refuse, arena);
+            _commandManager.RemoveCommand("disband", Command_Disband, arena);
+            // ?chart is managed by TeamVersusStats.
+
+            foreach (MatchCountdown c in arenaData.PendingCountdowns)
+                _mainloopTimer.ClearTimer<MatchCountdown>(Timer_Countdown, c);
+
+            foreach (ActiveMatch m in arenaData.ActiveMatches)
+            {
+                _mainloopTimer.ClearTimer<ActiveMatch>(Timer_MatchTimeExpired, m);
+                _mainloopTimer.ClearTimer<ActiveMatch>(Timer_WinConditionCheck, m);
+            }
+
+            ((IResettable)arenaData).TryReset();
+            _arenaDataPool.Return(arenaData);
+
             return true;
         }
 
@@ -141,230 +357,6 @@ namespace SS.Matchmaking.Modules
         #endregion
 
         #region Callbacks
-
-        [ConfigHelp("CaptainsMatch", "ArenaBaseName", ConfigScope.Arena,
-            Description = "Base name of the arena to manage. Required.")]
-        [ConfigHelp<int>("CaptainsMatch", "PlayersPerTeam", ConfigScope.Arena, Default = 4,
-            Description = "Number of players required per team (including the captain).")]
-        [ConfigHelp<int>("CaptainsMatch", "LivesPerPlayer", ConfigScope.Arena, Default = 3,
-            Description = "Number of lives each player starts with per match.")]
-        [ConfigHelp<int>("CaptainsMatch", "DefaultShip", ConfigScope.Arena, Default = 1,
-            Description = "Ship (1-8) assigned to players when they are moved to a freq (1=Warbird).")]
-        [ConfigHelp<int>("CaptainsMatch", "Freq1", ConfigScope.Arena, Default = 100,
-            Description = "Frequency for the first slot of match pair 1. Add Freq3/Freq4, Freq5/Freq6, etc. for additional simultaneous match slots.")]
-        [ConfigHelp<int>("CaptainsMatch", "Freq2", ConfigScope.Arena, Default = 200,
-            Description = "Frequency for the second slot of match pair 1.")]
-        [ConfigHelp<int>("CaptainsMatch", "KickCooldownSeconds", ConfigScope.Arena, Default = 60,
-            Description = "Seconds a kicked player must wait before they can ?join again. Resets when the current match ends.")]
-        [ConfigHelp("CaptainsMatch", "TimeLimit", ConfigScope.Arena,
-            Description = "Duration (TimeSpan, e.g. 00:30:00) of each match. Empty = untimed. When time expires the team whose score leads by TimeLimitWinBy wins; otherwise overtime or draw.")]
-        [ConfigHelp("CaptainsMatch", "OverTimeLimit", ConfigScope.Arena,
-            Description = "Duration (TimeSpan) of overtime when no team leads by TimeLimitWinBy at the end of regular time. Requires TimeLimit. Empty = no overtime (draw instead).")]
-        [ConfigHelp("CaptainsMatch", "WinConditionDelay", ConfigScope.Arena, Default = "00:00:02",
-            Description = "Delay (TimeSpan) after a knockout before checking for team elimination. Allows double-KO draws.")]
-        [ConfigHelp<int>("CaptainsMatch", "TimeLimitWinBy", ConfigScope.Arena, Default = 2,
-            Description = "Minimum score lead required for a time-limit win. If neither team leads by this amount, overtime begins (if configured) or the match draws.")]
-        [ConfigHelp<int>("CaptainsMatch", "MaxLagOuts", ConfigScope.Arena, Default = 3,
-            Description = "Maximum number of times a player may voluntarily spec out during a match before they cannot re-enter.")]
-        [ConfigHelp("CaptainsMatch", "OpenSkillModel", ConfigScope.Arena, Default = "PlackettLuce",
-            Description = "OpenSkill rating model. Options: PlackettLuce, BradleyTerryFull, BradleyTerryPart, ThurstoneMostellerFull, ThurstoneMostellerPart.")]
-        [ConfigHelp("CaptainsMatch", "OpenSkillModelJson", ConfigScope.Arena,
-            Description = "JSON parameters for the OpenSkill model (e.g. { \"Mu\":25.0, \"Sigma\":8.33 }). Empty uses model defaults.")]
-        [ConfigHelp("CaptainsMatch", "OpenSkillSigmaDecayPerDay", ConfigScope.Arena, Default = "0",
-            Description = "Amount added to a player's sigma per day of inactivity (rating uncertainty growth).")]
-        [ConfigHelp<bool>("CaptainsMatch", "OpenSkillUseScoresWhenPossible", ConfigScope.Arena, Default = false,
-            Description = "Whether to rate teams using kill scores rather than ranks when possible.")]
-        [ConfigHelp("CaptainsMatch", "FreqNStartLocation", ConfigScope.Arena,
-            Description = "Tile coordinates (x,y) to warp freq N's players to at match start. E.g., Freq100StartLocation = 354,354. Optional; omit to skip warping.")]
-        private void Callback_ArenaAction(Arena arena, ArenaAction action)
-        {
-            if (action == ArenaAction.Create)
-            {
-                ConfigHandle ch = arena.Cfg!;
-                string? baseName = _configManager.GetStr(ch, "CaptainsMatch", "ArenaBaseName");
-                if (string.IsNullOrWhiteSpace(baseName))
-                    return;
-
-                if (!string.Equals(arena.BaseName, baseName, StringComparison.OrdinalIgnoreCase))
-                    return;
-
-                // Read freq pairs: Freq1/Freq2, Freq3/Freq4, Freq5/Freq6, ...
-                var freqPairs = new List<(short F1, short F2)>();
-                for (int i = 1; ; i += 2)
-                {
-                    int f1 = _configManager.GetInt(ch, "CaptainsMatch", $"Freq{i}", i == 1 ? 100 : 0);
-                    int f2 = _configManager.GetInt(ch, "CaptainsMatch", $"Freq{i + 1}", i == 1 ? 200 : 0);
-                    if (f1 <= 0 || f2 <= 0)
-                        break;
-                    freqPairs.Add(((short)f1, (short)f2));
-                }
-
-                if (freqPairs.Count == 0)
-                    freqPairs.Add((100, 200));
-
-                // Read optional start locations: FreqNStartLocation = x,y for each freq in each pair.
-                var startLocations = new Dictionary<short, (short X, short Y)>();
-                foreach ((short f1, short f2) in freqPairs)
-                {
-                    foreach (short freq in new[] { f1, f2 })
-                    {
-                        string? raw = _configManager.GetStr(ch, "CaptainsMatch", $"Freq{freq}StartLocation");
-                        if (string.IsNullOrWhiteSpace(raw))
-                            continue;
-                        int comma = raw.IndexOf(',');
-                        if (comma <= 0)
-                            continue;
-                        if (short.TryParse(raw.AsSpan(0, comma).Trim(), out short sx) &&
-                            short.TryParse(raw.AsSpan(comma + 1).Trim(), out short sy))
-                        {
-                            startLocations[freq] = (sx, sy);
-                        }
-                    }
-                }
-
-                ArenaData arenaData = _arenaDataPool.Get();
-                arenaData.Arena = arena;
-                // TimeLimit
-                TimeSpan? timeLimit = null;
-                string? timeLimitStr = _configManager.GetStr(ch, "CaptainsMatch", "TimeLimit");
-                if (!string.IsNullOrWhiteSpace(timeLimitStr))
-                {
-                    if (!TimeSpan.TryParse(timeLimitStr, out TimeSpan tl))
-                        _logManager.LogA(LogLevel.Warn, nameof(CaptainsMatch), arena, "Invalid CaptainsMatch.TimeLimit; treated as untimed.");
-                    else
-                        timeLimit = tl;
-                }
-
-                // OverTimeLimit (only meaningful when TimeLimit is set)
-                TimeSpan? overTimeLimit = null;
-                if (timeLimit is not null)
-                {
-                    string? otlStr = _configManager.GetStr(ch, "CaptainsMatch", "OverTimeLimit");
-                    if (!string.IsNullOrWhiteSpace(otlStr))
-                    {
-                        if (!TimeSpan.TryParse(otlStr, out TimeSpan otl))
-                            _logManager.LogA(LogLevel.Warn, nameof(CaptainsMatch), arena, "Invalid CaptainsMatch.OverTimeLimit; no overtime.");
-                        else
-                            overTimeLimit = otl;
-                    }
-                }
-
-                // WinConditionDelay (default 2 seconds)
-                TimeSpan winConditionDelay = TimeSpan.FromSeconds(2);
-                string? wcdStr = _configManager.GetStr(ch, "CaptainsMatch", "WinConditionDelay");
-                if (!string.IsNullOrWhiteSpace(wcdStr) && !TimeSpan.TryParse(wcdStr, out winConditionDelay))
-                {
-                    _logManager.LogA(LogLevel.Warn, nameof(CaptainsMatch), arena, "Invalid CaptainsMatch.WinConditionDelay; defaulting to 2s.");
-                    winConditionDelay = TimeSpan.FromSeconds(2);
-                }
-
-                // OpenSkill model
-                OpenSkill.ModelType modelType = _configManager.GetEnum(ch, "CaptainsMatch", "OpenSkillModel", OpenSkill.ModelType.PlackettLuce);
-                string modelJson = _configManager.GetStr(ch, "CaptainsMatch", "OpenSkillModelJson") ?? "{}";
-                if (string.IsNullOrWhiteSpace(modelJson))
-                    modelJson = "{}";
-
-                IOpenSkillModel openSkillModel = modelType switch
-                {
-                    OpenSkill.ModelType.PlackettLuce         => JsonSerializer.Deserialize<PlackettLuce>(modelJson) ?? new PlackettLuce(),
-                    OpenSkill.ModelType.BradleyTerryFull     => JsonSerializer.Deserialize<BradleyTerryFull>(modelJson) ?? new BradleyTerryFull(),
-                    OpenSkill.ModelType.BradleyTerryPart     => JsonSerializer.Deserialize<BradleyTerryPart>(modelJson) ?? new BradleyTerryPart(),
-                    OpenSkill.ModelType.ThurstoneMostellerFull => JsonSerializer.Deserialize<ThurstoneMostellerFull>(modelJson) ?? new ThurstoneMostellerFull(),
-                    OpenSkill.ModelType.ThurstoneMostellerPart => JsonSerializer.Deserialize<ThurstoneMostellerPart>(modelJson) ?? new ThurstoneMostellerPart(),
-                    _ => new PlackettLuce(),
-                };
-
-                string? sigmaDecayStr = _configManager.GetStr(ch, "CaptainsMatch", "OpenSkillSigmaDecayPerDay");
-                double sigmaDecayPerDay = 0;
-                if (!string.IsNullOrWhiteSpace(sigmaDecayStr) && !double.TryParse(sigmaDecayStr, out sigmaDecayPerDay))
-                {
-                    _logManager.LogA(LogLevel.Warn, nameof(CaptainsMatch), arena, "Invalid CaptainsMatch.OpenSkillSigmaDecayPerDay; defaulting to 0.");
-                    sigmaDecayPerDay = 0;
-                }
-                sigmaDecayPerDay = double.Abs(sigmaDecayPerDay);
-
-                arenaData.Config = new ArenaConfig
-                {
-                    PlayersPerTeam = _configManager.GetInt(ch, "CaptainsMatch", "PlayersPerTeam", 4),
-                    LivesPerPlayer = _configManager.GetInt(ch, "CaptainsMatch", "LivesPerPlayer", 3),
-                    DefaultShip = (ShipType)Math.Clamp(_configManager.GetInt(ch, "CaptainsMatch", "DefaultShip", 1) - 1, 0, 7),
-                    FreqPairs = freqPairs,
-                    KickCooldown = TimeSpan.FromSeconds(_configManager.GetInt(ch, "CaptainsMatch", "KickCooldownSeconds", 60)),
-                    TimeLimit = timeLimit,
-                    OverTimeLimit = overTimeLimit,
-                    WinConditionDelay = winConditionDelay,
-                    TimeLimitWinBy = Math.Max(1, _configManager.GetInt(ch, "CaptainsMatch", "TimeLimitWinBy", 2)),
-                    MaxLagOuts = _configManager.GetInt(ch, "CaptainsMatch", "MaxLagOuts", 3),
-                    OpenSkillModel = openSkillModel,
-                    OpenSkillSigmaDecayPerDay = sigmaDecayPerDay,
-                    OpenSkillUseScoresWhenPossible = _configManager.GetBool(ch, "CaptainsMatch", "OpenSkillUseScoresWhenPossible", false),
-                    StartLocations = startLocations,
-                };
-
-                _arenaDataDictionary[arena] = arenaData;
-
-                KillCallback.Register(arena, Callback_Kill);
-                ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
-                PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
-
-                _commandManager.AddCommand("captain", Command_Captain, arena);
-                _commandManager.AddCommand("cap", Command_Captain, arena);
-                _commandManager.AddCommand("join", Command_Join, arena);
-                _commandManager.AddCommand("challenge", Command_Challenge, arena);
-                _commandManager.AddCommand("accept", Command_Accept, arena);
-                _commandManager.AddCommand("ready", Command_Ready, arena);
-                _commandManager.AddCommand("rdy", Command_Ready, arena);
-                _commandManager.AddCommand("remove", Command_Remove, arena);
-                _commandManager.AddCommand("leave", Command_Leave, arena);
-                _commandManager.AddCommand("end", Command_End, arena);
-                _commandManager.AddCommand("sc", Command_Sc, arena);
-                _commandManager.AddCommand("items", Command_Items, arena);
-                _commandManager.AddCommand("freqinfo", Command_FreqInfo, arena);
-                _commandManager.AddCommand("refuse", Command_Refuse, arena);
-                _commandManager.AddCommand("disband", Command_Disband, arena);
-                // ?chart is provided by TeamVersusStats when it is attached to the arena.
-            }
-            else if (action == ArenaAction.Destroy)
-            {
-                if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
-                    return;
-
-                _arenaDataDictionary.Remove(arena);
-
-                KillCallback.Unregister(arena, Callback_Kill);
-                ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
-                PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
-
-                _commandManager.RemoveCommand("captain", Command_Captain, arena);
-                _commandManager.RemoveCommand("cap", Command_Captain, arena);
-                _commandManager.RemoveCommand("join", Command_Join, arena);
-                _commandManager.RemoveCommand("challenge", Command_Challenge, arena);
-                _commandManager.RemoveCommand("accept", Command_Accept, arena);
-                _commandManager.RemoveCommand("ready", Command_Ready, arena);
-                _commandManager.RemoveCommand("rdy", Command_Ready, arena);
-                _commandManager.RemoveCommand("remove", Command_Remove, arena);
-                _commandManager.RemoveCommand("leave", Command_Leave, arena);
-                _commandManager.RemoveCommand("end", Command_End, arena);
-                _commandManager.RemoveCommand("sc", Command_Sc, arena);
-                _commandManager.RemoveCommand("items", Command_Items, arena);
-                _commandManager.RemoveCommand("freqinfo", Command_FreqInfo, arena);
-                _commandManager.RemoveCommand("refuse", Command_Refuse, arena);
-                _commandManager.RemoveCommand("disband", Command_Disband, arena);
-                // ?chart is managed by TeamVersusStats.
-
-                foreach (MatchCountdown c in arenaData.PendingCountdowns)
-                    _mainloopTimer.ClearTimer<MatchCountdown>(Timer_Countdown, c);
-
-                foreach (ActiveMatch m in arenaData.ActiveMatches)
-                {
-                    _mainloopTimer.ClearTimer<ActiveMatch>(Timer_MatchTimeExpired, m);
-                    _mainloopTimer.ClearTimer<ActiveMatch>(Timer_WinConditionCheck, m);
-                }
-
-                ((IResettable)arenaData).TryReset();
-                _arenaDataPool.Return(arenaData);
-            }
-        }
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
