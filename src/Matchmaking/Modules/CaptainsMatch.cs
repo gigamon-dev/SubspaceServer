@@ -97,8 +97,8 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        [ConfigHelp("CaptainsMatch", "ArenaBaseName", ConfigScope.Arena,
-            Description = "Base name of the arena to manage. Required.")]
+        [ConfigHelp<long>("CaptainsMatch", "GameTypeId", ConfigScope.Arena,
+            Description = "The GameTypeId to use when saving match stats to the database.")]
         [ConfigHelp<int>("CaptainsMatch", "PlayersPerTeam", ConfigScope.Arena, Default = 4,
             Description = "Number of players required per team (including the captain).")]
         [ConfigHelp<int>("CaptainsMatch", "LivesPerPlayer", ConfigScope.Arena, Default = 3,
@@ -134,6 +134,23 @@ namespace SS.Matchmaking.Modules
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
             ConfigHandle ch = arena.Cfg!;
+
+            // GameTypeId
+            long? gameTypeId;
+            string? gameTypeIdStr = _configManager.GetStr(ch, "CaptainsMatch", "GameTypeId");
+            if (string.IsNullOrWhiteSpace(gameTypeIdStr))
+            {
+                gameTypeId = null;
+            }
+            else if (long.TryParse(gameTypeIdStr, out long gameTypeIdLong))
+            {
+                gameTypeId = gameTypeIdLong;
+            }
+            else
+            {
+                _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), "Invalid CaptainsMatch.GameTypeId; defaulting to none.");
+                gameTypeId = null;
+            }
 
             // Read freq pairs: Freq1/Freq2, Freq3/Freq4, Freq5/Freq6, ...
             var freqPairs = new List<(short F1, short F2)>();
@@ -232,6 +249,7 @@ namespace SS.Matchmaking.Modules
 
             arenaData.Config = new ArenaConfig
             {
+                GameTypeId = gameTypeId,
                 PlayersPerTeam = _configManager.GetInt(ch, "CaptainsMatch", "PlayersPerTeam", 4),
                 LivesPerPlayer = _configManager.GetInt(ch, "CaptainsMatch", "LivesPerPlayer", 3),
                 DefaultShip = (ShipType)Math.Clamp(_configManager.GetInt(ch, "CaptainsMatch", "DefaultShip", 1) - 1, 0, 7),
@@ -1937,21 +1955,22 @@ namespace SS.Matchmaking.Modules
 
         private sealed class ArenaConfig
         {
-            public int PlayersPerTeam;
-            public int LivesPerPlayer;
-            public ShipType DefaultShip;
-            public List<(short F1, short F2)> FreqPairs = [];
-            public TimeSpan KickCooldown;
-            public TimeSpan? TimeLimit;
-            public TimeSpan? OverTimeLimit;
-            public TimeSpan WinConditionDelay;
-            public int TimeLimitWinBy;
-            public int MaxLagOuts;
-            public IOpenSkillModel OpenSkillModel = new PlackettLuce();
-            public double OpenSkillSigmaDecayPerDay;
-            public bool OpenSkillUseScoresWhenPossible;
+            public required long? GameTypeId;
+            public required int PlayersPerTeam;
+            public required int LivesPerPlayer;
+            public required ShipType DefaultShip;
+            public required List<(short F1, short F2)> FreqPairs;
+            public required TimeSpan KickCooldown;
+            public required TimeSpan? TimeLimit;
+            public required TimeSpan? OverTimeLimit;
+            public required TimeSpan WinConditionDelay;
+            public required int TimeLimitWinBy;
+            public required int MaxLagOuts;
+            public required IOpenSkillModel OpenSkillModel;
+            public required double OpenSkillSigmaDecayPerDay;
+            public required bool OpenSkillUseScoresWhenPossible;
             /// <summary>Key: freq number. Value: tile coordinates to warp players to at match start.</summary>
-            public Dictionary<short, (short X, short Y)> StartLocations = [];
+            public required Dictionary<short, (short X, short Y)> StartLocations;
         }
 
         /// <summary>
@@ -2074,7 +2093,7 @@ namespace SS.Matchmaking.Modules
         {
             private readonly ArenaConfig _config;
             public CaptainsMatchConfiguration(ArenaConfig config) => _config = config;
-            public long? GameTypeId => null;
+            public long? GameTypeId => _config.GameTypeId;
             public int NumTeams => 2;
             public int PlayersPerTeam => _config.PlayersPerTeam;
             public int LivesPerPlayer => _config.LivesPerPlayer;
