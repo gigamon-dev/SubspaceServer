@@ -313,7 +313,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("freqinfo", Command_FreqInfo, arena);
             _commandManager.AddCommand("refuse", Command_Refuse, arena);
             _commandManager.AddCommand("disband", Command_Disband, arena);
-            _commandManager.AddCommand("help", Command_Help, arena);
+            _commandManager.AddCommand("caphelp", Command_CapHelp, arena);
             // ?chart is provided by TeamVersusStats when it is attached to the arena.
 
             return true;
@@ -350,7 +350,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("freqinfo", Command_FreqInfo, arena);
             _commandManager.RemoveCommand("refuse", Command_Refuse, arena);
             _commandManager.RemoveCommand("disband", Command_Disband, arena);
-            _commandManager.RemoveCommand("help", Command_Help, arena);
+            _commandManager.RemoveCommand("caphelp", Command_CapHelp, arena);
             // ?chart is managed by TeamVersusStats.
 
             foreach (MatchCountdown c in arenaData.PendingCountdowns)
@@ -1645,7 +1645,7 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Description = "Display a summary of all available commands for this arena.")]
-        private void Command_Help(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        private void Command_CapHelp(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             // Two-column ASCII box: left = 20-char command, right = 46-char description.
             static string Row(string cmd, string desc) => $"| {cmd,-20} | {desc,-48} |";
