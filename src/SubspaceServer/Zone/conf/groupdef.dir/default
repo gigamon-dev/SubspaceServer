@@ -152,6 +152,7 @@ cmd_accept
 cmd_refuse
 cmd_ready
 cmd_rdy
+cmd_cancel
 cmd_join
 cmd_remove
 cmd_disband

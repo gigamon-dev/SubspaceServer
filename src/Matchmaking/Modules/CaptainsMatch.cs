@@ -1076,6 +1076,18 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
+            if (challengerFormation.Members.Count < arenaData.Config.PlayersPerTeam)
+            {
+                _chat.SendMessage(player, $"{challengerFormation.Captain.Name}'s team is not full ({challengerFormation.Members.Count}/{arenaData.Config.PlayersPerTeam}). Cannot accept.");
+                return;
+            }
+
+            if (myFormation.Members.Count < arenaData.Config.PlayersPerTeam)
+            {
+                _chat.SendMessage(player, $"Your team is not full ({myFormation.Members.Count}/{arenaData.Config.PlayersPerTeam}). Fill your roster before accepting.");
+                return;
+            }
+
             var pair = GetPairForChallenge(arenaData, challengerFormation, myFormation);
             if (pair is null)
             {
@@ -1288,6 +1300,15 @@ namespace SS.Matchmaking.Modules
             Formation? memberFormation = GetNonCaptainFormation(arenaData, player);
             if (memberFormation is not null)
             {
+                // If a countdown is in progress, abort it — ditching is a forfeit of participation.
+                if (arenaData.PlayerToMatch.ContainsKey(player))
+                {
+                    MatchCountdown? countdown = arenaData.PendingCountdowns.Find(
+                        c => c.Formation1 == memberFormation || c.Formation2 == memberFormation);
+                    if (countdown is not null)
+                        AbortCountdown(arena, arenaData, countdown, $"{player.Name} left {memberFormation.Captain.Name}'s team — countdown aborted.");
+                }
+
                 memberFormation.Members.Remove(player);
                 memberFormation.IsReady = false;
 
@@ -2176,11 +2197,9 @@ namespace SS.Matchmaking.Modules
             // does not fire spurious "has specced" announcements or re-schedule win-condition checks.
             arenaData.ActiveMatches.Remove(match);
 
-            // Spec out the losing team and clear their ManagedArena / PlayerToMatch entries.
-            foreach (var (p, slot) in match.ActiveSlots)
+            // Spec out all players from both teams and clear match tracking.
+            foreach (var (p, _) in match.ActiveSlots)
             {
-                if (slot.Team.Freq != losingFreq)
-                    continue;
                 if (p.Ship != ShipType.Spec)
                     _game.SetShipAndFreq(p, ShipType.Spec, p.Freq);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
@@ -2190,10 +2209,8 @@ namespace SS.Matchmaking.Modules
                 }
                 arenaData.PlayerToMatch.Remove(p);
             }
-            foreach (var (p, slot) in match.SpecOutSlots)
+            foreach (var (p, _) in match.SpecOutSlots)
             {
-                if (slot.Team.Freq != losingFreq)
-                    continue;
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                     pd.ManagedArena = null;
                 arenaData.PlayerToMatch.Remove(p);
@@ -2203,35 +2220,44 @@ namespace SS.Matchmaking.Modules
             if (winnerTeam is CaptainsTeam winnerCaptainsTeam)
             {
                 Player? winnerCaptain = winnerCaptainsTeam.OriginalCaptain;
-                var survivors = new HashSet<Player>();
+                var winners = new HashSet<Player>();
 
                 foreach (var (p, slot) in match.ActiveSlots)
                     if (slot.Team.Freq == winningFreq)
-                        survivors.Add(p);
+                        winners.Add(p);
 
+                // Include players eliminated during the match — they're still winners.
                 foreach (var (p, slot) in match.SpecOutSlots)
-                    if (slot.Team.Freq == winningFreq && slot.Lives > 0)
-                        survivors.Add(p);
+                    if (slot.Team.Freq == winningFreq)
+                        winners.Add(p);
 
-                if (winnerCaptain is null || !survivors.Contains(winnerCaptain))
-                    winnerCaptain = survivors.FirstOrDefault();
-
-                if (winnerCaptain is not null && survivors.Count > 0)
+                if (winners.Count < arenaData.Config.PlayersPerTeam)
                 {
-                    var winnerFormation = new Formation
-                    {
-                        Captain = winnerCaptain,
-                        AssignedFreq = winningFreq,
-                    };
-                    foreach (Player p in survivors)
-                    {
-                        winnerFormation.Members.Add(p);
-                        if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
-                            pd.ManagedArena = arena;
-                    }
+                    // A player left mid-match — bail on reformation.
+                    _chat.SendArenaMessage(arena, $"Freq {winningFreq}'s team cannot reform (a player left the game).");
+                }
+                else
+                {
+                    if (winnerCaptain is null || !winners.Contains(winnerCaptain))
+                        winnerCaptain = winners.FirstOrDefault();
 
-                    arenaData.Formations[winnerCaptain] = winnerFormation;
-                    _chat.SendArenaMessage(arena, $"Freq {winningFreq} ({winnerCaptain.Name}'s team) stays on the field! Challenge them: ?challenge {winnerCaptain.Name}");
+                    if (winnerCaptain is not null)
+                    {
+                        var winnerFormation = new Formation
+                        {
+                            Captain = winnerCaptain,
+                            AssignedFreq = winningFreq,
+                        };
+                        foreach (Player p in winners)
+                        {
+                            winnerFormation.Members.Add(p);
+                            if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
+                                pd.ManagedArena = arena;
+                        }
+
+                        arenaData.Formations[winnerCaptain] = winnerFormation;
+                        _chat.SendArenaMessage(arena, $"Freq {winningFreq} ({winnerCaptain.Name}'s team) wins! Challenge them: ?challenge {winnerCaptain.Name}");
+                    }
                 }
             }
 
@@ -2249,35 +2275,34 @@ namespace SS.Matchmaking.Modules
                     if (slot.Team.Freq == losingFreq)
                         loserPlayers.Add(p);
 
-                if (loserCaptain is null || !loserPlayers.Contains(loserCaptain))
-                    loserCaptain = loserPlayers.FirstOrDefault();
-
-                if (loserCaptain is not null && loserPlayers.Count > 0)
+                if (loserPlayers.Count < arenaData.Config.PlayersPerTeam)
                 {
-                    var loserFormation = new Formation
-                    {
-                        Captain = loserCaptain,
-                    };
-                    foreach (Player p in loserPlayers)
-                    {
-                        loserFormation.Members.Add(p);
-                        if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
-                            pd.ManagedArena = arena;
-                    }
+                    // A player left mid-match — bail on reformation.
+                    _chat.SendArenaMessage(arena, $"Freq {losingFreq}'s team cannot reform (a player left the game).");
+                }
+                else
+                {
+                    if (loserCaptain is null || !loserPlayers.Contains(loserCaptain))
+                        loserCaptain = loserPlayers.FirstOrDefault();
 
-                    arenaData.Formations[loserCaptain] = loserFormation;
-                    _chat.SendArenaMessage(arena, $"Freq {losingFreq} ({loserCaptain.Name}'s team) is regrouping. Challenge them: ?challenge {loserCaptain.Name}");
+                    if (loserCaptain is not null)
+                    {
+                        var loserFormation = new Formation
+                        {
+                            Captain = loserCaptain,
+                        };
+                        foreach (Player p in loserPlayers)
+                        {
+                            loserFormation.Members.Add(p);
+                            if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
+                                pd.ManagedArena = arena;
+                        }
+
+                        arenaData.Formations[loserCaptain] = loserFormation;
+                        _chat.SendArenaMessage(arena, $"Freq {losingFreq} ({loserCaptain.Name}'s team) is regrouping. Challenge them: ?challenge {loserCaptain.Name}");
+                    }
                 }
             }
-
-            // Remove extra position data watches for winning team players and remove from PlayerToMatch.
-            foreach (var (p, _) in match.ActiveSlots)
-                RemoveExtraPositionDataWatch(p);
-
-            foreach (Player p in match.ActiveSlots.Keys.ToList())
-                arenaData.PlayerToMatch.Remove(p);
-            foreach (Player p in match.SpecOutSlots.Keys.ToList())
-                arenaData.PlayerToMatch.Remove(p);
 
             arenaData.KickedPlayers.Clear();
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_MatchTimeExpired, match);
