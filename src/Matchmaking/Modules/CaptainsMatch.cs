@@ -313,6 +313,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("freqinfo", Command_FreqInfo, arena);
             _commandManager.AddCommand("refuse", Command_Refuse, arena);
             _commandManager.AddCommand("disband", Command_Disband, arena);
+            _commandManager.AddCommand("help", Command_Help, arena);
             // ?chart is provided by TeamVersusStats when it is attached to the arena.
 
             return true;
@@ -349,6 +350,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("freqinfo", Command_FreqInfo, arena);
             _commandManager.RemoveCommand("refuse", Command_Refuse, arena);
             _commandManager.RemoveCommand("disband", Command_Disband, arena);
+            _commandManager.RemoveCommand("help", Command_Help, arena);
             // ?chart is managed by TeamVersusStats.
 
             foreach (MatchCountdown c in arenaData.PendingCountdowns)
@@ -429,6 +431,10 @@ namespace SS.Matchmaking.Modules
 
                 if (match.SpecOutSlots.TryGetValue(player, out CaptainsPlayerSlot? specSlot))
                 {
+                    // Before GO (countdown phase), allow free re-entry — ?return is not yet available.
+                    if (!arenaData.ActiveMatches.Contains(match))
+                        return ShipMask.All;
+
                     if (specSlot.Lives <= 0)
                     {
                         errorMessage?.Append("You have been eliminated — no lives remaining.");
@@ -496,6 +502,10 @@ namespace SS.Matchmaking.Modules
             {
                 if (match.SpecOutSlots.TryGetValue(player, out CaptainsPlayerSlot? specSlot))
                 {
+                    // Before GO (countdown phase), allow free re-entry — ?return is not yet available.
+                    if (!arenaData.ActiveMatches.Contains(match))
+                        return true;
+
                     if (specSlot.Lives <= 0)
                     {
                         errorMessage?.Append("You have been eliminated — no lives remaining.");
@@ -729,6 +739,11 @@ namespace SS.Matchmaking.Modules
                         slot.Player = player;
                         CancelAbandonTimer(match, slot.Team.Freq);
 
+                        // If the match has already started (post-GO), register the player with
+                        // MatchFocus so position packets are routed correctly to teammates.
+                        if (arenaData.ActiveMatches.Contains(match))
+                            MatchAddPlayingCallback.Fire(_broker!, match.MatchData, player.Name!, player);
+
                         // Apply requested ship if set, otherwise use DefaultShip.
                         ShipType targetShip = arenaData.Config.DefaultShip;
                         if (player.TryGetExtraData(_pdKey, out PlayerData? pd2) && pd2.RequestedShip is not null)
@@ -783,6 +798,9 @@ namespace SS.Matchmaking.Modules
 
         #region Commands
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Become a captain and create a team. Other players can then ?join your team.")]
         private void Command_Captain(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -816,6 +834,10 @@ namespace SS.Matchmaking.Modules
             SendToAvailablePlayers(arena, arenaData, $"{player.Name} is now a captain! Type ?join {player.Name} to join their team. Team: {FormatTeamRoster(formation, arenaData.Config.PlayersPerTeam)}");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<captain name>",
+            Description = "Join a captain's team. The captain must have used ?captain first.")]
         private void Command_Join(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -885,6 +907,10 @@ namespace SS.Matchmaking.Modules
             SendToAvailablePlayers(arena, arenaData, $"{player.Name} joined {targetFormation.Captain.Name}'s team. Team: {FormatTeamRoster(targetFormation, arenaData.Config.PlayersPerTeam)}");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<captain name>",
+            Description = "Challenge another captain's formed team to a match. Both teams must be full before challenging.")]
         private void Command_Challenge(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -985,6 +1011,9 @@ namespace SS.Matchmaking.Modules
             SendToAvailablePlayers(arena, arenaData, $"{player.Name}'s team has challenged {targetFormation.Captain.Name}'s team to a match!");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Accept a pending challenge from another captain.")]
         private void Command_Accept(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1076,6 +1105,9 @@ namespace SS.Matchmaking.Modules
                 + "Both captains type ?ready to start the match!");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Mark your team as ready to start. Both captains must ?ready after a challenge is accepted. Also aliased as ?rdy.")]
         private void Command_Ready(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1136,6 +1168,9 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Unready your team if you previously typed ?ready, or abort a running countdown.")]
         private void Command_Cancel(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1175,6 +1210,10 @@ namespace SS.Matchmaking.Modules
             SendToFormationPair(myFormation, myFormation.PairedWith, $"{player.Name} cancelled ready.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<player name>",
+            Description = "Captains only: remove a player from your team and return them to spec.")]
         private void Command_Remove(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1229,6 +1268,9 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, $"Team: {FormatTeamRoster(myFormation, arenaData.Config.PlayersPerTeam)}");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Leave your current team and return to spec. For captains, use ?disband instead.")]
         private void Command_Leave(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1263,6 +1305,9 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, "You are not in any team.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Captains only: forfeit the current match for your team.")]
         private void Command_End(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1297,6 +1342,10 @@ namespace SS.Matchmaking.Modules
             EndMatch(arena, arenaData, match, losingFreq);
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[captain name]",
+            Description = "Refuse a pending challenge. If multiple challenges are pending, specify the challenger's name.")]
         private void Command_Refuse(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1357,6 +1406,9 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(challengerFormation.Captain, $"{player.Name} refused your challenge.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Captains only: disband your entire team and return all members to spec.")]
         private void Command_Disband(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1382,6 +1434,10 @@ namespace SS.Matchmaking.Modules
             DisbandFormation(arena, arenaData, myFormation, $"{player.Name}'s team has been disbanded.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<1-8>",
+            Description = "Queue a ship change for your next spawn during an active match.")]
         private void Command_Sc(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1423,6 +1479,9 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Re-enter a match after lagging out, if you still have lives remaining.")]
         private void Command_Return(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1467,6 +1526,10 @@ namespace SS.Matchmaking.Modules
             _chat.SendArenaMessage(arena, $"{player.Name} has returned (burned).");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[player name]",
+            Description = "Display the current item counts for yourself or the specified player.")]
         private void Command_Items(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1501,6 +1564,9 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "List all currently forming or formed teams in the arena, including their members.")]
         private void Command_FreqInfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1549,6 +1615,36 @@ namespace SS.Matchmaking.Modules
 
             if (!anyOutput)
                 _chat.SendMessage(player, "No active teams or matches. Type ?captain to form a team!");
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Display a summary of all available commands for this arena.")]
+        private void Command_Help(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            _chat.SendMessage(player, "--- Team Formation ---");
+            _chat.SendMessage(player, "?captain (?cap) - Become a captain and open your team for joining.");
+            _chat.SendMessage(player, "?join <captain> - Join a captain's team.");
+            _chat.SendMessage(player, "?remove <player> - [Captain] Remove a player from your team.");
+            _chat.SendMessage(player, "?disband - [Captain] Disband your entire team.");
+            _chat.SendMessage(player, "?ditch - Leave your current team (non-captains).");
+            _chat.SendMessage(player, "--- Challenge ---");
+            _chat.SendMessage(player, "?challenge <captain> - Challenge another formed team to a match.");
+            _chat.SendMessage(player, "?accept - Accept a pending challenge.");
+            _chat.SendMessage(player, "?refuse [captain] - Refuse a pending challenge.");
+            _chat.SendMessage(player, "--- Pre-Game ---");
+            _chat.SendMessage(player, "?ready (?rdy) - [Captain] Ready up after accepting a challenge (both captains required).");
+            _chat.SendMessage(player, "?cancel - [Captain] Unready or abort a running countdown.");
+            _chat.SendMessage(player, "--- In-Game ---");
+            _chat.SendMessage(player, "?return - Re-enter the match after lagging out (if lives remain).");
+            _chat.SendMessage(player, "?end - [Captain] Forfeit the match for your team.");
+            _chat.SendMessage(player, "?chart - Look up current match stats.");
+            _chat.SendMessage(player, "?sc <1-8> - Queue a ship change for your next spawn.");
+            _chat.SendMessage(player, "?items [player] - Show item counts for yourself or another player.");
+            _chat.SendMessage(player, "--- Anytime ---");
+            _chat.SendMessage(player, "?freqinfo - See all forming or formed teams in the arena.");
+            _chat.SendMessage(player, "?statbox - Choose your statbox preference (detailed, simple, off).");
+            _chat.SendMessage(player, "?help - Show this command list.");
         }
 
         #endregion
