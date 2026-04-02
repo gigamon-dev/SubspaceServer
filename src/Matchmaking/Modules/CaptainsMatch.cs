@@ -650,6 +650,15 @@ namespace SS.Matchmaking.Modules
                         }
                     }
                 }
+                else if (newShip != ShipType.Spec && oldShip == ShipType.Spec)
+                {
+                    // Formation player re-entering — ensure they land on their assigned freq.
+                    Formation? formation = GetPlayerFormation(arenaData, player);
+                    if (formation?.AssignedFreq is { } assignedFreq && newFreq != assignedFreq)
+                    {
+                        _game.SetShipAndFreq(player, newShip, assignedFreq);
+                    }
+                }
                 return;
             }
 
@@ -1106,7 +1115,7 @@ namespace SS.Matchmaking.Modules
 
                 if (notReady is not null)
                 {
-                    _chat.SendMessage(player, $"Cannot ready up — the following player(s) are not in a ship on Freq {assignedFreq}: {string.Join(", ", notReady)}");
+                    _chat.SendMessage(player, $"Cannot ready up — the following player(s) are not in a ship on Freq {assignedFreq}: {string.Join(", ", notReady)}. (If you cannot field a full team, use ?disband to abandon matchmaking.)");
                     return;
                 }
             }
