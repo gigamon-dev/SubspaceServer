@@ -831,13 +831,13 @@ namespace SS.Matchmaking.Modules
             if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 pd.ManagedArena = arena;
 
-            SendToAvailablePlayers(arena, arenaData, $"{player.Name} is now a captain! Type ?join {player.Name} to join their team. Team: {FormatTeamRoster(formation, arenaData.Config.PlayersPerTeam)}");
+            SendToAvailablePlayers(arena, arenaData, $"{player.Name} is now a captain! Type ?join {player.Name} or PM them with ?join to join their team. Team: {FormatTeamRoster(formation, arenaData.Config.PlayersPerTeam)}");
         }
 
         [CommandHelp(
-            Targets = CommandTarget.None,
+            Targets = CommandTarget.None | CommandTarget.Player,
             Args = "<captain name>",
-            Description = "Join a captain's team. The captain must have used ?captain first.")]
+            Description = "Join a captain's team. The captain must have used ?captain first. You can also PM the captain directly with ?join.")]
         private void Command_Join(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -872,10 +872,14 @@ namespace SS.Matchmaking.Modules
                 arenaData.KickedPlayers.Remove(player.Name!);
             }
 
-            ReadOnlySpan<char> captainName = parameters.Trim();
+            // Allow PMing the captain directly: /?join sent as a private message to the captain.
+            ReadOnlySpan<char> captainName = target.TryGetPlayerTarget(out Player? targetPlayer)
+                ? targetPlayer.Name.AsSpan()
+                : parameters.Trim();
+
             if (captainName.IsEmpty)
             {
-                _chat.SendMessage(player, "Usage: ?join <captain name>");
+                _chat.SendMessage(player, "Usage: ?join <captain name>  — or PM the captain with ?join");
                 return;
             }
 
@@ -1550,7 +1554,7 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[player name]",
-            Description = "Display the current item counts for yourself or the specified player.")]
+            Description = "Display the current item counts for all players.")]
         private void Command_Items(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1643,29 +1647,39 @@ namespace SS.Matchmaking.Modules
             Description = "Display a summary of all available commands for this arena.")]
         private void Command_Help(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            _chat.SendMessage(player, "--- Team Formation ---");
-            _chat.SendMessage(player, "?captain (?cap) - Become a captain and open your team for joining.");
-            _chat.SendMessage(player, "?join <captain> - Join a captain's team.");
-            _chat.SendMessage(player, "?remove <player> - [Captain] Remove a player from your team.");
-            _chat.SendMessage(player, "?disband - [Captain] Disband your entire team.");
-            _chat.SendMessage(player, "?ditch - Leave your current team (non-captains).");
-            _chat.SendMessage(player, "--- Challenge ---");
-            _chat.SendMessage(player, "?challenge <captain> - Challenge another formed team to a match.");
-            _chat.SendMessage(player, "?accept - Accept a pending challenge.");
-            _chat.SendMessage(player, "?refuse [captain] - Refuse a pending challenge.");
-            _chat.SendMessage(player, "--- Pre-Game ---");
-            _chat.SendMessage(player, "?ready (?rdy) - [Captain] Ready up after accepting a challenge (both captains required).");
-            _chat.SendMessage(player, "?cancel - [Captain] Unready or abort a running countdown.");
-            _chat.SendMessage(player, "--- In-Game ---");
-            _chat.SendMessage(player, "?return - Re-enter the match after lagging out (if lives remain).");
-            _chat.SendMessage(player, "?end - [Captain] Forfeit the match for your team.");
-            _chat.SendMessage(player, "?chart - Look up current match stats.");
-            _chat.SendMessage(player, "?sc <1-8> - Queue a ship change for your next spawn.");
-            _chat.SendMessage(player, "?items [player] - Show item counts for yourself or another player.");
-            _chat.SendMessage(player, "--- Anytime ---");
-            _chat.SendMessage(player, "?freqinfo - See all forming or formed teams in the arena.");
-            _chat.SendMessage(player, "?statbox - Choose your statbox preference (detailed, simple, off).");
-            _chat.SendMessage(player, "?help - Show this command list.");
+            // Two-column ASCII box: left = 20-char command, right = 46-char description.
+            static string Row(string cmd, string desc) => $"| {cmd,-20} | {desc,-48} |";
+            static string Section(string name)
+            {
+                string left = $"-- {name} ".PadRight(22, '-');
+                return $"+{left}+{new string('-', 50)}+";
+            }
+            const string Sep = "+----------------------+--------------------------------------------------+";
+
+            _chat.SendMessage(player, Section("Team Formation"));
+            _chat.SendMessage(player, Row("?captain (?cap)", "Become a captain; others can join your team."));
+            _chat.SendMessage(player, Row("?join <captain>", "Join a captain's team. Or PM captain with ?join."));
+            _chat.SendMessage(player, Row("?remove <player>", "[Cap] Remove a player from your team."));
+            _chat.SendMessage(player, Row("?disband", "[Cap] Disband your entire team."));
+            _chat.SendMessage(player, Row("?ditch", "Leave your current team."));
+            _chat.SendMessage(player, Section("Challenge"));
+            _chat.SendMessage(player, Row("?challenge <captain>", "Challenge another full team to a match."));
+            _chat.SendMessage(player, Row("?accept", "Accept a pending challenge."));
+            _chat.SendMessage(player, Row("?refuse [captain]", "Refuse a pending challenge."));
+            _chat.SendMessage(player, Section("Pre-Game"));
+            _chat.SendMessage(player, Row("?ready (?rdy)", "[Cap] Mark ready. Both captains must ?ready."));
+            _chat.SendMessage(player, Row("?cancel", "[Cap] Unready or abort a running countdown."));
+            _chat.SendMessage(player, Section("In-Game"));
+            _chat.SendMessage(player, Row("?return", "Re-enter the match if you have lives left."));
+            _chat.SendMessage(player, Row("?end", "[Cap] Forfeit the match for your team."));
+            _chat.SendMessage(player, Row("?chart", "Show current match stats."));
+            _chat.SendMessage(player, Row("?sc <1-8>", "Queue a ship change for your next spawn."));
+            _chat.SendMessage(player, Row("?items [player]", "Show item counts for yourself or another."));
+            _chat.SendMessage(player, Section("General Use"));
+            _chat.SendMessage(player, Row("?freqinfo", "See all forming or formed teams in the arena."));
+            _chat.SendMessage(player, Row("?statbox", "Set statbox preference (detailed/simple/off)."));
+            _chat.SendMessage(player, Row("?help", "Show this command list."));
+            _chat.SendMessage(player, Sep);
         }
 
         #endregion
