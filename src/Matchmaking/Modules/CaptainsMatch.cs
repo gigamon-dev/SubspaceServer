@@ -121,6 +121,8 @@ namespace SS.Matchmaking.Modules
             Description = "Minimum score lead required for a time-limit win. If neither team leads by this amount, overtime begins (if configured) or the match draws.")]
         [ConfigHelp<int>("CaptainsMatch", "MaxLagOuts", ConfigScope.Arena, Default = 3,
             Description = "Maximum number of times a player may voluntarily spec out during a match before they cannot re-enter.")]
+        [ConfigHelp<int>("CaptainsMatch", "AbandonTimeoutSeconds", ConfigScope.Arena, Default = 10,
+            Description = "Seconds a team with no active (playing) players has before the match is forfeited in their name. Set to 0 to disable.")]
         [ConfigHelp("CaptainsMatch", "OpenSkillModel", ConfigScope.Arena, Default = "PlackettLuce",
             Description = "OpenSkill rating model. Options: PlackettLuce, BradleyTerryFull, BradleyTerryPart, ThurstoneMostellerFull, ThurstoneMostellerPart.")]
         [ConfigHelp("CaptainsMatch", "OpenSkillModelJson", ConfigScope.Arena,
@@ -260,6 +262,7 @@ namespace SS.Matchmaking.Modules
                 WinConditionDelay = winConditionDelay,
                 TimeLimitWinBy = Math.Max(1, _configManager.GetInt(ch, "CaptainsMatch", "TimeLimitWinBy", 2)),
                 MaxLagOuts = _configManager.GetInt(ch, "CaptainsMatch", "MaxLagOuts", 3),
+                AbandonTimeoutMs = Math.Max(0, _configManager.GetInt(ch, "CaptainsMatch", "AbandonTimeoutSeconds", 10)) * 1000,
                 OpenSkillModel = openSkillModel,
                 OpenSkillSigmaDecayPerDay = sigmaDecayPerDay,
                 OpenSkillUseScoresWhenPossible = _configManager.GetBool(ch, "CaptainsMatch", "OpenSkillUseScoresWhenPossible", false),
@@ -281,9 +284,10 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("rdy", Command_Ready, arena);
             _commandManager.AddCommand("cancel", Command_Cancel, arena);
             _commandManager.AddCommand("remove", Command_Remove, arena);
-            _commandManager.AddCommand("leave", Command_Leave, arena);
+            _commandManager.AddCommand("ditch", Command_Leave, arena);
             _commandManager.AddCommand("end", Command_End, arena);
             _commandManager.AddCommand("sc", Command_Sc, arena);
+            _commandManager.AddCommand("return", Command_Return, arena);
             _commandManager.AddCommand("items", Command_Items, arena);
             _commandManager.AddCommand("freqinfo", Command_FreqInfo, arena);
             _commandManager.AddCommand("refuse", Command_Refuse, arena);
@@ -313,9 +317,10 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("rdy", Command_Ready, arena);
             _commandManager.RemoveCommand("cancel", Command_Cancel, arena);
             _commandManager.RemoveCommand("remove", Command_Remove, arena);
-            _commandManager.RemoveCommand("leave", Command_Leave, arena);
+            _commandManager.RemoveCommand("ditch", Command_Leave, arena);
             _commandManager.RemoveCommand("end", Command_End, arena);
             _commandManager.RemoveCommand("sc", Command_Sc, arena);
+            _commandManager.RemoveCommand("return", Command_Return, arena);
             _commandManager.RemoveCommand("items", Command_Items, arena);
             _commandManager.RemoveCommand("freqinfo", Command_FreqInfo, arena);
             _commandManager.RemoveCommand("refuse", Command_Refuse, arena);
@@ -332,6 +337,8 @@ namespace SS.Matchmaking.Modules
             {
                 _mainloopTimer.ClearTimer<ActiveMatch>(Timer_MatchTimeExpired, m);
                 _mainloopTimer.ClearTimer<ActiveMatch>(Timer_WinConditionCheck, m);
+                _mainloopTimer.ClearTimer<AbandonState>(Timer_AbandonCheck, m.Freq1AbandonState);
+                _mainloopTimer.ClearTimer<AbandonState>(Timer_AbandonCheck, m.Freq2AbandonState);
             }
 
             ((IResettable)arenaData).TryReset();
@@ -412,6 +419,10 @@ namespace SS.Matchmaking.Modules
             if (!arenaData.PlayerToMatch.TryGetValue(killed, out ActiveMatch? killedMatch))
                 return;
 
+            // Ignore kills before GO! — the match isn't officially active yet.
+            if (!arenaData.ActiveMatches.Contains(killedMatch))
+                return;
+
             if (!killedMatch.ActiveSlots.TryGetValue(killed, out CaptainsPlayerSlot? killedSlot))
                 return;
 
@@ -469,6 +480,8 @@ namespace SS.Matchmaking.Modules
             if (killerSlot is not null && _tvStatsBehavior is not null && matchIsActive)
                 _ = _tvStatsBehavior.PlayerKilledAsync(ServerTick.Now, DateTime.UtcNow, killedMatch.MatchData, killed, killedSlot, killer!, killerSlot, isKnockout);
 
+            CheckAbandonCondition(arenaData, killedMatch, killedSlot.Team.Freq);
+
             // Delay the elimination check to handle simultaneous double-KO scenarios.
             ScheduleWinConditionCheck(arenaData, killedMatch);
         }
@@ -499,10 +512,13 @@ namespace SS.Matchmaking.Modules
                     slot.Player = null;
                     slot.LagOuts++;
 
-                    // Forfeit if all of the team's players are now out of ActiveSlots.
+                    // Check win condition (all lives gone) and abandon condition (all specced out).
                     bool allOut = !match.ActiveSlots.Values.Any(s => s.Team.Freq == oldFreq);
                     if (allOut && arenaData.ActiveMatches.Contains(match))
+                    {
                         ScheduleWinConditionCheck(arenaData, match);
+                        CheckAbandonCondition(arenaData, match, slot.Team.Freq);
+                    }
                 }
             }
             else if (newShip != ShipType.Spec && oldShip == ShipType.Spec)
@@ -535,6 +551,7 @@ namespace SS.Matchmaking.Modules
                         match.SpecOutSlots.Remove(player);
                         match.ActiveSlots[player] = slot;
                         slot.Player = player;
+                        CancelAbandonTimer(match, slot.Team.Freq);
 
                         // Apply requested ship if set, otherwise use DefaultShip.
                         ShipType targetShip = arenaData.Config.DefaultShip;
@@ -604,7 +621,7 @@ namespace SS.Matchmaking.Modules
 
             if (GetPlayerFormation(arenaData, player) is not null)
             {
-                _chat.SendMessage(player, "You are already in a team formation. Use ?leave or ?disband to leave first.");
+                _chat.SendMessage(player, "You are already in a team formation. Use ?ditch or ?disband to leave first.");
                 return;
             }
             if (IsPlayerInMatch(arenaData, player))
@@ -620,7 +637,7 @@ namespace SS.Matchmaking.Modules
             if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 pd.ManagedArena = arena;
 
-            SendToSpecPlayers(arena, $"{player.Name} is now a captain! Type ?join {player.Name} to join their team. Team: {FormatTeamRoster(formation, arenaData.Config.PlayersPerTeam)}");
+            SendToAvailablePlayers(arena, arenaData, $"{player.Name} is now a captain! Type ?join {player.Name} to join their team. Team: {FormatTeamRoster(formation, arenaData.Config.PlayersPerTeam)}");
         }
 
         private void Command_Join(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -637,7 +654,7 @@ namespace SS.Matchmaking.Modules
 
             if (GetPlayerFormation(arenaData, player) is not null)
             {
-                _chat.SendMessage(player, "You are already in a team formation. Use ?leave or ?disband to leave first.");
+                _chat.SendMessage(player, "You are already in a team formation. Use ?ditch or ?disband to leave first.");
                 return;
             }
             if (IsPlayerInMatch(arenaData, player))
@@ -689,7 +706,7 @@ namespace SS.Matchmaking.Modules
             if (player.TryGetExtraData(_pdKey, out PlayerData? jpd))
                 jpd.ManagedArena = arena;
 
-            SendToSpecPlayers(arena, $"{player.Name} joined {targetFormation.Captain.Name}'s team. Team: {FormatTeamRoster(targetFormation, arenaData.Config.PlayersPerTeam)}");
+            SendToAvailablePlayers(arena, arenaData, $"{player.Name} joined {targetFormation.Captain.Name}'s team. Team: {FormatTeamRoster(targetFormation, arenaData.Config.PlayersPerTeam)}");
         }
 
         private void Command_Challenge(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -771,7 +788,7 @@ namespace SS.Matchmaking.Modules
                 MoveFormationToFreq(arena, arenaData, myFormation);
                 MoveFormationToFreq(arena, arenaData, targetFormation);
 
-                SendToSpecPlayers(arena,
+                SendToAvailablePlayers(arena, arenaData,
                     $"Mutual challenge! {player.Name}'s team (Freq {myFormation.AssignedFreq}) vs "
                     + $"{targetFormation.Captain.Name}'s team (Freq {targetFormation.AssignedFreq}). "
                     + "Both captains type ?ready to start!");
@@ -789,7 +806,7 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, $"Challenge sent to {targetFormation.Captain.Name}!");
             _chat.SendMessage(targetFormation.Captain, ChatSound.Ding,
                 $">>> {player.Name}'s team ({myFormation.Members.Count} players) has challenged your team! Type ?accept {player.Name} to accept. <<<");
-            SendToSpecPlayers(arena, $"{player.Name}'s team has challenged {targetFormation.Captain.Name}'s team to a match!");
+            SendToAvailablePlayers(arena, arenaData, $"{player.Name}'s team has challenged {targetFormation.Captain.Name}'s team to a match!");
         }
 
         private void Command_Accept(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -877,7 +894,7 @@ namespace SS.Matchmaking.Modules
             MoveFormationToFreq(arena, arenaData, challengerFormation);
             MoveFormationToFreq(arena, arenaData, myFormation);
 
-            SendToSpecPlayers(arena,
+            SendToAvailablePlayers(arena, arenaData,
                 $"Challenge accepted! {challengerFormation.Captain.Name}'s team (Freq {challengerFormation.AssignedFreq}) vs "
                 + $"{myFormation.Captain.Name}'s team (Freq {myFormation.AssignedFreq}). "
                 + "Both captains type ?ready to start the match!");
@@ -1210,6 +1227,48 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        private void Command_Return(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            if (!arenaData.PlayerToMatch.TryGetValue(player, out ActiveMatch? match)
+                || !arenaData.ActiveMatches.Contains(match))
+            {
+                _chat.SendMessage(player, "?return is only available during an active match.");
+                return;
+            }
+
+            if (match.ActiveSlots.ContainsKey(player))
+            {
+                _chat.SendMessage(player, "You are already in play.");
+                return;
+            }
+
+            if (!match.SpecOutSlots.TryGetValue(player, out CaptainsPlayerSlot? slot))
+            {
+                _chat.SendMessage(player, "You are not in this match.");
+                return;
+            }
+
+            if (slot.Lives <= 0)
+            {
+                _chat.SendMessage(player, "You have been eliminated and cannot return.");
+                return;
+            }
+
+            if (slot.LagOuts > arenaData.Config.MaxLagOuts)
+            {
+                _chat.SendMessage(player, $"You cannot return: exceeded maximum lagouts ({arenaData.Config.MaxLagOuts}).");
+                return;
+            }
+
+            // Return the player to their assigned freq and ship. Callback_ShipFreqChange handles slot tracking.
+            _game.SetShipAndFreq(player, arenaData.Config.DefaultShip, slot.Team.Freq);
+            _chat.SendArenaMessage(arena, $"{player.Name} has returned (burned).");
+        }
+
         private void Command_Items(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1396,9 +1455,53 @@ namespace SS.Matchmaking.Modules
             return false;
         }
 
+        private bool Timer_AbandonCheck(AbandonState state)
+        {
+            Arena? arena = state.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return false;
+
+            if (!arenaData.ActiveMatches.Contains(state.Match))
+                return false;
+
+            // Verify the team still has no active players before forfeiting.
+            if (state.Match.ActiveSlots.Values.Any(s => s.Team.Freq == state.Freq))
+                return false;
+
+            _chat.SendArenaMessage(arena, $"Freq {state.Freq} has no active players — forfeited!");
+            EndMatch(arena, arenaData, state.Match, state.Freq);
+            return false;
+        }
+
         #endregion
 
         #region Helpers
+
+        /// <summary>
+        /// Starts the abandon timer for <paramref name="freq"/> if it has no active players.
+        /// Only fires when the match is active and <see cref="ArenaConfig.AbandonTimeoutMs"/> is non-zero.
+        /// Safe to call unconditionally after any <see cref="ActiveMatch.ActiveSlots"/> removal.
+        /// </summary>
+        private void CheckAbandonCondition(ArenaData arenaData, ActiveMatch match, short freq)
+        {
+            if (arenaData.Config.AbandonTimeoutMs <= 0) return;
+            if (!arenaData.ActiveMatches.Contains(match)) return;
+            if (match.ActiveSlots.Values.Any(s => s.Team.Freq == freq)) return;
+
+            AbandonState? state = match.GetAbandonState(freq);
+            if (state is null) return;
+
+            // Reset the timer (in case it was already running from a prior spec-out).
+            _mainloopTimer.ClearTimer<AbandonState>(Timer_AbandonCheck, state);
+            _mainloopTimer.SetTimer<AbandonState>(Timer_AbandonCheck, arenaData.Config.AbandonTimeoutMs, Timeout.Infinite, state, state);
+        }
+
+        private void CancelAbandonTimer(ActiveMatch match, short freq)
+        {
+            AbandonState? state = match.GetAbandonState(freq);
+            if (state is not null)
+                _mainloopTimer.ClearTimer<AbandonState>(Timer_AbandonCheck, state);
+        }
 
         private void HandlePlayerLeave(Arena arena, ArenaData arenaData, Player player)
         {
@@ -1460,7 +1563,10 @@ namespace SS.Matchmaking.Modules
                 }
 
                 if (arenaData.ActiveMatches.Contains(match))
+                {
                     ScheduleWinConditionCheck(arenaData, match);
+                    CheckAbandonCondition(arenaData, match, playerSlot.Team.Freq);
+                }
             }
         }
 
@@ -1468,7 +1574,12 @@ namespace SS.Matchmaking.Modules
         /// Sends a message to all players in the arena who are currently in spectator mode.
         /// Used for formation-phase announcements that are irrelevant to players in active matches.
         /// </summary>
-        private void SendToSpecPlayers(Arena arena, string message)
+        /// <summary>
+        /// Sends a message to all players in the arena who are not already committed to a match
+        /// (i.e., not in <see cref="ArenaData.PlayerToMatch"/>, which covers both active matches and pending countdowns).
+        /// Formation members who haven't both readied up yet are included.
+        /// </summary>
+        private void SendToAvailablePlayers(Arena arena, ArenaData arenaData, string message)
         {
             HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
             try
@@ -1477,7 +1588,7 @@ namespace SS.Matchmaking.Modules
                 try
                 {
                     foreach (Player p in _playerData.Players)
-                        if (p.Arena == arena && p.Ship == ShipType.Spec && p.Status == PlayerState.Playing)
+                        if (p.Arena == arena && p.Status == PlayerState.Playing && !arenaData.PlayerToMatch.ContainsKey(p))
                             set.Add(p);
                 }
                 finally
@@ -1550,10 +1661,13 @@ namespace SS.Matchmaking.Modules
             // Warp all players to their start positions immediately when both teams are ready.
             if (arenaData.Config.StartLocations.Count > 0)
             {
+                HashSet<short>? warnedFreqs = null;
                 foreach (var (p, slot) in countdown.ActiveMatch.ActiveSlots)
                 {
                     if (arenaData.Config.StartLocations.TryGetValue(slot.Team.Freq, out (short X, short Y) loc))
                         _game.WarpTo(p, loc.X, loc.Y);
+                    else if (warnedFreqs is null || warnedFreqs.Add(slot.Team.Freq))
+                        _logManager.LogA(LogLevel.Warn, nameof(CaptainsMatch), arena, $"No start location configured for Freq {slot.Team.Freq}; players will not be warped.");
                 }
             }
 
@@ -1642,6 +1756,9 @@ namespace SS.Matchmaking.Modules
 
             matchData.SetTeams(team1, team2);
 
+            activeMatch.Freq1AbandonState = new AbandonState { Arena = arena, ArenaData = arenaData, Match = activeMatch, Freq = freq1 };
+            activeMatch.Freq2AbandonState = new AbandonState { Arena = arena, ArenaData = arenaData, Match = activeMatch, Freq = freq2 };
+
             return new MatchCountdown
             {
                 Arena = arena,
@@ -1681,10 +1798,13 @@ namespace SS.Matchmaking.Modules
             // Re-warp all players at GO! in case the pre-countdown warp was missed (e.g. timing/client issue).
             if (arenaData.Config.StartLocations.Count > 0)
             {
+                HashSet<short>? warnedFreqs = null;
                 foreach (var (p, slot) in match.ActiveSlots)
                 {
                     if (arenaData.Config.StartLocations.TryGetValue(slot.Team.Freq, out (short X, short Y) loc))
                         _game.WarpTo(p, loc.X, loc.Y);
+                    else if (warnedFreqs is null || warnedFreqs.Add(slot.Team.Freq))
+                        _logManager.LogA(LogLevel.Warn, nameof(CaptainsMatch), arena, $"No start location configured for Freq {slot.Team.Freq}; players will not be warped.");
                 }
             }
 
@@ -1754,7 +1874,11 @@ namespace SS.Matchmaking.Modules
                         AssignedFreq = winningFreq,
                     };
                     foreach (Player p in survivors)
+                    {
                         winnerFormation.Members.Add(p);
+                        if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
+                            pd.ManagedArena = arena;
+                    }
 
                     arenaData.Formations[winnerCaptain] = winnerFormation;
                     _chat.SendArenaMessage(arena, $"Freq {winningFreq} ({winnerCaptain.Name}'s team) stays on the field! Challenge them: ?challenge {winnerCaptain.Name}");
@@ -1809,6 +1933,8 @@ namespace SS.Matchmaking.Modules
             arenaData.KickedPlayers.Clear();
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_MatchTimeExpired, match);
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_WinConditionCheck, match);
+            CancelAbandonTimer(match, match.Freq1);
+            CancelAbandonTimer(match, match.Freq2);
         }
 
         /// <summary>
@@ -1844,6 +1970,8 @@ namespace SS.Matchmaking.Modules
             arenaData.KickedPlayers.Clear();
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_MatchTimeExpired, match);
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_WinConditionCheck, match);
+            CancelAbandonTimer(match, match.Freq1);
+            CancelAbandonTimer(match, match.Freq2);
         }
 
         /// <summary>
@@ -2078,6 +2206,7 @@ namespace SS.Matchmaking.Modules
             public required TimeSpan WinConditionDelay;
             public required int TimeLimitWinBy;
             public required int MaxLagOuts;
+            public required int AbandonTimeoutMs;
             public required IOpenSkillModel OpenSkillModel;
             public required double OpenSkillSigmaDecayPerDay;
             public required bool OpenSkillUseScoresWhenPossible;
@@ -2126,6 +2255,25 @@ namespace SS.Matchmaking.Modules
 
             /// <summary>Whether the match is currently in overtime.</summary>
             public bool IsOvertime;
+
+            /// <summary>Timer state/key for each team's abandon timeout. Initialized in <see cref="BuildMatchCountdown"/>.</summary>
+            public AbandonState Freq1AbandonState = null!;
+            public AbandonState Freq2AbandonState = null!;
+
+            public AbandonState? GetAbandonState(short freq) =>
+                freq == Freq1 ? Freq1AbandonState : freq == Freq2 ? Freq2AbandonState : null;
+        }
+
+        /// <summary>
+        /// Timer state/key for the per-team abandon timeout.
+        /// One instance is allocated per team per match and reused for the life of the match.
+        /// </summary>
+        private sealed class AbandonState
+        {
+            public Arena Arena = null!;
+            public ArenaData ArenaData = null!;
+            public ActiveMatch Match = null!;
+            public short Freq;
         }
 
         /// <summary>
