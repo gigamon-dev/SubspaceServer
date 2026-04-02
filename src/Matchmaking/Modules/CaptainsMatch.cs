@@ -2076,6 +2076,10 @@ namespace SS.Matchmaking.Modules
 
             MatchEndedCallback.Fire(_broker!, match.MatchData);
 
+            // Remove from ActiveMatches before speccing players so that Callback_ShipFreqChange
+            // does not fire spurious "has specced" announcements or re-schedule win-condition checks.
+            arenaData.ActiveMatches.Remove(match);
+
             // Spec out the losing team and clear their ManagedArena / PlayerToMatch entries.
             foreach (var (p, slot) in match.ActiveSlots)
             {
@@ -2179,7 +2183,6 @@ namespace SS.Matchmaking.Modules
             foreach (Player p in match.SpecOutSlots.Keys.ToList())
                 arenaData.PlayerToMatch.Remove(p);
 
-            arenaData.ActiveMatches.Remove(match);
             arenaData.KickedPlayers.Clear();
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_MatchTimeExpired, match);
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_WinConditionCheck, match);
@@ -2200,6 +2203,10 @@ namespace SS.Matchmaking.Modules
 
             MatchEndedCallback.Fire(_broker!, match.MatchData);
 
+            // Remove from ActiveMatches before speccing players so that Callback_ShipFreqChange
+            // does not fire spurious "has specced" announcements or re-schedule win-condition checks.
+            arenaData.ActiveMatches.Remove(match);
+
             foreach (var (p, _) in match.ActiveSlots)
             {
                 if (p.Ship != ShipType.Spec)
@@ -2215,8 +2222,6 @@ namespace SS.Matchmaking.Modules
                     pd.ManagedArena = null;
                 arenaData.PlayerToMatch.Remove(p);
             }
-
-            arenaData.ActiveMatches.Remove(match);
             arenaData.KickedPlayers.Clear();
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_MatchTimeExpired, match);
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_WinConditionCheck, match);
