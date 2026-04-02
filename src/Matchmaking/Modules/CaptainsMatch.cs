@@ -249,6 +249,22 @@ namespace SS.Matchmaking.Modules
             }
             sigmaDecayPerDay = double.Abs(sigmaDecayPerDay);
 
+            string[] shipNames = Enum.GetNames<ShipType>();
+            var shipSettings = new ShipSettings[8];
+            for (int i = 0; i < 8; i++)
+            {
+                shipSettings[i] = new ShipSettings
+                {
+                    InitialBurst = (byte)_configManager.GetInt(ch, shipNames[i], "InitialBurst", 0),
+                    InitialRepel = (byte)_configManager.GetInt(ch, shipNames[i], "InitialRepel", 0),
+                    InitialThor = (byte)_configManager.GetInt(ch, shipNames[i], "InitialThor", 0),
+                    InitialBrick = (byte)_configManager.GetInt(ch, shipNames[i], "InitialBrick", 0),
+                    InitialDecoy = (byte)_configManager.GetInt(ch, shipNames[i], "InitialDecoy", 0),
+                    InitialRocket = (byte)_configManager.GetInt(ch, shipNames[i], "InitialRocket", 0),
+                    InitialPortal = (byte)_configManager.GetInt(ch, shipNames[i], "InitialPortal", 0),
+                };
+            }
+
             arenaData.Config = new ArenaConfig
             {
                 GameTypeId = gameTypeId,
@@ -263,6 +279,7 @@ namespace SS.Matchmaking.Modules
                 TimeLimitWinBy = Math.Max(1, _configManager.GetInt(ch, "CaptainsMatch", "TimeLimitWinBy", 2)),
                 MaxLagOuts = _configManager.GetInt(ch, "CaptainsMatch", "MaxLagOuts", 3),
                 AbandonTimeoutMs = Math.Max(0, _configManager.GetInt(ch, "CaptainsMatch", "AbandonTimeoutSeconds", 10)) * 1000,
+                ShipSettings = shipSettings,
                 OpenSkillModel = openSkillModel,
                 OpenSkillSigmaDecayPerDay = sigmaDecayPerDay,
                 OpenSkillUseScoresWhenPossible = _configManager.GetBool(ch, "CaptainsMatch", "OpenSkillUseScoresWhenPossible", false),
@@ -511,6 +528,13 @@ namespace SS.Matchmaking.Modules
                     match.SpecOutSlots[player] = slot;
                     slot.Player = null;
                     slot.LagOuts++;
+
+                    if (arenaData.ActiveMatches.Contains(match))
+                    {
+                        TimeSpan elapsed = match.MatchData.Started is { } s ? DateTime.UtcNow - s : TimeSpan.Zero;
+                        string elapsedStr = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:D2}";
+                        SendToMatchParticipants(match, $"{player.Name} has spectated. (Lagouts: {slot.LagOuts}) [{elapsedStr}]");
+                    }
 
                     // Check win condition (all lives gone) and abandon condition (all specced out).
                     bool allOut = !match.ActiveSlots.Values.Any(s => s.Team.Freq == oldFreq);
@@ -1266,6 +1290,8 @@ namespace SS.Matchmaking.Modules
 
             // Return the player to their assigned freq and ship. Callback_ShipFreqChange handles slot tracking.
             _game.SetShipAndFreq(player, arenaData.Config.DefaultShip, slot.Team.Freq);
+            // Burn initial items so the player spawns clean. Use player.Ship in case the callback corrected the ship.
+            RemoveAllItems(player, player.Ship, arenaData.Config.ShipSettings);
             _chat.SendArenaMessage(arena, $"{player.Name} has returned (burned).");
         }
 
@@ -1494,6 +1520,36 @@ namespace SS.Matchmaking.Modules
             // Reset the timer (in case it was already running from a prior spec-out).
             _mainloopTimer.ClearTimer<AbandonState>(Timer_AbandonCheck, state);
             _mainloopTimer.SetTimer<AbandonState>(Timer_AbandonCheck, arenaData.Config.AbandonTimeoutMs, Timeout.Infinite, state, state);
+
+            short otherFreq = freq == match.Freq1 ? match.Freq2 : match.Freq1;
+            bool otherAlsoVacated = !match.ActiveSlots.Values.Any(s => s.Team.Freq == otherFreq);
+            int vacatedCount = otherAlsoVacated ? 2 : 1;
+            int abandonSeconds = arenaData.Config.AbandonTimeoutMs / 1000;
+            string teamsStr = vacatedCount == 1 ? "1 team requires" : "2 teams require";
+            SendToMatchParticipants(match, $"{teamsStr} active players. Game will auto-end in {abandonSeconds} seconds...");
+        }
+
+        private void RemoveAllItems(Player player, ShipType ship, ShipSettings[] shipSettings)
+        {
+            if ((int)ship >= shipSettings.Length)
+                return;
+
+            ref ShipSettings s = ref shipSettings[(int)ship];
+            AdjustItem(player, Prize.Burst, s.InitialBurst);
+            AdjustItem(player, Prize.Repel, s.InitialRepel);
+            AdjustItem(player, Prize.Thor, s.InitialThor);
+            AdjustItem(player, Prize.Brick, s.InitialBrick);
+            AdjustItem(player, Prize.Decoy, s.InitialDecoy);
+            AdjustItem(player, Prize.Rocket, s.InitialRocket);
+            AdjustItem(player, Prize.Portal, s.InitialPortal);
+
+            void AdjustItem(Player player, Prize prize, byte initial)
+            {
+                short adjustAmount = (short)(0 - initial);
+                if (adjustAmount >= 0)
+                    return;
+                _game.GivePrize(player, (Prize)(-(short)prize), adjustAmount);
+            }
         }
 
         private void CancelAbandonTimer(ActiveMatch match, short freq)
@@ -1595,6 +1651,28 @@ namespace SS.Matchmaking.Modules
                 {
                     _playerData.Unlock();
                 }
+
+                if (set.Count > 0)
+                    _chat.SendSetMessage(set, message);
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
+        }
+
+        /// <summary>
+        /// Sends a message to all players currently tracked in an active match (both active and specced-out slots).
+        /// </summary>
+        private void SendToMatchParticipants(ActiveMatch match, string message)
+        {
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+            try
+            {
+                foreach (Player p in match.ActiveSlots.Keys)
+                    set.Add(p);
+                foreach (Player p in match.SpecOutSlots.Keys)
+                    set.Add(p);
 
                 if (set.Count > 0)
                     _chat.SendSetMessage(set, message);
@@ -2193,6 +2271,17 @@ namespace SS.Matchmaking.Modules
 
         #region Data
 
+        private readonly struct ShipSettings
+        {
+            public byte InitialBurst { get; init; }
+            public byte InitialRepel { get; init; }
+            public byte InitialThor { get; init; }
+            public byte InitialBrick { get; init; }
+            public byte InitialDecoy { get; init; }
+            public byte InitialRocket { get; init; }
+            public byte InitialPortal { get; init; }
+        }
+
         private sealed class ArenaConfig
         {
             public required long? GameTypeId;
@@ -2207,6 +2296,8 @@ namespace SS.Matchmaking.Modules
             public required int TimeLimitWinBy;
             public required int MaxLagOuts;
             public required int AbandonTimeoutMs;
+            /// <summary>Initial item counts per ship, indexed by <see cref="ShipType"/> cast to int. Used to burn items on spawn.</summary>
+            public required ShipSettings[] ShipSettings;
             public required IOpenSkillModel OpenSkillModel;
             public required double OpenSkillSigmaDecayPerDay;
             public required bool OpenSkillUseScoresWhenPossible;
