@@ -313,6 +313,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("freqinfo", Command_FreqInfo, arena);
             _commandManager.AddCommand("refuse", Command_Refuse, arena);
             _commandManager.AddCommand("disband", Command_Disband, arena);
+            _commandManager.AddCommand("caphelp", Command_CapHelp, arena);
             // ?chart is provided by TeamVersusStats when it is attached to the arena.
 
             return true;
@@ -349,6 +350,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("freqinfo", Command_FreqInfo, arena);
             _commandManager.RemoveCommand("refuse", Command_Refuse, arena);
             _commandManager.RemoveCommand("disband", Command_Disband, arena);
+            _commandManager.RemoveCommand("caphelp", Command_CapHelp, arena);
             // ?chart is managed by TeamVersusStats.
 
             foreach (MatchCountdown c in arenaData.PendingCountdowns)
@@ -429,6 +431,10 @@ namespace SS.Matchmaking.Modules
 
                 if (match.SpecOutSlots.TryGetValue(player, out CaptainsPlayerSlot? specSlot))
                 {
+                    // Before GO (countdown phase), allow free re-entry — ?return is not yet available.
+                    if (!arenaData.ActiveMatches.Contains(match))
+                        return ShipMask.All;
+
                     if (specSlot.Lives <= 0)
                     {
                         errorMessage?.Append("You have been eliminated — no lives remaining.");
@@ -496,6 +502,10 @@ namespace SS.Matchmaking.Modules
             {
                 if (match.SpecOutSlots.TryGetValue(player, out CaptainsPlayerSlot? specSlot))
                 {
+                    // Before GO (countdown phase), allow free re-entry — ?return is not yet available.
+                    if (!arenaData.ActiveMatches.Contains(match))
+                        return true;
+
                     if (specSlot.Lives <= 0)
                     {
                         errorMessage?.Append("You have been eliminated — no lives remaining.");
@@ -729,6 +739,11 @@ namespace SS.Matchmaking.Modules
                         slot.Player = player;
                         CancelAbandonTimer(match, slot.Team.Freq);
 
+                        // If the match has already started (post-GO), register the player with
+                        // MatchFocus so position packets are routed correctly to teammates.
+                        if (arenaData.ActiveMatches.Contains(match))
+                            MatchAddPlayingCallback.Fire(_broker!, match.MatchData, player.Name!, player);
+
                         // Apply requested ship if set, otherwise use DefaultShip.
                         ShipType targetShip = arenaData.Config.DefaultShip;
                         if (player.TryGetExtraData(_pdKey, out PlayerData? pd2) && pd2.RequestedShip is not null)
@@ -783,6 +798,9 @@ namespace SS.Matchmaking.Modules
 
         #region Commands
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Become a captain and create a team. Other players can then ?join your team.")]
         private void Command_Captain(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -813,9 +831,13 @@ namespace SS.Matchmaking.Modules
             if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 pd.ManagedArena = arena;
 
-            SendToAvailablePlayers(arena, arenaData, $"{player.Name} is now a captain! Type ?join {player.Name} to join their team. Team: {FormatTeamRoster(formation, arenaData.Config.PlayersPerTeam)}");
+            SendToAvailablePlayers(arena, arenaData, $"{player.Name} is now a captain! Type ?join {player.Name} or PM them with ?join to join their team. Team: {FormatTeamRoster(formation, arenaData.Config.PlayersPerTeam)}");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = "<captain name>",
+            Description = "Join a captain's team. The captain must have used ?captain first. You can also PM the captain directly with ?join.")]
         private void Command_Join(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -850,10 +872,14 @@ namespace SS.Matchmaking.Modules
                 arenaData.KickedPlayers.Remove(player.Name!);
             }
 
-            ReadOnlySpan<char> captainName = parameters.Trim();
+            // Allow PMing the captain directly: /?join sent as a private message to the captain.
+            ReadOnlySpan<char> captainName = target.TryGetPlayerTarget(out Player? targetPlayer)
+                ? targetPlayer.Name.AsSpan()
+                : parameters.Trim();
+
             if (captainName.IsEmpty)
             {
-                _chat.SendMessage(player, "Usage: ?join <captain name>");
+                _chat.SendMessage(player, "Usage: ?join <captain name>  — or PM the captain with ?join");
                 return;
             }
 
@@ -885,6 +911,10 @@ namespace SS.Matchmaking.Modules
             SendToAvailablePlayers(arena, arenaData, $"{player.Name} joined {targetFormation.Captain.Name}'s team. Team: {FormatTeamRoster(targetFormation, arenaData.Config.PlayersPerTeam)}");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<captain name>",
+            Description = "Challenge another captain's formed team to a match. Both teams must be full before challenging.")]
         private void Command_Challenge(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -985,6 +1015,9 @@ namespace SS.Matchmaking.Modules
             SendToAvailablePlayers(arena, arenaData, $"{player.Name}'s team has challenged {targetFormation.Captain.Name}'s team to a match!");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Accept a pending challenge from another captain.")]
         private void Command_Accept(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1047,6 +1080,18 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
+            if (challengerFormation.Members.Count < arenaData.Config.PlayersPerTeam)
+            {
+                _chat.SendMessage(player, $"{challengerFormation.Captain.Name}'s team is not full ({challengerFormation.Members.Count}/{arenaData.Config.PlayersPerTeam}). Cannot accept.");
+                return;
+            }
+
+            if (myFormation.Members.Count < arenaData.Config.PlayersPerTeam)
+            {
+                _chat.SendMessage(player, $"Your team is not full ({myFormation.Members.Count}/{arenaData.Config.PlayersPerTeam}). Fill your roster before accepting.");
+                return;
+            }
+
             var pair = GetPairForChallenge(arenaData, challengerFormation, myFormation);
             if (pair is null)
             {
@@ -1076,6 +1121,9 @@ namespace SS.Matchmaking.Modules
                 + "Both captains type ?ready to start the match!");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Mark your team as ready to start. Both captains must ?ready after a challenge is accepted. Also aliased as ?rdy.")]
         private void Command_Ready(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1136,6 +1184,9 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Unready your team if you previously typed ?ready, or abort a running countdown.")]
         private void Command_Cancel(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1175,6 +1226,10 @@ namespace SS.Matchmaking.Modules
             SendToFormationPair(myFormation, myFormation.PairedWith, $"{player.Name} cancelled ready.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<player name>",
+            Description = "Captains only: remove a player from your team and return them to spec.")]
         private void Command_Remove(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1229,6 +1284,9 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, $"Team: {FormatTeamRoster(myFormation, arenaData.Config.PlayersPerTeam)}");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Leave your current team and return to spec. For captains, use ?disband instead.")]
         private void Command_Leave(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1246,6 +1304,15 @@ namespace SS.Matchmaking.Modules
             Formation? memberFormation = GetNonCaptainFormation(arenaData, player);
             if (memberFormation is not null)
             {
+                // If a countdown is in progress, abort it — ditching is a forfeit of participation.
+                if (arenaData.PlayerToMatch.ContainsKey(player))
+                {
+                    MatchCountdown? countdown = arenaData.PendingCountdowns.Find(
+                        c => c.Formation1 == memberFormation || c.Formation2 == memberFormation);
+                    if (countdown is not null)
+                        AbortCountdown(arena, arenaData, countdown, $"{player.Name} left {memberFormation.Captain.Name}'s team — countdown aborted.");
+                }
+
                 memberFormation.Members.Remove(player);
                 memberFormation.IsReady = false;
 
@@ -1263,6 +1330,9 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, "You are not in any team.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Captains only: forfeit the current match for your team.")]
         private void Command_End(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1297,6 +1367,10 @@ namespace SS.Matchmaking.Modules
             EndMatch(arena, arenaData, match, losingFreq);
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[captain name]",
+            Description = "Refuse a pending challenge. If multiple challenges are pending, specify the challenger's name.")]
         private void Command_Refuse(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1357,6 +1431,9 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(challengerFormation.Captain, $"{player.Name} refused your challenge.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Captains only: disband your entire team and return all members to spec.")]
         private void Command_Disband(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1382,6 +1459,10 @@ namespace SS.Matchmaking.Modules
             DisbandFormation(arena, arenaData, myFormation, $"{player.Name}'s team has been disbanded.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<1-8>",
+            Description = "Queue a ship change for your next spawn during an active match.")]
         private void Command_Sc(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1423,6 +1504,9 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Re-enter a match after lagging out, if you still have lives remaining.")]
         private void Command_Return(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1467,6 +1551,10 @@ namespace SS.Matchmaking.Modules
             _chat.SendArenaMessage(arena, $"{player.Name} has returned (burned).");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "[player name]",
+            Description = "Display the current item counts for all players.")]
         private void Command_Items(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1501,6 +1589,9 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "List all currently forming or formed teams in the arena, including their members.")]
         private void Command_FreqInfo(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -1549,6 +1640,46 @@ namespace SS.Matchmaking.Modules
 
             if (!anyOutput)
                 _chat.SendMessage(player, "No active teams or matches. Type ?captain to form a team!");
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Description = "Display a summary of all available commands for this arena.")]
+        private void Command_CapHelp(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            // Two-column ASCII box: left = 20-char command, right = 46-char description.
+            static string Row(string cmd, string desc) => $"| {cmd,-20} | {desc,-48} |";
+            static string Section(string name)
+            {
+                string left = $"-- {name} ".PadRight(22, '-');
+                return $"+{left}+{new string('-', 50)}+";
+            }
+            const string Sep = "+----------------------+--------------------------------------------------+";
+
+            _chat.SendMessage(player, Section("Team Formation"));
+            _chat.SendMessage(player, Row("?captain (?cap)", "Become a captain; others can join your team."));
+            _chat.SendMessage(player, Row("?join <captain>", "Join a captain's team. Or PM captain with ?join."));
+            _chat.SendMessage(player, Row("?remove <player>", "[Cap] Remove a player from your team."));
+            _chat.SendMessage(player, Row("?disband", "[Cap] Disband your entire team."));
+            _chat.SendMessage(player, Row("?ditch", "Leave your current team."));
+            _chat.SendMessage(player, Section("Challenge"));
+            _chat.SendMessage(player, Row("?challenge <captain>", "Challenge another full team to a match."));
+            _chat.SendMessage(player, Row("?accept", "Accept a pending challenge."));
+            _chat.SendMessage(player, Row("?refuse [captain]", "Refuse a pending challenge."));
+            _chat.SendMessage(player, Section("Pre-Game"));
+            _chat.SendMessage(player, Row("?ready (?rdy)", "[Cap] Mark ready. Both captains must ?ready."));
+            _chat.SendMessage(player, Row("?cancel", "[Cap] Unready or abort a running countdown."));
+            _chat.SendMessage(player, Section("In-Game"));
+            _chat.SendMessage(player, Row("?return", "Re-enter the match if you have lives left."));
+            _chat.SendMessage(player, Row("?end", "[Cap] Forfeit the match for your team."));
+            _chat.SendMessage(player, Row("?chart", "Show current match stats."));
+            _chat.SendMessage(player, Row("?sc <1-8>", "Queue a ship change for your next spawn."));
+            _chat.SendMessage(player, Row("?items [player]", "Show item counts for yourself or another."));
+            _chat.SendMessage(player, Section("General Use"));
+            _chat.SendMessage(player, Row("?freqinfo", "See all forming or formed teams in the arena."));
+            _chat.SendMessage(player, Row("?statbox", "Set statbox preference (detailed/simple/off)."));
+            _chat.SendMessage(player, Row("?help", "Show this command list."));
+            _chat.SendMessage(player, Sep);
         }
 
         #endregion
@@ -2080,11 +2211,9 @@ namespace SS.Matchmaking.Modules
             // does not fire spurious "has specced" announcements or re-schedule win-condition checks.
             arenaData.ActiveMatches.Remove(match);
 
-            // Spec out the losing team and clear their ManagedArena / PlayerToMatch entries.
-            foreach (var (p, slot) in match.ActiveSlots)
+            // Spec out all players from both teams and clear match tracking.
+            foreach (var (p, _) in match.ActiveSlots)
             {
-                if (slot.Team.Freq != losingFreq)
-                    continue;
                 if (p.Ship != ShipType.Spec)
                     _game.SetShipAndFreq(p, ShipType.Spec, p.Freq);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
@@ -2094,10 +2223,8 @@ namespace SS.Matchmaking.Modules
                 }
                 arenaData.PlayerToMatch.Remove(p);
             }
-            foreach (var (p, slot) in match.SpecOutSlots)
+            foreach (var (p, _) in match.SpecOutSlots)
             {
-                if (slot.Team.Freq != losingFreq)
-                    continue;
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                     pd.ManagedArena = null;
                 arenaData.PlayerToMatch.Remove(p);
@@ -2107,35 +2234,44 @@ namespace SS.Matchmaking.Modules
             if (winnerTeam is CaptainsTeam winnerCaptainsTeam)
             {
                 Player? winnerCaptain = winnerCaptainsTeam.OriginalCaptain;
-                var survivors = new HashSet<Player>();
+                var winners = new HashSet<Player>();
 
                 foreach (var (p, slot) in match.ActiveSlots)
                     if (slot.Team.Freq == winningFreq)
-                        survivors.Add(p);
+                        winners.Add(p);
 
+                // Include players eliminated during the match — they're still winners.
                 foreach (var (p, slot) in match.SpecOutSlots)
-                    if (slot.Team.Freq == winningFreq && slot.Lives > 0)
-                        survivors.Add(p);
+                    if (slot.Team.Freq == winningFreq)
+                        winners.Add(p);
 
-                if (winnerCaptain is null || !survivors.Contains(winnerCaptain))
-                    winnerCaptain = survivors.FirstOrDefault();
-
-                if (winnerCaptain is not null && survivors.Count > 0)
+                if (winners.Count < arenaData.Config.PlayersPerTeam)
                 {
-                    var winnerFormation = new Formation
-                    {
-                        Captain = winnerCaptain,
-                        AssignedFreq = winningFreq,
-                    };
-                    foreach (Player p in survivors)
-                    {
-                        winnerFormation.Members.Add(p);
-                        if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
-                            pd.ManagedArena = arena;
-                    }
+                    // A player left mid-match — bail on reformation.
+                    _chat.SendArenaMessage(arena, $"Freq {winningFreq}'s team cannot reform (a player left the game).");
+                }
+                else
+                {
+                    if (winnerCaptain is null || !winners.Contains(winnerCaptain))
+                        winnerCaptain = winners.FirstOrDefault();
 
-                    arenaData.Formations[winnerCaptain] = winnerFormation;
-                    _chat.SendArenaMessage(arena, $"Freq {winningFreq} ({winnerCaptain.Name}'s team) stays on the field! Challenge them: ?challenge {winnerCaptain.Name}");
+                    if (winnerCaptain is not null)
+                    {
+                        var winnerFormation = new Formation
+                        {
+                            Captain = winnerCaptain,
+                            AssignedFreq = winningFreq,
+                        };
+                        foreach (Player p in winners)
+                        {
+                            winnerFormation.Members.Add(p);
+                            if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
+                                pd.ManagedArena = arena;
+                        }
+
+                        arenaData.Formations[winnerCaptain] = winnerFormation;
+                        _chat.SendArenaMessage(arena, $"Freq {winningFreq} ({winnerCaptain.Name}'s team) wins! Challenge them: ?challenge {winnerCaptain.Name}");
+                    }
                 }
             }
 
@@ -2153,35 +2289,34 @@ namespace SS.Matchmaking.Modules
                     if (slot.Team.Freq == losingFreq)
                         loserPlayers.Add(p);
 
-                if (loserCaptain is null || !loserPlayers.Contains(loserCaptain))
-                    loserCaptain = loserPlayers.FirstOrDefault();
-
-                if (loserCaptain is not null && loserPlayers.Count > 0)
+                if (loserPlayers.Count < arenaData.Config.PlayersPerTeam)
                 {
-                    var loserFormation = new Formation
-                    {
-                        Captain = loserCaptain,
-                    };
-                    foreach (Player p in loserPlayers)
-                    {
-                        loserFormation.Members.Add(p);
-                        if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
-                            pd.ManagedArena = arena;
-                    }
+                    // A player left mid-match — bail on reformation.
+                    _chat.SendArenaMessage(arena, $"Freq {losingFreq}'s team cannot reform (a player left the game).");
+                }
+                else
+                {
+                    if (loserCaptain is null || !loserPlayers.Contains(loserCaptain))
+                        loserCaptain = loserPlayers.FirstOrDefault();
 
-                    arenaData.Formations[loserCaptain] = loserFormation;
-                    _chat.SendArenaMessage(arena, $"Freq {losingFreq} ({loserCaptain.Name}'s team) is regrouping. Challenge them: ?challenge {loserCaptain.Name}");
+                    if (loserCaptain is not null)
+                    {
+                        var loserFormation = new Formation
+                        {
+                            Captain = loserCaptain,
+                        };
+                        foreach (Player p in loserPlayers)
+                        {
+                            loserFormation.Members.Add(p);
+                            if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
+                                pd.ManagedArena = arena;
+                        }
+
+                        arenaData.Formations[loserCaptain] = loserFormation;
+                        _chat.SendArenaMessage(arena, $"Freq {losingFreq} ({loserCaptain.Name}'s team) is regrouping. Challenge them: ?challenge {loserCaptain.Name}");
+                    }
                 }
             }
-
-            // Remove extra position data watches for winning team players and remove from PlayerToMatch.
-            foreach (var (p, _) in match.ActiveSlots)
-                RemoveExtraPositionDataWatch(p);
-
-            foreach (Player p in match.ActiveSlots.Keys.ToList())
-                arenaData.PlayerToMatch.Remove(p);
-            foreach (Player p in match.SpecOutSlots.Keys.ToList())
-                arenaData.PlayerToMatch.Remove(p);
 
             arenaData.KickedPlayers.Clear();
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_MatchTimeExpired, match);

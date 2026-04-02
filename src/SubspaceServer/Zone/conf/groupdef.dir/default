@@ -145,6 +145,7 @@ cmd_leaguepermit
 privcmd_leaguepermit
 
 ; Matchmaking - Captains
+cmd_caphelp
 cmd_captain
 cmd_cap
 cmd_challenge
@@ -152,7 +153,9 @@ cmd_accept
 cmd_refuse
 cmd_ready
 cmd_rdy
+cmd_cancel
 cmd_join
+privcmd_join
 cmd_remove
 cmd_disband
 cmd_ditch
