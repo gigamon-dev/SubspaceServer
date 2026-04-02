@@ -411,6 +411,18 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
+            _mainloopTimer.ClearTimer<IMatchData>(MainloopTimer_RefreshGameTimer, matchData);
+
+            // Remove players first — while the state still reflects the live match, so that
+            // SetAndSendMatchLvz can diff current→default and send the hide packets to each player.
+            foreach (StatboxPreference pref in new[] { StatboxPreference.Detailed, StatboxPreference.Simple, StatboxPreference.Off })
+            {
+                MatchLvzState? state = arenaData.TryGetMatch(matchData.MatchIdentifier, pref);
+                if (state is not null)
+                    RemovePlayers(state);
+            }
+
+            // Clear internal state after players have been removed.
             Span<LvzObjectChange> clearChanges = stackalloc LvzObjectChange[Clear_MaxChanges];
             Span<LvzObjectToggle> clearToggles = stackalloc LvzObjectToggle[Clear_MaxToggles];
             foreach (StatboxPreference pref in new[] { StatboxPreference.Detailed, StatboxPreference.Simple, StatboxPreference.Off })
@@ -420,17 +432,6 @@ namespace SS.Matchmaking.Modules
                     continue;
 
                 state.Clear(clearChanges, out _, clearToggles, out _);
-                // Purposely ignore the changes and toggles.
-            }
-
-            _mainloopTimer.ClearTimer<IMatchData>(MainloopTimer_RefreshGameTimer, matchData);
-
-            // Remove players from all states. This sets their lvz back to the default state.
-            foreach (StatboxPreference pref in new[] { StatboxPreference.Detailed, StatboxPreference.Simple, StatboxPreference.Off })
-            {
-                MatchLvzState? state = arenaData.TryGetMatch(matchData.MatchIdentifier, pref);
-                if (state is not null)
-                    RemovePlayers(state);
             }
 
             arenaData.RemoveMatch(matchData.MatchIdentifier);

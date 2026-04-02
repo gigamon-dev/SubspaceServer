@@ -155,3 +155,4 @@ cmd_rdy
 cmd_join
 cmd_remove
 cmd_disband
+cmd_ditch
