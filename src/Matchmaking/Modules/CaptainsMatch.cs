@@ -635,10 +635,28 @@ namespace SS.Matchmaking.Modules
                 return;
 
             if (!arenaData.PlayerToMatch.TryGetValue(player, out ActiveMatch? match))
+            {
+                // Not in an active match/countdown — check if in a formation phase.
+                if (newShip == ShipType.Spec && oldShip != ShipType.Spec)
+                {
+                    Formation? formation = GetPlayerFormation(arenaData, player);
+                    if (formation is not null)
+                    {
+                        _logManager.LogP(LogLevel.Drivel, nameof(CaptainsMatch), player, "Specced during formation phase.");
+                        if (formation.IsReady)
+                        {
+                            formation.IsReady = false;
+                            SendToFormationPair(formation, formation.PairedWith, $"{player.Name} specced — {formation.Captain.Name}'s team is no longer ready.");
+                        }
+                    }
+                }
                 return;
+            }
 
             if (newShip == ShipType.Spec && oldShip != ShipType.Spec)
             {
+                _logManager.LogP(LogLevel.Drivel, nameof(CaptainsMatch), player, "Specced during match.");
+
                 // Stop tracking items for this player.
                 if (player.TryGetExtraData(_pdKey, out PlayerData? pd) && pd.IsWatchingExtraPositionData)
                 {
@@ -1071,6 +1089,26 @@ namespace SS.Matchmaking.Modules
             {
                 _chat.SendMessage(player, "Your team is already marked as ready.");
                 return;
+            }
+
+            // Sanity check: all members must be in a ship on the assigned freq.
+            if (myFormation.AssignedFreq is { } assignedFreq)
+            {
+                List<string>? notReady = null;
+                foreach (Player member in myFormation.Members)
+                {
+                    if (member.Ship == ShipType.Spec || member.Freq != assignedFreq)
+                    {
+                        notReady ??= [];
+                        notReady.Add(member.Name!);
+                    }
+                }
+
+                if (notReady is not null)
+                {
+                    _chat.SendMessage(player, $"Cannot ready up — the following player(s) are not in a ship on Freq {assignedFreq}: {string.Join(", ", notReady)}");
+                    return;
+                }
             }
 
             myFormation.IsReady = true;
