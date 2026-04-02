@@ -279,6 +279,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("accept", Command_Accept, arena);
             _commandManager.AddCommand("ready", Command_Ready, arena);
             _commandManager.AddCommand("rdy", Command_Ready, arena);
+            _commandManager.AddCommand("cancel", Command_Cancel, arena);
             _commandManager.AddCommand("remove", Command_Remove, arena);
             _commandManager.AddCommand("leave", Command_Leave, arena);
             _commandManager.AddCommand("end", Command_End, arena);
@@ -310,6 +311,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("accept", Command_Accept, arena);
             _commandManager.RemoveCommand("ready", Command_Ready, arena);
             _commandManager.RemoveCommand("rdy", Command_Ready, arena);
+            _commandManager.RemoveCommand("cancel", Command_Cancel, arena);
             _commandManager.RemoveCommand("remove", Command_Remove, arena);
             _commandManager.RemoveCommand("leave", Command_Leave, arena);
             _commandManager.RemoveCommand("end", Command_End, arena);
@@ -618,7 +620,7 @@ namespace SS.Matchmaking.Modules
             if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 pd.ManagedArena = arena;
 
-            SendToSpecPlayers(arena, $"{player.Name} is now a captain! Type ?join {player.Name} to join their team. ({formation.Members.Count}/{arenaData.Config.PlayersPerTeam})");
+            SendToSpecPlayers(arena, $"{player.Name} is now a captain! Type ?join {player.Name} to join their team. Team: {FormatTeamRoster(formation, arenaData.Config.PlayersPerTeam)}");
         }
 
         private void Command_Join(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -687,7 +689,7 @@ namespace SS.Matchmaking.Modules
             if (player.TryGetExtraData(_pdKey, out PlayerData? jpd))
                 jpd.ManagedArena = arena;
 
-            SendToSpecPlayers(arena, $"{player.Name} joined {targetFormation.Captain.Name}'s team. ({targetFormation.Members.Count}/{arenaData.Config.PlayersPerTeam})");
+            SendToSpecPlayers(arena, $"{player.Name} joined {targetFormation.Captain.Name}'s team. Team: {FormatTeamRoster(targetFormation, arenaData.Config.PlayersPerTeam)}");
         }
 
         private void Command_Challenge(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -921,6 +923,45 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        private void Command_Cancel(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            if (!arenaData.Formations.TryGetValue(player, out Formation? myFormation))
+            {
+                _chat.SendMessage(player, "You must be a captain to cancel ready.");
+                return;
+            }
+
+            if (myFormation.PairedWith is null)
+            {
+                _chat.SendMessage(player, "Your team has no pending match to cancel.");
+                return;
+            }
+
+            if (!myFormation.IsReady)
+            {
+                _chat.SendMessage(player, "Your team has not readied up yet.");
+                return;
+            }
+
+            // If a countdown is already running, abort it.
+            MatchCountdown? countdown = arenaData.PendingCountdowns.Find(
+                c => c.Formation1 == myFormation || c.Formation2 == myFormation);
+            if (countdown is not null)
+            {
+                AbortCountdown(arena, arenaData, countdown,
+                    $"Countdown aborted: {player.Name} cancelled.");
+                return;
+            }
+
+            // Only this team was ready — just un-ready.
+            myFormation.IsReady = false;
+            SendToFormationPair(myFormation, myFormation.PairedWith, $"{player.Name} cancelled ready.");
+        }
+
         private void Command_Remove(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -972,7 +1013,7 @@ namespace SS.Matchmaking.Modules
             int cooldownSec = (int)arenaData.Config.KickCooldown.TotalSeconds;
             _chat.SendMessage(player, $"{kickTarget.Name} was removed from your team.");
             _chat.SendMessage(kickTarget, $"You were kicked and may not rejoin for {cooldownSec} second(s).");
-            _chat.SendMessage(player, $"Team: ({myFormation.Members.Count}/{arenaData.Config.PlayersPerTeam})");
+            _chat.SendMessage(player, $"Team: {FormatTeamRoster(myFormation, arenaData.Config.PlayersPerTeam)}");
         }
 
         private void Command_Leave(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
@@ -1002,7 +1043,7 @@ namespace SS.Matchmaking.Modules
                     _game.SetShipAndFreq(player, ShipType.Spec, player.Freq);
 
                 _chat.SendMessage(player, $"You have left {memberFormation.Captain.Name}'s team.");
-                _chat.SendMessage(memberFormation.Captain, $"{player.Name} left your team. ({memberFormation.Members.Count}/{arenaData.Config.PlayersPerTeam})");
+                _chat.SendMessage(memberFormation.Captain, $"{player.Name} left your team. Team: {FormatTeamRoster(memberFormation, arenaData.Config.PlayersPerTeam)}");
                 return;
             }
 
@@ -1111,7 +1152,17 @@ namespace SS.Matchmaking.Modules
 
             if (!arenaData.Formations.TryGetValue(player, out Formation? myFormation))
             {
-                _chat.SendMessage(player, "You are not a captain.");
+                if (IsPlayerInMatch(arenaData, player))
+                    _chat.SendMessage(player, "You are in an active match. Use ?end to forfeit.");
+                else
+                    _chat.SendMessage(player, "You are not a captain.");
+                return;
+            }
+
+            bool inCountdown = arenaData.PendingCountdowns.Any(c => c.Formation1 == myFormation || c.Formation2 == myFormation);
+            if (inCountdown)
+            {
+                _chat.SendMessage(player, "A match is about to start. Use ?cancel to abort the countdown.");
                 return;
             }
 
@@ -1235,7 +1286,7 @@ namespace SS.Matchmaking.Modules
                         state = "Forming";
 
                     string freqStr = f.AssignedFreq.HasValue ? $" [Freq {f.AssignedFreq}]" : "";
-                    _chat.SendMessage(player, $"{f.Captain.Name}'s team{freqStr} — {state} ({f.Members.Count}/{arenaData.Config.PlayersPerTeam}): {string.Join(", ", f.Members.Select(m => m.Name))}");
+                    _chat.SendMessage(player, $"{f.Captain.Name}'s team{freqStr} — {state}: {FormatTeamRoster(f, arenaData.Config.PlayersPerTeam)}");
                 }
             }
 
@@ -1368,8 +1419,20 @@ namespace SS.Matchmaking.Modules
                 if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
                     pd.ManagedArena = null;
 
+                // If a countdown was running, abort it — all players must be present at GO.
+                if (memberFormation.PairedWith is not null)
+                {
+                    MatchCountdown? countdown = arenaData.PendingCountdowns.Find(
+                        c => c.Formation1 == memberFormation || c.Formation2 == memberFormation);
+                    if (countdown is not null)
+                    {
+                        AbortCountdown(arena, arenaData, countdown,
+                            $"Countdown aborted: {player.Name} left the arena.");
+                    }
+                }
+
                 if (memberFormation.Captain is not null)
-                    _chat.SendMessage(memberFormation.Captain, $"{player.Name} left the arena. ({memberFormation.Members.Count}/{arenaData.Config.PlayersPerTeam})");
+                    _chat.SendMessage(memberFormation.Captain, $"{player.Name} left the arena. Team: {FormatTeamRoster(memberFormation, arenaData.Config.PlayersPerTeam)}");
                 return;
             }
 
@@ -1615,6 +1678,16 @@ namespace SS.Matchmaking.Modules
             if (_tvStatsBehavior is not null)
                 _ = _tvStatsBehavior.MatchStartedAsync(matchData);
 
+            // Re-warp all players at GO! in case the pre-countdown warp was missed (e.g. timing/client issue).
+            if (arenaData.Config.StartLocations.Count > 0)
+            {
+                foreach (var (p, slot) in match.ActiveSlots)
+                {
+                    if (arenaData.Config.StartLocations.TryGetValue(slot.Team.Freq, out (short X, short Y) loc))
+                        _game.WarpTo(p, loc.X, loc.Y);
+                }
+            }
+
             if (arenaData.Config.TimeLimit is { } tl)
                 _mainloopTimer.SetTimer<ActiveMatch>(Timer_MatchTimeExpired, (int)tl.TotalMilliseconds, Timeout.Infinite, match, match);
         }
@@ -1773,6 +1846,27 @@ namespace SS.Matchmaking.Modules
             _mainloopTimer.ClearTimer<ActiveMatch>(Timer_WinConditionCheck, match);
         }
 
+        /// <summary>
+        /// Aborts a pending countdown: cancels timers, removes players from PlayerToMatch,
+        /// and resets both formations to un-ready (but keeps them paired and on their freqs).
+        /// </summary>
+        private void AbortCountdown(Arena arena, ArenaData arenaData, MatchCountdown countdown, string reason)
+        {
+            _mainloopTimer.ClearTimer<MatchCountdown>(Timer_PreCountdown, countdown);
+            _mainloopTimer.ClearTimer<MatchCountdown>(Timer_Countdown, countdown);
+            arenaData.PendingCountdowns.Remove(countdown);
+
+            foreach (Player p in countdown.ActiveMatch.ActiveSlots.Keys)
+                arenaData.PlayerToMatch.Remove(p);
+
+            countdown.Formation1.IsReady = false;
+            countdown.Formation1.PairedWith = null;
+            countdown.Formation2.IsReady = false;
+            countdown.Formation2.PairedWith = null;
+
+            _chat.SendArenaMessage(arena, reason);
+        }
+
         private void DisbandFormation(Arena arena, ArenaData arenaData, Formation formation, string? message)
         {
             // If this formation was in a countdown, cancel it and remove players from PlayerToMatch.
@@ -1916,6 +2010,20 @@ namespace SS.Matchmaking.Modules
             if (arenaData.Formations.TryGetValue(player, out Formation? f))
                 return f;
             return GetNonCaptainFormation(arenaData, player);
+        }
+
+        /// <summary>
+        /// Returns a unified team roster string: captain first, then other members, then count.
+        /// E.g., "Alice, Bob (2/4)"
+        /// </summary>
+        private static string FormatTeamRoster(Formation formation, int playersPerTeam)
+        {
+            var names = new List<string>(formation.Members.Count);
+            names.Add(formation.Captain.Name!);
+            foreach (Player m in formation.Members)
+                if (m != formation.Captain)
+                    names.Add(m.Name!);
+            return $"{string.Join(", ", names)} ({formation.Members.Count}/{playersPerTeam})";
         }
 
         private static Formation? GetNonCaptainFormation(ArenaData arenaData, Player player)
