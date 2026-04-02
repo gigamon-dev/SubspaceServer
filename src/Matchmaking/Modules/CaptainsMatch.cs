@@ -2,7 +2,9 @@ using Microsoft.Extensions.ObjectPool;
 using OpenSkillSharp;
 using OpenSkillSharp.Models;
 using SS.Core;
+using System.Text;
 using System.Text.Json;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Advisors;
@@ -24,7 +26,7 @@ namespace SS.Matchmaking.Modules
     /// Supports multiple simultaneous matches when multiple freq pairs are configured.
     /// </summary>
     [ModuleInfo("Captain-based team formation with challenge system.")]
-    public sealed class CaptainsMatch : IModule, IArenaAttachableModule, IMatchFocusAdvisor
+    public sealed class CaptainsMatch : IModule, IArenaAttachableModule, IMatchFocusAdvisor, IFreqManagerEnforcerAdvisor
     {
         private readonly IChat _chat;
         private readonly ICommandManager _commandManager;
@@ -288,6 +290,8 @@ namespace SS.Matchmaking.Modules
 
             _arenaDataDictionary[arena] = arenaData;
 
+            arenaData.FreqManagerEnforcerAdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
+
             KillCallback.Register(arena, Callback_Kill);
             ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
             PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
@@ -320,6 +324,9 @@ namespace SS.Matchmaking.Modules
                 return false;
 
             _arenaDataDictionary.Remove(arena);
+
+            if (!arena.UnregisterAdvisor(ref arenaData.FreqManagerEnforcerAdvisorToken))
+                return false;
 
             KillCallback.Unregister(arena, Callback_Kill);
             ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
@@ -400,6 +407,124 @@ namespace SS.Matchmaking.Modules
                 return null; // still in countdown, not officially started
             return match.MatchData;
         }
+
+        #endregion
+
+        #region IFreqManagerEnforcerAdvisor
+
+        ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder? errorMessage)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return ShipMask.None;
+
+            if (arenaData.PlayerToMatch.TryGetValue(player, out ActiveMatch? match))
+            {
+                if (match.ActiveSlots.ContainsKey(player))
+                {
+                    // Currently playing — lock to their current ship; use ?sc to queue a change for next spawn.
+                    errorMessage?.Append("You are in a match. Use ?sc <1-8> to change your ship for the next spawn.");
+                    return player.Ship.GetShipMask();
+                }
+
+                if (match.SpecOutSlots.TryGetValue(player, out CaptainsPlayerSlot? specSlot))
+                {
+                    if (specSlot.Lives <= 0)
+                    {
+                        errorMessage?.Append("You have been eliminated — no lives remaining.");
+                        return ShipMask.None;
+                    }
+
+                    if (specSlot.LagOuts > arenaData.Config.MaxLagOuts)
+                    {
+                        errorMessage?.Append($"You have exceeded the maximum lagouts ({arenaData.Config.MaxLagOuts}) and cannot re-enter.");
+                        return ShipMask.None;
+                    }
+
+                    errorMessage?.Append("Use ?return to re-enter the match.");
+                    return ShipMask.None;
+                }
+            }
+
+            // Not in a match — allow ship selection only if assigned to a formation freq.
+            if (player.TryGetExtraData(_pdKey, out PlayerData? pd) && pd.ManagedArena == arena)
+                return ShipMask.All;
+
+            errorMessage?.Append("You are not on a team. Use ?captain to become a captain or ?join <name> to join one.");
+            return ShipMask.None;
+        }
+
+        bool IFreqManagerEnforcerAdvisor.CanChangeToFreq(Player player, short newFreq, StringBuilder? errorMessage)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return false;
+
+            bool isMatchFreq = arenaData.Config.FreqPairs.Any(p => p.F1 == newFreq || p.F2 == newFreq);
+            if (!isMatchFreq)
+                return true; // Spectator freqs are freely allowed.
+
+            // It is a match freq — player must be assigned to it.
+            if (arenaData.PlayerToMatch.TryGetValue(player, out ActiveMatch? match))
+            {
+                CaptainsPlayerSlot? slot = null;
+                match.ActiveSlots.TryGetValue(player, out slot);
+                if (slot is null) match.SpecOutSlots.TryGetValue(player, out slot);
+
+                if (slot?.Team.Freq == newFreq)
+                    return true;
+
+                errorMessage?.Append("You cannot change to that freq while in a match.");
+                return false;
+            }
+
+            Formation? formation = GetPlayerFormation(arenaData, player);
+            if (formation?.AssignedFreq == newFreq)
+                return true;
+
+            errorMessage?.Append("You are not assigned to that freq.");
+            return false;
+        }
+
+        bool IFreqManagerEnforcerAdvisor.CanEnterGame(Player player, StringBuilder? errorMessage)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return false;
+
+            if (arenaData.PlayerToMatch.TryGetValue(player, out ActiveMatch? match))
+            {
+                if (match.SpecOutSlots.TryGetValue(player, out CaptainsPlayerSlot? specSlot))
+                {
+                    if (specSlot.Lives <= 0)
+                    {
+                        errorMessage?.Append("You have been eliminated — no lives remaining.");
+                        return false;
+                    }
+
+                    if (specSlot.LagOuts > arenaData.Config.MaxLagOuts)
+                    {
+                        errorMessage?.Append($"You have exceeded the maximum lagouts ({arenaData.Config.MaxLagOuts}) and cannot re-enter.");
+                        return false;
+                    }
+
+                    // Eligible to return — but must use ?return explicitly, not by pressing a ship key.
+                    errorMessage?.Append("Use ?return to re-enter the match.");
+                    return false;
+                }
+
+                return false;
+            }
+
+            // Allow entering the game if assigned to a formation freq.
+            if (player.TryGetExtraData(_pdKey, out PlayerData? pd) && pd.ManagedArena == arena)
+                return true;
+
+            errorMessage?.Append("You are not on a team. Use ?captain to become a captain or ?join <name> to join one.");
+            return false;
+        }
+
+        bool IFreqManagerEnforcerAdvisor.IsUnlocked(Player player, StringBuilder? errorMessage) => true;
 
         #endregion
 
@@ -533,7 +658,7 @@ namespace SS.Matchmaking.Modules
                     {
                         TimeSpan elapsed = match.MatchData.Started is { } s ? DateTime.UtcNow - s : TimeSpan.Zero;
                         string elapsedStr = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:D2}";
-                        SendToMatchParticipants(match, $"{player.Name} has spectated. (Lagouts: {slot.LagOuts}) [{elapsedStr}]");
+                        SendToMatchParticipants(match, $"{player.Name} has specced. (Count: {slot.LagOuts}) [{elapsedStr}]");
                     }
 
                     // Check win condition (all lives gone) and abandon condition (all specced out).
@@ -2406,6 +2531,8 @@ namespace SS.Matchmaking.Modules
             /// <summary>Players kicked by a captain, mapped to the kick timestamp. Cleared when the match ends.</summary>
             public readonly Dictionary<string, DateTime> KickedPlayers = new(StringComparer.OrdinalIgnoreCase);
 
+            public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor>? FreqManagerEnforcerAdvisorToken;
+
             bool IResettable.TryReset()
             {
                 Arena = null!;
@@ -2415,6 +2542,7 @@ namespace SS.Matchmaking.Modules
                 PendingCountdowns.Clear();
                 PlayerToMatch.Clear();
                 KickedPlayers.Clear();
+                FreqManagerEnforcerAdvisorToken = null;
                 return true;
             }
         }
