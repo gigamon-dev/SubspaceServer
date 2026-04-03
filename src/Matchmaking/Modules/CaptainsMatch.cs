@@ -1675,14 +1675,14 @@ namespace SS.Matchmaking.Modules
             Description = "Display a summary of all available commands for this arena.")]
         private void Command_CapHelp(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            // Two-column ASCII box: left = 20-char command, right = 46-char description.
-            static string Row(string cmd, string desc) => $"| {cmd,-20} | {desc,-48} |";
+            // Two-column ASCII box: left = 24-char command, right = 48-char description.
+            static string Row(string cmd, string desc) => $"| {cmd,-24} | {desc,-48} |";
             static string Section(string name)
             {
-                string left = $"-- {name} ".PadRight(22, '-');
+                string left = $"-- {name} ".PadRight(26, '-');
                 return $"+{left}+{new string('-', 50)}+";
             }
-            const string Sep = "+----------------------+--------------------------------------------------+";
+            const string Sep = "+--------------------------+--------------------------------------------------+";
 
             _chat.SendMessage(player, Section("Team Formation"));
             _chat.SendMessage(player, Row("?captain (?cap)", "Become a captain; others can join your team."));
