@@ -652,7 +652,10 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_Spawn(Player player, SpawnCallback.SpawnReason reason)
         {
-            if ((reason & SpawnCallback.SpawnReason.AfterDeath) == 0)
+            bool isAfterDeath = (reason & SpawnCallback.SpawnReason.AfterDeath) != 0;
+            bool isShipChange = (reason & SpawnCallback.SpawnReason.ShipChange) != 0;
+
+            if (!isAfterDeath)
                 return;
 
             Arena? arena = player.Arena;
@@ -666,10 +669,21 @@ namespace SS.Matchmaking.Modules
             if (!match.ActiveSlots.TryGetValue(player, out CaptainsPlayerSlot? slot))
                 return;
 
+            // Open the ship-change window on each death respawn.
             TimeSpan duration = arenaData.Config.AllowShipChangeAfterDeathDuration;
             slot.AllowShipChangeExpiration = duration > TimeSpan.Zero
                 ? DateTime.UtcNow + duration
                 : null;
+
+            // Apply queued ship if this spawn wasn't itself triggered by a ship change.
+            if (!isShipChange
+                && player.TryGetExtraData(_pdKey, out PlayerData? pd)
+                && pd.RequestedShip is { } requestedShip
+                && player.Ship != requestedShip)
+            {
+                pd.RequestedShip = null;
+                _game.SetShip(player, requestedShip); // fires Callback_Spawn again with ShipChange flag
+            }
         }
 
         /// <summary>
@@ -823,6 +837,15 @@ namespace SS.Matchmaking.Modules
                         _game.SetShipAndFreq(player, ShipType.Spec, newFreq);
                         _chat.SendMessage(player, $"You cannot switch teams mid-match. You are assigned to Freq {slot.Team.Freq}.");
                     }
+                }
+            }
+            else if (newShip != ShipType.Spec && oldShip != ShipType.Spec)
+            {
+                // Ship changed while alive (during the post-death window).
+                if (match.ActiveSlots.TryGetValue(player, out CaptainsPlayerSlot? activeSlot))
+                {
+                    activeSlot.Ship = newShip;
+                    activeSlot.AllowShipChangeExpiration = null; // one change per window
                 }
             }
         }
@@ -1773,7 +1796,7 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, Section("General Use"));
             _chat.SendMessage(player, Row("?capinfo", "See all forming or formed teams in the arena."));
             _chat.SendMessage(player, Row("?statbox", "Set statbox preference (detailed/simple/off)."));
-            _chat.SendMessage(player, Row("?help", "Show this command list."));
+            _chat.SendMessage(player, Row("?caphelp", "Show this command list."));
             _chat.SendMessage(player, Sep);
         }
 
@@ -2359,7 +2382,7 @@ namespace SS.Matchmaking.Modules
             foreach (var (p, _) in match.ActiveSlots)
             {
                 if (p.Ship != ShipType.Spec)
-                    _game.SetShipAndFreq(p, ShipType.Spec, p.Freq);
+                    _game.SetShip(p, ShipType.Spec);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                 {
                     pd.ManagedArena = null;
@@ -2489,7 +2512,7 @@ namespace SS.Matchmaking.Modules
             foreach (var (p, _) in match.ActiveSlots)
             {
                 if (p.Ship != ShipType.Spec)
-                    _game.SetShipAndFreq(p, ShipType.Spec, p.Freq);
+                    _game.SetShip(p, ShipType.Spec);
                 RemoveExtraPositionDataWatch(p);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                     pd.ManagedArena = null;
