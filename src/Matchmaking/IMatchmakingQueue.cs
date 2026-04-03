@@ -183,6 +183,11 @@ namespace SS.Matchmaking
         public bool AllowAutoRequeue { get; init; }
 
         /// <summary>
+        /// Whether to allow listing the players and/or groups waiting in line.
+        /// </summary>
+        public bool AllowListWaiting { get; init; }
+
+        /// <summary>
         /// The LeagueId for which players must have a permit to join the queue.
         /// <see langword="null"/> means no permit is required.
         /// </summary>

@@ -108,6 +108,7 @@ privcmd_av
 
 ; Matchmaking
 seeplayergroupdetails
+seequeuewaitinglist
 privcmd_nexthold
 privcmd_manageplayingstate
 

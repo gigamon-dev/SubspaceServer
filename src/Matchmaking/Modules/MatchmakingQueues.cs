@@ -1753,6 +1753,12 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
+            if (!queue.Options.AllowListWaiting && !_capabilityManager.HasCapability(player, CapabilityNames.SeeQueueWaitingList))
+            {
+                _chat.SendMessage(player, $"{CommandNames.ListQueue}: Queue '{queueName}' does not allow the waiting list to be viewed.");
+                return;
+            }
+
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
             HashSet<Player> soloPlayers = _objectPoolManager.PlayerSetPool.Get();
             HashSet<IPlayerGroup> groups = _playerGroupSetPool.Get();

@@ -174,7 +174,7 @@ namespace SS.Matchmaking.Modules
                         _chat.SendMessage(player, $"{GroupCommandName}: {targetPlayer.Name} is not in a group.");
 
                     if (targetPlayer == player
-                        || _capabilityManager.HasCapability(player, "seeplayergroupdetails"))
+                        || _capabilityManager.HasCapability(player, CapabilityNames.SeePlayerGroupDeatils))
                     {
                         if (targetPlayerData.PendingGroups.Count > 0)
                         {
@@ -202,7 +202,7 @@ namespace SS.Matchmaking.Modules
                 }
 
                 if (group == playerData.Group
-                    || _capabilityManager.HasCapability(player, "seeplayergroupdetails"))
+                    || _capabilityManager.HasCapability(player, CapabilityNames.SeePlayerGroupDeatils))
                 {
                     if (targetPlayer == player)
                         _chat.SendMessage(player, $"{GroupCommandName}: Your group:");

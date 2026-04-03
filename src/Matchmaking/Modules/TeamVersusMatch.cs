@@ -4544,7 +4544,8 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            bool allowAutoRequeue = _configManager.GetInt(ch, queueSection, "AllowAutoRequeue", 0) != 0;
+            bool allowAutoRequeue = _configManager.GetBool(ch, queueSection, "AllowAutoRequeue", false);
+            bool allowListWaiting = _configManager.GetBool(ch, queueSection, "AllowListWaiting", false);
 
             long? permitLeagueId;
             string? permitLeagueIdStr = _configManager.GetStr(ch, queueSection, "PermitLeagueId");
@@ -4569,6 +4570,7 @@ namespace SS.Matchmaking.Modules
                 MinGroupSize = minGroupSize,
                 MaxGroupSize = maxGroupSize,
                 AllowAutoRequeue = allowAutoRequeue,
+                AllowListWaiting = allowListWaiting,
                 PermitLeagueId = permitLeagueId,
             };
 
