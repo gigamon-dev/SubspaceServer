@@ -135,8 +135,8 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand(CommandNames.CancelNextAlt, Command_cancelnext);
             _commandManager.AddCommand(CommandNames.NextHold, Command_nextHold);
             _commandManager.AddCommand(CommandNames.ManagePlayingState, Command_manageplayingstate);
-            _commandManager.AddCommand(CommandNames.ListPlayers, Command_listplayers);
-            _commandManager.AddCommand(CommandNames.ListPlayersAlt, Command_listplayers);
+            _commandManager.AddCommand(CommandNames.ListQueue, Command_listqueue);
+            _commandManager.AddCommand(CommandNames.ListQueueAlt, Command_listqueue);
 
             _iMatchmakingQueuesToken = broker.RegisterInterface<IMatchmakingQueues>(this);
             return true;
@@ -151,8 +151,8 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand(CommandNames.CancelNextAlt, Command_cancelnext);
             _commandManager.RemoveCommand(CommandNames.NextHold, Command_nextHold);
             _commandManager.RemoveCommand(CommandNames.ManagePlayingState, Command_manageplayingstate);
-            _commandManager.RemoveCommand(CommandNames.ListPlayers, Command_listplayers);
-            _commandManager.RemoveCommand(CommandNames.ListPlayersAlt, Command_listplayers);
+            _commandManager.RemoveCommand(CommandNames.ListQueue, Command_listqueue);
+            _commandManager.RemoveCommand(CommandNames.ListQueueAlt, Command_listqueue);
 
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             PlayerGroupCreatedCallback.Unregister(broker, Callback_PlayerGroupCreated);
@@ -1691,13 +1691,16 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: {targetPlayer.Name} is in the '{usageData.State}' state.");
         }
 
+        // TODO: Add the ability to list those waiting in the order that they're queued up in rather than by alphabetical order.
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "<none> | <queue name>",
             Description = """
-                Lists players on matchmaking queue.
+                Lists players and groups waiting in line on a matchmaking queue.
+                If no queue is specified, the arena's default queue will be used.
+                Players queued up as individuals are listed in alphabetical order.
                 """)]
-        private void Command_listplayers(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        private void Command_listqueue(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (player.Arena is null)
                 return;
@@ -1717,7 +1720,7 @@ namespace SS.Matchmaking.Modules
 
                 if (parameters.IsWhiteSpace())
                 {
-                    _chat.SendMessage(player, $"{CommandNames.ListPlayers}: You must specify which queue.");
+                    _chat.SendMessage(player, $"{CommandNames.ListQueue}: You must specify which queue.");
                     return;
                 }
             }
@@ -1746,7 +1749,7 @@ namespace SS.Matchmaking.Modules
 
             if (queue is null)
             {
-                _chat.SendMessage(player, $"{CommandNames.ListPlayers}: Queue '{queueName}' not found.");
+                _chat.SendMessage(player, $"{CommandNames.ListQueue}: Queue '{queueName}' not found.");
                 return;
             }
 
@@ -1766,12 +1769,13 @@ namespace SS.Matchmaking.Modules
 
                 if (totalPlayersQueued > 0)
                 {
-                    sb.Append($"{CommandNames.ListPlayers}: {queue.Name}: ");
+                    sb.Append($"{CommandNames.ListQueue}: {queue.Name}: ");
 
                     int playerListStart = sb.Length;
 
                     if (soloPlayers.Count > 0)
                     {
+                        // TODO: Remove LINQ to reduce allocations.
                         var sortedPlayers = soloPlayers.OrderBy(player => player.Name, StringComparer.OrdinalIgnoreCase);
 
                         foreach (Player soloPlayer in sortedPlayers)
@@ -1810,7 +1814,7 @@ namespace SS.Matchmaking.Modules
                 }
                 else
                 {
-                    _chat.SendMessage(player, $"{CommandNames.ListPlayers}: {queue.Name}: No players queued.");
+                    _chat.SendMessage(player, $"{CommandNames.ListQueue}: {queue.Name}: No players queued.");
                 }
             }
             finally
@@ -2178,8 +2182,8 @@ namespace SS.Matchmaking.Modules
             public const string CancelNextAlt = "cnext";
             public const string NextHold = "nexthold";
             public const string ManagePlayingState = "manageplayingstate";
-            public const string ListPlayers = "listplayers";
-            public const string ListPlayersAlt = "lp";
+            public const string ListQueue = "lsqueue";
+            public const string ListQueueAlt = "lsq";
         }
 
         #endregion

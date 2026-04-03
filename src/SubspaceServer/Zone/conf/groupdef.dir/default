@@ -104,8 +104,8 @@ cmd_next
 cmd_cancelnext
 cmd_cnext
 cmd_nexthold
-cmd_listplayers
-cmd_lp
+cmd_lsqueue
+cmd_lsq
 
 ; Matchmaking (TeamVersusMatch and TeamVersusStats)
 cmd_requestsub
