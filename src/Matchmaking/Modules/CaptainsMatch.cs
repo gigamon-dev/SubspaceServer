@@ -2382,7 +2382,7 @@ namespace SS.Matchmaking.Modules
             foreach (var (p, _) in match.ActiveSlots)
             {
                 if (p.Ship != ShipType.Spec)
-                    _game.SetShip(p, ShipType.Spec);
+                    _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                 {
                     pd.ManagedArena = null;
@@ -2512,7 +2512,7 @@ namespace SS.Matchmaking.Modules
             foreach (var (p, _) in match.ActiveSlots)
             {
                 if (p.Ship != ShipType.Spec)
-                    _game.SetShip(p, ShipType.Spec);
+                    _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                 RemoveExtraPositionDataWatch(p);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                     pd.ManagedArena = null;
