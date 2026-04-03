@@ -135,6 +135,8 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand(CommandNames.CancelNextAlt, Command_cancelnext);
             _commandManager.AddCommand(CommandNames.NextHold, Command_nextHold);
             _commandManager.AddCommand(CommandNames.ManagePlayingState, Command_manageplayingstate);
+            _commandManager.AddCommand(CommandNames.ListPlayers, Command_listplayers);
+            _commandManager.AddCommand(CommandNames.ListPlayersAlt, Command_listplayers);
 
             _iMatchmakingQueuesToken = broker.RegisterInterface<IMatchmakingQueues>(this);
             return true;
@@ -149,6 +151,8 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand(CommandNames.CancelNextAlt, Command_cancelnext);
             _commandManager.RemoveCommand(CommandNames.NextHold, Command_nextHold);
             _commandManager.RemoveCommand(CommandNames.ManagePlayingState, Command_manageplayingstate);
+            _commandManager.RemoveCommand(CommandNames.ListPlayers, Command_listplayers);
+            _commandManager.RemoveCommand(CommandNames.ListPlayersAlt, Command_listplayers);
 
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             PlayerGroupCreatedCallback.Unregister(broker, Callback_PlayerGroupCreated);
@@ -1687,6 +1691,136 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: {targetPlayer.Name} is in the '{usageData.State}' state.");
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None,
+            Args = "<none> | <queue name>",
+            Description = """
+                Lists players on matchmaking queue.
+                """)]
+        private void Command_listplayers(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (player.Arena is null)
+                return;
+
+            if (parameters.IsWhiteSpace())
+            {
+                // No queue name(s) were specified. Check if there is a default queue for the arena.
+                var advisors = _broker.GetAdvisors<IMatchmakingQueueAdvisor>();
+                foreach (var advisor in advisors)
+                {
+                    parameters = advisor.GetDefaultQueue(player.Arena);
+                    if (!parameters.IsWhiteSpace())
+                    {
+                        break;
+                    }
+                }
+
+                if (parameters.IsWhiteSpace())
+                {
+                    _chat.SendMessage(player, $"{CommandNames.ListPlayers}: You must specify which queue.");
+                    return;
+                }
+            }
+
+            ReadOnlySpan<char> queueName = parameters.Trim();
+
+            if (!_queuesLookup.TryGetValue(queueName, out IMatchmakingQueue? queue))
+            {
+                // Did not find a queue with the name provided.
+                // Check if the name provided is an alias.
+                Arena? arena = player.Arena;
+                if (arena is not null)
+                {
+                    var advisors = arena.GetAdvisors<IMatchmakingQueueAdvisor>();
+                    foreach (IMatchmakingQueueAdvisor advisor in advisors)
+                    {
+                        string? alias = advisor.GetQueueNameByAlias(arena, queueName);
+                        if (alias is not null && _queues.TryGetValue(alias, out queue))
+                        {
+                            queueName = alias;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (queue is null)
+            {
+                _chat.SendMessage(player, $"{CommandNames.ListPlayers}: Queue '{queueName}' not found.");
+                return;
+            }
+
+            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+            HashSet<Player> soloPlayers = _objectPoolManager.PlayerSetPool.Get();
+            HashSet<IPlayerGroup> groups = _playerGroupSetPool.Get();
+
+            try
+            {
+                queue.GetQueued(soloPlayers, groups);
+
+                int totalPlayersQueued = soloPlayers.Count;
+                foreach (IPlayerGroup playerGroup in groups)
+                {
+                    totalPlayersQueued += playerGroup.Members.Count;
+                }
+
+                if (totalPlayersQueued > 0)
+                {
+                    sb.Append($"{CommandNames.ListPlayers}: {queue.Name}: ");
+
+                    int playerListStart = sb.Length;
+
+                    if (soloPlayers.Count > 0)
+                    {
+                        var sortedPlayers = soloPlayers.OrderBy(player => player.Name, StringComparer.OrdinalIgnoreCase);
+
+                        foreach (Player soloPlayer in sortedPlayers)
+                        {
+                            if (sb.Length > playerListStart)
+                                sb.Append(", ");
+
+                            sb.Append(soloPlayer.Name);
+                        }
+                    }
+
+                    foreach (IPlayerGroup playerGroup in groups)
+                    {
+                        if (sb.Length > playerListStart)
+                            sb.Append(", ");
+
+                        sb.Append('(');
+
+                        int groupMemberListStart = sb.Length;
+
+                        foreach (Player groupMember in playerGroup.Members)
+                        {
+                            if (sb.Length > groupMemberListStart)
+                                sb.Append(", ");
+
+                            sb.Append(groupMember.Name);
+                        }
+
+                        sb.Append(')');
+                    }
+
+                    if (sb.Length > 78)
+                        _chat.SendWrappedText(player, sb);
+                    else
+                        _chat.SendMessage(player, sb);
+                }
+                else
+                {
+                    _chat.SendMessage(player, $"{CommandNames.ListPlayers}: {queue.Name}: No players queued.");
+                }
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(sb);
+                _objectPoolManager.PlayerSetPool.Return(soloPlayers);
+                _playerGroupSetPool.Return(groups);
+            }
+        }
+
         #endregion
 
         private void RemoveFromAllQueues(Player? player, IPlayerGroup? group, UsageData usageData, bool notify)
@@ -2044,6 +2178,8 @@ namespace SS.Matchmaking.Modules
             public const string CancelNextAlt = "cnext";
             public const string NextHold = "nexthold";
             public const string ManagePlayingState = "manageplayingstate";
+            public const string ListPlayers = "listplayers";
+            public const string ListPlayersAlt = "lp";
         }
 
         #endregion
