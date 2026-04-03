@@ -697,6 +697,11 @@ namespace SS.Matchmaking.Modules
                         string elapsedStr = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:D2}";
                         SendToMatchParticipants(match, $"{player.Name} has specced. (Count: {slot.LagOuts}) [{elapsedStr}]");
                     }
+                    else
+                    {
+                        // Specced during countdown (before GO) — notify all participants.
+                        SendToMatchParticipants(match, $"{player.Name} specced during the countdown. (Count: {slot.LagOuts})");
+                    }
 
                     // Check win condition (all lives gone) and abandon condition (all specced out).
                     bool allOut = !match.ActiveSlots.Values.Any(s => s.Team.Freq == oldFreq);
@@ -704,6 +709,15 @@ namespace SS.Matchmaking.Modules
                     {
                         ScheduleWinConditionCheck(arenaData, match);
                         CheckAbandonCondition(arenaData, match, slot.Team.Freq);
+                    }
+                    else if (allOut && !arenaData.ActiveMatches.Contains(match))
+                    {
+                        // All players on this team specced out during the countdown (before GO).
+                        // Abort the countdown rather than letting it fire with an empty team.
+                        MatchCountdown? countdown = arenaData.PendingCountdowns.Find(
+                            c => c.ActiveMatch == match);
+                        if (countdown is not null)
+                            AbortCountdown(arena, arenaData, countdown, $"{player.Name} specced — countdown aborted.");
                     }
                 }
             }
@@ -1083,6 +1097,7 @@ namespace SS.Matchmaking.Modules
             if (challengerFormation.Members.Count < arenaData.Config.PlayersPerTeam)
             {
                 _chat.SendMessage(player, $"{challengerFormation.Captain.Name}'s team is not full ({challengerFormation.Members.Count}/{arenaData.Config.PlayersPerTeam}). Cannot accept.");
+                _chat.SendMessage(challengerFormation.Captain, $"{player.Name} tried to accept your challenge, but your team is not full ({challengerFormation.Members.Count}/{arenaData.Config.PlayersPerTeam}). Fill your roster first.");
                 return;
             }
 
@@ -1163,7 +1178,7 @@ namespace SS.Matchmaking.Modules
 
                 if (notReady is not null)
                 {
-                    _chat.SendMessage(player, $"Cannot ready up — the following player(s) are not in a ship on Freq {assignedFreq}: {string.Join(", ", notReady)}. (If you cannot field a full team, use ?disband to abandon matchmaking.)");
+                    _chat.SendMessage(player, $"Cannot ready up - the following player(s) are not in a ship on Freq {assignedFreq}: {string.Join(", ", notReady)}. (If you cannot field a full team, use ?disband to abandon matchmaking.)");
                     return;
                 }
             }
@@ -1304,13 +1319,19 @@ namespace SS.Matchmaking.Modules
             Formation? memberFormation = GetNonCaptainFormation(arenaData, player);
             if (memberFormation is not null)
             {
+                bool wasReady = memberFormation.IsReady;
+
                 // If a countdown is in progress, abort it — ditching is a forfeit of participation.
+                bool countdownAborted = false;
                 if (arenaData.PlayerToMatch.ContainsKey(player))
                 {
                     MatchCountdown? countdown = arenaData.PendingCountdowns.Find(
                         c => c.Formation1 == memberFormation || c.Formation2 == memberFormation);
                     if (countdown is not null)
+                    {
                         AbortCountdown(arena, arenaData, countdown, $"{player.Name} left {memberFormation.Captain.Name}'s team — countdown aborted.");
+                        countdownAborted = true;
+                    }
                 }
 
                 memberFormation.Members.Remove(player);
@@ -1321,6 +1342,11 @@ namespace SS.Matchmaking.Modules
 
                 if (player.Ship != ShipType.Spec)
                     _game.SetShipAndFreq(player, ShipType.Spec, player.Freq);
+
+                // If the team was ready and no countdown abort already covered it, notify the partner.
+                if (wasReady && !countdownAborted && memberFormation.PairedWith is not null)
+                    SendToFormationPair(memberFormation, memberFormation.PairedWith,
+                        $"{player.Name} left {memberFormation.Captain.Name}'s team — they are no longer ready.");
 
                 _chat.SendMessage(player, $"You have left {memberFormation.Captain.Name}'s team.");
                 _chat.SendMessage(memberFormation.Captain, $"{player.Name} left your team. Team: {FormatTeamRoster(memberFormation, arenaData.Config.PlayersPerTeam)}");
@@ -1495,6 +1521,7 @@ namespace SS.Matchmaking.Modules
                 if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
                     pd.RequestedShip = null;
                 _game.SetShipAndFreq(player, ship, player.Freq);
+                _chat.SendMessage(player, $"Ship changed to {ship}.");
             }
             else
             {
@@ -1583,8 +1610,7 @@ namespace SS.Matchmaking.Modules
                         sb.Append($"{slot.PlayerName} {slot.Repels}/{slot.Rockets}");
                         first = false;
                     }
-                    if (!first)
-                        _chat.SendMessage(player, sb.ToString());
+                    _chat.SendMessage(player, first ? $"Freq {team.Freq}: (all eliminated)" : sb.ToString());
                 }
             }
         }
@@ -1703,11 +1729,11 @@ namespace SS.Matchmaking.Modules
 
             if (countdown.Seconds > 0)
             {
-                _chat.SendArenaMessage(arena, $"-{countdown.Seconds}-");
+                SendToMatchAudience(arena, countdown.ArenaData, countdown.ActiveMatch, $"-{countdown.Seconds}-");
                 return true;
             }
 
-            _chat.SendArenaMessage(arena, ChatSound.Ding, "GO!");
+            SendToMatchAudience(arena, countdown.ArenaData, countdown.ActiveMatch, "GO!", ChatSound.Ding);
             countdown.ArenaData.PendingCountdowns.Remove(countdown);
             StartMatch(arena, countdown.ArenaData, countdown);
             return false;
@@ -1875,6 +1901,7 @@ namespace SS.Matchmaking.Modules
             Formation? memberFormation = GetNonCaptainFormation(arenaData, player);
             if (memberFormation is not null)
             {
+                bool wasReady = memberFormation.IsReady;
                 memberFormation.Members.Remove(player);
                 memberFormation.IsReady = false;
 
@@ -1882,6 +1909,7 @@ namespace SS.Matchmaking.Modules
                     pd.ManagedArena = null;
 
                 // If a countdown was running, abort it — all players must be present at GO.
+                bool countdownAborted = false;
                 if (memberFormation.PairedWith is not null)
                 {
                     MatchCountdown? countdown = arenaData.PendingCountdowns.Find(
@@ -1890,8 +1918,14 @@ namespace SS.Matchmaking.Modules
                     {
                         AbortCountdown(arena, arenaData, countdown,
                             $"Countdown aborted: {player.Name} left the arena.");
+                        countdownAborted = true;
                     }
                 }
+
+                // If the team was ready and no countdown abort already covered it, notify the partner.
+                if (wasReady && !countdownAborted && memberFormation.PairedWith is not null)
+                    SendToFormationPair(memberFormation, memberFormation.PairedWith,
+                        $"{player.Name} left the arena — {memberFormation.Captain.Name}'s team is no longer ready.");
 
                 if (memberFormation.Captain is not null)
                     _chat.SendMessage(memberFormation.Captain, $"{player.Name} left the arena. Team: {FormatTeamRoster(memberFormation, arenaData.Config.PlayersPerTeam)}");
@@ -1987,6 +2021,47 @@ namespace SS.Matchmaking.Modules
         }
 
         /// <summary>
+        /// Sends a message to all players in a match's audience: the match participants (active + specced-out)
+        /// plus any arena spectators not currently participating in a different match.
+        /// </summary>
+        private void SendToMatchAudience(Arena arena, ArenaData arenaData, ActiveMatch match, string message, ChatSound sound = ChatSound.None)
+        {
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+            try
+            {
+                foreach (Player p in match.ActiveSlots.Keys)
+                    set.Add(p);
+                foreach (Player p in match.SpecOutSlots.Keys)
+                    set.Add(p);
+
+                // Include spectators: players in the arena not assigned to any match.
+                _playerData.Lock();
+                try
+                {
+                    foreach (Player p in _playerData.Players)
+                        if (p.Arena == arena && p.Status == PlayerState.Playing && !arenaData.PlayerToMatch.ContainsKey(p))
+                            set.Add(p);
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                if (set.Count > 0)
+                {
+                    if (sound != ChatSound.None)
+                        _chat.SendSetMessage(set, sound, message);
+                    else
+                        _chat.SendSetMessage(set, message);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
+        }
+
+        /// <summary>
         /// Sends a message to all members of two paired formations.
         /// Used for ready-state notifications that are only relevant to the participants.
         /// </summary>
@@ -2056,7 +2131,7 @@ namespace SS.Matchmaking.Modules
                 ? $" Time limit: {(int)tl.TotalMinutes}m."
                 : string.Empty;
             int lives = arenaData.Config.LivesPerPlayer;
-            _chat.SendArenaMessage(arena,
+            SendToMatchAudience(arena, arenaData, countdown.ActiveMatch,
                 $"Match starting in 15 seconds! Freq {countdown.ActiveMatch.Freq1} vs Freq {countdown.ActiveMatch.Freq2}. " +
                 $"Each player has {lives} {(lives != 1 ? "lives" : "life")}.{timeMsg}");
             // 12 seconds before the 3-second countdown begins = 15 seconds total to GO!
@@ -2070,7 +2145,7 @@ namespace SS.Matchmaking.Modules
                 return false;
 
             countdown.Seconds = 3;
-            _chat.SendArenaMessage(arena, "-3-");
+            SendToMatchAudience(arena, countdown.ArenaData, countdown.ActiveMatch, "-3-");
             _mainloopTimer.SetTimer(Timer_Countdown, 1000, 1000, countdown, countdown);
             return false;
         }
@@ -2379,10 +2454,22 @@ namespace SS.Matchmaking.Modules
 
             countdown.Formation1.IsReady = false;
             countdown.Formation1.PairedWith = null;
+            countdown.Formation1.AssignedFreq = null;
             countdown.Formation2.IsReady = false;
             countdown.Formation2.PairedWith = null;
+            countdown.Formation2.AssignedFreq = null;
 
-            _chat.SendArenaMessage(arena, reason);
+            // Spec out all members of both formations — the pairing is broken and freq
+            // reservations are released, so players should not remain on those frequencies.
+            foreach (Player p in countdown.Formation1.Members)
+                if (p.Ship != ShipType.Spec)
+                    _game.SetShipAndFreq(p, ShipType.Spec, p.Freq);
+
+            foreach (Player p in countdown.Formation2.Members)
+                if (p.Ship != ShipType.Spec)
+                    _game.SetShipAndFreq(p, ShipType.Spec, p.Freq);
+
+            SendToMatchAudience(arena, arenaData, countdown.ActiveMatch, reason);
         }
 
         private void DisbandFormation(Arena arena, ArenaData arenaData, Formation formation, string? message)
@@ -2490,7 +2577,7 @@ namespace SS.Matchmaking.Modules
             {
                 bool inUse = arenaData.Formations.Values.Any(f => f.AssignedFreq == pair.F1 || f.AssignedFreq == pair.F2)
                           || arenaData.ActiveMatches.Any(m => m.Freq1 == pair.F1 || m.Freq1 == pair.F2 || m.Freq2 == pair.F1 || m.Freq2 == pair.F2)
-                          || arenaData.PendingCountdowns.Any(c => c.ActiveMatch.Freq1 == pair.F1 || c.ActiveMatch.Freq2 == pair.F2);
+                          || arenaData.PendingCountdowns.Any(c => c.ActiveMatch.Freq1 == pair.F1 || c.ActiveMatch.Freq1 == pair.F2 || c.ActiveMatch.Freq2 == pair.F1 || c.ActiveMatch.Freq2 == pair.F2);
                 if (!inUse)
                     return pair;
             }
