@@ -123,6 +123,8 @@ namespace SS.Matchmaking.Modules
             Description = "Minimum score lead required for a time-limit win. If neither team leads by this amount, overtime begins (if configured) or the match draws.")]
         [ConfigHelp<int>("CaptainsMatch", "MaxLagOuts", ConfigScope.Arena, Default = 3,
             Description = "Maximum number of times a player may voluntarily spec out during a match before they cannot re-enter.")]
+        [ConfigHelp("CaptainsMatch", "AllowShipChangeAfterDeathDuration", ConfigScope.Arena,
+            Description = "Duration (TimeSpan, e.g. 00:00:05) after respawning from a death that a player may voluntarily change ships. Prevents item recycling by changing ships while alive. Empty or 0 = ship changes are always blocked during a match (queue via ?sc for next spawn).")]
         [ConfigHelp<int>("CaptainsMatch", "AbandonTimeoutSeconds", ConfigScope.Arena, Default = 10,
             Description = "Seconds a team with no active (playing) players has before the match is forfeited in their name. Set to 0 to disable.")]
         [ConfigHelp("CaptainsMatch", "OpenSkillModel", ConfigScope.Arena, Default = "PlackettLuce",
@@ -280,6 +282,9 @@ namespace SS.Matchmaking.Modules
                 WinConditionDelay = winConditionDelay,
                 TimeLimitWinBy = Math.Max(1, _configManager.GetInt(ch, "CaptainsMatch", "TimeLimitWinBy", 2)),
                 MaxLagOuts = _configManager.GetInt(ch, "CaptainsMatch", "MaxLagOuts", 3),
+                AllowShipChangeAfterDeathDuration = TimeSpan.TryParse(
+                    _configManager.GetStr(ch, "CaptainsMatch", "AllowShipChangeAfterDeathDuration"), out TimeSpan ascd)
+                    ? ascd : TimeSpan.Zero,
                 AbandonTimeoutMs = Math.Max(0, _configManager.GetInt(ch, "CaptainsMatch", "AbandonTimeoutSeconds", 10)) * 1000,
                 ShipSettings = shipSettings,
                 OpenSkillModel = openSkillModel,
@@ -293,6 +298,7 @@ namespace SS.Matchmaking.Modules
             arenaData.FreqManagerEnforcerAdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
 
             KillCallback.Register(arena, Callback_Kill);
+            SpawnCallback.Register(arena, Callback_Spawn);
             ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
             PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
 
@@ -331,6 +337,7 @@ namespace SS.Matchmaking.Modules
                 return false;
 
             KillCallback.Unregister(arena, Callback_Kill);
+            SpawnCallback.Unregister(arena, Callback_Spawn);
             ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
             PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
 
@@ -424,9 +431,12 @@ namespace SS.Matchmaking.Modules
 
             if (arenaData.PlayerToMatch.TryGetValue(player, out ActiveMatch? match))
             {
-                if (match.ActiveSlots.ContainsKey(player))
+                if (match.ActiveSlots.TryGetValue(player, out CaptainsPlayerSlot? activeSlot))
                 {
-                    // Currently playing — lock to their current ship; use ?sc to queue a change for next spawn.
+                    if (CanShipChangeNow(arenaData, match, activeSlot))
+                        return ShipMask.All;
+
+                    // Outside the post-death window — lock to current ship; use ?sc to queue for next spawn.
                     errorMessage?.Append("You are in a match. Use ?sc <1-8> to change your ship for the next spawn.");
                     return player.Ship.GetShipMask();
                 }
@@ -640,6 +650,42 @@ namespace SS.Matchmaking.Modules
             ScheduleWinConditionCheck(arenaData, killedMatch);
         }
 
+        private void Callback_Spawn(Player player, SpawnCallback.SpawnReason reason)
+        {
+            if ((reason & SpawnCallback.SpawnReason.AfterDeath) == 0)
+                return;
+
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            if (!arenaData.PlayerToMatch.TryGetValue(player, out ActiveMatch? match)
+                || !arenaData.ActiveMatches.Contains(match))
+                return;
+
+            if (!match.ActiveSlots.TryGetValue(player, out CaptainsPlayerSlot? slot))
+                return;
+
+            TimeSpan duration = arenaData.Config.AllowShipChangeAfterDeathDuration;
+            slot.AllowShipChangeExpiration = duration > TimeSpan.Zero
+                ? DateTime.UtcNow + duration
+                : null;
+        }
+
+        /// <summary>
+        /// Returns <see langword="true"/> if <paramref name="slot"/>'s player is currently allowed to voluntarily
+        /// change ships: either the match hasn't gone live yet (countdown) or they are within their post-death window.
+        /// </summary>
+        private static bool CanShipChangeNow(ArenaData arenaData, ActiveMatch match, CaptainsPlayerSlot slot)
+        {
+            // Before GO — free to pick any ship.
+            if (!arenaData.ActiveMatches.Contains(match))
+                return true;
+
+            // In progress — only within the post-death window.
+            return slot.AllowShipChangeExpiration is { } exp && exp > DateTime.UtcNow;
+        }
+
         private void Callback_ShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
             Arena? arena = player.Arena;
@@ -808,6 +854,13 @@ namespace SS.Matchmaking.Modules
 
             if (changes != ItemChanges.None)
                 TeamVersusMatchPlayerItemsChangedCallback.Fire(arena, slot, changes);
+
+            // Clear the ship-change window when the player engages (fires a weapon).
+            if (slot.AllowShipChangeExpiration is not null
+                && positionPacket.Weapon.Type != WeaponCodes.Null)
+            {
+                slot.AllowShipChangeExpiration = null;
+            }
         }
 
         #endregion
@@ -1520,10 +1573,24 @@ namespace SS.Matchmaking.Modules
 
             if (player.Ship != ShipType.Spec)
             {
-                if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
-                    pd.RequestedShip = null;
-                _game.SetShipAndFreq(player, ship, player.Freq);
-                _chat.SendMessage(player, $"Ship changed to {ship}.");
+                // Only allow an immediate ship change if within the post-death window (or before GO).
+                // Outside that window the player must wait for their next spawn to prevent item recycling.
+                bool canChangeNow = match.ActiveSlots.TryGetValue(player, out CaptainsPlayerSlot? slot)
+                    && CanShipChangeNow(arenaData, match, slot);
+
+                if (canChangeNow)
+                {
+                    if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
+                        pd.RequestedShip = null;
+                    _game.SetShipAndFreq(player, ship, player.Freq);
+                    _chat.SendMessage(player, $"Ship changed to {ship}.");
+                }
+                else
+                {
+                    if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
+                        pd.RequestedShip = ship;
+                    _chat.SendMessage(player, $"Ship queued: {ship} will apply on your next spawn.");
+                }
             }
             else
             {
@@ -2696,6 +2763,7 @@ namespace SS.Matchmaking.Modules
             public required TimeSpan WinConditionDelay;
             public required int TimeLimitWinBy;
             public required int MaxLagOuts;
+            public required TimeSpan AllowShipChangeAfterDeathDuration;
             public required int AbandonTimeoutMs;
             /// <summary>Initial item counts per ship, indexed by <see cref="ShipType"/> cast to int. Used to burn items on spawn.</summary>
             public required ShipSettings[] ShipSettings;
@@ -2961,6 +3029,12 @@ namespace SS.Matchmaking.Modules
             // IMemberStats
             public short Kills { get; set; }
             public short Deaths { get; set; }
+
+            /// <summary>
+            /// When non-null, the player is within the post-death window in which they may voluntarily change ships.
+            /// Cleared when the window expires, when the player fires a weapon, or at match end.
+            /// </summary>
+            public DateTime? AllowShipChangeExpiration;
         }
 
         #endregion
