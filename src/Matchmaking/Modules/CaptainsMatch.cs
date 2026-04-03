@@ -300,6 +300,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("cap", Command_Captain, arena);
             _commandManager.AddCommand("join", Command_Join, arena);
             _commandManager.AddCommand("challenge", Command_Challenge, arena);
+            _commandManager.AddCommand("chal", Command_Challenge, arena);
             _commandManager.AddCommand("accept", Command_Accept, arena);
             _commandManager.AddCommand("ready", Command_Ready, arena);
             _commandManager.AddCommand("rdy", Command_Ready, arena);
@@ -310,7 +311,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("sc", Command_Sc, arena);
             _commandManager.AddCommand("return", Command_Return, arena);
             _commandManager.AddCommand("items", Command_Items, arena);
-            _commandManager.AddCommand("freqinfo", Command_FreqInfo, arena);
+            _commandManager.AddCommand("capinfo", Command_FreqInfo, arena);
             _commandManager.AddCommand("refuse", Command_Refuse, arena);
             _commandManager.AddCommand("disband", Command_Disband, arena);
             _commandManager.AddCommand("caphelp", Command_CapHelp, arena);
@@ -337,6 +338,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("cap", Command_Captain, arena);
             _commandManager.RemoveCommand("join", Command_Join, arena);
             _commandManager.RemoveCommand("challenge", Command_Challenge, arena);
+            _commandManager.RemoveCommand("chal", Command_Challenge, arena);
             _commandManager.RemoveCommand("accept", Command_Accept, arena);
             _commandManager.RemoveCommand("ready", Command_Ready, arena);
             _commandManager.RemoveCommand("rdy", Command_Ready, arena);
@@ -347,7 +349,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("sc", Command_Sc, arena);
             _commandManager.RemoveCommand("return", Command_Return, arena);
             _commandManager.RemoveCommand("items", Command_Items, arena);
-            _commandManager.RemoveCommand("freqinfo", Command_FreqInfo, arena);
+            _commandManager.RemoveCommand("capinfo", Command_FreqInfo, arena);
             _commandManager.RemoveCommand("refuse", Command_Refuse, arena);
             _commandManager.RemoveCommand("disband", Command_Disband, arena);
             _commandManager.RemoveCommand("caphelp", Command_CapHelp, arena);
@@ -1689,7 +1691,7 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, Row("?disband", "[Cap] Disband your entire team."));
             _chat.SendMessage(player, Row("?ditch", "Leave your current team."));
             _chat.SendMessage(player, Section("Challenge"));
-            _chat.SendMessage(player, Row("?challenge <captain>", "Challenge another full team to a match."));
+            _chat.SendMessage(player, Row("?challenge (?chal) <cap>", "Challenge another full team to a match."));
             _chat.SendMessage(player, Row("?accept", "Accept a pending challenge."));
             _chat.SendMessage(player, Row("?refuse [captain]", "Refuse a pending challenge."));
             _chat.SendMessage(player, Section("Pre-Game"));
@@ -1702,7 +1704,7 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, Row("?sc <1-8>", "Queue a ship change for your next spawn."));
             _chat.SendMessage(player, Row("?items [player]", "Show item counts for yourself or another."));
             _chat.SendMessage(player, Section("General Use"));
-            _chat.SendMessage(player, Row("?freqinfo", "See all forming or formed teams in the arena."));
+            _chat.SendMessage(player, Row("?capinfo", "See all forming or formed teams in the arena."));
             _chat.SendMessage(player, Row("?statbox", "Set statbox preference (detailed/simple/off)."));
             _chat.SendMessage(player, Row("?help", "Show this command list."));
             _chat.SendMessage(player, Sep);
