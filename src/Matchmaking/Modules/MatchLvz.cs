@@ -369,6 +369,18 @@ namespace SS.Matchmaking.Modules
                 SetAndSendMatchLvz(player, matchData);
             }
 
+            // Eagerly initialize the Simple state even if no player currently has Simple preference.
+            // This ensures kill/death counts are tracked from the start, so a player who switches
+            // from Off→Simple mid-match sees the correct accumulated state instead of 0/0.
+            MatchLvzState simpleState = arenaData.GetOrAddMatch(matchData.MatchIdentifier, StatboxPreference.Simple);
+            if (!simpleState.IsInitialized)
+            {
+                Span<LvzObjectChange> initChanges = stackalloc LvzObjectChange[Initialize_MaxChanges];
+                Span<LvzObjectToggle> initToggles = stackalloc LvzObjectToggle[Initialize_MaxToggles];
+                simpleState.Start(matchData, initChanges, out _, initToggles, out _);
+                // Ignore changes/toggles — no players have been added to this state yet.
+            }
+
             // Start a timer to refresh the game timer every 10 seconds
             _mainloopTimer.SetTimer(MainloopTimer_RefreshGameTimer, 10000, 10000, matchData, matchData);
         }
@@ -510,17 +522,21 @@ namespace SS.Matchmaking.Modules
                 return;
 
             MatchLvzState? simpleState = arenaData.TryGetMatch(matchData.MatchIdentifier, StatboxPreference.Simple);
-            if (simpleState is null || simpleState.Players.Count == 0)
+            if (simpleState is null)
                 return;
 
             Span<LvzObjectChange> changes = stackalloc LvzObjectChange[StatBox_RefreshStatsKill_MaxChanges];
             Span<LvzObjectToggle> toggles = stackalloc LvzObjectToggle[StatBox_RefreshStatsKill_MaxToggles];
 
+            // Always update the state so it stays accurate for players who switch to Simple later.
             simpleState.RefreshForStatsKill(
                 killedSlot, killedStats.Deaths,
                 killerSlot, killerStats.Kills,
                 changes, out int changesWritten,
                 toggles, out int togglesWritten);
+
+            if (simpleState.Players.Count == 0)
+                return;
 
             changes = changes[..changesWritten];
             toggles = toggles[..togglesWritten];
