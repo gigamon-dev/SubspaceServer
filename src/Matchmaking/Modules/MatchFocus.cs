@@ -2,6 +2,7 @@
 using SS.Core;
 using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
+using System.Collections.Generic;
 using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
@@ -23,7 +24,7 @@ namespace SS.Matchmaking.Modules
         IGame game,
         ILogManager logManager,
         IObjectPoolManager objectPoolManager,
-        IPlayerData playerData) : IModule, IArenaAttachableModule, IMatchFocus, IPlayerPositionAdvisor, IBricksAdvisor
+        IPlayerData playerData) : IModule, IArenaAttachableModule, IMatchFocus, IPlayerPositionAdvisor, IBricksAdvisor, IKillAdvisor
     {
         private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
         private readonly IGame _game = game ?? throw new ArgumentNullException(nameof(game));
@@ -93,6 +94,7 @@ namespace SS.Matchmaking.Modules
             SpectateChangedCallback.Register(arena, Callback_SpectateChanged);
             arenaData.IPlayerPositionAdvisorRegistrationToken = arena.RegisterAdvisor<IPlayerPositionAdvisor>(this);
             arenaData.IBricksAdvisorRegistrationToken = arena.RegisterAdvisor<IBricksAdvisor>(this);
+            arenaData.IKillAdvisorRegistrationToken = arena.RegisterAdvisor<IKillAdvisor>(this);
 
             return true;
         }
@@ -106,6 +108,9 @@ namespace SS.Matchmaking.Modules
                 return false;
 
             if (!arena.UnregisterAdvisor(ref arenaData.IBricksAdvisorRegistrationToken))
+                return false;
+
+            if (!arena.UnregisterAdvisor(ref arenaData.IKillAdvisorRegistrationToken))
                 return false;
 
             if (!_arenaDataDictionary.Remove(arena))
@@ -162,6 +167,29 @@ namespace SS.Matchmaking.Modules
             }
 
             return false;
+        }
+
+        #endregion
+
+        #region IKillAdvisor
+
+        void IKillAdvisor.FilterKillNotification(Arena arena, Player killer, Player killed, HashSet<Player> recipients)
+        {
+            if (!killed.TryGetExtraData(_playerDataKey, out PlayerData? killedData))
+                return;
+
+            MatchFocusData? killedMatch = killedData.PlayingInMatch;
+
+            List<Player>? toRemove = null;
+            foreach (Player recipient in recipients)
+            {
+                if (GetFocusedMatchData(recipient) != killedMatch)
+                    (toRemove ??= []).Add(recipient);
+            }
+
+            if (toRemove is not null)
+                foreach (Player p in toRemove)
+                    recipients.Remove(p);
         }
 
         #endregion
@@ -692,11 +720,13 @@ namespace SS.Matchmaking.Modules
         {
             public AdvisorRegistrationToken<IPlayerPositionAdvisor>? IPlayerPositionAdvisorRegistrationToken;
             public AdvisorRegistrationToken<IBricksAdvisor>? IBricksAdvisorRegistrationToken;
+            public AdvisorRegistrationToken<IKillAdvisor>? IKillAdvisorRegistrationToken;
 
             bool IResettable.TryReset()
             {
                 IPlayerPositionAdvisorRegistrationToken = null;
                 IBricksAdvisorRegistrationToken = null;
+                IKillAdvisorRegistrationToken = null;
                 return true;
             }
         }
