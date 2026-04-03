@@ -719,7 +719,7 @@ namespace SS.Matchmaking.Modules
                         MatchCountdown? countdown = arenaData.PendingCountdowns.Find(
                             c => c.ActiveMatch == match);
                         if (countdown is not null)
-                            AbortCountdown(arena, arenaData, countdown, $"{player.Name} specced — countdown aborted.");
+                            AbortCountdown(arena, arenaData, countdown, $"{player.Name} specced - countdown aborted.");
                     }
                 }
             }
@@ -1662,7 +1662,7 @@ namespace SS.Matchmaking.Modules
                         state = "Forming";
 
                     string freqStr = f.AssignedFreq.HasValue ? $" [Freq {f.AssignedFreq}]" : "";
-                    _chat.SendMessage(player, $"{f.Captain.Name}'s team{freqStr} — {state}: {FormatTeamRoster(f, arenaData.Config.PlayersPerTeam)}");
+                    _chat.SendMessage(player, $"{f.Captain.Name}'s team{freqStr} - {state}: {FormatTeamRoster(f, arenaData.Config.PlayersPerTeam)}");
                 }
             }
 

@@ -148,7 +148,9 @@ privcmd_leaguepermit
 cmd_caphelp
 cmd_captain
 cmd_cap
+cmd_capinfo
 cmd_challenge
+cmd_chal
 cmd_accept
 cmd_refuse
 cmd_ready
