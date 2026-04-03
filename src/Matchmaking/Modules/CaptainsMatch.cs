@@ -2383,6 +2383,8 @@ namespace SS.Matchmaking.Modules
             {
                 if (p.Ship != ShipType.Spec)
                     _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
+                else if (p.Freq != arena.SpecFreq)
+                    _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                 {
                     pd.ManagedArena = null;
@@ -2392,6 +2394,8 @@ namespace SS.Matchmaking.Modules
             }
             foreach (var (p, _) in match.SpecOutSlots)
             {
+                if (p.Freq != arena.SpecFreq)
+                    _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                     pd.ManagedArena = null;
                 arenaData.PlayerToMatch.Remove(p);
@@ -2513,6 +2517,8 @@ namespace SS.Matchmaking.Modules
             {
                 if (p.Ship != ShipType.Spec)
                     _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
+                else if (p.Freq != arena.SpecFreq)
+                    _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                 RemoveExtraPositionDataWatch(p);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                     pd.ManagedArena = null;
@@ -2520,6 +2526,8 @@ namespace SS.Matchmaking.Modules
             }
             foreach (var (p, _) in match.SpecOutSlots)
             {
+                if (p.Freq != arena.SpecFreq)
+                    _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                     pd.ManagedArena = null;
                 arenaData.PlayerToMatch.Remove(p);
