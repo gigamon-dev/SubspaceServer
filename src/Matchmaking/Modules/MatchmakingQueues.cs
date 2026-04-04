@@ -1775,9 +1775,7 @@ namespace SS.Matchmaking.Modules
 
                 if (totalPlayersQueued > 0)
                 {
-                    sb.Append($"{CommandNames.ListQueue}: {queue.Name}: ");
-
-                    int playerListStart = sb.Length;
+                    _chat.SendMessage(player, $"{CommandNames.ListQueue}: {queue.Name} - {totalPlayersQueued} player{(totalPlayersQueued == 1 ? "" : "s")} queued:");
 
                     if (soloPlayers.Count > 0)
                     {
@@ -1786,7 +1784,7 @@ namespace SS.Matchmaking.Modules
 
                         foreach (Player soloPlayer in sortedPlayers)
                         {
-                            if (sb.Length > playerListStart)
+                            if (sb.Length > 0)
                                 sb.Append(", ");
 
                             sb.Append(soloPlayer.Name);
@@ -1795,7 +1793,7 @@ namespace SS.Matchmaking.Modules
 
                     foreach (IPlayerGroup playerGroup in groups)
                     {
-                        if (sb.Length > playerListStart)
+                        if (sb.Length > 0)
                             sb.Append(", ");
 
                         sb.Append('(');
@@ -1813,14 +1811,11 @@ namespace SS.Matchmaking.Modules
                         sb.Append(')');
                     }
 
-                    if (sb.Length > 78)
-                        _chat.SendWrappedText(player, sb);
-                    else
-                        _chat.SendMessage(player, sb);
+                    _chat.SendWrappedText(player, sb);
                 }
                 else
                 {
-                    _chat.SendMessage(player, $"{CommandNames.ListQueue}: {queue.Name}: No players queued.");
+                    _chat.SendMessage(player, $"{CommandNames.ListQueue}: {queue.Name} - No players queued.");
                 }
             }
             finally
