@@ -1779,15 +1779,29 @@ namespace SS.Matchmaking.Modules
 
                     if (soloPlayers.Count > 0)
                     {
-                        // TODO: Remove LINQ to reduce allocations.
-                        var sortedPlayers = soloPlayers.OrderBy(player => player.Name, StringComparer.OrdinalIgnoreCase);
-
-                        foreach (Player soloPlayer in sortedPlayers)
+                        string[] namesArray = ArrayPool<string>.Shared.Rent(soloPlayers.Count);
+                        try
                         {
-                            if (sb.Length > 0)
-                                sb.Append(", ");
+                            Span<string> namesSpan = namesArray.AsSpan(0, soloPlayers.Count);
+                            int i = 0;
+                            foreach (Player soloPlayer in soloPlayers)
+                            {
+                                namesSpan[i++] = soloPlayer.Name!;
+                            }
 
-                            sb.Append(soloPlayer.Name);
+                            namesSpan.Sort(StringComparer.OrdinalIgnoreCase);
+
+                            foreach (string name in namesSpan)
+                            {
+                                if (sb.Length > 0)
+                                    sb.Append(", ");
+
+                                sb.Append(name);
+                            }
+                        }
+                        finally
+                        {
+                            ArrayPool<string>.Shared.Return(namesArray);
                         }
                     }
 
