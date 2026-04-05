@@ -38,6 +38,10 @@ namespace SS.Matchmaking.Modules
         private readonly IObjectPoolManager _objectPoolManager;
         private readonly IPlayerData _playerData;
 
+        // Ignore a second death packet within this window (50 ticks = 0.5 s) to mitigate a
+        // client-side bug where a player receives two death packets for a single death.
+        private const int DoubleDeathIgnoreTicks = 50;
+
         private IComponentBroker? _broker;
         private PlayerDataKey<PlayerData> _pdKey;
         private AdvisorRegistrationToken<IMatchFocusAdvisor>? _iMatchFocusAdvisorToken;
@@ -449,7 +453,7 @@ namespace SS.Matchmaking.Modules
 
                     if (specSlot.Lives <= 0)
                     {
-                        errorMessage?.Append("You have been eliminated — no lives remaining.");
+                        errorMessage?.Append("You have been eliminated - no lives remaining.");
                         return ShipMask.None;
                     }
 
@@ -554,6 +558,13 @@ namespace SS.Matchmaking.Modules
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
+            if (action == PlayerAction.EnterArena)
+            {
+                if (arena is not null && _arenaDataDictionary.TryGetValue(arena, out ArenaData? enterArenaData))
+                    HandlePlayerEnter(arena, enterArenaData, player);
+                return;
+            }
+
             if (action != PlayerAction.LeaveArena && action != PlayerAction.Disconnect)
                 return;
 
@@ -590,12 +601,24 @@ namespace SS.Matchmaking.Modules
             if (!killedMatch.ActiveSlots.TryGetValue(killed, out CaptainsPlayerSlot? killedSlot))
                 return;
 
+            // Ignore a second death packet that arrives within the double-death window.
+            // This mitigates a client bug where the player only truly dies once but the
+            // client sends two death packets in rapid succession.
+            ServerTick now = ServerTick.Now;
+            if (killedSlot.LastKilledTick is { } lastTick && (now - lastTick) < DoubleDeathIgnoreTicks)
+                return;
+
+            killedSlot.LastKilledTick = now;
+
             CaptainsPlayerSlot? killerSlot = null;
             if (killer is not null
                 && arenaData.PlayerToMatch.TryGetValue(killer, out ActiveMatch? killerMatch)
                 && killerMatch == killedMatch)
             {
-                killerMatch.ActiveSlots.TryGetValue(killer, out killerSlot);
+                // Also check SpecOutSlots: in a simultaneous double-KO the killer may already
+                // have been removed from ActiveSlots by the time this callback fires.
+                if (!killerMatch.ActiveSlots.TryGetValue(killer, out killerSlot))
+                    killerMatch.SpecOutSlots.TryGetValue(killer, out killerSlot);
             }
 
             if (killerSlot is not null)
@@ -618,11 +641,11 @@ namespace SS.Matchmaking.Modules
 
             bool matchIsActive = arenaData.ActiveMatches.Contains(killedMatch);
 
-            if (killerSlot is not null)
-            {
-                TeamVersusMatchPlayerKilledCallback.Fire(arena, killedSlot, killerSlot, isKnockout);
-                TeamVersusStatsPlayerKilledCallback.Fire(arena, killedSlot, killedSlot, killerSlot, killerSlot, isKnockout);
-            }
+            // Always fire the kill callbacks so MatchLvz can update lives/deaths in the statbox,
+            // even when there's no valid killer (e.g. mine kill). Use killedSlot as a fallback
+            // for the killer parameters — MatchLvz only reads killedSlot from these callbacks.
+            TeamVersusMatchPlayerKilledCallback.Fire(arena, killedSlot, killerSlot ?? killedSlot, isKnockout);
+            TeamVersusStatsPlayerKilledCallback.Fire(arena, killedSlot, killedSlot, killerSlot ?? killedSlot, killerSlot ?? killedSlot, isKnockout);
 
             if (!isKnockout)
             {
@@ -2035,12 +2058,6 @@ namespace SS.Matchmaking.Modules
 
             if (playerSlot is not null)
             {
-                match.ActiveSlots.Remove(player);
-                match.SpecOutSlots.Remove(player);
-                arenaData.PlayerToMatch.Remove(player);
-                playerSlot.Player = null;
-                playerSlot.Lives = 0;
-
                 if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
                 {
                     pd.ManagedArena = null;
@@ -2049,9 +2066,86 @@ namespace SS.Matchmaking.Modules
 
                 if (arenaData.ActiveMatches.Contains(match))
                 {
-                    ScheduleWinConditionCheck(arenaData, match);
-                    CheckAbandonCondition(arenaData, match, playerSlot.Team.Freq);
+                    // Treat leave/disconnect like a spec-out so the player can return if they
+                    // reconnect (e.g. after a temporary internet issue). The slot is preserved in
+                    // SpecOutSlots; the Player key becomes stale but HandlePlayerEnter re-keys it.
+                    bool wasActive = match.ActiveSlots.Remove(player);
+                    if (wasActive)
+                    {
+                        match.SpecOutSlots[player] = playerSlot;
+                        playerSlot.Player = null;
+                        playerSlot.LagOuts++;
+                        playerSlot.LeftArena = true;
+
+                        TimeSpan elapsed = match.MatchData.Started is { } s ? DateTime.UtcNow - s : TimeSpan.Zero;
+                        string elapsedStr = $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:D2}";
+                        SendToMatchParticipants(match, $"{player.Name} has left the arena. (Count: {playerSlot.LagOuts}) [{elapsedStr}]");
+                    }
+                    else
+                    {
+                        // Already in SpecOutSlots (specced out before leaving); just mark as absent.
+                        playerSlot.LeftArena = true;
+                    }
+
+                    bool allOut = !match.ActiveSlots.Values.Any(s => s.Team.Freq == playerSlot.Team.Freq);
+                    if (allOut)
+                    {
+                        ScheduleWinConditionCheck(arenaData, match);
+                        CheckAbandonCondition(arenaData, match, playerSlot.Team.Freq);
+                    }
                 }
+                else
+                {
+                    // Countdown (not yet active): remove fully so the countdown can be aborted or
+                    // the match can start cleanly without a missing player.
+                    match.ActiveSlots.Remove(player);
+                    match.SpecOutSlots.Remove(player);
+                    arenaData.PlayerToMatch.Remove(player);
+                    playerSlot.Player = null;
+                    playerSlot.Lives = 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Called when a player enters the arena. Re-associates the player with any slot they
+        /// held in an active match before disconnecting, so they can rejoin seamlessly.
+        /// </summary>
+        private void HandlePlayerEnter(Arena arena, ArenaData arenaData, Player player)
+        {
+            string playerName = player.Name!;
+
+            foreach (ActiveMatch match in arenaData.ActiveMatches)
+            {
+                // Search for a stale SpecOutSlots entry left by a prior disconnect/leave.
+                Player? staleKey = null;
+                CaptainsPlayerSlot? slot = null;
+
+                foreach ((Player p, CaptainsPlayerSlot s) in match.SpecOutSlots)
+                {
+                    if (p != player && string.Equals(p.Name, playerName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        staleKey = p;
+                        slot = s;
+                        break;
+                    }
+                }
+
+                if (staleKey is null)
+                    continue;
+
+                // Re-key the dictionaries with the new Player object.
+                match.SpecOutSlots.Remove(staleKey);
+                match.SpecOutSlots[player] = slot!;
+                arenaData.PlayerToMatch.Remove(staleKey);
+                arenaData.PlayerToMatch[player] = match;
+
+                slot!.LeftArena = false;
+
+                if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
+                    pd.ManagedArena = arena;
+
+                break;
             }
         }
 
@@ -2411,14 +2505,15 @@ namespace SS.Matchmaking.Modules
                     if (slot.Team.Freq == winningFreq)
                         winners.Add(p);
 
-                // Include players eliminated during the match — they're still winners.
+                // Include players eliminated during the match or currently specced out — they're
+                // still winners. Exclude players who left the arena and never reconnected.
                 foreach (var (p, slot) in match.SpecOutSlots)
-                    if (slot.Team.Freq == winningFreq)
+                    if (slot.Team.Freq == winningFreq && !slot.LeftArena)
                         winners.Add(p);
 
                 if (winners.Count < arenaData.Config.PlayersPerTeam)
                 {
-                    // A player left mid-match — bail on reformation.
+                    // A player left mid-match and did not return — bail on reformation.
                     _chat.SendArenaMessage(arena, $"Freq {winningFreq}'s team cannot reform (a player left the game).");
                 }
                 else
@@ -2457,12 +2552,12 @@ namespace SS.Matchmaking.Modules
                     if (slot.Team.Freq == losingFreq)
                         loserPlayers.Add(p);
                 foreach (var (p, slot) in match.SpecOutSlots)
-                    if (slot.Team.Freq == losingFreq)
+                    if (slot.Team.Freq == losingFreq && !slot.LeftArena)
                         loserPlayers.Add(p);
 
                 if (loserPlayers.Count < arenaData.Config.PlayersPerTeam)
                 {
-                    // A player left mid-match — bail on reformation.
+                    // A player left mid-match and did not return — bail on reformation.
                     _chat.SendArenaMessage(arena, $"Freq {losingFreq}'s team cannot reform (a player left the game).");
                 }
                 else
@@ -3046,6 +3141,20 @@ namespace SS.Matchmaking.Modules
             public Player? Player { get; set; }
             public int? PremadeGroupId => null;
             public int LagOuts { get; set; }
+
+            /// <summary>
+            /// Tick at which this slot last received a kill. Used to discard duplicate death
+            /// packets that arrive within <see cref="DoubleDeathIgnoreTicks"/>.
+            /// </summary>
+            public ServerTick? LastKilledTick { get; set; }
+
+            /// <summary>
+            /// Set when the player left the arena mid-match (disconnect or leave) and the slot
+            /// is being held open for a reconnect. Cleared when the player re-enters the arena.
+            /// Used to exclude absent players from post-match team reformation.
+            /// </summary>
+            public bool LeftArena { get; set; }
+
             public PlayerSlotStatus Status => Lives <= 0 ? PlayerSlotStatus.KnockedOut : Player is not null ? PlayerSlotStatus.Playing : PlayerSlotStatus.Waiting;
             public int Lives { get; set; }
             public ShipType Ship { get; set; }

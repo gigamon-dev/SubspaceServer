@@ -1372,6 +1372,18 @@ namespace SS.Matchmaking.Modules
                         toggles[0] = new LvzObjectToggle(fromState.Default.Id, false);
                         toggles = toggles[1..];
                         togglesWritten++;
+
+                        // Also reset the ImageId back to the target's image (typically the LVZ default).
+                        // Without this, the client retains the old ImageId for the disabled object.
+                        // If a future match then enables that position with an image matching the
+                        // assumed-default, no change packet would be sent, causing the stale image
+                        // from the previous match to be displayed when the object is toggled on.
+                        if (fromState.Current.ImageId != toState.Current.ImageId)
+                        {
+                            changes[0] = new LvzObjectChange(new ObjectChange { Image = true }, toState.Current);
+                            changes = changes[1..];
+                            changesWritten++;
+                        }
                     }
 
                     if (!fromState.IsEnabled && toState.IsEnabled)
