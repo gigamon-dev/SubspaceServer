@@ -1775,27 +1775,39 @@ namespace SS.Matchmaking.Modules
 
                 if (totalPlayersQueued > 0)
                 {
-                    sb.Append($"{CommandNames.ListQueue}: {queue.Name}: ");
-
-                    int playerListStart = sb.Length;
+                    _chat.SendMessage(player, $"{CommandNames.ListQueue}: {queue.Name} - {totalPlayersQueued} player{(totalPlayersQueued == 1 ? "" : "s")} queued:");
 
                     if (soloPlayers.Count > 0)
                     {
-                        // TODO: Remove LINQ to reduce allocations.
-                        var sortedPlayers = soloPlayers.OrderBy(player => player.Name, StringComparer.OrdinalIgnoreCase);
-
-                        foreach (Player soloPlayer in sortedPlayers)
+                        string[] namesArray = ArrayPool<string>.Shared.Rent(soloPlayers.Count);
+                        try
                         {
-                            if (sb.Length > playerListStart)
-                                sb.Append(", ");
+                            Span<string> namesSpan = namesArray.AsSpan(0, soloPlayers.Count);
+                            int i = 0;
+                            foreach (Player soloPlayer in soloPlayers)
+                            {
+                                namesSpan[i++] = soloPlayer.Name!;
+                            }
 
-                            sb.Append(soloPlayer.Name);
+                            namesSpan.Sort(StringComparer.OrdinalIgnoreCase);
+
+                            foreach (string name in namesSpan)
+                            {
+                                if (sb.Length > 0)
+                                    sb.Append(", ");
+
+                                sb.Append(name);
+                            }
+                        }
+                        finally
+                        {
+                            ArrayPool<string>.Shared.Return(namesArray);
                         }
                     }
 
                     foreach (IPlayerGroup playerGroup in groups)
                     {
-                        if (sb.Length > playerListStart)
+                        if (sb.Length > 0)
                             sb.Append(", ");
 
                         sb.Append('(');
@@ -1813,14 +1825,11 @@ namespace SS.Matchmaking.Modules
                         sb.Append(')');
                     }
 
-                    if (sb.Length > 78)
-                        _chat.SendWrappedText(player, sb);
-                    else
-                        _chat.SendMessage(player, sb);
+                    _chat.SendWrappedText(player, sb);
                 }
                 else
                 {
-                    _chat.SendMessage(player, $"{CommandNames.ListQueue}: {queue.Name}: No players queued.");
+                    _chat.SendMessage(player, $"{CommandNames.ListQueue}: {queue.Name} - No players queued.");
                 }
             }
             finally
