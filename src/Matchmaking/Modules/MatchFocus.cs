@@ -20,12 +20,14 @@ namespace SS.Matchmaking.Modules
     /// </remarks>
     public sealed class MatchFocus(
         IComponentBroker broker,
+        IConfigManager configManager,
         IGame game,
         ILogManager logManager,
         IObjectPoolManager objectPoolManager,
-        IPlayerData playerData) : IModule, IArenaAttachableModule, IMatchFocus, IPlayerPositionAdvisor, IBricksAdvisor
+        IPlayerData playerData) : IModule, IArenaAttachableModule, IMatchFocus, IPlayerPositionAdvisor, IBricksAdvisor, IKillAdvisor
     {
         private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
         private readonly IGame _game = game ?? throw new ArgumentNullException(nameof(game));
         private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
@@ -81,6 +83,8 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
+        [ConfigHelp<bool>("SS.Matchmaking.MatchFocus", "FilterKillPackets", ConfigScope.Arena, Default = false,
+            Description = "Whether to suppress kill notification packets for players not focused on the same match. Spectators watching a specific match see only that match's kills; unattached spectators see all kills.")]
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
             if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
@@ -93,6 +97,8 @@ namespace SS.Matchmaking.Modules
             SpectateChangedCallback.Register(arena, Callback_SpectateChanged);
             arenaData.IPlayerPositionAdvisorRegistrationToken = arena.RegisterAdvisor<IPlayerPositionAdvisor>(this);
             arenaData.IBricksAdvisorRegistrationToken = arena.RegisterAdvisor<IBricksAdvisor>(this);
+            arenaData.IKillAdvisorRegistrationToken = arena.RegisterAdvisor<IKillAdvisor>(this);
+            arenaData.FilterKillPackets = _configManager.GetBool(arena.Cfg!, "SS.Matchmaking.MatchFocus", "FilterKillPackets", false);
 
             return true;
         }
@@ -106,6 +112,9 @@ namespace SS.Matchmaking.Modules
                 return false;
 
             if (!arena.UnregisterAdvisor(ref arenaData.IBricksAdvisorRegistrationToken))
+                return false;
+
+            if (!arena.UnregisterAdvisor(ref arenaData.IKillAdvisorRegistrationToken))
                 return false;
 
             if (!_arenaDataDictionary.Remove(arena))
@@ -162,6 +171,42 @@ namespace SS.Matchmaking.Modules
             }
 
             return false;
+        }
+
+        #endregion
+
+        #region IKillAdvisor
+
+        void IKillAdvisor.FilterKillNotification(Arena arena, Player killer, Player killed, HashSet<Player> recipients)
+        {
+            if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData) || !arenaData.FilterKillPackets)
+                return;
+
+            if (!killed.TryGetExtraData(_playerDataKey, out PlayerData? killedData))
+                return;
+
+            MatchFocusData? killedMatch = killedData.PlayingInMatch;
+
+            HashSet<Player>? toRemove = null;
+            try
+            {
+                foreach (Player recipient in recipients)
+                {
+                    if (GetFocusedMatchData(recipient) != killedMatch)
+                        (toRemove ??= _objectPoolManager.PlayerSetPool.Get()).Add(recipient);
+                }
+
+                if (toRemove is not null)
+                    foreach (Player player in toRemove)
+                        recipients.Remove(player);
+            }
+            finally
+            {
+                if (toRemove is not null)
+                {
+                    _objectPoolManager.PlayerSetPool.Return(toRemove);
+                }
+            }
         }
 
         #endregion
@@ -692,11 +737,15 @@ namespace SS.Matchmaking.Modules
         {
             public AdvisorRegistrationToken<IPlayerPositionAdvisor>? IPlayerPositionAdvisorRegistrationToken;
             public AdvisorRegistrationToken<IBricksAdvisor>? IBricksAdvisorRegistrationToken;
+            public AdvisorRegistrationToken<IKillAdvisor>? IKillAdvisorRegistrationToken;
+            public bool FilterKillPackets;
 
             bool IResettable.TryReset()
             {
                 IPlayerPositionAdvisorRegistrationToken = null;
                 IBricksAdvisorRegistrationToken = null;
+                IKillAdvisorRegistrationToken = null;
+                FilterKillPackets = false;
                 return true;
             }
         }
