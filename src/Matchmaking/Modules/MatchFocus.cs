@@ -2,7 +2,6 @@
 using SS.Core;
 using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
-using System.Collections.Generic;
 using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
@@ -84,6 +83,8 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
+        [ConfigHelp<bool>("SS.Matchmaking.MatchFocus", "FilterKillPackets", ConfigScope.Arena, Default = false,
+            Description = "Whether to suppress kill notification packets for players not focused on the same match. Spectators watching a specific match see only that match's kills; unattached spectators see all kills.")]
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
             if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
@@ -97,16 +98,7 @@ namespace SS.Matchmaking.Modules
             arenaData.IPlayerPositionAdvisorRegistrationToken = arena.RegisterAdvisor<IPlayerPositionAdvisor>(this);
             arenaData.IBricksAdvisorRegistrationToken = arena.RegisterAdvisor<IBricksAdvisor>(this);
             arenaData.IKillAdvisorRegistrationToken = arena.RegisterAdvisor<IKillAdvisor>(this);
-
-            ConfigHandle ch = _configManager.OpenConfigFile(arena.BaseName, null);
-            try
-            {
-                arenaData.FilterKillPackets = _configManager.GetBool(ch, "SS.Matchmaking.MatchFocus", "FilterKillPackets", false);
-            }
-            finally
-            {
-                _configManager.CloseConfigFile(ch);
-            }
+            arenaData.FilterKillPackets = _configManager.GetBool(arena.Cfg!, "SS.Matchmaking.MatchFocus", "FilterKillPackets", false);
 
             return true;
         }
@@ -185,8 +177,6 @@ namespace SS.Matchmaking.Modules
 
         #region IKillAdvisor
 
-        [ConfigHelp<bool>("SS.Matchmaking.MatchFocus", "FilterKillPackets", ConfigScope.Arena, Default = false,
-            Description = "Whether to suppress kill notification packets for players not focused on the same match. Spectators watching a specific match see only that match's kills; unattached spectators see all kills.")]
         void IKillAdvisor.FilterKillNotification(Arena arena, Player killer, Player killed, HashSet<Player> recipients)
         {
             if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData) || !arenaData.FilterKillPackets)
@@ -197,16 +187,26 @@ namespace SS.Matchmaking.Modules
 
             MatchFocusData? killedMatch = killedData.PlayingInMatch;
 
-            List<Player>? toRemove = null;
-            foreach (Player recipient in recipients)
+            HashSet<Player>? toRemove = null;
+            try
             {
-                if (GetFocusedMatchData(recipient) != killedMatch)
-                    (toRemove ??= []).Add(recipient);
-            }
+                foreach (Player recipient in recipients)
+                {
+                    if (GetFocusedMatchData(recipient) != killedMatch)
+                        (toRemove ??= _objectPoolManager.PlayerSetPool.Get()).Add(recipient);
+                }
 
-            if (toRemove is not null)
-                foreach (Player p in toRemove)
-                    recipients.Remove(p);
+                if (toRemove is not null)
+                    foreach (Player player in toRemove)
+                        recipients.Remove(player);
+            }
+            finally
+            {
+                if (toRemove is not null)
+                {
+                    _objectPoolManager.PlayerSetPool.Return(toRemove);
+                }
+            }
         }
 
         #endregion
