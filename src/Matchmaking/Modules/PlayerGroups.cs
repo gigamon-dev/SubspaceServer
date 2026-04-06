@@ -70,6 +70,7 @@ namespace SS.Matchmaking.Modules
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
+            PlayerStartPlayingCallback.Register(broker, Callback_PlayerStartPlaying);
 
             _commandManager.AddCommand(GroupCommandName, Command_group);
 
@@ -85,6 +86,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand(GroupCommandName, Command_group);
 
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
+            PlayerStartPlayingCallback.Unregister(broker, Callback_PlayerStartPlaying);
 
             _playerData.FreePlayerData(ref _pdKey);
 
@@ -107,6 +109,8 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        #region Callbacks
+
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
         {
             if (action == PlayerAction.Disconnect)
@@ -121,16 +125,20 @@ namespace SS.Matchmaking.Modules
                 }
 
                 // Remove any pending groups invites.
-                while (pd.PendingGroups.Count > 0)
-                {
-                    using var e = pd.PendingGroups.GetEnumerator();
-                    if (e.MoveNext())
-                    {
-                        RemovePending(e.Current, player, PlayerGroupPendingRemovedReason.Disconnect);
-                    }
-                }
+                RemovePendingInvites(player, pd, PlayerGroupPendingRemovedReason.Disconnect);
             }
         }
+
+        private void Callback_PlayerStartPlaying(Player player)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
+                return;
+
+            // The player started playing. Decline any pending invites.
+            RemovePendingInvites(player, pd, PlayerGroupPendingRemovedReason.Decline);
+        }
+
+        #endregion
 
         #region Commands
 
@@ -235,25 +243,66 @@ namespace SS.Matchmaking.Modules
 
                     // Ask advisors if inviting is allowed.
                     // E.g., a matchmaking advisor may not allow inviting while searching for a match.
-                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                    StringBuilder message = _objectPoolManager.StringBuilderPool.Get();
                     try
                     {
-                        var advisors = _broker.GetAdvisors<IPlayerGroupAdvisor>();
-                        foreach (IPlayerGroupAdvisor advisor in advisors)
+                        if (!CanGroupSendInvite(_broker, group, message))
                         {
-                            if (!advisor.AllowSendInvite(group, sb))
+                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                            try
                             {
-                                if (sb.Length > 0)
-                                {
-                                    _chat.SendMessage(player, $"{GroupCommandName}: {sb}");
-                                    return;
-                                }
+                                sb.Append($"{GroupCommandName}: ");
+
+                                if (message.Length > 0)
+                                    sb.Append(message);
+                                else
+                                    sb.Append("Your group is currently not allowed to send an invite.");
+
+                                _chat.SendMessage(player, sb);
+                                return;
+                            }
+                            finally
+                            {
+                                _objectPoolManager.StringBuilderPool.Return(sb);
                             }
                         }
                     }
                     finally
                     {
-                        _objectPoolManager.StringBuilderPool.Return(sb);
+                        _objectPoolManager.StringBuilderPool.Return(message);
+                    }
+                }
+                else
+                {
+                    // Not in a group. This means a new one will need to be created.
+                    // Ask advisors if creating a group is allowed.
+                    StringBuilder message = _objectPoolManager.StringBuilderPool.Get();
+                    try
+                    {
+                        if (!CanPlayerCreateGroup(_broker, player, message))
+                        {
+                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                            try
+                            {
+                                sb.Append($"{GroupCommandName}: ");
+                                
+                                if (message.Length > 0)
+                                    sb.Append(message);
+                                else
+                                    sb.Append("You currently cannot create a new group.");
+
+                                _chat.SendMessage(player, sb);
+                                return;
+                            }
+                            finally
+                            {
+                                _objectPoolManager.StringBuilderPool.Return(sb);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(message);
                     }
                 }
 
@@ -297,6 +346,38 @@ namespace SS.Matchmaking.Modules
                 //        player,
                 //        $"{GroupCommandName}: {targetPlayer.Name} can't be invited. The player has too many pending invites .");
                 //}
+
+                {
+                    // Ask advisors if the player can be invited.
+                    StringBuilder message = _objectPoolManager.StringBuilderPool.Get();
+                    try
+                    {
+                        if (!CanPlayerBeInvited(_broker, targetPlayer, message))
+                        {
+                            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                            try
+                            {
+                                sb.Append($"{GroupCommandName}: ");
+                                
+                                if (message.Length > 0)
+                                    sb.Append(message);
+                                else
+                                    sb.Append($"Cannot invite {targetPlayer.Name}.");
+
+                                _chat.SendMessage(player, sb);
+                                return;
+                            }
+                            finally
+                            {
+                                _objectPoolManager.StringBuilderPool.Return(sb);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.StringBuilderPool.Return(message);
+                    }
+                }
 
                 if (group is null)
                 {
@@ -366,36 +447,46 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                // Ask advisors if accepting an invite is allowed.
-                // E.g., a matchmaking advisor may not allow a player to join a group while searching for a match.
-                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-                try
-                {
-                    var advisors = _broker.GetAdvisors<IPlayerGroupAdvisor>();
-                    foreach (IPlayerGroupAdvisor advisor in advisors)
-                    {
-                        if (!advisor.AllowAcceptInvite(player, sb))
-                        {
-                            if (sb.Length > 0)
-                            {
-                                _chat.SendMessage(player, $"{GroupCommandName}: {sb}");
-                                return;
-                            }
-                        }
-                    }
-                }
-                finally
-                {
-                    _objectPoolManager.StringBuilderPool.Return(sb);
-                }
-
-                PlayerGroup? group;
                 if (playerData.PendingGroups.Count <= 0)
                 {
                     _chat.SendMessage(player, $"{GroupCommandName}: You do not have any pending group invites.");
                     return;
                 }
-                else if (playerData.PendingGroups.Count == 1)
+
+                // Ask advisors if accepting an invite is allowed.
+                // E.g., a matchmaking advisor may not allow a player to join a group while searching for a match.
+                StringBuilder message = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    if (!CanPlayerAcceptInvite(_broker, player, message))
+                    {
+                        StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                        try
+                        {
+                            sb.Append($"{GroupCommandName}: ");
+                            
+                            if (message.Length > 0)
+                                sb.Append(message);
+                            else
+                                sb.Append($"You currently cannot accept an invite.");
+
+                            _chat.SendMessage(player, sb);
+                            return;
+                        }
+                        finally
+                        {
+                            _objectPoolManager.StringBuilderPool.Return(sb);
+                        }
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(message);
+                }
+
+                // Determine which group the player wants to join.
+                PlayerGroup? group;
+                if (playerData.PendingGroups.Count == 1)
                 {
                     group = playerData.PendingGroups.First();
                 }
@@ -428,6 +519,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
+                // Accept the invitation.
                 group.AcceptInvite(player);
                 playerData.Group = group;
                 playerData.PendingGroups.Remove(group);
@@ -672,8 +764,84 @@ namespace SS.Matchmaking.Modules
                     _objectPoolManager.StringBuilderPool.Return(sb);
                 }
             }
+
+            static bool CanPlayerCreateGroup(IComponentBroker broker, Player player, StringBuilder message)
+            {
+                var advisors = broker.GetAdvisors<IPlayerGroupAdvisor>();
+                foreach (IPlayerGroupAdvisor advisor in advisors)
+                {
+                    if (!advisor.CanPlayerCreateGroup(player, message))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            static bool CanGroupSendInvite(IComponentBroker broker, IPlayerGroup group, StringBuilder message)
+            {
+                var advisors = broker.GetAdvisors<IPlayerGroupAdvisor>();
+                foreach (IPlayerGroupAdvisor advisor in advisors)
+                {
+                    if (!advisor.CanGroupSendInvite(group, message))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            static bool CanPlayerBeInvited(IComponentBroker broker, Player player, StringBuilder message)
+            {
+                var advisors = broker.GetAdvisors<IPlayerGroupAdvisor>();
+                foreach (IPlayerGroupAdvisor advisor in advisors)
+                {
+                    if (!advisor.CanPlayerBeInvited(player, message))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            static bool CanPlayerAcceptInvite(IComponentBroker broker, Player player, StringBuilder message)
+            {
+                var advisors = broker.GetAdvisors<IPlayerGroupAdvisor>();
+                foreach (IPlayerGroupAdvisor advisor in advisors)
+                {
+                    if (!advisor.CanPlayerAcceptInvite(player, message))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
         }
 
+        #endregion
+
+        /// <summary>
+        /// Removes all of player's pending invites.
+        /// </summary>
+        private void RemovePendingInvites(Player player, PlayerData pd, PlayerGroupPendingRemovedReason reason)
+        {
+            while (pd.PendingGroups.Count > 0)
+            {
+                using var e = pd.PendingGroups.GetEnumerator();
+                if (e.MoveNext())
+                {
+                    RemovePending(e.Current, player, reason);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Removes a specific group invite from a player.
+        /// </summary>
         private bool RemovePending(PlayerGroup group, Player player, PlayerGroupPendingRemovedReason reason)
         {
             if (group is null || player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
@@ -819,6 +987,9 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
+        /// <summary>
+        /// Removes all pending invites for a group.
+        /// </summary>
         private void RemoveAllPending(PlayerGroup group, PlayerGroupPendingRemovedReason reason)
         {
             if (group is null)
@@ -880,7 +1051,7 @@ namespace SS.Matchmaking.Modules
             return true;
         }
 
-        #endregion
+        #region Helper types
 
         private class PlayerGroup : IPlayerGroup, IResettable
         {
@@ -970,5 +1141,7 @@ namespace SS.Matchmaking.Modules
                 return true;
             }
         }
+
+        #endregion
     }
 }

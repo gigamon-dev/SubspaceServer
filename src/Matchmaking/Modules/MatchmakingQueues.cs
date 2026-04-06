@@ -42,6 +42,7 @@ namespace SS.Matchmaking.Modules
         private ILeagueAuthorization? _leagueAuthorization;
 
         private InterfaceRegistrationToken<IMatchmakingQueues>? _iMatchmakingQueuesToken;
+        private AdvisorRegistrationToken<IPlayerGroupAdvisor>? _iPlayerGroupAdvisorToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
         private PlayerDataKey<UsageData> _puKey;
@@ -139,12 +140,14 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand(CommandNames.ListQueueAlt, Command_listqueue);
 
             _iMatchmakingQueuesToken = broker.RegisterInterface<IMatchmakingQueues>(this);
+            _iPlayerGroupAdvisorToken = broker.RegisterAdvisor<IPlayerGroupAdvisor>(this);
             return true;
         }
 
         async Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             broker.UnregisterInterface(ref _iMatchmakingQueuesToken);
+            broker.UnregisterAdvisor(ref _iPlayerGroupAdvisorToken);
 
             _commandManager.RemoveCommand(CommandNames.Next, Command_next);
             _commandManager.RemoveCommand(CommandNames.CancelNext, Command_cancelnext);
@@ -327,6 +330,8 @@ namespace SS.Matchmaking.Modules
                 usageData.SetPlaying(isSub);
 
                 _playersPlaying.Add(player.Name!);
+
+                PlayerStartPlayingCallback.Fire(_broker, player);
             }
 
             // Group
@@ -604,19 +609,38 @@ namespace SS.Matchmaking.Modules
 
         #region IPlayerGroupAdvisor
 
-        bool IPlayerGroupAdvisor.AllowSendInvite(IPlayerGroup group, StringBuilder message)
+        bool IPlayerGroupAdvisor.CanPlayerCreateGroup(Player player, StringBuilder message)
         {
-            if (group is null || !_groupUsageDictionary.TryGetValue(group, out UsageData? usageData))
-                return true;
+            if (player is null || !player.TryGetExtraData(_puKey, out UsageData? usageData))
+                return false;
 
             if (usageData.State == QueueState.Queued)
             {
-                message?.Append("Cannot invite while searching for a match. To invite, stop the search first.");
+                message?.Append($"Cannot create a new group while searching in a match. First, stop the search with: ?{CommandNames.CancelNext}");
                 return false;
             }
             else if (usageData.State == QueueState.Playing)
             {
-                message?.Append("Cannot invite while playing in a match. To invite, complete the current match.");
+                message?.Append($"Cannot create a new group while playing in a match. Complete the current match first.");
+                return false;
+            }
+
+            return true;
+        }
+
+        bool IPlayerGroupAdvisor.CanGroupSendInvite(IPlayerGroup group, StringBuilder message)
+        {
+            if (group is null || !_groupUsageDictionary.TryGetValue(group, out UsageData? usageData))
+                return false;
+
+            if (usageData.State == QueueState.Queued)
+            {
+                message?.Append($"Cannot invite while searching for a match. To invite, stop the search with: ?{CommandNames.CancelNext}");
+                return false;
+            }
+            else if (usageData.State == QueueState.Playing)
+            {
+                message?.Append("Cannot invite while playing in a match. Complete the current match first.");
                 return false;
             }
             else
@@ -625,14 +649,28 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        bool IPlayerGroupAdvisor.AllowAcceptInvite(Player player, StringBuilder message)
+        bool IPlayerGroupAdvisor.CanPlayerBeInvited(Player player, StringBuilder message)
+        {
+            if (player is null || !player.TryGetExtraData(_puKey, out UsageData? usageData))
+                return false;
+
+            if (usageData.State == QueueState.Playing)
+            {
+                message?.Append($"Cannot invite {player.Name} because the player is currently playing in a match.");
+                return false;
+            }
+
+            return true;
+        }
+
+        bool IPlayerGroupAdvisor.CanPlayerAcceptInvite(Player player, StringBuilder message)
         {
             if (player is null || !player.TryGetExtraData(_puKey, out UsageData? usageData))
                 return true;
 
             if (usageData.State == QueueState.Playing)
             {
-                message?.Append("Cannot accept an invite while playing in a match. To accept, complete the current match.");
+                message?.Append("Cannot accept an invite while playing in a match. Complete the current match first.");
                 return false;
             }
 

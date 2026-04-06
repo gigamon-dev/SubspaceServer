@@ -32,7 +32,30 @@ namespace SS.Matchmaking.Interfaces
 
         #endregion
 
-        #region SetPlaying methods
+        // TODO: Separate 'Playing' state and 'Play Holds' out of the MatchmakingQueues modules and into another module, PlayManager. 
+        // MatchmakingQueues should only care about queues (Separation of Concerns).
+        // There are other ways to be 'Playing' in a match that are not through matchmaking queues: League Matches, Captains Matches
+        // So, all of the SetPlaying* and UnsetPlaying* methods should be moved to PlayManager.
+        // The MatchmakingQueues module still needs to keep track of which queues a player was in before joining a match,
+        // so that it can requeue the player when the player leaves the 'Playing' state.
+        // The MatchmakingQueues module needs to know details when a player starts or stops playing.
+        // When a player enters the 'Playing' state, MatchmakingQueues needs to know if the player is subbing in for it to know
+        // that the player should be restored to their original queue position when leaving the 'Playing' state.
+        // When a player leaves the 'Playing' state, MatchmakingQueues needs to know whether to requeue a player
+        // and if so, whether to restore to the original position in the queue(s) (cancelled match or was a sub)
+        // The PlayManager module could fire pub-sub callbacks that tell the MatchmakingQueues module when a player enters or leaves the 'Playing' state.
+        // The callbacks could pass reasons:
+        // PlayStartFlags
+        // - None
+        // - IsSub
+        // PlayEndFlags
+        // - None
+        // - Completed: the match completed
+        // - Cancelled: the match was cancelled --> requeue, unless Abandoned or Penalized
+        // - Abandoned: the player abandoned the match (e.g. left at start or left the match uncleanly without being subbed out)
+        // - Penalized: the player is being penalized (use together with Abandoned as an indicator of severity)
+
+        #region SetPlaying* methods
 
         /// <summary>
         /// Marks a player as 'Playing'.
