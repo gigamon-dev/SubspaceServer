@@ -76,9 +76,9 @@ namespace SS.Matchmaking
         /// <summary>
         /// Gets the players and groups that are currently in the queue.
         /// </summary>
-        /// <param name="soloPlayers">A set to populate with the solo players that are in the queue.</param>
-        /// <param name="groups">A set to populate with the groups that are in the queue.</param>
-        void GetQueued(HashSet<Player> soloPlayers, HashSet<IPlayerGroup> groups);
+        /// <param name="soloPlayers">A collection to populate with the solo players that are in the queue.</param>
+        /// <param name="groups">A collection to populate with the groups that are in the queue.</param>
+        void GetQueued(ICollection<Player> soloPlayers, ICollection<IPlayerGroup> groups);
 
         /// <summary>
         /// Gets the 1-based queue position of a solo player or group.

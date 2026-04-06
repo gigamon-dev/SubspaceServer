@@ -21,6 +21,7 @@ namespace SS.Core.Modules
         private readonly ConcurrentDictionary<IPool, IPool> _poolDictionary = new();
 
         private readonly DefaultObjectPoolProvider _provider;
+        private readonly ObjectPool<List<Player>> _playerListPool;
         private readonly ObjectPool<HashSet<Player>> _playerHashSetPool;
         private readonly ObjectPool<HashSet<Arena>> _arenaHashSetPool;
         private readonly ObjectPool<HashSet<string>> _nameHashSetPool;
@@ -30,6 +31,7 @@ namespace SS.Core.Modules
         public ObjectPoolManager()
         {
             _provider = new DefaultObjectPoolProvider();
+            _playerListPool = _provider.Create(new ListPooledObjectPolicy<Player>() { InitialCapacity = Constants.TargetArenaCount });
             _playerHashSetPool = _provider.Create(new HashSetPooledObjectPolicy<Player>() { InitialCapacity = Constants.TargetPlayerCount });
             _arenaHashSetPool = _provider.Create(new HashSetPooledObjectPolicy<Arena>() { InitialCapacity = Constants.TargetArenaCount });
             _nameHashSetPool = _provider.Create(new HashSetPooledObjectPolicy<string>() { InitialCapacity = Constants.TargetPlayerCount, EqualityComparer = StringComparer.OrdinalIgnoreCase });
@@ -67,6 +69,8 @@ namespace SS.Core.Modules
         private bool TryAddTrackedPool(IPool pool) => _poolDictionary.TryAdd(pool, pool);
 
         bool IObjectPoolManager.TryRemoveTracked(IPool pool) => _poolDictionary.TryRemove(pool, out _);
+
+        ObjectPool<List<Player>> IObjectPoolManager.PlayerListPool => _playerListPool;
 
         ObjectPool<HashSet<Player>> IObjectPoolManager.PlayerSetPool => _playerHashSetPool;
 

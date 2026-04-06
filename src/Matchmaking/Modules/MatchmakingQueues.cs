@@ -1691,41 +1691,57 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: {targetPlayer.Name} is in the '{usageData.State}' state.");
         }
 
-        // TODO: Add the ability to list those waiting in the order that they're queued up in rather than by alphabetical order.
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<none> | <queue name>",
+            Args = "[<none> | <queue name>] [-s]",
             Description = """
                 Lists players and groups waiting in line on a matchmaking queue.
                 If no queue is specified, the arena's default queue will be used.
-                Players queued up as individuals are listed in alphabetical order.
+                Use -s to sort players in alphabetical order rather than the queue order.
                 """)]
         private void Command_listqueue(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (player.Arena is null)
                 return;
 
-            if (parameters.IsWhiteSpace())
+            bool sort = false;
+            ReadOnlySpan<char> queueName = ReadOnlySpan<char>.Empty;
+            foreach (Range range in parameters.Split(' '))
             {
-                // No queue name(s) were specified. Check if there is a default queue for the arena.
+                ReadOnlySpan<char> token = parameters[range].Trim();
+                if (token.IsEmpty)
+                    continue;
+
+                if (token.StartsWith('-'))
+                {
+                    if (token.Equals("-s", StringComparison.OrdinalIgnoreCase))
+                        sort = true;
+                }
+                else
+                {
+                    queueName = token.Trim();
+                }
+            }
+
+            if (queueName.IsWhiteSpace())
+            {
+                // No queue name was specified. Check if there is a default queue for the arena.
                 var advisors = _broker.GetAdvisors<IMatchmakingQueueAdvisor>();
                 foreach (var advisor in advisors)
                 {
-                    parameters = advisor.GetDefaultQueue(player.Arena);
-                    if (!parameters.IsWhiteSpace())
+                    queueName = advisor.GetDefaultQueue(player.Arena);
+                    if (!queueName.IsWhiteSpace())
                     {
                         break;
                     }
                 }
 
-                if (parameters.IsWhiteSpace())
+                if (queueName.IsWhiteSpace())
                 {
                     _chat.SendMessage(player, $"{CommandNames.ListQueue}: You must specify which queue.");
                     return;
                 }
             }
-
-            ReadOnlySpan<char> queueName = parameters.Trim();
 
             if (!_queuesLookup.TryGetValue(queueName, out IMatchmakingQueue? queue))
             {
@@ -1760,14 +1776,14 @@ namespace SS.Matchmaking.Modules
             }
 
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-            HashSet<Player> soloPlayers = _objectPoolManager.PlayerSetPool.Get();
+            List<Player> playerList = _objectPoolManager.PlayerListPool.Get();
             HashSet<IPlayerGroup> groups = _playerGroupSetPool.Get();
 
             try
             {
-                queue.GetQueued(soloPlayers, groups);
+                queue.GetQueued(playerList, groups);
 
-                int totalPlayersQueued = soloPlayers.Count;
+                int totalPlayersQueued = playerList.Count;
                 foreach (IPlayerGroup playerGroup in groups)
                 {
                     totalPlayersQueued += playerGroup.Members.Count;
@@ -1777,31 +1793,19 @@ namespace SS.Matchmaking.Modules
                 {
                     _chat.SendMessage(player, $"{CommandNames.ListQueue}: {queue.Name} - {totalPlayersQueued} player{(totalPlayersQueued == 1 ? "" : "s")} queued:");
 
-                    if (soloPlayers.Count > 0)
+                    if (playerList.Count > 0)
                     {
-                        string[] namesArray = ArrayPool<string>.Shared.Rent(soloPlayers.Count);
-                        try
+                        if (sort)
                         {
-                            Span<string> namesSpan = namesArray.AsSpan(0, soloPlayers.Count);
-                            int i = 0;
-                            foreach (Player soloPlayer in soloPlayers)
-                            {
-                                namesSpan[i++] = soloPlayer.Name!;
-                            }
-
-                            namesSpan.Sort(StringComparer.OrdinalIgnoreCase);
-
-                            foreach (string name in namesSpan)
-                            {
-                                if (sb.Length > 0)
-                                    sb.Append(", ");
-
-                                sb.Append(name);
-                            }
+                            playerList.Sort(static (x, y) => string.Compare(x.Name, y.Name, StringComparison.OrdinalIgnoreCase));
                         }
-                        finally
+
+                        foreach (Player otherPlayer in playerList)
                         {
-                            ArrayPool<string>.Shared.Return(namesArray);
+                            if (sb.Length > 0)
+                                sb.Append(", ");
+
+                            sb.Append(otherPlayer.Name);
                         }
                     }
 
@@ -1835,7 +1839,7 @@ namespace SS.Matchmaking.Modules
             finally
             {
                 _objectPoolManager.StringBuilderPool.Return(sb);
-                _objectPoolManager.PlayerSetPool.Return(soloPlayers);
+                _objectPoolManager.PlayerListPool.Return(playerList);
                 _playerGroupSetPool.Return(groups);
             }
         }

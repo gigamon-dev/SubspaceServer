@@ -154,7 +154,7 @@ namespace SS.Matchmaking.Queues
             return false;
         }
 
-        public void GetQueued(HashSet<Player> soloPlayers, HashSet<IPlayerGroup>? groups)
+        public void GetQueued(ICollection<Player> soloPlayers, ICollection<IPlayerGroup>? groups)
         {
             foreach (QueuedPlayerOrGroup pog in _queue)
             {

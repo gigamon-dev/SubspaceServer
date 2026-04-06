@@ -45,6 +45,18 @@ namespace SS.Core.ComponentInterfaces
         //
 
         /// <summary>
+        /// Pool of <see cref="Player"/> <see cref="List{T}"/>s that can be reused.
+        /// </summary>
+        /// <remarks>
+        /// Use <see cref="PlayerSetPool"/> if you need a set instead of a list.
+        /// <para>
+        /// The list is guaranteed to be empty when it is taken from the pool.
+        /// The list is automatically cleared when it is returned to the pool.
+        /// </para>
+        /// </remarks>
+        ObjectPool<List<Player>> PlayerListPool { get; }
+
+        /// <summary>
         /// Pool of <see cref="Player"/> <see cref="HashSet{T}"/>s that can be reused.
         /// </summary>
         /// <remarks>
