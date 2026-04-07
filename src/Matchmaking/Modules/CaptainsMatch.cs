@@ -2754,13 +2754,18 @@ namespace SS.Matchmaking.Modules
         }
 
         /// <summary>
-        /// Returns the freq pair to use for a new challenge/accept. If one formation already holds an
-        /// assigned freq (winning team on field), returns that pair. Otherwise returns the first
-        /// pair not currently in use by any formation, countdown, or active match.
+        /// Returns the freq pair to use for a new challenge/accept. If one or both formations already
+        /// hold an assigned freq (winning team on field), returns the pair containing that freq.
+        /// When both formations have freqs from different pairs, the acceptor's pair takes priority
+        /// (the challenger comes to the acceptor). Otherwise returns the first pair not currently
+        /// in use by any formation, countdown, or active match.
         /// </summary>
         private static (short F1, short F2)? GetPairForChallenge(ArenaData arenaData, Formation formationA, Formation formationB)
         {
-            short? existingFreq = formationA.AssignedFreq ?? formationB.AssignedFreq;
+            // If both formations have assigned freqs, prefer the acceptor's (formationB) pair.
+            // The challenger gives up their old freq and moves to the acceptor's pair.
+            // If only one has an assigned freq, use that formation's pair.
+            short? existingFreq = formationB.AssignedFreq ?? formationA.AssignedFreq;
             if (existingFreq.HasValue)
             {
                 foreach (var pair in arenaData.Config.FreqPairs)
@@ -2783,16 +2788,22 @@ namespace SS.Matchmaking.Modules
 
         private static void AssignFreqs(ArenaData arenaData, Formation challenger, Formation acceptor, (short F1, short F2) pair)
         {
-            if (acceptor.AssignedFreq.HasValue)
+            bool IsInPair(short freq) => freq == pair.F1 || freq == pair.F2;
+            short OtherFreq(short freq) => freq == pair.F1 ? pair.F2 : pair.F1;
+
+            if (acceptor.AssignedFreq.HasValue && IsInPair(acceptor.AssignedFreq.Value))
             {
-                challenger.AssignedFreq = acceptor.AssignedFreq.Value == pair.F1 ? pair.F2 : pair.F1;
+                // Acceptor stays on their freq within the pair; challenger gets the other.
+                challenger.AssignedFreq = OtherFreq(acceptor.AssignedFreq.Value);
             }
-            else if (challenger.AssignedFreq.HasValue)
+            else if (challenger.AssignedFreq.HasValue && IsInPair(challenger.AssignedFreq.Value))
             {
-                acceptor.AssignedFreq = challenger.AssignedFreq.Value == pair.F1 ? pair.F2 : pair.F1;
+                // Challenger stays on their freq within the pair; acceptor gets the other.
+                acceptor.AssignedFreq = OtherFreq(challenger.AssignedFreq.Value);
             }
             else
             {
+                // Neither has a freq in this pair (or neither has an assigned freq at all).
                 challenger.AssignedFreq = pair.F1;
                 acceptor.AssignedFreq = pair.F2;
             }
