@@ -2655,15 +2655,15 @@ namespace SS.Matchmaking.Modules
             countdown.Formation2.PairedWith = null;
             countdown.Formation2.AssignedFreq = null;
 
-            // Spec out all members of both formations — the pairing is broken and freq
-            // reservations are released, so players should not remain on those frequencies.
+            // Spec out all members of both formations to the spectator freq — the pairing is
+            // broken and freq reservations are released, so players should not remain on match freqs.
             foreach (Player p in countdown.Formation1.Members)
                 if (p.Ship != ShipType.Spec)
-                    _game.SetShipAndFreq(p, ShipType.Spec, p.Freq);
+                    _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
 
             foreach (Player p in countdown.Formation2.Members)
                 if (p.Ship != ShipType.Spec)
-                    _game.SetShipAndFreq(p, ShipType.Spec, p.Freq);
+                    _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
 
             SendToMatchAudience(arena, arenaData, countdown.ActiveMatch, reason);
         }
@@ -2686,11 +2686,11 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
-            // Spec out all members.
+            // Spec out all members to the spectator freq so they don't remain on match freqs.
             foreach (Player p in formation.Members)
             {
                 if (p.Ship != ShipType.Spec)
-                    _game.SetShipAndFreq(p, ShipType.Spec, p.Freq);
+                    _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                 if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                     pd.ManagedArena = null;
             }
@@ -2706,7 +2706,7 @@ namespace SS.Matchmaking.Modules
                 foreach (Player p in partner.Members)
                 {
                     if (p.Ship != ShipType.Spec)
-                        _game.SetShipAndFreq(p, ShipType.Spec, p.Freq);
+                        _game.SetShipAndFreq(p, ShipType.Spec, arena.SpecFreq);
                     if (p.TryGetExtraData(_pdKey, out PlayerData? pd))
                         pd.ManagedArena = null;
                 }
