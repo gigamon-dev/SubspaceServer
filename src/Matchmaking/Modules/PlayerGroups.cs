@@ -394,6 +394,7 @@ namespace SS.Matchmaking.Modules
                     _groups.Add(group);
 
                     PlayerGroupCreatedCallback.Fire(_broker, group);
+                    PlayerGroupMemberAddedCallback.Fire(_broker, group, player);
                 }
 
                 group.PendingMembers.Add(targetPlayer);
