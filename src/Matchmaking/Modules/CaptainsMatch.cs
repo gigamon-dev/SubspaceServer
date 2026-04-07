@@ -2361,7 +2361,8 @@ namespace SS.Matchmaking.Modules
 
             var config = new CaptainsMatchConfiguration(arenaData.Config);
             int pairIdx = arenaData.Config.FreqPairs.FindIndex(p => p.F1 == freq1 || p.F2 == freq1);
-            var matchData = new CaptainsMatchData(arena, config, (short)(pairIdx >= 0 ? pairIdx : 0));
+            int generation = arenaData.MatchGeneration++;
+            var matchData = new CaptainsMatchData(arena, config, (short)(pairIdx >= 0 ? pairIdx : 0), generation);
 
             var activeMatch = new ActiveMatch
             {
@@ -3003,10 +3004,18 @@ namespace SS.Matchmaking.Modules
 
             public AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor>? FreqManagerEnforcerAdvisorToken;
 
+            /// <summary>
+            /// Monotonically increasing counter used to generate unique <see cref="MatchIdentifier"/>
+            /// values across consecutive matches on the same freq pair. Prevents the LVZ statbox
+            /// from displaying stale data due to client-side image caching when the identifier is reused.
+            /// </summary>
+            public int MatchGeneration;
+
             bool IResettable.TryReset()
             {
                 Arena = null!;
                 Config = null!;
+                MatchGeneration = 0;
                 Formations.Clear();
                 ActiveMatches.Clear();
                 PendingCountdowns.Clear();
@@ -3077,9 +3086,9 @@ namespace SS.Matchmaking.Modules
         {
             private ReadOnlyCollection<ITeam>? _teams;
 
-            public CaptainsMatchData(Arena arena, IMatchConfiguration configuration, short matchSlotId)
+            public CaptainsMatchData(Arena arena, IMatchConfiguration configuration, short matchSlotId, int generation)
             {
-                MatchIdentifier = new MatchIdentifier("CaptainsMatch", arena.Number, matchSlotId);
+                MatchIdentifier = new MatchIdentifier($"CaptainsMatch#{generation}", arena.Number, matchSlotId);
                 Configuration = configuration;
                 ArenaName = arena.Name;
                 Arena = arena;
