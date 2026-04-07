@@ -812,6 +812,11 @@ namespace SS.Matchmaking.Modules
                 // The group leader (player creating the group) is queued as a solo. Cancel the search now that they've created a group.
                 RemoveFromAllQueues(group.Leader, null, playerUsage, true);
             }
+
+            if (!_groupUsageDictionary.ContainsKey(group))
+            {
+                _groupUsageDictionary.Add(group, _usageDataPool.Get());
+            }
         }
 
         private void Callback_PlayerGroupMemberAdded(IPlayerGroup group, Player player)
