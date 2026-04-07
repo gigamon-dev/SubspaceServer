@@ -1363,7 +1363,7 @@ namespace SS.Matchmaking.Modules
                     {
                         foreach (Player groupPlayer in group.Members)
                         {
-                            if (!_leagueAuthorization.IsInRole(player.Name!, queue.Options.PermitLeagueId.Value, LeagueRole.PracticePermit))
+                            if (!_leagueAuthorization.IsInRole(groupPlayer.Name!, queue.Options.PermitLeagueId.Value, LeagueRole.PracticePermit))
                             {
                                 if (namesBuilder.Length > 0)
                                     namesBuilder.Append(", ");
