@@ -2648,6 +2648,9 @@ namespace SS.Matchmaking.Modules
             foreach (Player p in countdown.ActiveMatch.ActiveSlots.Keys)
                 arenaData.PlayerToMatch.Remove(p);
 
+            foreach (Player p in countdown.ActiveMatch.SpecOutSlots.Keys)
+                arenaData.PlayerToMatch.Remove(p);
+
             countdown.Formation1.IsReady = false;
             countdown.Formation1.PairedWith = null;
             countdown.Formation1.AssignedFreq = null;
