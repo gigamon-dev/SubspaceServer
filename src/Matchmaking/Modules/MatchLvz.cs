@@ -364,7 +364,8 @@ namespace SS.Matchmaking.Modules
             // across consecutive matches on the same freq pair. Players may have been assigned during
             // the countdown phase via MatchFocusChanged, and without detaching them first,
             // SetAndSendMatchLvz would skip them (same state = no-op), leaving stale visuals.
-            foreach (StatboxPreference pref in new[] { StatboxPreference.Detailed, StatboxPreference.Simple, StatboxPreference.Off })
+            ReadOnlySpan<StatboxPreference> preferenceTypes = [StatboxPreference.Detailed, StatboxPreference.Simple, StatboxPreference.Off];
+            foreach (StatboxPreference pref in preferenceTypes)
             {
                 MatchLvzState? existingState = arenaData.TryGetMatch(matchData.MatchIdentifier, pref);
                 if (existingState is not null)
@@ -373,12 +374,19 @@ namespace SS.Matchmaking.Modules
 
             // Gather all players watching this match and route them to their preferred state.
             // States are created lazily via SetAndSendMatchLvz.
-            HashSet<Player> allPlayers = new();
-            _matchFocus.TryGetPlayers(matchData, allPlayers, MatchFocusReasons.Playing | MatchFocusReasons.Spectating, arena);
-
-            foreach (Player player in allPlayers)
+            HashSet<Player> allPlayers = _objectPoolManager.PlayerSetPool.Get();
+            try
             {
-                SetAndSendMatchLvz(player, matchData);
+                _matchFocus.TryGetPlayers(matchData, allPlayers, MatchFocusReasons.Playing | MatchFocusReasons.Spectating, arena);
+
+                foreach (Player player in allPlayers)
+                {
+                    SetAndSendMatchLvz(player, matchData);
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(allPlayers);
             }
 
             // Eagerly initialize the Simple state even if no player currently has Simple preference.
