@@ -691,7 +691,7 @@ namespace SS.Matchmaking.Modules
             if (playHoldExpire is null)
                 return;
 
-            TimeSpan remainingDuration = DateTime.UtcNow - playHoldExpire.Value;
+            TimeSpan remainingDuration = playHoldExpire.Value - DateTime.UtcNow;
             if (remainingDuration <= TimeSpan.Zero)
                 return;
 
