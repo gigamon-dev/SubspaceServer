@@ -359,6 +359,18 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaLvzData? arenaData))
                 return;
 
+            // Detach any players still assigned to a pre-existing state for this match identifier.
+            // This handles the case where a module (e.g. CaptainsMatch) reuses the same MatchIdentifier
+            // across consecutive matches on the same freq pair. Players may have been assigned during
+            // the countdown phase via MatchFocusChanged, and without detaching them first,
+            // SetAndSendMatchLvz would skip them (same state = no-op), leaving stale visuals.
+            foreach (StatboxPreference pref in new[] { StatboxPreference.Detailed, StatboxPreference.Simple, StatboxPreference.Off })
+            {
+                MatchLvzState? existingState = arenaData.TryGetMatch(matchData.MatchIdentifier, pref);
+                if (existingState is not null)
+                    RemovePlayers(existingState);
+            }
+
             // Gather all players watching this match and route them to their preferred state.
             // States are created lazily via SetAndSendMatchLvz.
             HashSet<Player> allPlayers = new();
