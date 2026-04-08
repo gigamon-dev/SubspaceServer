@@ -5,7 +5,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
-using SS.Utilities;
+using SS.Utilities.Collections;
 using System.Collections.ObjectModel;
 using System.Text;
 
@@ -42,6 +42,19 @@ namespace SS.Matchmaking.Modules
         private readonly DefaultObjectPool<PlayerGroup> _playerGroupPool = new(new DefaultPooledObjectPolicy<PlayerGroup>(), Constants.TargetPlayerCount);
 
         private const string GroupCommandName = "group";
+        private const string GroupAltCommandName = "gr";
+
+        private static readonly Trie<string> _groupSubCommands = new(false)
+        {
+            { "invite", "invite" },
+            { "uninvite", "uninvite" },
+            { "accept", "accept" },
+            { "decline", "decline" },
+            { "leave", "leave" },
+            { "kick", "kick" },
+            { "leader", "leader" },
+            { "disband", "disband" },
+        };
 
         public PlayerGroups(
             IComponentBroker broker,
@@ -73,6 +86,7 @@ namespace SS.Matchmaking.Modules
             PlayerStartPlayingCallback.Register(broker, Callback_PlayerStartPlaying);
 
             _commandManager.AddCommand(GroupCommandName, Command_group);
+            _commandManager.AddCommand(GroupAltCommandName, Command_group);
 
             _iPlayerGroupsToken = broker.RegisterInterface<IPlayerGroups>(this);
             return true;
@@ -84,6 +98,7 @@ namespace SS.Matchmaking.Modules
                 return false;
 
             _commandManager.RemoveCommand(GroupCommandName, Command_group);
+            _commandManager.RemoveCommand(GroupAltCommandName, Command_group);
 
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
             PlayerStartPlayingCallback.Unregister(broker, Callback_PlayerStartPlaying);
@@ -148,16 +163,20 @@ namespace SS.Matchmaking.Modules
             Description = """
                 Commands for managing player groups.
                   no sub-command (e.g. ?group or /?group) - prints group information.
-                  invite - invites a player to your group ^
+                  invite   - invites a player to your group ^
                   uninvite - cancels a pending invite ^
-                  accept - accepts an invite
-                  decline - declines an invite
-                  leave - leaves the current group
-                  kick - kicks a member of the group ^
-                  leader - makes the chosen group member the leader of the group ^
-                  disband - disbands the group ^
+                  accept   - accepts an invite
+                  decline  - declines an invite
+                  leave    - leaves the current group
+                  kick     - kicks a member of the group ^
+                  leader   - makes the chosen group member the leader of the group ^
+                  disband  - disbands the group ^
                 ^ must be the group leader to use this command
-                For sub-commands that take a <player>, the command can be sent privately to that player (e.g. /?group invite), rather than having to type the player's name.
+                For sub-commands that take a <player>, the command can be sent privately to that player 
+                  E.g. /?group invite, rather than having to type the player's name.
+                The full sub-command name does not need to be written. It will look for a command that starts with what is entered.
+                  E.g. /?group i, rather than type invite.
+                If more than one command matches (e.g. `?group d`), it will ask for clarification.
                 """)]
         private void Command_group(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -228,8 +247,67 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token = remaining.GetToken(' ', out remaining);
+            Span<Range> ranges = stackalloc Range[2];
+            ReadOnlySpan<char> token;
+            ReadOnlySpan<char> remaining;
+            int numRanges = parameters.Split(ranges, ' ', StringSplitOptions.TrimEntries);
+            if (numRanges == 1)
+            {
+                token = parameters[ranges[0]];
+                remaining = [];
+            }
+            else if (numRanges == 2)
+            {
+                token = parameters[ranges[0]];
+                remaining = parameters[ranges[1]];
+            }
+            else
+            {
+                return;
+            }
+
+            StringBuilder matchedCommands = _objectPoolManager.StringBuilderPool.Get();
+            try
+            {
+                int matches = 0;
+                string? lastMatch = null;
+                foreach ((_, string subCommand) in _groupSubCommands.StartsWith(token))
+                {
+                    if (matchedCommands.Length > 0)
+                        matchedCommands.Append(", ");
+
+                    matchedCommands.Append(subCommand);
+                    lastMatch = subCommand;
+                    matches++;
+                }
+
+                if (matches == 0)
+                {
+                    if (_help is not null)
+                        _chat.SendMessage(player, $"{GroupCommandName}: Invalid input. For instructions see: ?{_help.HelpCommand} {GroupCommandName}");
+                    else
+                        _chat.SendMessage(player, $"{GroupCommandName}: Invalid input.");
+
+                    return;
+                }
+                else if (matches > 1)
+                {
+                    _chat.SendMessage(player, $"{GroupCommandName}: Please be more precise. Unable to determine which of the following sub-commands is desired:");
+                    _chat.SendWrappedText(player, matchedCommands);
+                    return;
+                }
+                else
+                {
+                    // 1 match only, process it
+                    token = lastMatch;
+                }
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(matchedCommands);
+            }
+            
+
             if (token.Equals("invite", StringComparison.OrdinalIgnoreCase))
             {
                 PlayerGroup? group = playerData.Group;
