@@ -939,7 +939,7 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
-            var formation = new Formation { Captain = player };
+            var formation = new Formation { Captain = player, CreatedAt = DateTime.UtcNow };
             formation.Members.Add(player);
             arenaData.Formations[player] = formation;
 
@@ -951,8 +951,12 @@ namespace SS.Matchmaking.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
-            Args = "<captain name>",
-            Description = "Join a captain's team. The captain must have used ?captain first. You can also PM the captain directly with ?join.")]
+            Args = "[<captain name>]",
+            Description = """
+                Join a captain's team. The captain must have used ?captain first.
+                You can also PM the captain directly with ?join.
+                If no captain name is specified, you will be auto-assigned to the team closest to being full.
+                """)]
         private void Command_Join(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
@@ -976,6 +980,46 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
+            // Allow PMing the captain directly: /?join sent as a private message to the captain.
+            ReadOnlySpan<char> captainName = target.TryGetPlayerTarget(out Player? targetPlayer)
+                ? targetPlayer.Name.AsSpan()
+                : parameters.Trim();
+
+            Formation? targetFormation;
+
+            if (captainName.IsEmpty)
+            {
+                // Auto-assign: find the best available team.
+                targetFormation = FindBestFormationForAutoJoin(arenaData);
+                if (targetFormation is null)
+                {
+                    _chat.SendMessage(player, "No teams are currently looking for players. Type ?captain to start your own team.");
+                    return;
+                }
+            }
+            else
+            {
+                targetFormation = FindFormationByCaptainName(arenaData, captainName);
+                if (targetFormation is null)
+                {
+                    _chat.SendMessage(player, $"No captain named '{captainName}' found. They must type ?captain first.");
+                    return;
+                }
+
+                if (targetFormation.PairedWith is not null)
+                {
+                    _chat.SendMessage(player, "That team is already paired for a match and is not accepting new members.");
+                    return;
+                }
+
+                if (targetFormation.Members.Count >= arenaData.Config.PlayersPerTeam)
+                {
+                    _chat.SendMessage(player, $"{targetFormation.Captain.Name}'s team is already full ({arenaData.Config.PlayersPerTeam}/{arenaData.Config.PlayersPerTeam}).");
+                    return;
+                }
+            }
+
+            // Check kick cooldown for the target captain.
             if (arenaData.KickedPlayers.TryGetValue(player.Name!, out DateTime kickedAt))
             {
                 TimeSpan remaining = arenaData.Config.KickCooldown - (DateTime.UtcNow - kickedAt);
@@ -987,36 +1031,6 @@ namespace SS.Matchmaking.Modules
                 arenaData.KickedPlayers.Remove(player.Name!);
             }
 
-            // Allow PMing the captain directly: /?join sent as a private message to the captain.
-            ReadOnlySpan<char> captainName = target.TryGetPlayerTarget(out Player? targetPlayer)
-                ? targetPlayer.Name.AsSpan()
-                : parameters.Trim();
-
-            if (captainName.IsEmpty)
-            {
-                _chat.SendMessage(player, "Usage: ?join <captain name>  — or PM the captain with ?join");
-                return;
-            }
-
-            Formation? targetFormation = FindFormationByCaptainName(arenaData, captainName);
-            if (targetFormation is null)
-            {
-                _chat.SendMessage(player, $"No captain named '{captainName}' found. They must type ?captain first.");
-                return;
-            }
-
-            if (targetFormation.PairedWith is not null)
-            {
-                _chat.SendMessage(player, "That team is already paired for a match and is not accepting new members.");
-                return;
-            }
-
-            if (targetFormation.Members.Count >= arenaData.Config.PlayersPerTeam)
-            {
-                _chat.SendMessage(player, $"{targetFormation.Captain.Name}'s team is already full ({arenaData.Config.PlayersPerTeam}/{arenaData.Config.PlayersPerTeam}).");
-                return;
-            }
-
             targetFormation.Members.Add(player);
             targetFormation.IsReady = false; // team composition changed
 
@@ -1024,6 +1038,36 @@ namespace SS.Matchmaking.Modules
                 jpd.ManagedArena = arena;
 
             SendToAvailablePlayers(arena, arenaData, $"{player.Name} joined {targetFormation.Captain.Name}'s team. Team: {FormatTeamRoster(targetFormation, arenaData.Config.PlayersPerTeam)}");
+        }
+
+        /// <summary>
+        /// Finds the best formation for auto-join: the non-full, non-paired formation with the most
+        /// members. Ties broken by oldest creation time. Returns null if no eligible formation exists.
+        /// </summary>
+        private static Formation? FindBestFormationForAutoJoin(ArenaData arenaData)
+        {
+            Formation? best = null;
+
+            foreach (Formation f in arenaData.Formations.Values)
+            {
+                // Skip full teams.
+                if (f.Members.Count >= arenaData.Config.PlayersPerTeam)
+                    continue;
+
+                // Skip teams already paired for a match.
+                if (f.PairedWith is not null)
+                    continue;
+
+                // Compare: most members first, then oldest creation time.
+                if (best is null
+                    || f.Members.Count > best.Members.Count
+                    || (f.Members.Count == best.Members.Count && f.CreatedAt < best.CreatedAt))
+                {
+                    best = f;
+                }
+            }
+
+            return best;
         }
 
         [CommandHelp(
@@ -1799,7 +1843,8 @@ namespace SS.Matchmaking.Modules
 
             _chat.SendMessage(player, Section("Team Formation"));
             _chat.SendMessage(player, Row("?captain (?cap)", "Become a captain; others can join your team."));
-            _chat.SendMessage(player, Row("?join <captain>", "Join a captain's team. Or PM captain with ?join."));
+            _chat.SendMessage(player, Row("?join [<captain>]", "Join a captain's team. Or PM captain ?join."));
+            _chat.SendMessage(player, Row("", "Or ?join for auto-fill."));
             _chat.SendMessage(player, Row("?remove <player>", "[Cap] Remove a player from your team."));
             _chat.SendMessage(player, Row("?disband", "[Cap] Disband your entire team."));
             _chat.SendMessage(player, Row("?ditch", "Leave your current team."));
@@ -2528,6 +2573,7 @@ namespace SS.Matchmaking.Modules
                         {
                             Captain = winnerCaptain,
                             AssignedFreq = winningFreq,
+                            CreatedAt = match.MatchData.Started ?? DateTime.UtcNow,
                         };
                         foreach (Player p in winners)
                         {
@@ -2571,6 +2617,7 @@ namespace SS.Matchmaking.Modules
                         var loserFormation = new Formation
                         {
                             Captain = loserCaptain,
+                            CreatedAt = match.MatchData.Started ?? DateTime.UtcNow,
                         };
                         foreach (Player p in loserPlayers)
                         {
@@ -2919,6 +2966,9 @@ namespace SS.Matchmaking.Modules
         {
             public Player Captain = null!;
             public readonly HashSet<Player> Members = [];
+
+            /// <summary>When this formation was created. Used to break ties in auto-join.</summary>
+            public DateTime CreatedAt;
 
             /// <summary>The captain this formation has sent a challenge to, or null.</summary>
             public Player? SentChallengeTo;
