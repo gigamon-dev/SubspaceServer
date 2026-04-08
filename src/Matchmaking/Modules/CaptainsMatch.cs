@@ -1379,6 +1379,24 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
+            if (myFormation.Members.Count < arenaData.Config.PlayersPerTeam)
+            {
+                int needed = arenaData.Config.PlayersPerTeam - myFormation.Members.Count;
+                _chat.SendMessage(player, $"Cannot ready up — your team needs {needed} more player(s). ({myFormation.Members.Count}/{arenaData.Config.PlayersPerTeam})");
+
+                // Unpair both formations so the short team can recruit and the opponent can re-challenge.
+                Formation opponent = myFormation.PairedWith!;
+                myFormation.PairedWith = null;
+                myFormation.AssignedFreq = null;
+                myFormation.IsReady = false;
+                opponent.PairedWith = null;
+                opponent.AssignedFreq = null;
+                opponent.IsReady = false;
+
+                SendToAvailablePlayers(arena, arenaData, $"{player.Name}'s team lost a player — match pairing cancelled. Team is recruiting.");
+                return;
+            }
+
             if (myFormation.IsReady)
             {
                 _chat.SendMessage(player, "Your team is already marked as ready.");
