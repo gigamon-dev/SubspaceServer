@@ -26,7 +26,7 @@ namespace SS.Matchmaking.Modules
     /// Supports multiple simultaneous matches when multiple freq pairs are configured.
     /// </summary>
     [ModuleInfo("Captain-based team formation with challenge system.")]
-    public sealed class CaptainsMatch : IModule, IArenaAttachableModule, IMatchFocusAdvisor, IFreqManagerEnforcerAdvisor
+    public sealed class CaptainsMatch : IModule, IArenaAttachableModule, IMatchFocusAdvisor, IFreqManagerEnforcerAdvisor, IPlayerGroupAdvisor
     {
         private readonly IChat _chat;
         private readonly ICommandManager _commandManager;
@@ -45,9 +45,12 @@ namespace SS.Matchmaking.Modules
         private IComponentBroker? _broker;
         private PlayerDataKey<PlayerData> _pdKey;
         private AdvisorRegistrationToken<IMatchFocusAdvisor>? _iMatchFocusAdvisorToken;
+        private AdvisorRegistrationToken<IPlayerGroupAdvisor>? _iPlayerGroupAdvisorToken;
 
         // optional
         private ITeamVersusStatsBehavior? _tvStatsBehavior;
+        private IMatchmakingQueues? _matchmakingQueues;
+        private IPlayerGroups? _playerGroups;
 
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new(Constants.TargetArenaCount);
         private static readonly DefaultObjectPool<ArenaData> _arenaDataPool = new(new DefaultPooledObjectPolicy<ArenaData>(), Constants.TargetArenaCount);
@@ -80,15 +83,21 @@ namespace SS.Matchmaking.Modules
         {
             _broker = broker;
             _tvStatsBehavior = broker.GetInterface<ITeamVersusStatsBehavior>();
+            _matchmakingQueues = broker.GetInterface<IMatchmakingQueues>();
+            _playerGroups = broker.GetInterface<IPlayerGroups>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             _iMatchFocusAdvisorToken = broker.RegisterAdvisor<IMatchFocusAdvisor>(this);
+            _iPlayerGroupAdvisorToken = broker.RegisterAdvisor<IPlayerGroupAdvisor>(this);
             return true;
         }
 
         bool IModule.Unload(IComponentBroker broker)
         {
             if (!broker.UnregisterAdvisor(ref _iMatchFocusAdvisorToken))
+                return false;
+
+            if (!broker.UnregisterAdvisor(ref _iPlayerGroupAdvisorToken))
                 return false;
 
             _mainloop.WaitForMainWorkItemDrain();
@@ -98,6 +107,12 @@ namespace SS.Matchmaking.Modules
 
             if (_tvStatsBehavior is not null)
                 broker.ReleaseInterface(ref _tvStatsBehavior);
+
+            if (_matchmakingQueues is not null)
+                broker.ReleaseInterface(ref _matchmakingQueues);
+
+            if (_playerGroups is not null)
+                broker.ReleaseInterface(ref _playerGroups);
 
             _broker = null;
             return true;
@@ -554,6 +569,56 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        #region IPlayerGroupAdvisor
+
+        bool IPlayerGroupAdvisor.CanPlayerCreateGroup(Player player, StringBuilder message)
+        {
+            if (IsPlayerInCaptains(player))
+            {
+                message?.Append("Cannot create a group while in a captains team or match. Use ?ditch or ?disband first.");
+                return false;
+            }
+            return true;
+        }
+
+        bool IPlayerGroupAdvisor.CanPlayerBeInvited(Player player, StringBuilder message)
+        {
+            if (IsPlayerInCaptains(player))
+            {
+                message?.Append($"Cannot invite {player.Name} — they are in a captains team or match.");
+                return false;
+            }
+            return true;
+        }
+
+        bool IPlayerGroupAdvisor.CanPlayerAcceptInvite(Player player, StringBuilder message)
+        {
+            if (IsPlayerInCaptains(player))
+            {
+                message?.Append("Cannot accept a group invite while in a captains team or match. Use ?ditch or ?disband first.");
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Returns true if the player is in any captains formation or active/pending match.
+        /// </summary>
+        private bool IsPlayerInCaptains(Player player)
+        {
+            foreach (ArenaData arenaData in _arenaDataDictionary.Values)
+            {
+                if (GetPlayerFormation(arenaData, player) is not null)
+                    return true;
+
+                if (IsPlayerInMatch(arenaData, player))
+                    return true;
+            }
+            return false;
+        }
+
+        #endregion
+
         #region Callbacks
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
@@ -928,6 +993,12 @@ namespace SS.Matchmaking.Modules
                 return;
             }
 
+            if (_playerGroups?.GetGroup(player) is not null)
+            {
+                _chat.SendMessage(player, "You are in a group. Use ?group leave or ?group disband first.");
+                return;
+            }
+
             if (GetPlayerFormation(arenaData, player) is not null)
             {
                 _chat.SendMessage(player, "You are already in a team formation. Use ?ditch or ?disband to leave first.");
@@ -966,6 +1037,12 @@ namespace SS.Matchmaking.Modules
             if (player.Ship != ShipType.Spec)
             {
                 _chat.SendMessage(player, "You must be in spec to join a team.");
+                return;
+            }
+
+            if (_playerGroups?.GetGroup(player) is not null)
+            {
+                _chat.SendMessage(player, "You are in a group. Use ?group leave or ?group disband first.");
                 return;
             }
 
@@ -1299,6 +1376,24 @@ namespace SS.Matchmaking.Modules
             if (myFormation.PairedWith is null)
             {
                 _chat.SendMessage(player, "Your team has not been paired yet. Use ?challenge to find an opponent first.");
+                return;
+            }
+
+            if (myFormation.Members.Count < arenaData.Config.PlayersPerTeam)
+            {
+                int needed = arenaData.Config.PlayersPerTeam - myFormation.Members.Count;
+                _chat.SendMessage(player, $"Cannot ready up — your team needs {needed} more player(s). ({myFormation.Members.Count}/{arenaData.Config.PlayersPerTeam})");
+
+                // Unpair both formations so the short team can recruit and the opponent can re-challenge.
+                Formation opponent = myFormation.PairedWith!;
+                myFormation.PairedWith = null;
+                myFormation.AssignedFreq = null;
+                myFormation.IsReady = false;
+                opponent.PairedWith = null;
+                opponent.AssignedFreq = null;
+                opponent.IsReady = false;
+
+                SendToAvailablePlayers(arena, arenaData, $"{player.Name}'s team lost a player — match pairing cancelled. Team is recruiting.");
                 return;
             }
 
@@ -1993,6 +2088,27 @@ namespace SS.Matchmaking.Modules
         #region Helpers
 
         /// <summary>
+        /// Removes the Playing state from all players in a match (both active and specced out)
+        /// so they can queue for matchmaking again.
+        /// </summary>
+        private void UnsetPlayingForMatch(ActiveMatch match)
+        {
+            if (_matchmakingQueues is null)
+                return;
+
+            foreach (var (p, slot) in match.ActiveSlots)
+                _matchmakingQueues.UnsetPlaying(p, false);
+
+            foreach (var (p, slot) in match.SpecOutSlots)
+            {
+                if (slot.LeftArena)
+                    _matchmakingQueues.UnsetPlayingByName(slot.PlayerName!, false);
+                else
+                    _matchmakingQueues.UnsetPlaying(p, false);
+            }
+        }
+
+        /// <summary>
         /// Starts the abandon timer for <paramref name="freq"/> if it has no active players.
         /// Only fires when the match is active and <see cref="ArenaConfig.AbandonTimeoutMs"/> is non-zero.
         /// Safe to call unconditionally after any <see cref="ActiveMatch.ActiveSlots"/> removal.
@@ -2444,6 +2560,13 @@ namespace SS.Matchmaking.Modules
 
             matchData.SetTeams(team1, team2);
 
+            // Mark all participants as Playing to block ?next queueing during countdown and match.
+            if (_matchmakingQueues is not null)
+            {
+                foreach (Player p in activeMatch.ActiveSlots.Keys)
+                    _matchmakingQueues.SetPlaying(p);
+            }
+
             activeMatch.Freq1AbandonState = new AbandonState { Arena = arena, ArenaData = arenaData, Match = activeMatch, Freq = freq1 };
             activeMatch.Freq2AbandonState = new AbandonState { Arena = arena, ArenaData = arenaData, Match = activeMatch, Freq = freq2 };
 
@@ -2513,6 +2636,9 @@ namespace SS.Matchmaking.Modules
                 _ = _tvStatsBehavior.MatchEndedAsync(match.MatchData, MatchEndReason.Decided, winnerTeam);
 
             MatchEndedCallback.Fire(_broker!, match.MatchData);
+
+            // Remove Playing state so players can queue again after the match.
+            UnsetPlayingForMatch(match);
 
             // Remove from ActiveMatches before speccing players so that Callback_ShipFreqChange
             // does not fire spurious "has specced" announcements or re-schedule win-condition checks.
@@ -2652,6 +2778,9 @@ namespace SS.Matchmaking.Modules
 
             MatchEndedCallback.Fire(_broker!, match.MatchData);
 
+            // Remove Playing state so players can queue again after the match.
+            UnsetPlayingForMatch(match);
+
             // Remove from ActiveMatches before speccing players so that Callback_ShipFreqChange
             // does not fire spurious "has specced" announcements or re-schedule win-condition checks.
             arenaData.ActiveMatches.Remove(match);
@@ -2697,6 +2826,9 @@ namespace SS.Matchmaking.Modules
 
             foreach (Player p in countdown.ActiveMatch.SpecOutSlots.Keys)
                 arenaData.PlayerToMatch.Remove(p);
+
+            // Remove Playing state so players can queue again.
+            UnsetPlayingForMatch(countdown.ActiveMatch);
 
             countdown.Formation1.IsReady = false;
             countdown.Formation1.PairedWith = null;
