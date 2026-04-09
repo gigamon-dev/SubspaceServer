@@ -499,7 +499,11 @@ namespace SS.Matchmaking.Modules
 
             bool isMatchFreq = arenaData.Config.FreqPairs.Any(p => p.F1 == newFreq || p.F2 == newFreq);
             if (!isMatchFreq)
-                return true; // Spectator freqs are freely allowed.
+                return true; // Non-match freqs are freely allowed.
+
+            // Allow spectators to join match freqs for team comms.
+            if (player.Ship == ShipType.Spec)
+                return true;
 
             // It is a match freq — player must be assigned to it.
             if (arenaData.PlayerToMatch.TryGetValue(player, out ActiveMatch? match))
