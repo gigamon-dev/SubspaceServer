@@ -5679,7 +5679,21 @@ namespace SS.Matchmaking.Modules
                     matchData.PhaseExpiration = DateTime.UtcNow + matchData.Configuration.ReadyWaitDuration;
 
                     // Notify players to ready up.
-                    _chat.SendSetMessage(readyPlayers, $"You have 15 seconds to indicate that you are READY by rotating your ship or by firing a weapon.");
+                    HashSet<Player> to = _objectPoolManager.PlayerSetPool.Get();
+                    try
+                    {
+                        foreach (Player player in readyPlayers)
+                        {
+                            to.Clear();
+                            to.Add(player);
+
+                            _chat.SendRemotePrivMessage(to, ChatSound.None, [], player.Name, "You have 15 seconds to indicate that you are READY by rotating your ship or by firing a weapon.");
+                        }
+                    }
+                    finally
+                    {
+                        _objectPoolManager.PlayerSetPool.Return(to);
+                    }
                 }
                 finally
                 {
