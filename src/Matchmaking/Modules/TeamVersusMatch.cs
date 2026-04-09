@@ -164,6 +164,9 @@ namespace SS.Matchmaking.Modules
         /// </summary>
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = [];
 
+        // cached delegate
+        private readonly ReliableDelegate _playerWarpCompleted;
+
         private readonly DefaultObjectPool<ArenaData> _arenaDataPool = new(new DefaultPooledObjectPolicy<ArenaData>(), Constants.TargetArenaCount);
         private readonly DefaultObjectPool<TeamLineup> _teamLineupPool = new(new DefaultPooledObjectPolicy<TeamLineup>(), Constants.TargetPlayerCount);
         private readonly DefaultObjectPool<List<TeamLineup>> _teamLineupListPool = new(new ListPooledObjectPolicy<TeamLineup>(), 8);
@@ -207,6 +210,8 @@ namespace SS.Matchmaking.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
+
+            _playerWarpCompleted = PlayerWarpCompleted;
         }
 
         #region Module members
@@ -1601,7 +1606,7 @@ namespace SS.Matchmaking.Modules
             }
 
             MatchData matchData = slot.MatchData;
-            if (matchData.Status == MatchStatus.StartingCheck && !playerData.IsReadyToStart)
+            if (matchData.Status == MatchStatus.StartingCheck && playerData.ReadyToStartState == ReadyToStartState.Waiting)
             {
                 bool isReady = false;
 
@@ -1637,7 +1642,7 @@ namespace SS.Matchmaking.Modules
 
                 if (isReady)
                 {
-                    playerData.IsReadyToStart = true;
+                    playerData.ReadyToStartState = ReadyToStartState.Ready;
                     ProcessMatchStateChange(matchData);
                 }
             }
@@ -5663,7 +5668,7 @@ namespace SS.Matchmaking.Modules
                                 continue;
 
                             // The next phase will check if the player is ready to start.
-                            playerData.IsReadyToStart = false;
+                            playerData.ReadyToStartState = ReadyToStartState.Warping;
 
                             SetShipAndFreq(playerSlot, false, startLocation, itemsAction);
                         }
@@ -5717,7 +5722,7 @@ namespace SS.Matchmaking.Modules
                             else
                             {
                                 if (slot.Player.TryGetExtraData(_pdKey, out PlayerData? playerData)
-                                    && playerData.IsReadyToStart)
+                                    && playerData.ReadyToStartState == ReadyToStartState.Ready)
                                 {
                                     // The player has indicated that they are ready.
                                     readyPlayers.Add(slot.Player);
@@ -6248,7 +6253,7 @@ namespace SS.Matchmaking.Modules
             // Warp the player to the starting location.
             if (startLocation is not null)
             {
-                _game.WarpTo(player, startLocation.Value.X, startLocation.Value.Y);
+                _game.WarpTo(player, startLocation.Value.X, startLocation.Value.Y, _playerWarpCompleted);
             }
 
             // Remove any existing timers for the slot.
@@ -6287,6 +6292,21 @@ namespace SS.Matchmaking.Modules
                 {
                     _clientSettings.SendClientSettings(player);
                 }
+            }
+        }
+
+        private void PlayerWarpCompleted(Player player, bool success)
+        {
+            if (!success)
+                return;
+
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            if (playerData.ReadyToStartState == ReadyToStartState.Warping)
+            {
+                playerData.ReadyToStartState = ReadyToStartState.Waiting;
+                playerData.LastRotation = null;
             }
         }
 
@@ -7446,6 +7466,26 @@ namespace SS.Matchmaking.Modules
             public byte Portals { get; set; }
         }
 
+        private enum ReadyToStartState
+        {
+            None,
+
+            /// <summary>
+            /// The player is currently being warped to their starting location and we're waiting for confirmation.
+            /// </summary>
+            Warping,
+
+            /// <summary>
+            /// Waiting for the player to ready up.
+            /// </summary>
+            Waiting,
+
+            /// <summary>
+            /// The player has readied up.
+            /// </summary>
+            Ready,
+        }
+
         private class PlayerData : IResettable
         {
             /// <summary>
@@ -7512,7 +7552,7 @@ namespace SS.Matchmaking.Modules
             /// The player needs to either rotate their ship or fire a weapon.
             /// Moving is not enough since they could have been repelled.
             /// </summary>
-            public bool IsReadyToStart = false;
+            public ReadyToStartState ReadyToStartState = ReadyToStartState.None;
 
             /// <summary>
             /// The player's last rotation value from their position packet.
@@ -7535,7 +7575,7 @@ namespace SS.Matchmaking.Modules
                 IsInitialConnect = false;
                 IsWatchingExtraPositionData = false;
                 IsSpawnOverriden = false;
-                IsReadyToStart = false;
+                ReadyToStartState = ReadyToStartState.None;
                 LastRotation = null;
                 return true;
             }

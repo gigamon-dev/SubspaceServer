@@ -252,6 +252,15 @@ namespace SS.Core.Modules
             }
         }
 
+        void IGame.WarpTo(Player player, short x, short y, ReliableDelegate callback)
+        {
+            if (player is null)
+                return;
+
+            S2C_WarpTo warpTo = new(x, y);
+            _network.SendWithCallback(player, ref warpTo, callback);
+        }
+
         void IGame.GivePrize(ITarget target, Prize prize, short count)
         {
             if (target is null)

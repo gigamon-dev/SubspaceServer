@@ -64,6 +64,17 @@ namespace SS.Core.ComponentInterfaces
         void WarpTo(ITarget target, short x, short y);
 
         /// <summary>
+        /// Move a player to a specific location and invoke a <paramref name="callback"/> after receiving confirmation.
+        /// This uses the Continuum warp feature, so it causes the little
+        /// flashy thing, and the affected ships won't be moving afterwards.
+        /// </summary>
+        /// <param name="player">The player to warp.</param>
+        /// <param name="x">The destination of the warp in tiles, x coordinate.</param>
+        /// <param name="y">The destination of the warp in tiles, y coordinate.</param>
+        /// <param name="callback">The delegate to execute after receiving confirmation.</param>
+        void WarpTo(Player player, short x, short y, ReliableDelegate callback);
+
+        /// <summary>
         /// Gives out prizes to a set of players.
         /// </summary>
         /// <param name="target">The players to give prizes to.</param>
