@@ -3091,11 +3091,12 @@ namespace SS.Matchmaking.Modules
                         float? gunAccuracy = memberStats.GunFireCount > 0 ? (float)memberStats.GunHitCount / memberStats.GunFireCount * 100 : null;
                         int ratingChange = (int)memberStats.RatingChange;
                         int totalRating = Math.Max(memberStats.InitialRating + ratingChange, MinimumRating);
-                        if (!matchStats.OpenSkillRatings.TryGetValue(memberStats.PlayerName!, out PlayerRating? openSkill)) {
-                            openSkill.Mu = 0.0;
-                        }
-                        //Based on traditional 1500-level Elo, assuming 1
-                        double? eloRating = (openSkill.Mu * 40) + 500 
+                        // if (!matchStats.OpenSkillRatings.TryGetValue(memberStats.PlayerName!, out PlayerRating? openSkill)) {
+                        // }
+
+                        PlayerRating? openSkill = matchStats.OpenSkillRatings.GetValueOrDefault(memberStats.PlayerName!);
+                        //Based on traditional 1500-level Elo, assuming OpenSkill Mu default 25
+                        int eloRating = (int)(((openSkill?.Mu ?? 0) * 40) + 500);
 
                         totalKills += memberStats.Kills;
                         totalDeaths += memberStats.Deaths;
