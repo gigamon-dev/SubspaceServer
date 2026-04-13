@@ -2744,6 +2744,7 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, "AcG     Accuracy of Guns           Bullets hits / bullets fired -- Burst bullets not included");
             _chat.SendMessage(player, "Rat     Rating Change              Change in leaderboard rating");
             _chat.SendMessage(player, "TRat    Total Rating               Leaderboard rating at the start of the match + Rating Change");
+            _chat.SendMessage(player, "ORat    OpenSkill Rating           OpenSkill sigma rating at the start of the match + Rating Change");
             // TODO: _chat.SendMessage(player, "ERat    Elo Rating                 OpenSkill rating represented as an Elo-like form (approximate)");
             _chat.SendMessage(player, "* The recent damage window is the amount of time it takes for a ship to go from 0 to max energy.");
             _chat.SendMessage(player, "^ Accounts for active utility drain: Stealth, Cloak, X-Radar, and Anti-Warp.");
@@ -3028,7 +3029,7 @@ namespace SS.Matchmaking.Modules
             foreach (TeamStats teamStats in matchStats.Teams.Values)
             {
                 SendHorizonalRule(notifySet);
-                _chat.SendSetMessage(notifySet, $"| Freq {teamStats.Team!.Freq,-4}            Ki/De TK SK AS FR WR WRk WEPM   dE Mi LO PTime | DDealt/DTaken DmgE KiDmg FRDmg TmDmg | AcB AcG | Rat TRat |");
+                _chat.SendSetMessage(notifySet, $"| Freq {teamStats.Team!.Freq,-4}            Ki/De TK SK AS FR WR WRk WEPM   dE Mi LO PTime | DDealt/DTaken DmgE KiDmg FRDmg TmDmg | AcB AcG | Rat TRat ORat |");
                 SendHorizonalRule(notifySet);
 
                 int totalKills = 0;
@@ -3050,6 +3051,7 @@ namespace SS.Matchmaking.Modules
                 uint totalMineHitCount = 0;
                 int aveRatingChange = 0;
                 int aveTotalRating = 0;
+                double? aveOpenRating = 0.0;
 
                 foreach (SlotStats slotStats in teamStats.Slots)
                 {
@@ -3090,6 +3092,10 @@ namespace SS.Matchmaking.Modules
                         float? gunAccuracy = memberStats.GunFireCount > 0 ? (float)memberStats.GunHitCount / memberStats.GunFireCount * 100 : null;
                         int ratingChange = (int)memberStats.RatingChange;
                         int totalRating = Math.Max(memberStats.InitialRating + ratingChange, MinimumRating);
+                        if (!matchStats.OpenSkillRatings.TryGetValue(memberStats.PlayerName!, out PlayerRating? openSkill)) {
+                            openSkill.Sigma = 0.0;
+                        }
+                        double? openRating = Math.Round(openSkill.Sigma, 2);
 
                         totalKills += memberStats.Kills;
                         totalDeaths += memberStats.Deaths;
@@ -3110,6 +3116,7 @@ namespace SS.Matchmaking.Modules
                         totalMineHitCount += memberStats.MineHitCount;
                         aveRatingChange += ratingChange;
                         aveTotalRating += totalRating;
+                        aveOpenRating += openRating;
 
                         TimeSpan playTime = memberStats.PlayTime;
                         if (memberStats.StartTime is not null)
@@ -3138,7 +3145,7 @@ namespace SS.Matchmaking.Modules
                             $"{(int)playTime.TotalMinutes,3}:{playTime:ss}" +
                             $" | {damageDealt,6}/{damageTaken,6} {damageEfficiency,4:0%} {memberStats.KillDamage,5} {memberStats.ForcedRepDamage,5} {memberStats.DamageDealtTeam,5}" +
                             $" | {bombAccuracy,3:N0} {gunAccuracy,3:N0}" +
-                            $" |{ratingChange,4:+#;-#;0} {totalRating,4} |");
+                            $" |{ratingChange,4:+#;-#;0} {totalRating,4} {openRating,5} |");
                     }
                 }
 
@@ -3166,7 +3173,7 @@ namespace SS.Matchmaking.Modules
                     $"      " +
                     $" | {totalDamageDealt,6}/{totalDamageTaken,6} {totalDamageEfficiency,4:0%}                  " +
                     $" | {totalBombAccuracy,3:N0} {totalGunAccuracy,3:N0}" +
-                    $" |{(aveRatingChange / teamStats.Slots.Count),4:+#;-#;0} {(aveTotalRating / teamStats.Slots.Count),4} |");
+                    $" |{(aveRatingChange / teamStats.Slots.Count),4:+#;-#;0} {(aveTotalRating / teamStats.Slots.Count),4} {(aveOpenRating / teamStats.Slots.Count),5} |");
             }
 
             SendHorizonalRule(notifySet);
@@ -3232,7 +3239,7 @@ namespace SS.Matchmaking.Modules
 
             void SendHorizonalRule(HashSet<Player> notifySet)
             {
-                _chat.SendSetMessage(notifySet, $"+---------------------------------------------------------------------+--------------------------------------+---------+----------+");
+                _chat.SendSetMessage(notifySet, $"+---------------------------------------------------------------------+--------------------------------------+---------+---------------+");
             }
         }
 
