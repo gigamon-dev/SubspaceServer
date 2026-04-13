@@ -144,6 +144,10 @@ namespace SS.Matchmaking.Modules
             Description = "Maximum number of times a player may voluntarily spec out during a match before they cannot re-enter.")]
         [ConfigHelp("CaptainsMatch", "AllowShipChangeAfterDeathDuration", ConfigScope.Arena,
             Description = "Duration (TimeSpan, e.g. 00:00:05) after respawning from a death that a player may voluntarily change ships. Prevents item recycling by changing ships while alive. Empty or 0 = ship changes are always blocked during a match (queue via ?sc for next spawn).")]
+        [ConfigHelp<int>("CaptainsMatch", "SubAvailableDelaySeconds", ConfigScope.Arena, Default = 30,
+            Description = "Seconds after a player specs out before their slot becomes available for ?sub. Set to 0 for immediate. Captain can bypass with ?requestsub.")]
+        [ConfigHelp<int>("CaptainsMatch", "MaxSubsPerTeam", ConfigScope.Arena, Default = 3,
+            Description = "Maximum number of substitutions allowed per team per match. Set to 0 to disable the sub system.")]
         [ConfigHelp<int>("CaptainsMatch", "AbandonTimeoutSeconds", ConfigScope.Arena, Default = 10,
             Description = "Seconds a team with no active (playing) players has before the match is forfeited in their name. Set to 0 to disable.")]
         [ConfigHelp("CaptainsMatch", "OpenSkillModel", ConfigScope.Arena, Default = "PlackettLuce",
@@ -305,6 +309,8 @@ namespace SS.Matchmaking.Modules
                     _configManager.GetStr(ch, "CaptainsMatch", "AllowShipChangeAfterDeathDuration"), out TimeSpan ascd)
                     ? ascd : TimeSpan.Zero,
                 AbandonTimeoutMs = Math.Max(0, _configManager.GetInt(ch, "CaptainsMatch", "AbandonTimeoutSeconds", 10)) * 1000,
+                SubAvailableDelay = TimeSpan.FromSeconds(Math.Max(0, _configManager.GetInt(ch, "CaptainsMatch", "SubAvailableDelaySeconds", 30))),
+                MaxSubsPerTeam = _configManager.GetInt(ch, "CaptainsMatch", "MaxSubsPerTeam", 3),
                 ShipSettings = shipSettings,
                 OpenSkillModel = openSkillModel,
                 OpenSkillSigmaDecayPerDay = sigmaDecayPerDay,
@@ -339,6 +345,9 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("capinfo", Command_FreqInfo, arena);
             _commandManager.AddCommand("refuse", Command_Refuse, arena);
             _commandManager.AddCommand("disband", Command_Disband, arena);
+            _commandManager.AddCommand("sub", Command_Sub, arena);
+            _commandManager.AddCommand("requestsub", Command_RequestSub, arena);
+            _commandManager.AddCommand("rsub", Command_RequestSub, arena);
             _commandManager.AddCommand("caphelp", Command_CapHelp, arena);
             // ?chart is provided by TeamVersusStats when it is attached to the arena.
 
@@ -378,6 +387,9 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("capinfo", Command_FreqInfo, arena);
             _commandManager.RemoveCommand("refuse", Command_Refuse, arena);
             _commandManager.RemoveCommand("disband", Command_Disband, arena);
+            _commandManager.RemoveCommand("sub", Command_Sub, arena);
+            _commandManager.RemoveCommand("requestsub", Command_RequestSub, arena);
+            _commandManager.RemoveCommand("rsub", Command_RequestSub, arena);
             _commandManager.RemoveCommand("caphelp", Command_CapHelp, arena);
             // ?chart is managed by TeamVersusStats.
 
@@ -393,6 +405,9 @@ namespace SS.Matchmaking.Modules
                 _mainloopTimer.ClearTimer<ActiveMatch>(Timer_WinConditionCheck, m);
                 _mainloopTimer.ClearTimer<AbandonState>(Timer_AbandonCheck, m.Freq1AbandonState);
                 _mainloopTimer.ClearTimer<AbandonState>(Timer_AbandonCheck, m.Freq2AbandonState);
+
+                foreach (CaptainsPlayerSlot slot in m.SpecOutSlots.Values)
+                    CancelSubAvailableTimer(slot);
             }
 
             ((IResettable)arenaData).TryReset();
@@ -844,6 +859,24 @@ namespace SS.Matchmaking.Modules
                     match.SpecOutSlots[player] = slot;
                     slot.Player = null;
                     slot.LagOuts++;
+                    slot.SpecOutTimestamp = DateTime.UtcNow;
+
+                    // Schedule a sub-available announcement after the delay.
+                    if (arenaData.ActiveMatches.Contains(match)
+                        && arenaData.Config.MaxSubsPerTeam > 0
+                        && arenaData.Config.SubAvailableDelay > TimeSpan.Zero)
+                    {
+                        int delayMs = (int)arenaData.Config.SubAvailableDelay.TotalMilliseconds;
+                        SubAvailableState subState = new()
+                        {
+                            Arena = arena,
+                            ArenaData = arenaData,
+                            Match = match,
+                            Slot = slot,
+                        };
+                        slot.SubAvailableTimerKey = subState;
+                        _mainloopTimer.SetTimer<SubAvailableState>(Timer_SubAvailable, delayMs, Timeout.Infinite, subState, subState);
+                    }
 
                     if (arenaData.ActiveMatches.Contains(match))
                     {
@@ -905,6 +938,9 @@ namespace SS.Matchmaking.Modules
                         match.SpecOutSlots.Remove(player);
                         match.ActiveSlots[player] = slot;
                         slot.Player = player;
+                        slot.SpecOutTimestamp = null;
+                        slot.SubRequested = false;
+                        CancelSubAvailableTimer(slot);
                         CancelAbandonTimer(match, slot.Team.Freq);
 
                         // If the match has already started (post-GO), register the player with
@@ -1836,6 +1872,330 @@ namespace SS.Matchmaking.Modules
             _chat.SendArenaMessage(arena, $"{player.Name} has returned (burned).");
         }
 
+        private void Command_Sub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            if (player.Ship != ShipType.Spec)
+            {
+                _chat.SendMessage(player, "You must be in spec to sub into a match.");
+                return;
+            }
+
+            if (arenaData.PlayerToMatch.ContainsKey(player))
+            {
+                _chat.SendMessage(player, "You are already in a match.");
+                return;
+            }
+
+            if (GetPlayerFormation(arenaData, player) is not null)
+            {
+                _chat.SendMessage(player, "You are on a team. Use ?ditch or ?disband first.");
+                return;
+            }
+
+            if (_playerGroups?.GetGroup(player) is not null)
+            {
+                _chat.SendMessage(player, "You are in a group. Use ?group leave or ?group disband first.");
+                return;
+            }
+
+            if (arenaData.Config.MaxSubsPerTeam <= 0)
+            {
+                _chat.SendMessage(player, "Substitutions are disabled in this arena.");
+                return;
+            }
+
+            // Parse optional arguments: ?sub [freq] [ship]
+            // A number 1-8 that matches a configured freq pair is treated as a freq.
+            // A number 1-8 that does NOT match a freq pair is treated as a ship.
+            // Two numbers: first is freq, second is ship.
+            short? requestedFreq = null;
+            ShipType? requestedShip = null;
+
+            if (!parameters.IsEmpty)
+            {
+                ReadOnlySpan<char> remaining = parameters.Trim();
+                ReadOnlySpan<char> first = remaining.GetToken(' ', out remaining);
+                remaining = remaining.TrimStart();
+
+                if (short.TryParse(first, out short firstVal))
+                {
+                    bool isFreqPair = arenaData.Config.FreqPairs.Any(p => p.F1 == firstVal || p.F2 == firstVal);
+
+                    if (!remaining.IsEmpty && short.TryParse(remaining, out short secondVal))
+                    {
+                        // Two args: freq ship
+                        requestedFreq = firstVal;
+                        if (secondVal >= 1 && secondVal <= 8)
+                            requestedShip = (ShipType)(secondVal - 1);
+                    }
+                    else if (isFreqPair)
+                    {
+                        // Single arg matches a freq pair — treat as freq.
+                        requestedFreq = firstVal;
+                    }
+                    else if (firstVal >= 1 && firstVal <= 8)
+                    {
+                        // Single arg 1-8 that isn't a freq pair — treat as ship.
+                        requestedShip = (ShipType)(firstVal - 1);
+                    }
+                    else
+                    {
+                        _chat.SendMessage(player, $"Invalid argument: {firstVal}. Usage: ?sub [freq] [ship 1-8]");
+                        return;
+                    }
+                }
+            }
+
+            // Find an eligible slot.
+            CaptainsPlayerSlot? targetSlot = null;
+            ActiveMatch? targetMatch = null;
+            Player? oldPlayer = null;
+            int eligibleCount = 0;
+
+            foreach (ActiveMatch match in arenaData.ActiveMatches)
+            {
+                foreach ((Player p, CaptainsPlayerSlot slot) in match.SpecOutSlots)
+                {
+                    if (!IsSlotSubEligible(slot, arenaData.Config))
+                        continue;
+
+                    if (requestedFreq.HasValue && slot.Team.Freq != requestedFreq.Value)
+                        continue;
+
+                    // Check MaxSubsPerTeam.
+                    int subsUsed = slot.Team.Freq == match.Freq1 ? match.Freq1SubsUsed : match.Freq2SubsUsed;
+                    if (subsUsed >= arenaData.Config.MaxSubsPerTeam)
+                        continue;
+
+                    eligibleCount++;
+                    if (targetSlot is null)
+                    {
+                        targetSlot = slot;
+                        targetMatch = match;
+                        oldPlayer = p;
+                    }
+                }
+            }
+
+            if (targetSlot is null)
+            {
+                if (eligibleCount == 0)
+                    _chat.SendMessage(player, "No slots are available for substitution.");
+                else
+                    _chat.SendMessage(player, "No slots matched the specified freq.");
+                return;
+            }
+
+            if (!requestedFreq.HasValue && eligibleCount > 1)
+            {
+                // Collect the distinct freqs that need subs.
+                HashSet<short> eligibleFreqs = [];
+                foreach (ActiveMatch match in arenaData.ActiveMatches)
+                    foreach ((Player p, CaptainsPlayerSlot slot) in match.SpecOutSlots)
+                        if (IsSlotSubEligible(slot, arenaData.Config))
+                        {
+                            int subsUsed = slot.Team.Freq == match.Freq1 ? match.Freq1SubsUsed : match.Freq2SubsUsed;
+                            if (subsUsed < arenaData.Config.MaxSubsPerTeam)
+                                eligibleFreqs.Add(slot.Team.Freq);
+                        }
+
+                _chat.SendMessage(player, $"Multiple slots need a sub. Specify a freq: {string.Join(", ", eligibleFreqs.Select(f => $"?sub {f}"))}");
+                return;
+            }
+
+            // Execute the sub with the requested ship (or DefaultShip if not specified).
+            ShipType subShip = requestedShip ?? arenaData.Config.DefaultShip;
+            ExecuteSub(arena, arenaData, targetMatch!, targetSlot, oldPlayer!, player, subShip);
+        }
+
+        private void Command_RequestSub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            if (!arenaData.PlayerToMatch.TryGetValue(player, out ActiveMatch? match)
+                || !arenaData.ActiveMatches.Contains(match))
+            {
+                _chat.SendMessage(player, "You must be in an active match to request a sub.");
+                return;
+            }
+
+            if (arenaData.Config.MaxSubsPerTeam <= 0)
+            {
+                _chat.SendMessage(player, "Substitutions are disabled in this arena.");
+                return;
+            }
+
+            // Determine the caller's team freq.
+            short callerFreq;
+            if (match.ActiveSlots.TryGetValue(player, out CaptainsPlayerSlot? callerSlot))
+                callerFreq = callerSlot.Team.Freq;
+            else if (match.SpecOutSlots.TryGetValue(player, out callerSlot))
+                callerFreq = callerSlot.Team.Freq;
+            else
+            {
+                _chat.SendMessage(player, "You are not a participant in this match.");
+                return;
+            }
+
+            // Check MaxSubsPerTeam.
+            int subsUsed = callerFreq == match.Freq1 ? match.Freq1SubsUsed : match.Freq2SubsUsed;
+            if (subsUsed >= arenaData.Config.MaxSubsPerTeam)
+            {
+                _chat.SendMessage(player, $"Your team has used all {arenaData.Config.MaxSubsPerTeam} substitutions.");
+                return;
+            }
+
+            // Find the target slot.
+            CaptainsPlayerSlot? targetSlot = null;
+            ReadOnlySpan<char> targetName = parameters.Trim();
+
+            foreach ((Player p, CaptainsPlayerSlot slot) in match.SpecOutSlots)
+            {
+                if (slot.Team.Freq != callerFreq)
+                    continue;
+
+                if (slot.Lives <= 0 || slot.WasSubbedIn)
+                    continue;
+
+                if (!targetName.IsEmpty)
+                {
+                    if (slot.PlayerName is not null && targetName.Equals(slot.PlayerName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetSlot = slot;
+                        break;
+                    }
+                }
+                else
+                {
+                    if (targetSlot is null || (slot.SpecOutTimestamp.HasValue && targetSlot.SpecOutTimestamp.HasValue && slot.SpecOutTimestamp < targetSlot.SpecOutTimestamp))
+                        targetSlot = slot;
+                }
+            }
+
+            if (targetSlot is null)
+            {
+                if (!targetName.IsEmpty)
+                    _chat.SendMessage(player, $"No eligible specced-out slot found for '{targetName.ToString()}'.");
+                else
+                    _chat.SendMessage(player, "No teammates are eligible for substitution.");
+                return;
+            }
+
+            if (targetSlot.SubRequested)
+            {
+                _chat.SendMessage(player, $"{targetSlot.PlayerName}'s slot is already flagged for substitution.");
+                return;
+            }
+
+            targetSlot.SubRequested = true;
+
+            // Announce to match participants (so teammates + opponents see the request)
+            // and free spectators (so they can respond with ?sub).
+            // Players in OTHER concurrent matches are excluded.
+            string message = $"Freq {callerFreq} ({player.Name}'s team) needs a sub for {targetSlot.PlayerName}! Type ?sub {callerFreq} to join.";
+            SendToMatchParticipants(match, message);
+            SendToAvailablePlayers(arena, arenaData, message);
+        }
+
+        private static bool IsSlotSubEligible(CaptainsPlayerSlot slot, ArenaConfig config)
+        {
+            if (slot.Lives <= 0)
+                return false;
+
+            if (slot.WasSubbedIn)
+                return false;
+
+            if (slot.SubRequested)
+                return true;
+
+            if (slot.LagOuts > config.MaxLagOuts)
+                return true;
+
+            if (slot.SpecOutTimestamp.HasValue && DateTime.UtcNow - slot.SpecOutTimestamp.Value >= config.SubAvailableDelay)
+                return true;
+
+            return false;
+        }
+
+        private void ExecuteSub(Arena arena, ArenaData arenaData, ActiveMatch match, CaptainsPlayerSlot slot, Player oldPlayer, Player sub, ShipType subShip)
+        {
+            string oldName = slot.PlayerName ?? "unknown";
+            short freq = slot.Team.Freq;
+
+            // Cancel any pending sub-available announcement timer.
+            CancelSubAvailableTimer(slot);
+
+            // Remove old player from match tracking.
+            match.SpecOutSlots.Remove(oldPlayer);
+            arenaData.PlayerToMatch.Remove(oldPlayer);
+            if (oldPlayer.TryGetExtraData(_pdKey, out PlayerData? oldPd))
+                oldPd.ManagedArena = null;
+
+            // If old player is still online and was set as Playing, unset them.
+            if (_matchmakingQueues is not null)
+            {
+                if (slot.LeftArena)
+                    _matchmakingQueues.UnsetPlayingByName(oldName, false);
+                else
+                    _matchmakingQueues.UnsetPlaying(oldPlayer, false);
+            }
+
+            // Update the slot for the sub.
+            slot.OriginalPlayerName = oldName;
+            slot.PlayerName = sub.Name;
+            slot.Player = sub;
+            slot.LagOuts = 0;
+            slot.SpecOutTimestamp = null;
+            slot.SubRequested = false;
+            slot.WasSubbedIn = true;
+            // Reset per-slot kill/death counters so the sub starts fresh. Prevents the sub from
+            // inheriting the outgoing player's kill/death totals on the slot, which would
+            // otherwise bleed into any IMemberStats reader that consults the live slot.
+            // MatchLvz separately refreshes its own statbox state via TeamVersusMatchPlayerSubbedCallback.
+            slot.Kills = 0;
+            slot.Deaths = 0;
+
+            // Add sub to match tracking.
+            match.ActiveSlots[sub] = slot;
+            arenaData.PlayerToMatch[sub] = match;
+
+            // Increment the team's sub counter.
+            if (freq == match.Freq1)
+                match.Freq1SubsUsed++;
+            else
+                match.Freq2SubsUsed++;
+
+            // Set sub as playing in the matchmaking system.
+            _matchmakingQueues?.SetPlayingAsSub(sub);
+
+            // Fire the sub callback BEFORE the ship change so MatchLvz can refresh the statbox
+            // with the new player's name (the slot's PlayerName is already updated above).
+            TeamVersusMatchPlayerSubbedCallback.Fire(arena, slot, oldName);
+
+            // Put the sub in the game with the requested ship.
+            slot.Ship = subShip;
+            _game.SetShipAndFreq(sub, subShip, freq);
+            RemoveAllItems(sub, sub.Ship, arenaData.Config.ShipSettings);
+            EnsureExtraPositionDataWatch(sub);
+
+            if (sub.TryGetExtraData(_pdKey, out PlayerData? subPd))
+                subPd.ManagedArena = arena;
+
+            // Fire callback so MatchFocus routes position packets correctly.
+            MatchAddPlayingCallback.Fire(_broker!, match.MatchData, sub.Name!, sub);
+
+            // Cancel abandon timer since the team now has a player.
+            CancelAbandonTimer(match, freq);
+
+            _chat.SendArenaMessage(arena, $"{sub.Name} has subbed in for {oldName} on Freq {freq}. ({slot.Lives} {(slot.Lives == 1 ? "life" : "lives")} remaining)");
+        }
+
         [CommandHelp(
             Targets = CommandTarget.None,
             Args = "[player name]",
@@ -1956,6 +2316,8 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, Row("?cancel", "[Cap] Unready or abort a running countdown."));
             _chat.SendMessage(player, Section("In-Game"));
             _chat.SendMessage(player, Row("?return", "Re-enter the match if you have lives left."));
+            _chat.SendMessage(player, Row("?sub [freq] [ship 1-8]", "Sub into a slot. Freq required if multiple"));
+            _chat.SendMessage(player, Row("?requestsub (?rsub) [<player>]", "Flag a teammate's slot for immediate sub."));
             _chat.SendMessage(player, Row("?end", "[Cap] Forfeit the match for your team."));
             _chat.SendMessage(player, Row("?chart", "Show current match stats."));
             _chat.SendMessage(player, Row("?sc <1-8>", "Queue a ship change for your next spawn."));
@@ -2087,6 +2449,25 @@ namespace SS.Matchmaking.Modules
             return false;
         }
 
+        private bool Timer_SubAvailable(SubAvailableState state)
+        {
+            if (!_arenaDataDictionary.TryGetValue(state.Arena, out ArenaData? arenaData))
+                return false;
+
+            if (!arenaData.ActiveMatches.Contains(state.Match))
+                return false;
+
+            if (!state.Match.SpecOutSlots.Values.Contains(state.Slot))
+                return false;
+
+            if (state.Slot.Lives <= 0 || state.Slot.WasSubbedIn || state.Slot.SubRequested)
+                return false;
+
+            state.Slot.SubAvailableTimerKey = null;
+            SendToAvailablePlayers(state.Arena, arenaData, $"Freq {state.Slot.Team.Freq} needs a sub for {state.Slot.PlayerName}! Type ?sub {state.Slot.Team.Freq} to join.");
+            return false;
+        }
+
         #endregion
 
         #region Helpers
@@ -2166,6 +2547,15 @@ namespace SS.Matchmaking.Modules
             AbandonState? state = match.GetAbandonState(freq);
             if (state is not null)
                 _mainloopTimer.ClearTimer<AbandonState>(Timer_AbandonCheck, state);
+        }
+
+        private void CancelSubAvailableTimer(CaptainsPlayerSlot slot)
+        {
+            if (slot.SubAvailableTimerKey is not null)
+            {
+                _mainloopTimer.ClearTimer<SubAvailableState>(Timer_SubAvailable, slot.SubAvailableTimerKey);
+                slot.SubAvailableTimerKey = null;
+            }
         }
 
         private void HandlePlayerLeave(Arena arena, ArenaData arenaData, Player player)
@@ -2644,6 +3034,10 @@ namespace SS.Matchmaking.Modules
             // Remove Playing state so players can queue again after the match.
             UnsetPlayingForMatch(match);
 
+            // Cancel any pending sub-available announcement timers before match teardown.
+            foreach (CaptainsPlayerSlot slot in match.SpecOutSlots.Values)
+                CancelSubAvailableTimer(slot);
+
             // Remove from ActiveMatches before speccing players so that Callback_ShipFreqChange
             // does not fire spurious "has specced" announcements or re-schedule win-condition checks.
             arenaData.ActiveMatches.Remove(match);
@@ -2785,6 +3179,10 @@ namespace SS.Matchmaking.Modules
             // Remove Playing state so players can queue again after the match.
             UnsetPlayingForMatch(match);
 
+            // Cancel any pending sub-available announcement timers before match teardown.
+            foreach (CaptainsPlayerSlot slot in match.SpecOutSlots.Values)
+                CancelSubAvailableTimer(slot);
+
             // Remove from ActiveMatches before speccing players so that Callback_ShipFreqChange
             // does not fire spurious "has specced" announcements or re-schedule win-condition checks.
             arenaData.ActiveMatches.Remove(match);
@@ -2824,6 +3222,9 @@ namespace SS.Matchmaking.Modules
             _mainloopTimer.ClearTimer<MatchCountdown>(Timer_PreCountdown, countdown);
             _mainloopTimer.ClearTimer<MatchCountdown>(Timer_Countdown, countdown);
             arenaData.PendingCountdowns.Remove(countdown);
+
+            foreach (CaptainsPlayerSlot slot in countdown.ActiveMatch.SpecOutSlots.Values)
+                CancelSubAvailableTimer(slot);
 
             foreach (Player p in countdown.ActiveMatch.ActiveSlots.Keys)
                 arenaData.PlayerToMatch.Remove(p);
@@ -3089,6 +3490,8 @@ namespace SS.Matchmaking.Modules
             public required int MaxLagOuts;
             public required TimeSpan AllowShipChangeAfterDeathDuration;
             public required int AbandonTimeoutMs;
+            public required TimeSpan SubAvailableDelay;
+            public required int MaxSubsPerTeam;
             /// <summary>Initial item counts per ship, indexed by <see cref="ShipType"/> cast to int. Used to burn items on spawn.</summary>
             public required ShipSettings[] ShipSettings;
             public required IOpenSkillModel OpenSkillModel;
@@ -3143,6 +3546,10 @@ namespace SS.Matchmaking.Modules
             /// <summary>Whether the match is currently in overtime.</summary>
             public bool IsOvertime;
 
+            /// <summary>Number of substitutions used per team. Checked against <see cref="ArenaConfig.MaxSubsPerTeam"/>.</summary>
+            public int Freq1SubsUsed;
+            public int Freq2SubsUsed;
+
             /// <summary>Timer state/key for each team's abandon timeout. Initialized in <see cref="BuildMatchCountdown"/>.</summary>
             public AbandonState Freq1AbandonState = null!;
             public AbandonState Freq2AbandonState = null!;
@@ -3161,6 +3568,14 @@ namespace SS.Matchmaking.Modules
             public ArenaData ArenaData = null!;
             public ActiveMatch Match = null!;
             public short Freq;
+        }
+
+        private sealed class SubAvailableState
+        {
+            public Arena Arena = null!;
+            public ArenaData ArenaData = null!;
+            public ActiveMatch Match = null!;
+            public CaptainsPlayerSlot Slot = null!;
         }
 
         /// <summary>
@@ -3346,7 +3761,7 @@ namespace SS.Matchmaking.Modules
             public IMatchData MatchData { get; }
             public ITeam Team { get; }
             public int SlotIdx { get; }
-            public string? PlayerName { get; }
+            public string? PlayerName { get; set; }
             public Player? Player { get; set; }
             public int? PremadeGroupId => null;
             public int LagOuts { get; set; }
@@ -3384,6 +3799,12 @@ namespace SS.Matchmaking.Modules
             /// Cleared when the window expires, when the player fires a weapon, or at match end.
             /// </summary>
             public DateTime? AllowShipChangeExpiration;
+
+            public DateTime? SpecOutTimestamp;
+            public bool SubRequested;
+            public bool WasSubbedIn;
+            public string? OriginalPlayerName;
+            public object? SubAvailableTimerKey;
         }
 
         #endregion

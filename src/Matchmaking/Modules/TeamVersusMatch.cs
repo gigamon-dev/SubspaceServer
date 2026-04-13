@@ -812,8 +812,10 @@ namespace SS.Matchmaking.Modules
 
                 // Register commands.
                 _commandManager.AddCommand(CommandNames.RequestSub, Command_requestsub, arena);
+                _commandManager.AddCommand(CommandNames.RequestSubAlt, Command_requestsub, arena);
                 _commandManager.AddCommand(CommandNames.Sub, Command_sub, arena);
                 _commandManager.AddCommand(CommandNames.CancelSub, Command_cancelsub, arena);
+                _commandManager.AddCommand(CommandNames.CancelSubAlt, Command_cancelsub, arena);
                 _commandManager.AddCommand(CommandNames.Return, Command_return, arena);
                 //_commandManager.AddCommand(CommandNames.Restart, Command_restart, arena);
                 //_commandManager.AddCommand(CommandNames.Randomize, Command_randomize, arena);
@@ -831,7 +833,9 @@ namespace SS.Matchmaking.Modules
                 _commandManager.AddCommand(CommandNames.ForceStart, Command_forcestart, arena);
                 _commandManager.AddCommand(CommandNames.AllowPlay, Command_allowplay, arena);
                 _commandManager.AddCommand(CommandNames.AllowSub, Command_allowsub, arena);
+                _commandManager.AddCommand(CommandNames.AllowSubAlt, Command_allowsub, arena);
                 _commandManager.AddCommand(CommandNames.FullSub, Command_fullsub, arena);
+                _commandManager.AddCommand(CommandNames.FullSubAlt, Command_fullsub, arena);
 
                 // Register advisors and interfaces.
                 arenaData.IFreqManagerEnforcerAdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
@@ -879,8 +883,10 @@ namespace SS.Matchmaking.Modules
 
                     // Unregister commands.
                     _commandManager.RemoveCommand(CommandNames.RequestSub, Command_requestsub, arena);
+                    _commandManager.RemoveCommand(CommandNames.RequestSubAlt, Command_requestsub, arena);
                     _commandManager.RemoveCommand(CommandNames.Sub, Command_sub, arena);
                     _commandManager.RemoveCommand(CommandNames.CancelSub, Command_cancelsub, arena);
+                    _commandManager.RemoveCommand(CommandNames.CancelSubAlt, Command_cancelsub, arena);
                     _commandManager.RemoveCommand(CommandNames.Return, Command_return, arena);
                     //_commandManager.RemoveCommand(CommandNames.Restart, Command_restart, arena);
                     //_commandManager.RemoveCommand(CommandNames.Randomize, Command_randomize, arena);
@@ -898,8 +904,9 @@ namespace SS.Matchmaking.Modules
                     _commandManager.RemoveCommand(CommandNames.ForceStart, Command_forcestart, arena);
                     _commandManager.RemoveCommand(CommandNames.AllowPlay, Command_allowplay, arena);
                     _commandManager.RemoveCommand(CommandNames.AllowSub, Command_allowsub, arena);
+                    _commandManager.RemoveCommand(CommandNames.AllowSubAlt, Command_allowsub, arena);
                     _commandManager.RemoveCommand(CommandNames.FullSub, Command_fullsub, arena);
-
+                    _commandManager.RemoveCommand(CommandNames.FullSubAlt, Command_fullsub, arena);
                 }
                 finally
                 {
@@ -7674,8 +7681,10 @@ namespace SS.Matchmaking.Modules
         private static class CommandNames
         {
             public const string RequestSub = "requestsub";
+            public const string RequestSubAlt = "rsub";
             public const string Sub = "sub";
             public const string CancelSub = "cancelsub";
+            public const string CancelSubAlt = "csub";
             public const string Return = "return";
             public const string Restart = "restart";
             public const string Randomize = "randomize";
@@ -7695,7 +7704,9 @@ namespace SS.Matchmaking.Modules
             public const string ForceStart = "forcestart";
             public const string AllowPlay = "allowplay";
             public const string AllowSub = "allowsub";
+            public const string AllowSubAlt = "asub";
             public const string FullSub = "fullsub";
+            public const string FullSubAlt = "fsub";
         }
 
         private record struct RosterItem(string PlayerName, bool IsCaptain);

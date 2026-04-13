@@ -111,8 +111,12 @@ cmd_lsq
 
 ; Matchmaking (TeamVersusMatch and TeamVersusStats)
 cmd_requestsub
+privcmd_requestsub
+cmd_rsub
+privcmd_rsub
 cmd_sub
 cmd_cancelsub
+cmd_csub
 cmd_return
 cmd_restart
 cmd_randomize
@@ -132,12 +136,15 @@ privcmd_cap
 cmd_ready
 cmd_rdy
 privcmd_allowplay
-privcmd_requestsub
 privcmd_sub
 cmd_allowsub
 privcmd_allowsub
+cmd_asub
+privcmd_asub
 cmd_fullsub
 privcmd_fullsub
+cmd_fsub
+privcmd_fsub
 
 ; Matchmaking - League
 cmd_leaguehelp
