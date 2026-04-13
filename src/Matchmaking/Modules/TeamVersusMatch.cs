@@ -76,6 +76,7 @@ namespace SS.Matchmaking.Modules
         private readonly IObjectPoolManager _objectPoolManager;
         private readonly IPlayerData _playerData;
         private readonly IPrng _prng;
+        private readonly IScoreStats _scoreStats;
 
         // optional
         private ITeamVersusStatsBehavior? _teamVersusStatsBehavior;
@@ -190,7 +191,8 @@ namespace SS.Matchmaking.Modules
             INetwork network,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
-            IPrng prng)
+            IPrng prng,
+            IScoreStats scoreStats)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
@@ -210,6 +212,7 @@ namespace SS.Matchmaking.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
+            _scoreStats = scoreStats ?? throw new ArgumentNullException(nameof(scoreStats));
 
             _playerWarpCompleted = PlayerWarpCompleted;
         }
@@ -4269,6 +4272,8 @@ namespace SS.Matchmaking.Modules
 
             bool burnItemsOnSpawn = _configManager.GetBool(ch, matchType, "BurnItemsOnSpawn", false);
 
+            bool resetScores = _configManager.GetBool(ch, matchType, "ResetScores", false);
+
             bool allowFillUnusedSlots = _configManager.GetBool(ch, matchType, "AllowFillUnusedSlots", true);
 
             string? replayRecordPath = _configManager.GetStr(ch, matchType, "ReplayRecordPath");
@@ -4350,6 +4355,7 @@ namespace SS.Matchmaking.Modules
                 ReturnToMatchItemsAction = returnToMatchItemsAction,
                 ItemsCommandOption = itemsCommandOption,
                 BurnItemsOnSpawn = burnItemsOnSpawn,
+                ResetScores = resetScores,
                 AllowFillUnusedSlots = allowFillUnusedSlots,
                 ReplayRecordPath = replayRecordPath,
                 OpenSkillModel = model,
@@ -6106,6 +6112,15 @@ namespace SS.Matchmaking.Modules
                     GetPlayersToNotify(matchData, notifyGoPlayers);
 
                     _chat.SendSetMessage(notifyGoPlayers, ChatSound.Ding, "GO!");
+
+                    // Reest player scores on GO if configured.
+                    if (matchData.Configuration.ResetScores)
+                    {
+                        foreach (Player player in notifyGoPlayers)
+                        {
+                            _scoreStats.ScoreReset(player, PersistInterval.Reset);
+                        }
+                    }
                 }
                 finally
                 {
@@ -6892,6 +6907,7 @@ namespace SS.Matchmaking.Modules
             public required ItemsAction ReturnToMatchItemsAction { get; init; }
             public ItemsCommandOption ItemsCommandOption { get; init; } = ItemsCommandOption.None;
             public required bool BurnItemsOnSpawn { get; init; }
+            public required bool ResetScores { get; init; }
             public required bool AllowFillUnusedSlots { get; init; }
             public required string? ReplayRecordPath { get; init; }
             public required IOpenSkillModel OpenSkillModel { get; init; }
