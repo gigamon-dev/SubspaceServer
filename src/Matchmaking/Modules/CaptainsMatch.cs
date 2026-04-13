@@ -145,7 +145,7 @@ namespace SS.Matchmaking.Modules
         [ConfigHelp("CaptainsMatch", "AllowShipChangeAfterDeathDuration", ConfigScope.Arena,
             Description = "Duration (TimeSpan, e.g. 00:00:05) after respawning from a death that a player may voluntarily change ships. Prevents item recycling by changing ships while alive. Empty or 0 = ship changes are always blocked during a match (queue via ?sc for next spawn).")]
         [ConfigHelp<int>("CaptainsMatch", "SubAvailableDelaySeconds", ConfigScope.Arena, Default = 30,
-            Description = "Seconds after a player specs out before their slot becomes available for ?sub. Set to 0 for immediate. Captain can bypass with ?needsub.")]
+            Description = "Seconds after a player specs out before their slot becomes available for ?sub. Set to 0 for immediate. Captain can bypass with ?requestsub.")]
         [ConfigHelp<int>("CaptainsMatch", "MaxSubsPerTeam", ConfigScope.Arena, Default = 3,
             Description = "Maximum number of substitutions allowed per team per match. Set to 0 to disable the sub system.")]
         [ConfigHelp<int>("CaptainsMatch", "AbandonTimeoutSeconds", ConfigScope.Arena, Default = 10,
@@ -346,7 +346,8 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand("refuse", Command_Refuse, arena);
             _commandManager.AddCommand("disband", Command_Disband, arena);
             _commandManager.AddCommand("sub", Command_Sub, arena);
-            _commandManager.AddCommand("needsub", Command_NeedSub, arena);
+            _commandManager.AddCommand("requestsub", Command_RequestSub, arena);
+            _commandManager.AddCommand("rsub", Command_RequestSub, arena);
             _commandManager.AddCommand("caphelp", Command_CapHelp, arena);
             // ?chart is provided by TeamVersusStats when it is attached to the arena.
 
@@ -387,7 +388,8 @@ namespace SS.Matchmaking.Modules
             _commandManager.RemoveCommand("refuse", Command_Refuse, arena);
             _commandManager.RemoveCommand("disband", Command_Disband, arena);
             _commandManager.RemoveCommand("sub", Command_Sub, arena);
-            _commandManager.RemoveCommand("needsub", Command_NeedSub, arena);
+            _commandManager.RemoveCommand("requestsub", Command_RequestSub, arena);
+            _commandManager.RemoveCommand("rsub", Command_RequestSub, arena);
             _commandManager.RemoveCommand("caphelp", Command_CapHelp, arena);
             // ?chart is managed by TeamVersusStats.
 
@@ -2010,7 +2012,7 @@ namespace SS.Matchmaking.Modules
             ExecuteSub(arena, arenaData, targetMatch!, targetSlot, oldPlayer!, player, subShip);
         }
 
-        private void Command_NeedSub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        private void Command_RequestSub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             Arena? arena = player.Arena;
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
@@ -2315,7 +2317,7 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, Section("In-Game"));
             _chat.SendMessage(player, Row("?return", "Re-enter the match if you have lives left."));
             _chat.SendMessage(player, Row("?sub [freq] [ship 1-8]", "Sub into a slot. Freq required if multiple"));
-            _chat.SendMessage(player, Row("?needsub [<player>]", "Flag a teammate's slot for immediate sub."));
+            _chat.SendMessage(player, Row("?requestsub (?rsub) [<player>]", "Flag a teammate's slot for immediate sub."));
             _chat.SendMessage(player, Row("?end", "[Cap] Forfeit the match for your team."));
             _chat.SendMessage(player, Row("?chart", "Show current match stats."));
             _chat.SendMessage(player, Row("?sc <1-8>", "Queue a ship change for your next spawn."));
