@@ -2619,6 +2619,15 @@ namespace SS.Matchmaking.Modules
 
             // Finally, get the sub-in player into the game (on the correct freq and in the proper ship).
             SetShipAndFreq(slot, true, null, itemsAction);
+
+            // Reset player score if configured.
+            if (matchData.Configuration.ResetScores)
+            {
+                foreach (Player player in notifyGoPlayers)
+                {
+                    _scoreStats.ScoreReset(player, PersistInterval.Reset);
+                }
+            }
         }
 
         [CommandHelp(
@@ -6120,7 +6129,7 @@ namespace SS.Matchmaking.Modules
 
                     _chat.SendSetMessage(notifyGoPlayers, ChatSound.Ding, "GO!");
 
-                    // Reest player scores on GO if configured.
+                    // Reset player scores if configured.
                     if (matchData.Configuration.ResetScores)
                     {
                         foreach (Player player in notifyGoPlayers)
