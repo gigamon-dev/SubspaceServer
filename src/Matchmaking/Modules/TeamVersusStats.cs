@@ -2955,6 +2955,10 @@ namespace SS.Matchmaking.Modules
             if (notifySet is null || matchStats is null)
                 return;
 
+            IMatchConfiguration? matchConfiguration = matchStats.MatchData?.Configuration;
+            if (matchConfiguration is null)
+                return;
+
             DateTime now = DateTime.UtcNow;
 
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
@@ -3050,7 +3054,8 @@ namespace SS.Matchmaking.Modules
                 uint totalMineHitCount = 0;
                 int aveRatingChange = 0;
                 int aveTotalRating = 0;
-                double? aveEloRating = 0.0;
+                double? aveEloRating = null;
+                int eloRatingCount = 0;
 
                 foreach (SlotStats slotStats in teamStats.Slots)
                 {
@@ -3091,10 +3096,14 @@ namespace SS.Matchmaking.Modules
                         float? gunAccuracy = memberStats.GunFireCount > 0 ? (float)memberStats.GunHitCount / memberStats.GunFireCount * 100 : null;
                         int ratingChange = (int)memberStats.RatingChange;
                         int totalRating = Math.Max(memberStats.InitialRating + ratingChange, MinimumRating);
-                        PlayerRating? openSkill = matchStats.OpenSkillRatings.GetValueOrDefault(memberStats.PlayerName!);
 
-                        //Based on traditional 1500-level Elo, assuming OpenSkill Mu default 25
-                        int eloRating = (int)(((openSkill?.Mu ?? 0) * 40) + 500);
+                        // TODO: also skip if it's a default rating because of a database access error
+                        double? eloRating = matchStats.OpenSkillRatings.TryGetValue(memberStats.PlayerName!, out PlayerRating? playerRating)
+                            ? Math.Floor(playerRating.GetOrdinal(
+                                z: matchConfiguration.OpenSkillDisplayOrdinal.Z,
+                                alpha: matchConfiguration.OpenSkillDisplayOrdinal.Alpha,
+                                target: matchConfiguration.OpenSkillDisplayOrdinal.Target))
+                            : null;
 
                         totalKills += memberStats.Kills;
                         totalDeaths += memberStats.Deaths;
@@ -3115,7 +3124,16 @@ namespace SS.Matchmaking.Modules
                         totalMineHitCount += memberStats.MineHitCount;
                         aveRatingChange += ratingChange;
                         aveTotalRating += totalRating;
-                        aveEloRating += eloRating;
+
+                        if (eloRating is not null)
+                        {
+                            if (aveEloRating is null)
+                                aveEloRating = eloRating;
+                            else
+                                aveEloRating += eloRating;
+
+                            eloRatingCount++;
+                        }
 
                         TimeSpan playTime = memberStats.PlayTime;
                         if (memberStats.StartTime is not null)
@@ -3144,7 +3162,7 @@ namespace SS.Matchmaking.Modules
                             $"{(int)playTime.TotalMinutes,3}:{playTime:ss}" +
                             $" | {damageDealt,6}/{damageTaken,6} {damageEfficiency,4:0%} {memberStats.KillDamage,5} {memberStats.ForcedRepDamage,5} {memberStats.DamageDealtTeam,5}" +
                             $" | {bombAccuracy,3:N0} {gunAccuracy,3:N0}" +
-                            $" |{ratingChange,4:+#;-#;0} {totalRating,4} {eloRating,4} |");
+                            $" |{ratingChange,4:+#;-#;0} {totalRating,4} {eloRating,4:F0} |");
                     }
                 }
 
@@ -3154,6 +3172,12 @@ namespace SS.Matchmaking.Modules
                 uint totalBombMineHitCount = totalBombHitCount + totalMineHitCount;
                 float? totalBombAccuracy = totalBombMineFireCount > 0 ? (float)totalBombMineHitCount / totalBombMineFireCount * 100 : null;
                 float? totalGunAccuracy = totalGunFireCount > 0 ? (float)totalGunHitCount / totalGunFireCount * 100 : null;
+
+                if (aveEloRating is not null)
+                {
+                    aveEloRating /= eloRatingCount;
+                    aveEloRating = Math.Floor(aveEloRating.Value);
+                }
 
                 _chat.SendSetMessage(
                     notifySet,
@@ -3172,7 +3196,7 @@ namespace SS.Matchmaking.Modules
                     $"      " +
                     $" | {totalDamageDealt,6}/{totalDamageTaken,6} {totalDamageEfficiency,4:0%}                  " +
                     $" | {totalBombAccuracy,3:N0} {totalGunAccuracy,3:N0}" +
-                    $" |{(aveRatingChange / teamStats.Slots.Count),4:+#;-#;0} {(aveTotalRating / teamStats.Slots.Count),4} {(aveEloRating / teamStats.Slots.Count),4} |");
+                    $" |{(aveRatingChange / teamStats.Slots.Count),4:+#;-#;0} {(aveTotalRating / teamStats.Slots.Count),4} {aveEloRating,4:F0} |");
             }
 
             SendHorizonalRule(notifySet);
@@ -3238,7 +3262,7 @@ namespace SS.Matchmaking.Modules
 
             void SendHorizonalRule(HashSet<Player> notifySet)
             {
-                _chat.SendSetMessage(notifySet, $"+---------------------------------------------------------------------+--------------------------------------+---------+--------------+");
+                _chat.SendSetMessage(notifySet, $"+---------------------------------------------------------------------+--------------------------------------+---------+---------------+");
             }
         }
 

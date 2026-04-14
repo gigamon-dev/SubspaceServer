@@ -1,4 +1,5 @@
 ﻿using OpenSkillSharp;
+using SS.Matchmaking.OpenSkill;
 
 namespace SS.Matchmaking.TeamVersus
 {
@@ -62,5 +63,10 @@ namespace SS.Matchmaking.TeamVersus
         /// Whether to rate using scores, rather than ranks, when it's possible.
         /// </summary>
         bool OpenSkillUseScoresWhenPossible { get; }
+
+        /// <summary>
+        /// The arguments to pass when calculating the Ordinal value to display for a rating.
+        /// </summary>
+        public OrdinalArgs OpenSkillDisplayOrdinal { get; }
     }
 }

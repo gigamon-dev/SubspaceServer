@@ -2,8 +2,6 @@ using Microsoft.Extensions.ObjectPool;
 using OpenSkillSharp;
 using OpenSkillSharp.Models;
 using SS.Core;
-using System.Text;
-using System.Text.Json;
 using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
@@ -11,10 +9,13 @@ using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
 using SS.Matchmaking.League;
+using SS.Matchmaking.OpenSkill;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
 using SS.Utilities;
 using System.Collections.ObjectModel;
+using System.Text;
+using System.Text.Json;
 
 namespace SS.Matchmaking.Modules
 {
@@ -276,6 +277,15 @@ namespace SS.Matchmaking.Modules
             }
             sigmaDecayPerDay = double.Abs(sigmaDecayPerDay);
 
+            if (!double.TryParse(_configManager.GetStr(ch, "CaptainsMatch", "OpenSkillDisplayOrdinalZ"), out double displayOrdinalZ))
+                displayOrdinalZ = 3;
+
+            if (!double.TryParse(_configManager.GetStr(ch, "CaptainsMatch", "OpenSkillDisplayOrdinalAlpha"), out double displayOrdinalAlpha))
+                displayOrdinalAlpha = 1;
+
+            if (!double.TryParse(_configManager.GetStr(ch, "CaptainsMatch", "OpenSkillDisplayOrdinalTarget"), out double displayOrdinalTarget))
+                displayOrdinalTarget = 0;
+
             string[] shipNames = Enum.GetNames<ShipType>();
             var shipSettings = new ShipSettings[8];
             for (int i = 0; i < 8; i++)
@@ -315,6 +325,7 @@ namespace SS.Matchmaking.Modules
                 OpenSkillModel = openSkillModel,
                 OpenSkillSigmaDecayPerDay = sigmaDecayPerDay,
                 OpenSkillUseScoresWhenPossible = _configManager.GetBool(ch, "CaptainsMatch", "OpenSkillUseScoresWhenPossible", false),
+                OpenSkillDisplayOrdinal = new OrdinalArgs(displayOrdinalZ, displayOrdinalAlpha, displayOrdinalTarget),
                 StartLocations = startLocations,
             };
 
@@ -3497,6 +3508,7 @@ namespace SS.Matchmaking.Modules
             public required IOpenSkillModel OpenSkillModel;
             public required double OpenSkillSigmaDecayPerDay;
             public required bool OpenSkillUseScoresWhenPossible;
+            public required OrdinalArgs OpenSkillDisplayOrdinal;
             /// <summary>Key: freq number. Value: tile coordinates to warp players to at match start.</summary>
             public required Dictionary<short, (short X, short Y)> StartLocations;
         }
@@ -3695,6 +3707,7 @@ namespace SS.Matchmaking.Modules
             public IOpenSkillModel OpenSkillModel => _config.OpenSkillModel;
             public double OpenSkillSigmaDecayPerDay => _config.OpenSkillSigmaDecayPerDay;
             public bool OpenSkillUseScoresWhenPossible => _config.OpenSkillUseScoresWhenPossible;
+            public OrdinalArgs OpenSkillDisplayOrdinal => _config.OpenSkillDisplayOrdinal;
         }
 
         private sealed class CaptainsMatchData : IMatchData

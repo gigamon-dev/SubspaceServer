@@ -11,6 +11,7 @@ using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
 using SS.Matchmaking.League;
+using SS.Matchmaking.OpenSkill;
 using SS.Matchmaking.Queues;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
@@ -4326,6 +4327,15 @@ namespace SS.Matchmaking.Modules
 
             bool useScoresWhenPossible = _configManager.GetBool(ch, matchType, "OpenSkillUseScoresWhenPossible", false);
 
+            if (!double.TryParse(_configManager.GetStr(ch, matchType, "OpenSkillDisplayOrdinalZ"), out double displayOrdinalZ))
+                displayOrdinalZ = 3;
+
+            if (!double.TryParse(_configManager.GetStr(ch, matchType, "OpenSkillDisplayOrdinalAlpha"), out double displayOrdinalAlpha))
+                displayOrdinalAlpha = 1;
+
+            if (!double.TryParse(_configManager.GetStr(ch, matchType, "OpenSkillDisplayOrdinalTarget"), out double displayOrdinalTarget))
+                displayOrdinalTarget = 0;
+
             MatchConfiguration matchConfiguration = new()
             {
                 MatchType = matchType,
@@ -4362,6 +4372,7 @@ namespace SS.Matchmaking.Modules
                 OpenSkillModel = model,
                 OpenSkillSigmaDecayPerDay = sigmaDecayPerDay,
                 OpenSkillUseScoresWhenPossible = useScoresWhenPossible,
+                OpenSkillDisplayOrdinal = new OrdinalArgs(displayOrdinalZ, displayOrdinalAlpha, displayOrdinalTarget),
                 Boxes = new MatchBoxConfiguration[numBoxes],
             };
 
@@ -6904,6 +6915,7 @@ namespace SS.Matchmaking.Modules
             public required IOpenSkillModel OpenSkillModel { get; init; }
             public required double OpenSkillSigmaDecayPerDay { get; init; }
             public required bool OpenSkillUseScoresWhenPossible { get; init; }
+            public required OrdinalArgs OpenSkillDisplayOrdinal { get; init; }
 
             public required MatchBoxConfiguration[] Boxes;
 
