@@ -3050,7 +3050,7 @@ namespace SS.Matchmaking.Modules
                 uint totalMineHitCount = 0;
                 int aveRatingChange = 0;
                 int aveTotalRating = 0;
-                double? aveEloRating = 0.0;
+                int aveEloRating = 0;
 
                 foreach (SlotStats slotStats in teamStats.Slots)
                 {
