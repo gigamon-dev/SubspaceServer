@@ -2623,10 +2623,7 @@ namespace SS.Matchmaking.Modules
             // Reset player score if configured.
             if (matchData.Configuration.ResetScores)
             {
-                foreach (Player player in notifyGoPlayers)
-                {
-                    _scoreStats.ScoreReset(player, PersistInterval.Reset);
-                }
+                _scoreStats.ScoreReset(player, PersistInterval.Reset);
             }
         }
 
