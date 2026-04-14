@@ -6117,6 +6117,21 @@ namespace SS.Matchmaking.Modules
                     matchData.PhaseExpiration = null;
                 }
 
+                if (matchData.Configuration.ResetScores)
+                {
+                    // Reset the scores of the players in the match.
+                    foreach (Team team in matchData.Teams)
+                    {
+                        foreach (PlayerSlot slot in team.Slots)
+                        {
+                            if (slot.Player is not null)
+                            {
+                                _scoreStats.ScoreReset(slot.Player, PersistInterval.Reset);
+                            }
+                        }
+                    }
+                }
+
                 // Send the GO notification.
                 // We can't assume players are still valid after an await, so get the players from scratch.
                 HashSet<Player> notifyGoPlayers = _objectPoolManager.PlayerSetPool.Get();
@@ -6125,15 +6140,6 @@ namespace SS.Matchmaking.Modules
                     GetPlayersToNotify(matchData, notifyGoPlayers);
 
                     _chat.SendSetMessage(notifyGoPlayers, ChatSound.Ding, "GO!");
-
-                    // Reset player scores if configured.
-                    if (matchData.Configuration.ResetScores)
-                    {
-                        foreach (Player player in notifyGoPlayers)
-                        {
-                            _scoreStats.ScoreReset(player, PersistInterval.Reset);
-                        }
-                    }
                 }
                 finally
                 {
