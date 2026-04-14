@@ -77,6 +77,7 @@ namespace SS.Matchmaking.Modules
         private readonly IObjectPoolManager _objectPoolManager;
         private readonly IPlayerData _playerData;
         private readonly IPrng _prng;
+        private readonly IScoreStats _scoreStats;
 
         // optional
         private ITeamVersusStatsBehavior? _teamVersusStatsBehavior;
@@ -191,7 +192,8 @@ namespace SS.Matchmaking.Modules
             INetwork network,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
-            IPrng prng)
+            IPrng prng,
+            IScoreStats scoreStats)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
@@ -211,6 +213,7 @@ namespace SS.Matchmaking.Modules
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
+            _scoreStats = scoreStats ?? throw new ArgumentNullException(nameof(scoreStats));
 
             _playerWarpCompleted = PlayerWarpCompleted;
         }
@@ -2617,6 +2620,12 @@ namespace SS.Matchmaking.Modules
 
             // Finally, get the sub-in player into the game (on the correct freq and in the proper ship).
             SetShipAndFreq(slot, true, null, itemsAction);
+
+            // Reset player score if configured.
+            if (matchData.Configuration.ResetScores)
+            {
+                _scoreStats.ScoreReset(player, PersistInterval.Reset);
+            }
         }
 
         [CommandHelp(
@@ -4277,6 +4286,8 @@ namespace SS.Matchmaking.Modules
 
             bool burnItemsOnSpawn = _configManager.GetBool(ch, matchType, "BurnItemsOnSpawn", false);
 
+            bool resetScores = _configManager.GetBool(ch, matchType, "ResetScores", false);
+
             bool allowFillUnusedSlots = _configManager.GetBool(ch, matchType, "AllowFillUnusedSlots", true);
 
             string? replayRecordPath = _configManager.GetStr(ch, matchType, "ReplayRecordPath");
@@ -4367,6 +4378,7 @@ namespace SS.Matchmaking.Modules
                 ReturnToMatchItemsAction = returnToMatchItemsAction,
                 ItemsCommandOption = itemsCommandOption,
                 BurnItemsOnSpawn = burnItemsOnSpawn,
+                ResetScores = resetScores,
                 AllowFillUnusedSlots = allowFillUnusedSlots,
                 ReplayRecordPath = replayRecordPath,
                 OpenSkillModel = model,
@@ -6116,6 +6128,21 @@ namespace SS.Matchmaking.Modules
                     matchData.PhaseExpiration = null;
                 }
 
+                if (matchData.Configuration.ResetScores)
+                {
+                    // Reset the scores of the players in the match.
+                    foreach (Team team in matchData.Teams)
+                    {
+                        foreach (PlayerSlot slot in team.Slots)
+                        {
+                            if (slot.Player is not null)
+                            {
+                                _scoreStats.ScoreReset(slot.Player, PersistInterval.Reset);
+                            }
+                        }
+                    }
+                }
+
                 // Send the GO notification.
                 // We can't assume players are still valid after an await, so get the players from scratch.
                 HashSet<Player> notifyGoPlayers = _objectPoolManager.PlayerSetPool.Get();
@@ -6910,6 +6937,7 @@ namespace SS.Matchmaking.Modules
             public required ItemsAction ReturnToMatchItemsAction { get; init; }
             public ItemsCommandOption ItemsCommandOption { get; init; } = ItemsCommandOption.None;
             public required bool BurnItemsOnSpawn { get; init; }
+            public required bool ResetScores { get; init; }
             public required bool AllowFillUnusedSlots { get; init; }
             public required string? ReplayRecordPath { get; init; }
             public required IOpenSkillModel OpenSkillModel { get; init; }
