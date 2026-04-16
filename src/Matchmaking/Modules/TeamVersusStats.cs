@@ -1458,7 +1458,7 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                // Prepare the rating calcuation inputs.
+                // Prepare the rating calculation inputs.
                 TimeSpan matchDuration = matchStats.EndTimestamp.Value - matchStats.StartTimestamp;
                 List<OpenSkillRating.ITeam> teams = new(matchStats.Teams.Count);
                 List<double>? ranks = null;

@@ -97,6 +97,12 @@ namespace SS.Matchmaking.Modules
             arenaData.Enabled  = _configManager.GetBool(arena.Cfg!, "SS.Matchmaking.KoRequeue", "Enabled", false);
             arenaData.Cooldown = TimeSpan.FromSeconds(_configManager.GetInt(arena.Cfg!, "SS.Matchmaking.KoRequeue", "CooldownSeconds", 30));
 
+            if (arenaData.Enabled && arenaData.Cooldown <= TimeSpan.Zero)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(KoRequeue),
+                    $"[{arena.Name}] CooldownSeconds must be positive. KO'd players will be immediately early-requeued.");
+            }
+
             _arenaDataDictionary.Add(arena, arenaData);
 
             TeamVersusMatchPlayerKilledCallback.Register(arena, Callback_TeamVersusMatchPlayerKilled);
@@ -136,6 +142,9 @@ namespace SS.Matchmaking.Modules
                 return;
 
             // If the player has a pending reckless play penalty, they forfeit early requeue.
+            // NOTE: this relies on RecklessPlayPenalty being attached before KoRequeue in AttachModules,
+            // so that its kill callback has already recorded the penalty before this one fires.
+            // A defensive second check is also performed in the timer callback.
             if (_recklessPlayPenalty?.HasPendingPenalty(matchData, playerName) == true)
                 return;
 
@@ -187,6 +196,12 @@ namespace SS.Matchmaking.Modules
             if (!stillKnockedOut)
                 return false;
 
+            // Defensive check: re-verify no reckless play penalty was recorded.
+            // The kill callback already checks this, but that check depends on RecklessPlayPenalty's
+            // callback having fired first. Checking again here makes correctness order-independent.
+            if (_recklessPlayPenalty?.HasPendingPenalty(matchData, playerName) == true)
+                return false;
+
             // Free the player from the Playing state so they can queue again.
             // allowRequeue: true respects the player's auto-requeue preference:
             //   - if auto-requeue is on  → they are placed back in queue automatically
@@ -199,7 +214,7 @@ namespace SS.Matchmaking.Modules
             Player? player = _playerData.FindPlayer(playerName);
             if (player is not null)
             {
-                _chat.SendMessage(player, "You are now free to queue for a new match. Use ?next to join.");
+                _chat.SendMessage(player, "You are now free to queue for a new match.");
             }
 
             _logManager.LogM(LogLevel.Info, nameof(KoRequeue),
