@@ -41,8 +41,8 @@ namespace SS.Matchmaking.Modules
 
         bool IModule.Unload(IComponentBroker broker)
         {
-            if (_iToken is not null)
-                broker.UnregisterInterface(ref _iToken);
+            if (broker.UnregisterInterface(ref _iToken) != 0)
+                return false;
 
             _commandManager.RemoveCommand(CommandName, Command_Matchmaking);
             _playerData.FreePlayerData(ref _pdKey);

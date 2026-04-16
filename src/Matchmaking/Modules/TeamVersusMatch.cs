@@ -4928,8 +4928,37 @@ namespace SS.Matchmaking.Modules
                                 teamList.Add(_teamLineupPool.Get());
                             }
 
-                            // Fire async look-ahead initialization (ownership of candidates, handles, teamList transfers).
-                            _ = InitializeMatchWithLookAhead(queue, matchData, teamList, candidates, handles);
+                            // Synchronously dequeue all peeked candidates and mark them as playing.
+                            // This prevents a race where concurrent MakeMatch calls could peek the same players.
+                            List<Player> peekedPlayers = _playerListPool.Get();
+                            foreach ((Player? player, IPlayerGroup? group) in handles)
+                            {
+                                if (player is not null)
+                                {
+                                    queue.DequeueByReference(player, null);
+                                    peekedPlayers.Add(player);
+                                }
+                                else if (group is not null)
+                                {
+                                    queue.DequeueByReference(null, group);
+                                    foreach (Player member in group.Members)
+                                        peekedPlayers.Add(member);
+                                }
+                            }
+
+                            HashSet<Player> peekedPlayerSet = _objectPoolManager.PlayerSetPool.Get();
+                            try
+                            {
+                                peekedPlayerSet.UnionWith(peekedPlayers);
+                                _matchmakingQueues.SetPlaying(peekedPlayerSet);
+                            }
+                            finally
+                            {
+                                _objectPoolManager.PlayerSetPool.Return(peekedPlayerSet);
+                            }
+
+                            // Fire async look-ahead initialization (ownership of candidates, handles, teamList, peekedPlayers transfers).
+                            _ = InitializeMatchWithLookAhead(queue, matchData, teamList, candidates, handles, peekedPlayers);
                             candidates = null!; // ownership transferred
                             handles = null!; // ownership transferred
 
@@ -5028,7 +5057,8 @@ namespace SS.Matchmaking.Modules
                 MatchData matchData,
                 List<TeamLineup> teamList,
                 List<PlayerCandidate> candidates,
-                List<(Player? Player, IPlayerGroup? Group)> handles)
+                List<(Player? Player, IPlayerGroup? Group)> handles,
+                List<Player> peekedPlayers)
             {
                 try
                 {
@@ -5040,9 +5070,10 @@ namespace SS.Matchmaking.Modules
 
                         if (!selected)
                         {
-                            // Ratings unavailable — fall back to randomized teams via FIFO.
-                            // Cancel the match since we already reserved it.
+                            // Ratings unavailable — cancel and restore all peeked players.
                             EndMatch(matchData, MatchEndReason.Cancelled, null);
+
+                            _matchmakingQueues.UnsetPlayingDueToCancel(peekedPlayers);
 
                             foreach (TeamLineup teamLineup in teamList)
                             {
@@ -5063,55 +5094,36 @@ namespace SS.Matchmaking.Modules
                             }
                         }
 
-                        // Dequeue selected handles from the queue.
+                        // Split peeked players into selected participants and skipped players.
                         List<Player> participantList = _playerListPool.Get();
+                        List<Player> skippedPlayers = _playerListPool.Get();
                         try
                         {
-                            foreach ((Player? player, IPlayerGroup? group) in handles)
+                            foreach (Player player in peekedPlayers)
                             {
-                                string? name = player?.Name;
-                                if (name is not null && selectedNames.Contains(name))
-                                {
-                                    if (queue.DequeueByReference(player, null))
-                                    {
-                                        participantList.Add(player!);
-                                    }
-                                }
+                                if (selectedNames.Contains(player.Name!))
+                                    participantList.Add(player);
+                                else
+                                    skippedPlayers.Add(player);
                             }
 
-                            if (participantList.Count < matchData.Configuration.NumTeams * matchData.Configuration.PlayersPerTeam)
-                            {
-                                // Some players left the queue during the async DB fetch.
-                                EndMatch(matchData, MatchEndReason.Cancelled, null);
+                            // Restore skipped players back to their queues.
+                            if (skippedPlayers.Count > 0)
+                                _matchmakingQueues.UnsetPlayingDueToCancel(skippedPlayers);
 
-                                // Unset any players we already marked.
-                                if (participantList.Count > 0)
-                                    _matchmakingQueues.UnsetPlayingDueToCancel(participantList);
-
-                                foreach (TeamLineup teamLineup in teamList)
-                                {
-                                    teamLineup.Players.Clear();
-                                    _teamLineupPool.Return(teamLineup);
-                                }
-                                _teamLineupListPool.Return(teamList);
-                                return;
-                            }
-
-                            // Increment skip counts for players that were not selected.
+                            // Increment skip counts for skipped players (they are back in the queue now).
                             queue.IncrementSkipCounts(skippedPlayerNames);
 
-                            // Mark the players as playing.
+                            // Add participation records and send notification to selected players.
                             HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
                             try
                             {
-                                // Sort by original queue order for participation list.
                                 foreach (Player player in participantList)
                                 {
                                     players.Add(player);
                                     matchData.ParticipationList.Add(new PlayerParticipationRecord(player.Name!, false, false));
                                 }
 
-                                _matchmakingQueues.SetPlaying(players);
                                 _chat.SendAnyMessage(players, ChatMessageType.RemotePrivate, ChatSound.None, null, $"{_matchmakingQueues.NextCommandName}: Placing you into a {matchData.MatchIdentifier.MatchType} match.");
                             }
                             finally
@@ -5121,6 +5133,7 @@ namespace SS.Matchmaking.Modules
                         }
                         finally
                         {
+                            _playerListPool.Return(skippedPlayers);
                             _playerListPool.Return(participantList);
                         }
                     }
@@ -5137,11 +5150,15 @@ namespace SS.Matchmaking.Modules
                 {
                     _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error during look-ahead match initialization: {ex}");
                     EndMatch(matchData, MatchEndReason.Cancelled, null);
+
+                    // Restore all peeked players on unexpected failure.
+                    _matchmakingQueues.UnsetPlayingDueToCancel(peekedPlayers);
                 }
                 finally
                 {
                     _candidateListPool.Return(candidates);
                     _handleListPool.Return(handles);
+                    _playerListPool.Return(peekedPlayers);
                 }
             }
 

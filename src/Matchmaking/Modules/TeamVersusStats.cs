@@ -533,9 +533,15 @@ namespace SS.Matchmaking.Modules
                 }
 
                 // Get best subsets using LTS.
-                List<List<string>> bestSubsets = GetBestSubsets(candidates, M, effectiveOrdinal, k: 5);
+                (List<List<string>> bestSubsets, bool combinationLimitHit) = GetBestSubsets(candidates, M, effectiveOrdinal, k: 5);
                 if (bestSubsets.Count == 0)
                     return false;
+
+                if (combinationLimitHit)
+                {
+                    _logManager.LogM(LogLevel.Warn, nameof(TeamVersusStats),
+                        $"Combination limit reached during look-ahead selection (candidates={candidates.Count}, playersNeeded={M}, lookAheadWindow={matchConfiguration.LookAheadWindow}). Consider tuning LookAheadWindow or team size.");
+                }
 
                 // Filter subsets for strict mode compliance.
                 double strictMaxDisparity = matchConfiguration.StrictMatchmakingMaxDisparity;
@@ -546,7 +552,7 @@ namespace SS.Matchmaking.Modules
                 {
                     foreach (List<string> subset in bestSubsets)
                     {
-                        if (!HasStrictViolation(subset, effectiveOrdinal, preferences, strictMaxDisparity))
+                        if (!HasStrictViolation(subset, baseOrdinal, preferences, strictMaxDisparity))
                         {
                             validSubsets.Add(subset);
                         }
@@ -714,14 +720,14 @@ namespace SS.Matchmaking.Modules
 
             static bool HasStrictViolation(
                 List<string> subset,
-                Dictionary<string, double> effectiveOrdinal,
+                Dictionary<string, double> baseOrdinal,
                 IMatchmakingPreferences preferences,
                 double strictMaxDisparity)
             {
                 double minOrdinal = double.MaxValue;
                 foreach (string name in subset)
                 {
-                    double ord = effectiveOrdinal[name];
+                    double ord = baseOrdinal[name];
                     if (ord < minOrdinal)
                         minOrdinal = ord;
                 }
@@ -730,7 +736,7 @@ namespace SS.Matchmaking.Modules
                 {
                     if (preferences.GetMatchmakingMode(name) == MatchmakingMode.Strict)
                     {
-                        double gap = effectiveOrdinal[name] - minOrdinal;
+                        double gap = baseOrdinal[name] - minOrdinal;
                         if (gap > strictMaxDisparity)
                             return true;
                     }
@@ -739,16 +745,19 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
-            static List<List<string>> GetBestSubsets(
+            static (List<List<string>> Subsets, bool LimitHit) GetBestSubsets(
                 IReadOnlyList<PlayerCandidate> candidates,
                 int M,
                 Dictionary<string, double> effectiveOrdinal,
                 int k)
             {
+                const int MaxCombinations = 100_000;
+
                 int N = candidates.Count;
 
-                // Enumerate all C(N, M) subsets and compute LTS score for each.
+                // Enumerate C(N, M) subsets and compute LTS score for each.
                 // For small N (typically <=15) and M (typically 4-8), this is tractable.
+                // A hard limit prevents combinatorial explosion with large configs.
                 List<(double Score, List<string> Subset)> scored = [];
 
                 // Use iterative combination generation.
@@ -756,36 +765,50 @@ namespace SS.Matchmaking.Modules
                 for (int j = 0; j < M; j++)
                     indices[j] = j;
 
+                bool limitHit = false;
+                int combinationsEvaluated = 0;
+
                 while (true)
                 {
-                    // Build subset and compute LTS score.
-                    List<string> subset = new(M);
+                    // Compute LTS score directly from indices (no allocation).
                     double sum = 0;
                     for (int j = 0; j < M; j++)
-                    {
-                        string name = candidates[indices[j]].PlayerName;
-                        subset.Add(name);
-                        sum += effectiveOrdinal[name];
-                    }
+                        sum += effectiveOrdinal[candidates[indices[j]].PlayerName];
                     double mean = sum / M;
 
                     double ltsScore = 0;
                     for (int j = 0; j < M; j++)
                     {
-                        double diff = effectiveOrdinal[subset[j]] - mean;
+                        double diff = effectiveOrdinal[candidates[indices[j]].PlayerName] - mean;
                         ltsScore += diff * diff;
                     }
 
                     // Insert into scored list, maintaining at most k entries (lowest scores).
+                    // Only allocate the List<string> when the score qualifies.
                     if (scored.Count < k)
                     {
+                        List<string> subset = new(M);
+                        for (int j = 0; j < M; j++)
+                            subset.Add(candidates[indices[j]].PlayerName);
+
                         scored.Add((ltsScore, subset));
                         scored.Sort(static (a, b) => a.Score.CompareTo(b.Score));
                     }
                     else if (ltsScore < scored[^1].Score)
                     {
+                        List<string> subset = new(M);
+                        for (int j = 0; j < M; j++)
+                            subset.Add(candidates[indices[j]].PlayerName);
+
                         scored[^1] = (ltsScore, subset);
                         scored.Sort(static (a, b) => a.Score.CompareTo(b.Score));
+                    }
+
+                    // Check combination limit.
+                    if (++combinationsEvaluated >= MaxCombinations)
+                    {
+                        limitHit = true;
+                        break;
                     }
 
                     // Generate next combination.
@@ -804,7 +827,7 @@ namespace SS.Matchmaking.Modules
                 List<List<string>> result = new(scored.Count);
                 foreach ((_, List<string> subset) in scored)
                     result.Add(subset);
-                return result;
+                return (result, limitHit);
             }
         }
 
