@@ -107,6 +107,23 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        #region IRecklessPlayPenalty members
+
+        bool IRecklessPlayPenalty.HasPendingPenalty(IMatchData matchData, string playerName)
+        {
+            Arena? arena = matchData.Arena;
+            if (arena is null)
+                return false;
+
+            if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return false;
+
+            return arenaData.PendingPenalties.TryGetValue(matchData, out Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)>? matchPenalties)
+                && matchPenalties.ContainsKey(playerName);
+        }
+
+        #endregion
+
         #region Callbacks
 
         private void Callback_TeamVersusMatchPlayerKilled(IPlayerSlot killedSlot, IPlayerSlot killerSlot, bool isKnockout)
