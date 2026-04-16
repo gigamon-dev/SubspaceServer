@@ -120,15 +120,6 @@ namespace SS.Matchmaking.Modules
         /// </remarks>
         private readonly Dictionary<string, MemberStats> _playerMemberDictionary = new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>
-        /// When a player early-requeues into a new match while still tracked in <see cref="_playerMemberDictionary"/>
-        /// for an older match, the older match's <see cref="MemberStats"/> is saved here.
-        /// This enables bidirectional OpenSkill rating propagation regardless of which match ends first.
-        /// Cleared for a player when either of their concurrent matches ends.
-        /// </summary>
-        /// <remarks>Key: player name</remarks>
-        private readonly Dictionary<string, MemberStats> _concurrentMemberStats = new(StringComparer.OrdinalIgnoreCase);
-
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = [];
 
         private readonly DefaultObjectPool<ArenaData> _arenaDataPool = new(new DefaultPooledObjectPolicy<ArenaData>(), Constants.TargetArenaCount);
@@ -521,8 +512,6 @@ namespace SS.Matchmaking.Modules
                             slotStats.Current = memberStats;
                             slotStats.AssignTimestamp = now; // set it just so that it's not null, we'll update it at start to be more accurate
 
-                            if (_playerMemberDictionary.TryGetValue(slot.PlayerName, out MemberStats? existing))
-                                _concurrentMemberStats[slot.PlayerName] = existing;
                             _playerMemberDictionary[slot.PlayerName] = memberStats;
                             leaderboardRatings.Add(slot.PlayerName, DefaultRating);
 
@@ -1446,6 +1435,28 @@ namespace SS.Matchmaking.Modules
                 // Rate players using the OpenSkill model.
                 //
 
+                // Re-query ratings from DB before computing the update.
+                // This picks up any changes made by concurrent matches that ended while this match was running
+                // (e.g. a KO'd player who early-requeued and played another match before this one finished).
+                // Using the freshest available baseline ensures the optimistic-lock CAS check in SaveGameToDatabase
+                // will succeed without any in-memory propagation between matches.
+                // If the re-query fails, fall through using the cached start-of-match ratings.
+                if (_gameStatsRepository is not null && matchData.Configuration.GameTypeId is not null)
+                {
+                    try
+                    {
+                        await _gameStatsRepository.GetPlayerOpenSkillRatingsAsync(
+                            matchData.Configuration.GameTypeId.Value, matchStats.OpenSkillRatings);
+
+                        // Re-apply decay based on the freshly-read LastUpdated timestamps.
+                        AdjustOpenSkillRatingsForDecay(matchData.Configuration, matchStats.OpenSkillRatings, matchStats.EndTimestamp.Value);
+                    }
+                    catch
+                    {
+                        // DB unavailable; fall through with cached start-of-match ratings.
+                    }
+                }
+
                 // Prepare the rating calcuation inputs.
                 TimeSpan matchDuration = matchStats.EndTimestamp.Value - matchStats.StartTimestamp;
                 List<OpenSkillRating.ITeam> teams = new(matchStats.Teams.Count);
@@ -1555,40 +1566,6 @@ namespace SS.Matchmaking.Modules
                         original.Sigma = playerRating.Sigma;
                     }
                 }
-
-                // Propagate updated ratings to any concurrent active match (bidirectional).
-                // This handles the case where a KO'd player early-requeued into a new match while this one was still running.
-                foreach (TeamStats teamStats2 in matchStats.Teams.Values)
-                {
-                    foreach (SlotStats slotStats2 in teamStats2.Slots)
-                    {
-                        foreach (MemberStats memberStats2 in slotStats2.Members)
-                        {
-                            if (memberStats2.PlayerName is null) continue;
-                            if (!matchStats.OpenSkillRatings.TryGetValue(memberStats2.PlayerName, out PlayerRating? updatedRating)) continue;
-
-                            // Forward: this match ends first → propagate to the newer match (Match B).
-                            if (_playerMemberDictionary.TryGetValue(memberStats2.PlayerName, out MemberStats? fwdStats)
-                                && fwdStats != memberStats2
-                                && fwdStats.MatchStats?.OpenSkillRatings.TryGetValue(memberStats2.PlayerName, out PlayerRating? fwdRating) == true)
-                            {
-                                fwdRating.Mu = updatedRating.Mu;
-                                fwdRating.Sigma = updatedRating.Sigma;
-                                fwdRating.LastUpdated = matchStats.EndTimestamp;
-                            }
-
-                            // Backward: the newer match ends first → propagate back to the older match (Match A).
-                            if (_concurrentMemberStats.TryGetValue(memberStats2.PlayerName, out MemberStats? bwdStats)
-                                && bwdStats != memberStats2
-                                && bwdStats.MatchStats?.OpenSkillRatings.TryGetValue(memberStats2.PlayerName, out PlayerRating? bwdRating) == true)
-                            {
-                                bwdRating.Mu = updatedRating.Mu;
-                                bwdRating.Sigma = updatedRating.Sigma;
-                                bwdRating.LastUpdated = matchStats.EndTimestamp;
-                            }
-                        }
-                    }
-                }
             }
 
             foreach (TeamStats teamStats in matchStats.Teams.Values)
@@ -1605,9 +1582,6 @@ namespace SS.Matchmaking.Modules
                                 _playerMemberDictionary.Add(memberStats.PlayerName!, otherStats);
                             }
                         }
-
-                        // Once either match in a concurrent pair ends, the window is closed.
-                        _concurrentMemberStats.Remove(memberStats.PlayerName!);
                     }
 
                     Player? currentPlayer = slotStats.Slot?.Player;
@@ -1734,11 +1708,6 @@ namespace SS.Matchmaking.Modules
                     if (rating.LastUpdated is not null)
                     {
                         writer.WriteString("last_updated"u8, rating.LastUpdated.Value);
-
-                        // new_last_updated tells the database what timestamp to store after the update (instead of using NOW()).
-                        // This allows the server to predict and propagate the updated timestamp to any concurrent matches,
-                        // enabling both matches to contribute OpenSkill updates via sequential optimistic-lock checks.
-                        writer.WriteString("new_last_updated"u8, matchStats.EndTimestamp!.Value);
                     }
 
                     writer.WriteEndObject(); // player rating object
