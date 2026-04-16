@@ -465,6 +465,349 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        async Task<bool> ITeamVersusStatsBehavior.GetBalancedParticipantsAsync(
+            IMatchConfiguration matchConfiguration,
+            IReadOnlyList<PlayerCandidate> candidates,
+            IReadOnlyList<TeamLineup> teamList,
+            IMatchmakingPreferences? preferences,
+            List<string> skippedPlayerNames)
+        {
+            if (matchConfiguration is null)
+                return false;
+
+            if (matchConfiguration.GameTypeId is null)
+                return false;
+
+            if (_gameStatsRepository is null)
+                return false;
+
+            int M = matchConfiguration.NumTeams * matchConfiguration.PlayersPerTeam;
+            if (candidates.Count < M)
+                return false;
+
+            Dictionary<string, PlayerRating> ratings = _playerRatingDictionaryPool.Get();
+            try
+            {
+                // Start all candidates with the default rating from the model.
+                foreach (PlayerCandidate candidate in candidates)
+                {
+                    ratings[candidate.PlayerName] = new PlayerRating
+                    {
+                        PlayerName = candidate.PlayerName,
+                        Mu = matchConfiguration.OpenSkillModel.Mu,
+                        Sigma = matchConfiguration.OpenSkillModel.Sigma,
+                    };
+                }
+
+                // Fetch ratings from DB.
+                try
+                {
+                    await _gameStatsRepository.GetPlayerOpenSkillRatingsAsync(matchConfiguration.GameTypeId.Value, ratings);
+                }
+                catch
+                {
+                    return false;
+                }
+
+                // Adjust ratings for decay.
+                AdjustOpenSkillRatingsForDecay(matchConfiguration, ratings, DateTime.UtcNow);
+
+                // Compute base ordinals.
+                Dictionary<string, double> baseOrdinal = new(candidates.Count, StringComparer.OrdinalIgnoreCase);
+                double poolSum = 0;
+                foreach (PlayerCandidate candidate in candidates)
+                {
+                    double ordinal = ratings[candidate.PlayerName].GetOrdinal();
+                    baseOrdinal[candidate.PlayerName] = ordinal;
+                    poolSum += ordinal;
+                }
+                double poolMean = poolSum / candidates.Count;
+
+                // Compute effective ordinals (mean-nudge using skip count).
+                Dictionary<string, double> effectiveOrdinal = new(candidates.Count, StringComparer.OrdinalIgnoreCase);
+                foreach (PlayerCandidate candidate in candidates)
+                {
+                    double nudgeFraction = Math.Min(1.0, candidate.SkipCount * matchConfiguration.SkipNudgeRate);
+                    double baseOrd = baseOrdinal[candidate.PlayerName];
+                    effectiveOrdinal[candidate.PlayerName] = baseOrd + (poolMean - baseOrd) * nudgeFraction;
+                }
+
+                // Get best subsets using LTS.
+                List<List<string>> bestSubsets = GetBestSubsets(candidates, M, effectiveOrdinal, k: 5);
+                if (bestSubsets.Count == 0)
+                    return false;
+
+                // Filter subsets for strict mode compliance.
+                double strictMaxDisparity = matchConfiguration.StrictMatchmakingMaxDisparity;
+                List<List<string>> validSubsets = [];
+                bool notifyStrictPlayers = false;
+
+                if (strictMaxDisparity > 0 && preferences is not null)
+                {
+                    foreach (List<string> subset in bestSubsets)
+                    {
+                        if (!HasStrictViolation(subset, effectiveOrdinal, preferences, strictMaxDisparity))
+                        {
+                            validSubsets.Add(subset);
+                        }
+                    }
+
+                    if (validSubsets.Count == 0)
+                    {
+                        // No subset satisfies strict mode — use all and notify.
+                        validSubsets = bestSubsets;
+                        notifyStrictPlayers = true;
+                    }
+                }
+                else
+                {
+                    validSubsets = bestSubsets;
+                }
+
+                // For each valid subset, run snake draft and evaluate match balance.
+                List<string>? bestSubset = null;
+                List<TeamLineup>? bestAssignment = null;
+                double bestMatchBalance = double.MaxValue;
+
+                List<TeamLineup> tempTeamList = new(teamList.Count);
+
+                foreach (List<string> subset in validSubsets)
+                {
+                    // Create a temporary team list for drafting.
+                    tempTeamList.Clear();
+                    for (int t = 0; t < teamList.Count; t++)
+                    {
+                        tempTeamList.Add(new TeamLineup());
+                    }
+
+                    // Build the rating list for this subset using BASE ordinals.
+                    List<(string PlayerName, double Ordinal)> subsetRatings = _playerOrdinalListPool.Get();
+                    try
+                    {
+                        foreach (string name in subset)
+                        {
+                            subsetRatings.Add((name, baseOrdinal[name]));
+                        }
+
+                        // Sort by ordinal descending.
+                        subsetRatings.Sort(static (x, y) => -x.Ordinal.CompareTo(y.Ordinal));
+
+                        // Snake draft.
+                        bool ascending = true;
+                        int playerIndex = 0;
+                        int teamIndex = 0;
+                        while (playerIndex < subsetRatings.Count)
+                        {
+                            tempTeamList[teamIndex].Players.Add(subsetRatings[playerIndex++].PlayerName, null);
+
+                            if (ascending)
+                            {
+                                if (teamIndex == tempTeamList.Count - 1)
+                                    ascending = false;
+                                else
+                                    teamIndex++;
+                            }
+                            else
+                            {
+                                if (teamIndex == 0)
+                                    ascending = true;
+                                else
+                                    teamIndex--;
+                            }
+                        }
+
+                        // Evaluate match balance: playerSpread + 0.25 * teamSpread.
+                        double subsetMean = 0;
+                        foreach (string name in subset)
+                            subsetMean += baseOrdinal[name];
+                        subsetMean /= subset.Count;
+
+                        double playerSpread = 0;
+                        foreach (string name in subset)
+                        {
+                            double diff = baseOrdinal[name] - subsetMean;
+                            playerSpread += diff * diff;
+                        }
+
+                        double overallAvg = subsetMean;
+                        double teamSpread = 0;
+                        for (int t = 0; t < tempTeamList.Count; t++)
+                        {
+                            double teamSum = 0;
+                            foreach ((string name, _) in tempTeamList[t].Players)
+                                teamSum += baseOrdinal[name];
+                            double teamAvg = teamSum / tempTeamList[t].Players.Count;
+                            double teamDiff = teamAvg - overallAvg;
+                            teamSpread += teamDiff * teamDiff;
+                        }
+
+                        double matchBalance = playerSpread + 0.25 * teamSpread;
+
+                        if (matchBalance < bestMatchBalance)
+                        {
+                            bestMatchBalance = matchBalance;
+                            bestSubset = subset;
+
+                            // Clone the assignment.
+                            bestAssignment ??= new List<TeamLineup>(tempTeamList.Count);
+                            // Reuse or clear existing entries.
+                            while (bestAssignment.Count < tempTeamList.Count)
+                                bestAssignment.Add(new TeamLineup());
+                            while (bestAssignment.Count > tempTeamList.Count)
+                                bestAssignment.RemoveAt(bestAssignment.Count - 1);
+
+                            for (int t = 0; t < tempTeamList.Count; t++)
+                            {
+                                bestAssignment[t].Players.Clear();
+                                foreach ((string name, int? premadeGroupId) in tempTeamList[t].Players)
+                                    bestAssignment[t].Players.Add(name, premadeGroupId);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        _playerOrdinalListPool.Return(subsetRatings);
+                    }
+                }
+
+                if (bestSubset is null || bestAssignment is null)
+                    return false;
+
+                // Copy the winning team assignment into the actual teamList.
+                for (int t = 0; t < teamList.Count; t++)
+                {
+                    teamList[t].Players.Clear();
+                    foreach ((string name, int? premadeGroupId) in bestAssignment[t].Players)
+                        teamList[t].Players.Add(name, premadeGroupId);
+                }
+
+                // Populate skipped player names.
+                HashSet<string> selectedNames = new(bestSubset, StringComparer.OrdinalIgnoreCase);
+                foreach (PlayerCandidate candidate in candidates)
+                {
+                    if (!selectedNames.Contains(candidate.PlayerName))
+                        skippedPlayerNames.Add(candidate.PlayerName);
+                }
+
+                // Notify strict-mode players if their preference was violated.
+                if (notifyStrictPlayers && preferences is not null)
+                {
+                    foreach (string name in bestSubset)
+                    {
+                        if (preferences.GetMatchmakingMode(name) == MatchmakingMode.Strict)
+                        {
+                            Player? player = _playerData.FindPlayer(name);
+                            if (player is not null)
+                            {
+                                _chat.SendMessage(player, "Strict matchmaking: unable to adhere to your preference, the best match was formed using players with a wider skill distribution");
+                            }
+                        }
+                    }
+                }
+
+                return true;
+            }
+            finally
+            {
+                _playerRatingDictionaryPool.Return(ratings);
+            }
+
+            static bool HasStrictViolation(
+                List<string> subset,
+                Dictionary<string, double> effectiveOrdinal,
+                IMatchmakingPreferences preferences,
+                double strictMaxDisparity)
+            {
+                double minOrdinal = double.MaxValue;
+                foreach (string name in subset)
+                {
+                    double ord = effectiveOrdinal[name];
+                    if (ord < minOrdinal)
+                        minOrdinal = ord;
+                }
+
+                foreach (string name in subset)
+                {
+                    if (preferences.GetMatchmakingMode(name) == MatchmakingMode.Strict)
+                    {
+                        double gap = effectiveOrdinal[name] - minOrdinal;
+                        if (gap > strictMaxDisparity)
+                            return true;
+                    }
+                }
+
+                return false;
+            }
+
+            static List<List<string>> GetBestSubsets(
+                IReadOnlyList<PlayerCandidate> candidates,
+                int M,
+                Dictionary<string, double> effectiveOrdinal,
+                int k)
+            {
+                int N = candidates.Count;
+
+                // Enumerate all C(N, M) subsets and compute LTS score for each.
+                // For small N (typically <=15) and M (typically 4-8), this is tractable.
+                List<(double Score, List<string> Subset)> scored = [];
+
+                // Use iterative combination generation.
+                int[] indices = new int[M];
+                for (int j = 0; j < M; j++)
+                    indices[j] = j;
+
+                while (true)
+                {
+                    // Build subset and compute LTS score.
+                    List<string> subset = new(M);
+                    double sum = 0;
+                    for (int j = 0; j < M; j++)
+                    {
+                        string name = candidates[indices[j]].PlayerName;
+                        subset.Add(name);
+                        sum += effectiveOrdinal[name];
+                    }
+                    double mean = sum / M;
+
+                    double ltsScore = 0;
+                    for (int j = 0; j < M; j++)
+                    {
+                        double diff = effectiveOrdinal[subset[j]] - mean;
+                        ltsScore += diff * diff;
+                    }
+
+                    // Insert into scored list, maintaining at most k entries (lowest scores).
+                    if (scored.Count < k)
+                    {
+                        scored.Add((ltsScore, subset));
+                        scored.Sort(static (a, b) => a.Score.CompareTo(b.Score));
+                    }
+                    else if (ltsScore < scored[^1].Score)
+                    {
+                        scored[^1] = (ltsScore, subset);
+                        scored.Sort(static (a, b) => a.Score.CompareTo(b.Score));
+                    }
+
+                    // Generate next combination.
+                    int i = M - 1;
+                    while (i >= 0 && indices[i] == N - M + i)
+                        i--;
+
+                    if (i < 0)
+                        break;
+
+                    indices[i]++;
+                    for (int j = i + 1; j < M; j++)
+                        indices[j] = indices[j - 1] + 1;
+                }
+
+                List<List<string>> result = new(scored.Count);
+                foreach ((_, List<string> subset) in scored)
+                    result.Add(subset);
+                return result;
+            }
+        }
+
         async Task ITeamVersusStatsBehavior.InitializeAsync(IMatchData matchData)
         {
             //

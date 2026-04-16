@@ -387,6 +387,90 @@ namespace SS.Matchmaking.Queues
             }
         }
 
+        #region Look-ahead
+
+        /// <summary>
+        /// Peeks at up to <paramref name="maxEntries"/> queue entries (front-first) without removing them,
+        /// filling <paramref name="candidates"/> with <see cref="PlayerCandidate"/> entries and
+        /// <paramref name="handles"/> with corresponding player/group references for later dequeue.
+        /// </summary>
+        /// <returns>Total player count represented by the peeked entries.</returns>
+        public int PeekCandidates(int maxEntries, List<PlayerCandidate> candidates, List<(Player? Player, IPlayerGroup? Group)> handles)
+        {
+            int totalPlayers = 0;
+            int entriesAdded = 0;
+            LinkedListNode<QueuedPlayerOrGroup>? node = _queue.First;
+            while (node is not null && entriesAdded < maxEntries)
+            {
+                ref readonly QueuedPlayerOrGroup pog = ref node.ValueRef;
+                if (pog.Player is not null)
+                {
+                    candidates.Add(new PlayerCandidate { PlayerName = pog.Player.Name!, SkipCount = pog.SkipCount });
+                    handles.Add((pog.Player, null));
+                    totalPlayers += 1;
+                }
+                else if (pog.Group is not null)
+                {
+                    foreach (Player member in pog.Group.Members)
+                    {
+                        candidates.Add(new PlayerCandidate { PlayerName = member.Name!, SkipCount = pog.SkipCount });
+                    }
+                    handles.Add((null, pog.Group));
+                    totalPlayers += pog.Group.Members.Count;
+                }
+                entriesAdded++;
+                node = node.Next;
+            }
+            return totalPlayers;
+        }
+
+        /// <summary>
+        /// Removes a specific queue entry identified by player or group reference.
+        /// </summary>
+        /// <returns><see langword="true"/> if found and removed; otherwise, <see langword="false"/>.</returns>
+        public bool DequeueByReference(Player? player, IPlayerGroup? group)
+        {
+            LinkedListNode<QueuedPlayerOrGroup>? node = _queue.First;
+            while (node is not null)
+            {
+                if ((player is not null && node.ValueRef.Player == player)
+                    || (group is not null && node.ValueRef.Group == group))
+                {
+                    _queue.Remove(node);
+                    s_nodePool.Return(node);
+                    return true;
+                }
+                node = node.Next;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// For each player name in <paramref name="skippedPlayerNames"/>, finds the corresponding queue node
+        /// and increments its <see cref="QueuedPlayerOrGroup.SkipCount"/>.
+        /// </summary>
+        public void IncrementSkipCounts(IReadOnlyList<string> skippedPlayerNames)
+        {
+            foreach (string name in skippedPlayerNames)
+            {
+                LinkedListNode<QueuedPlayerOrGroup>? node = _queue.First;
+                while (node is not null)
+                {
+                    ref readonly QueuedPlayerOrGroup pog = ref node.ValueRef;
+                    bool match = (pog.Player?.Name is string pn && string.Equals(pn, name, StringComparison.OrdinalIgnoreCase))
+                              || (pog.Group is not null && pog.Group.Members.Any(m => string.Equals(m.Name, name, StringComparison.OrdinalIgnoreCase)));
+                    if (match)
+                    {
+                        node.ValueRef = node.ValueRef with { SkipCount = node.ValueRef.SkipCount + 1 };
+                        break;
+                    }
+                    node = node.Next;
+                }
+            }
+        }
+
+        #endregion
+
         /// <summary>
         /// Represents either a single <see cref="Core.Player"/> or a <see cref="IPlayerGroup"/> of players.
         /// </summary>
@@ -397,6 +481,7 @@ namespace SS.Matchmaking.Queues
                 Player = player ?? throw new ArgumentNullException(nameof(player));
                 Group = null;
                 Timestamp = timestamp;
+                SkipCount = 0;
             }
 
             public QueuedPlayerOrGroup(IPlayerGroup group, DateTime timestamp)
@@ -404,11 +489,13 @@ namespace SS.Matchmaking.Queues
                 Player = null;
                 Group = group ?? throw new ArgumentNullException(nameof(group));
                 Timestamp = timestamp;
+                SkipCount = 0;
             }
 
             public Player? Player { get; }
             public IPlayerGroup? Group { get; }
             public DateTime Timestamp { get; }
+            public int SkipCount { get; init; }
         }
     }
 }

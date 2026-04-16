@@ -81,6 +81,7 @@ namespace SS.Matchmaking.Modules
 
         // optional
         private ITeamVersusStatsBehavior? _teamVersusStatsBehavior;
+        private IMatchmakingPreferences? _matchmakingPreferences;
         private ILeagueManager? _leagueManager;
         private IReplayController? _replayController;
 
@@ -163,6 +164,16 @@ namespace SS.Matchmaking.Modules
         private readonly Dictionary<string, ArenaBaseData> _arenaBaseDataDictionary = [];
 
         /// <summary>
+        /// Match configurations that have an active look-ahead wait timer running.
+        /// </summary>
+        private readonly HashSet<MatchConfiguration> _activeWaitTimers = [];
+
+        /// <summary>
+        /// Match configurations whose look-ahead wait timer has fired and are ready to proceed.
+        /// </summary>
+        private readonly HashSet<MatchConfiguration> _firedWaitTimers = [];
+
+        /// <summary>
         /// Data per-arena (not all arenas, only those configured for matches).
         /// </summary>
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = [];
@@ -174,6 +185,9 @@ namespace SS.Matchmaking.Modules
         private readonly DefaultObjectPool<TeamLineup> _teamLineupPool = new(new DefaultPooledObjectPolicy<TeamLineup>(), Constants.TargetPlayerCount);
         private readonly DefaultObjectPool<List<TeamLineup>> _teamLineupListPool = new(new ListPooledObjectPolicy<TeamLineup>(), 8);
         private readonly DefaultObjectPool<List<Player>> _playerListPool = new(new ListPooledObjectPolicy<Player>() { InitialCapacity = Constants.TargetPlayerCount }, 8);
+        private readonly DefaultObjectPool<List<PlayerCandidate>> _candidateListPool = new(new ListPooledObjectPolicy<PlayerCandidate>() { InitialCapacity = Constants.TargetPlayerCount }, 8);
+        private readonly DefaultObjectPool<List<(Player? Player, IPlayerGroup? Group)>> _handleListPool = new(new ListPooledObjectPolicy<(Player? Player, IPlayerGroup? Group)>() { InitialCapacity = Constants.TargetPlayerCount }, 8);
+        private readonly DefaultObjectPool<List<string>> _stringListPool = new(new ListPooledObjectPolicy<string>() { InitialCapacity = Constants.TargetPlayerCount }, 8);
 
         public TeamVersusMatch(
             IComponentBroker broker,
@@ -224,6 +238,7 @@ namespace SS.Matchmaking.Modules
         async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _teamVersusStatsBehavior = broker.GetInterface<ITeamVersusStatsBehavior>();
+            _matchmakingPreferences = broker.GetInterface<IMatchmakingPreferences>();
             _leagueManager = broker.GetInterface<ILeagueManager>();
             _replayController = broker.GetInterface<IReplayController>();
 
@@ -324,6 +339,9 @@ namespace SS.Matchmaking.Modules
 
             if (_teamVersusStatsBehavior is not null)
                 broker.ReleaseInterface(ref _teamVersusStatsBehavior);
+
+            if (_matchmakingPreferences is not null)
+                broker.ReleaseInterface(ref _matchmakingPreferences);
 
             if (_leagueManager is not null)
                 broker.ReleaseInterface(ref _leagueManager);
@@ -4371,6 +4389,24 @@ namespace SS.Matchmaking.Modules
             if (!double.TryParse(_configManager.GetStr(ch, matchType, "OpenSkillDisplayOrdinalTarget"), out double displayOrdinalTarget))
                 displayOrdinalTarget = 0;
 
+            int lookAheadWindow = _configManager.GetInt(ch, matchType, "LookAheadWindow", 0);
+            if (lookAheadWindow < 0)
+                lookAheadWindow = 0;
+
+            int lookAheadWaitSeconds = _configManager.GetInt(ch, matchType, "LookAheadWaitSeconds", 60);
+            if (lookAheadWaitSeconds < 0)
+                lookAheadWaitSeconds = 0;
+
+            string? skipNudgeRateStr = _configManager.GetStr(ch, matchType, "SkipNudgeRate");
+            double skipNudgeRate = 0.2;
+            if (!string.IsNullOrWhiteSpace(skipNudgeRateStr))
+                double.TryParse(skipNudgeRateStr, out skipNudgeRate);
+
+            string? strictMaxDisparityStr = _configManager.GetStr(ch, matchType, "StrictMatchmakingMaxDisparity");
+            double strictMatchmakingMaxDisparity = 0.0;
+            if (!string.IsNullOrWhiteSpace(strictMaxDisparityStr))
+                double.TryParse(strictMaxDisparityStr, out strictMatchmakingMaxDisparity);
+
             MatchConfiguration matchConfiguration = new()
             {
                 MatchType = matchType,
@@ -4409,6 +4445,10 @@ namespace SS.Matchmaking.Modules
                 OpenSkillSigmaDecayPerDay = sigmaDecayPerDay,
                 OpenSkillUseScoresWhenPossible = useScoresWhenPossible,
                 OpenSkillDisplayOrdinal = new OrdinalArgs(displayOrdinalZ, displayOrdinalAlpha, displayOrdinalTarget),
+                LookAheadWindow = lookAheadWindow,
+                LookAheadWaitSeconds = lookAheadWaitSeconds,
+                SkipNudgeRate = skipNudgeRate,
+                StrictMatchmakingMaxDisparity = strictMatchmakingMaxDisparity,
                 Boxes = new MatchBoxConfiguration[numBoxes],
             };
 
@@ -4811,107 +4851,336 @@ namespace SS.Matchmaking.Modules
                 // Found an available location for a game to be played in. Next, try to find players.
                 //
 
-                List<TeamLineup> teamList = _teamLineupListPool.Get();
-                for (int teamIdx = 0; teamIdx < matchConfiguration.NumTeams; teamIdx++)
+                int N = matchConfiguration.NumTeams * matchConfiguration.PlayersPerTeam;
+                int lookAheadWindow = matchConfiguration.LookAheadWindow;
+                bool useLookAhead = lookAheadWindow > 0 && _teamVersusStatsBehavior is not null;
+
+                if (useLookAhead)
                 {
-                    teamList.Add(_teamLineupPool.Get());
-                }
-
-                List<Player> participantList = _playerListPool.Get();
-
-                try
-                {
-                    if (!queue.GetParticipants(matchData.Configuration, teamList, participantList))
-                    {
-                        foreach (TeamLineup teamLineup in teamList)
-                        {
-                            _teamLineupPool.Return(teamLineup);
-                        }
-
-                        _teamLineupListPool.Return(teamList);
-
-                        continue;
-                    }
-
                     //
-                    // Reserve the match.
+                    // Look-ahead matchmaking: peek at N+W candidates and select the best N.
                     //
 
-                    matchData.Status = MatchStatus.Initializing;
+                    int windowSize = N + lookAheadWindow;
+                    List<PlayerCandidate> candidates = _candidateListPool.Get();
+                    List<(Player? Player, IPlayerGroup? Group)> handles = _handleListPool.Get();
 
-                    //
-                    // Mark the players as playing.
-                    //
-
-                    HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
                     try
                     {
-                        foreach (Player player in participantList)
-                        {
-                            players.Add(player);
+                        int totalPeeked = queue.PeekCandidates(windowSize, candidates, handles);
 
-                            // Add the participants in the order provided (which is the order they were queued up in).
-                            matchData.ParticipationList.Add(new PlayerParticipationRecord(player.Name!, false, false));
+                        if (totalPeeked < N)
+                        {
+                            // Not enough players. Cancel any active wait timer.
+                            if (_activeWaitTimers.Remove(matchConfiguration))
+                                _mainloopTimer.ClearTimer<WaitTimerState>(Timer_LookAheadWait, matchConfiguration);
+                            _firedWaitTimers.Remove(matchConfiguration);
+                            continue;
                         }
 
-                        _matchmakingQueues.SetPlaying(players);
-                        _chat.SendAnyMessage(players, ChatMessageType.RemotePrivate, ChatSound.None, null, $"{_matchmakingQueues.NextCommandName}: Placing you into a {matchData.MatchIdentifier.MatchType} match.");
+                        // Check if any candidate is a premade group — fall back to FIFO if so.
+                        bool hasGroup = false;
+                        foreach ((Player? player, IPlayerGroup? group) in handles)
+                        {
+                            if (group is not null)
+                            {
+                                hasGroup = true;
+                                break;
+                            }
+                        }
+
+                        if (hasGroup)
+                        {
+                            // Groups present — fall through to FIFO path.
+                        }
+                        else
+                        {
+                            bool windowFull = totalPeeked >= windowSize;
+                            bool timerFired = _firedWaitTimers.Contains(matchConfiguration);
+
+                            if (!windowFull && !timerFired)
+                            {
+                                // Minimum players available but window not yet full — start/keep the wait timer.
+                                if (!_activeWaitTimers.Contains(matchConfiguration) && matchConfiguration.LookAheadWaitSeconds > 0)
+                                {
+                                    _activeWaitTimers.Add(matchConfiguration);
+                                    _mainloopTimer.SetTimer(
+                                        Timer_LookAheadWait,
+                                        matchConfiguration.LookAheadWaitSeconds * 1000,
+                                        Timeout.Infinite,
+                                        new WaitTimerState { Config = matchConfiguration, Queue = queue },
+                                        matchConfiguration);
+                                }
+                                continue; // waiting for window to fill or timer to fire
+                            }
+
+                            // Window is full, timer fired, or wait is 0 — proceed with look-ahead.
+                            _firedWaitTimers.Remove(matchConfiguration);
+                            if (_activeWaitTimers.Remove(matchConfiguration))
+                                _mainloopTimer.ClearTimer<WaitTimerState>(Timer_LookAheadWait, matchConfiguration);
+
+                            // Reserve the match.
+                            matchData.Status = MatchStatus.Initializing;
+
+                            List<TeamLineup> teamList = _teamLineupListPool.Get();
+                            for (int teamIdx = 0; teamIdx < matchConfiguration.NumTeams; teamIdx++)
+                            {
+                                teamList.Add(_teamLineupPool.Get());
+                            }
+
+                            // Fire async look-ahead initialization (ownership of candidates, handles, teamList transfers).
+                            _ = InitializeMatchWithLookAhead(queue, matchData, teamList, candidates, handles);
+                            candidates = null!; // ownership transferred
+                            handles = null!; // ownership transferred
+
+                            return true;
+                        }
                     }
                     finally
                     {
-                        _objectPoolManager.PlayerSetPool.Return(players);
+                        if (candidates is not null)
+                            _candidateListPool.Return(candidates);
+                        if (handles is not null)
+                            _handleListPool.Return(handles);
                     }
                 }
-                finally
+
+                //
+                // FIFO path (LookAheadWindow == 0, groups present, or stats behavior not available).
+                //
+
+                // Clear any stale wait timer state for this config.
+                if (_activeWaitTimers.Remove(matchConfiguration))
+                    _mainloopTimer.ClearTimer<WaitTimerState>(Timer_LookAheadWait, matchConfiguration);
+                _firedWaitTimers.Remove(matchConfiguration);
+
                 {
-                    _playerListPool.Return(participantList);
+                    List<TeamLineup> teamList = _teamLineupListPool.Get();
+                    for (int teamIdx = 0; teamIdx < matchConfiguration.NumTeams; teamIdx++)
+                    {
+                        teamList.Add(_teamLineupPool.Get());
+                    }
+
+                    List<Player> participantList = _playerListPool.Get();
+
+                    try
+                    {
+                        if (!queue.GetParticipants(matchData.Configuration, teamList, participantList))
+                        {
+                            foreach (TeamLineup teamLineup in teamList)
+                            {
+                                _teamLineupPool.Return(teamLineup);
+                            }
+
+                            _teamLineupListPool.Return(teamList);
+
+                            continue;
+                        }
+
+                        //
+                        // Reserve the match.
+                        //
+
+                        matchData.Status = MatchStatus.Initializing;
+
+                        //
+                        // Mark the players as playing.
+                        //
+
+                        HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                        try
+                        {
+                            foreach (Player player in participantList)
+                            {
+                                players.Add(player);
+
+                                // Add the participants in the order provided (which is the order they were queued up in).
+                                matchData.ParticipationList.Add(new PlayerParticipationRecord(player.Name!, false, false));
+                            }
+
+                            _matchmakingQueues.SetPlaying(players);
+                            _chat.SendAnyMessage(players, ChatMessageType.RemotePrivate, ChatSound.None, null, $"{_matchmakingQueues.NextCommandName}: Placing you into a {matchData.MatchIdentifier.MatchType} match.");
+                        }
+                        finally
+                        {
+                            _objectPoolManager.PlayerSetPool.Return(players);
+                        }
+                    }
+                    finally
+                    {
+                        _playerListPool.Return(participantList);
+                    }
+
+                    //
+                    // Initialize the match.
+                    //
+
+                    _ = InitializeMatch(matchData, teamList, balancingAlreadyDone: false);
+
+                    return true;
                 }
-
-                //
-                // Initialize the match.
-                //
-
-                _ = InitializeMatch(matchData, teamList);
-
-                return true;
             }
 
             return false;
 
-
-            // local function that performs the steps required to initialize a match
-            async Task InitializeMatch(MatchData matchData, List<TeamLineup> teamLineups)
+            async Task InitializeMatchWithLookAhead(
+                TeamVersusMatchmakingQueue queue,
+                MatchData matchData,
+                List<TeamLineup> teamList,
+                List<PlayerCandidate> candidates,
+                List<(Player? Player, IPlayerGroup? Group)> handles)
             {
                 try
                 {
-                    // Balance or randomize teams.
-                    List<TeamLineup> mutableTeams = _teamLineupListPool.Get();
+                    List<string> skippedPlayerNames = _stringListPool.Get();
                     try
                     {
-                        foreach (TeamLineup team in teamLineups)
+                        bool selected = await _teamVersusStatsBehavior!.GetBalancedParticipantsAsync(
+                            matchData.Configuration, candidates, teamList, _matchmakingPreferences, skippedPlayerNames);
+
+                        if (!selected)
                         {
-                            if (!team.IsPremade)
-                                mutableTeams.Add(team);
+                            // Ratings unavailable — fall back to randomized teams via FIFO.
+                            // Cancel the match since we already reserved it.
+                            EndMatch(matchData, MatchEndReason.Cancelled, null);
+
+                            foreach (TeamLineup teamLineup in teamList)
+                            {
+                                teamLineup.Players.Clear();
+                                _teamLineupPool.Return(teamLineup);
+                            }
+                            _teamLineupListPool.Return(teamList);
+                            return;
                         }
 
-                        if (mutableTeams.Count >= 2)
+                        // Build a set of selected player names from the filled teamList.
+                        HashSet<string> selectedNames = new(StringComparer.OrdinalIgnoreCase);
+                        foreach (TeamLineup team in teamList)
                         {
-                            bool balanced = false;
-
-                            if (_teamVersusStatsBehavior is not null)
+                            foreach ((string playerName, _) in team.Players)
                             {
-                                balanced = await _teamVersusStatsBehavior.BalanceTeamsAsync(matchData.Configuration, mutableTeams);
+                                selectedNames.Add(playerName);
+                            }
+                        }
+
+                        // Dequeue selected handles from the queue.
+                        List<Player> participantList = _playerListPool.Get();
+                        try
+                        {
+                            foreach ((Player? player, IPlayerGroup? group) in handles)
+                            {
+                                string? name = player?.Name;
+                                if (name is not null && selectedNames.Contains(name))
+                                {
+                                    if (queue.DequeueByReference(player, null))
+                                    {
+                                        participantList.Add(player!);
+                                    }
+                                }
                             }
 
-                            if (!balanced)
+                            if (participantList.Count < matchData.Configuration.NumTeams * matchData.Configuration.PlayersPerTeam)
                             {
-                                RandomizeTeams(matchData.Configuration, mutableTeams);
+                                // Some players left the queue during the async DB fetch.
+                                EndMatch(matchData, MatchEndReason.Cancelled, null);
+
+                                // Unset any players we already marked.
+                                if (participantList.Count > 0)
+                                    _matchmakingQueues.UnsetPlayingDueToCancel(participantList);
+
+                                foreach (TeamLineup teamLineup in teamList)
+                                {
+                                    teamLineup.Players.Clear();
+                                    _teamLineupPool.Return(teamLineup);
+                                }
+                                _teamLineupListPool.Return(teamList);
+                                return;
                             }
+
+                            // Increment skip counts for players that were not selected.
+                            queue.IncrementSkipCounts(skippedPlayerNames);
+
+                            // Mark the players as playing.
+                            HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
+                            try
+                            {
+                                // Sort by original queue order for participation list.
+                                foreach (Player player in participantList)
+                                {
+                                    players.Add(player);
+                                    matchData.ParticipationList.Add(new PlayerParticipationRecord(player.Name!, false, false));
+                                }
+
+                                _matchmakingQueues.SetPlaying(players);
+                                _chat.SendAnyMessage(players, ChatMessageType.RemotePrivate, ChatSound.None, null, $"{_matchmakingQueues.NextCommandName}: Placing you into a {matchData.MatchIdentifier.MatchType} match.");
+                            }
+                            finally
+                            {
+                                _objectPoolManager.PlayerSetPool.Return(players);
+                            }
+                        }
+                        finally
+                        {
+                            _playerListPool.Return(participantList);
                         }
                     }
                     finally
                     {
-                        _teamLineupListPool.Return(mutableTeams);
+                        _stringListPool.Return(skippedPlayerNames);
+                    }
+
+                    // Continue with the rest of match initialization (find players, assign slots, warp to arena).
+                    // BalanceTeamsAsync is NOT called — GetBalancedParticipantsAsync already did both selection and team assignment.
+                    await InitializeMatch(matchData, teamList, balancingAlreadyDone: true);
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusMatch), $"Error during look-ahead match initialization: {ex}");
+                    EndMatch(matchData, MatchEndReason.Cancelled, null);
+                }
+                finally
+                {
+                    _candidateListPool.Return(candidates);
+                    _handleListPool.Return(handles);
+                }
+            }
+
+            // local function that performs the steps required to initialize a match
+            async Task InitializeMatch(MatchData matchData, List<TeamLineup> teamLineups, bool balancingAlreadyDone)
+            {
+                try
+                {
+                    if (!balancingAlreadyDone)
+                    {
+                        // Balance or randomize teams.
+                        List<TeamLineup> mutableTeams = _teamLineupListPool.Get();
+                        try
+                        {
+                            foreach (TeamLineup team in teamLineups)
+                            {
+                                if (!team.IsPremade)
+                                    mutableTeams.Add(team);
+                            }
+
+                            if (mutableTeams.Count >= 2)
+                            {
+                                bool balanced = false;
+
+                                if (_teamVersusStatsBehavior is not null)
+                                {
+                                    balanced = await _teamVersusStatsBehavior.BalanceTeamsAsync(matchData.Configuration, mutableTeams);
+                                }
+
+                                if (!balanced)
+                                {
+                                    RandomizeTeams(matchData.Configuration, mutableTeams);
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            _teamLineupListPool.Return(mutableTeams);
+                        }
                     }
 
                     // Get the Player objects of all the players in the match.
@@ -5434,6 +5703,17 @@ namespace SS.Matchmaking.Modules
             {
                 _objectPoolManager.PlayerSetPool.Return(players);
             }
+        }
+
+        private bool Timer_LookAheadWait(WaitTimerState state)
+        {
+            _activeWaitTimers.Remove(state.Config);
+            _firedWaitTimers.Add(state.Config);
+
+            // Re-attempt match formation — will now proceed past the wait check.
+            MakeMatch(state.Queue);
+
+            return false; // single-fire timer
         }
 
         private bool MainloopTimer_ProcessInactiveSlot(PlayerSlot slot)
@@ -6969,6 +7249,10 @@ namespace SS.Matchmaking.Modules
             public required double OpenSkillSigmaDecayPerDay { get; init; }
             public required bool OpenSkillUseScoresWhenPossible { get; init; }
             public required OrdinalArgs OpenSkillDisplayOrdinal { get; init; }
+            public required int LookAheadWindow { get; init; }
+            public required int LookAheadWaitSeconds { get; init; }
+            public required double SkipNudgeRate { get; init; }
+            public required double StrictMatchmakingMaxDisparity { get; init; }
 
             public required MatchBoxConfiguration[] Boxes;
 
@@ -7678,6 +7962,12 @@ namespace SS.Matchmaking.Modules
             public byte InitialPortal { get; init; }
 
             public short MaximumEnergy { get; init; }
+        }
+
+        private sealed class WaitTimerState
+        {
+            public required MatchConfiguration Config { get; init; }
+            public required TeamVersusMatchmakingQueue Queue { get; init; }
         }
 
         private class ArenaBaseData

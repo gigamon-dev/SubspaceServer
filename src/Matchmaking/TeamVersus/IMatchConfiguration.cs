@@ -68,5 +68,27 @@ namespace SS.Matchmaking.TeamVersus
         /// The arguments to pass when calculating the Ordinal value to display for a rating.
         /// </summary>
         public OrdinalArgs OpenSkillDisplayOrdinal { get; }
+
+        /// <summary>
+        /// Additional players beyond the minimum (N) to consider for look-ahead balancing. 0 = disabled (FIFO).
+        /// </summary>
+        int LookAheadWindow => 0;
+
+        /// <summary>
+        /// Seconds to wait for the look-ahead window to fill before forming with fewer than N+W candidates.
+        /// </summary>
+        int LookAheadWaitSeconds => 60;
+
+        /// <summary>
+        /// Fraction per skip that nudges an outlier's effective ordinal toward the candidate pool mean.
+        /// After skipCount * rate >= 1.0, the player is effectively at the mean.
+        /// </summary>
+        double SkipNudgeRate => 0.2;
+
+        /// <summary>
+        /// Maximum ordinal gap a strict-mode player tolerates between themselves and the lowest-rated
+        /// player in the selected set. 0 = no limit.
+        /// </summary>
+        double StrictMatchmakingMaxDisparity => 0;
     }
 }
