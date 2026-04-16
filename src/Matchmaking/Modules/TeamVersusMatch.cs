@@ -55,7 +55,7 @@ namespace SS.Matchmaking.Modules
         Manages team versus matches.
         Configuration: {nameof(TeamVersusMatch)}.conf
         """)]
-    public sealed class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IMatchFocusAdvisor, ILeagueGameMode, ILeagueHelp
+    public sealed class TeamVersusMatch : IAsyncModule, IMatchmakingQueueAdvisor, IFreqManagerEnforcerAdvisor, IMatchFocusAdvisor, ILeagueGameMode, ILeagueHelp, IKoEarlyRequeue
     {
         private const string ConfigurationFileName = "TeamVersus.conf";
 
@@ -86,6 +86,7 @@ namespace SS.Matchmaking.Modules
 
         private AdvisorRegistrationToken<IMatchFocusAdvisor>? _iMatchFocusAdvisorToken;
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor>? _iMatchmakingQueueAdvisorToken;
+        private InterfaceRegistrationToken<IKoEarlyRequeue>? _iKoEarlyRequeueToken;
 
 
         private ConfigHandle? _teamVersusConfig;
@@ -262,6 +263,7 @@ namespace SS.Matchmaking.Modules
 
             _iMatchFocusAdvisorToken = broker.RegisterAdvisor<IMatchFocusAdvisor>(this);
             _iMatchmakingQueueAdvisorToken = broker.RegisterAdvisor<IMatchmakingQueueAdvisor>(this);
+            _iKoEarlyRequeueToken = broker.RegisterInterface<IKoEarlyRequeue>(this);
 
             return true;
 
@@ -295,6 +297,9 @@ namespace SS.Matchmaking.Modules
 
         Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
+            if (broker.UnregisterInterface(ref _iKoEarlyRequeueToken) != 0)
+                return Task.FromResult(false);
+
             if (!broker.UnregisterAdvisor(ref _iMatchFocusAdvisorToken))
                 return Task.FromResult(false);
 
@@ -754,6 +759,25 @@ namespace SS.Matchmaking.Modules
             void PrintCommand(Player player, string command, string description)
             {
                 _chat.SendMessage(player, $"?{command,-16}  {description}");
+            }
+        }
+
+        #endregion
+
+        #region IKoEarlyRequeue members
+
+        void IKoEarlyRequeue.MarkPlayerKoEarlyRequeued(IMatchData matchData, string playerName)
+        {
+            if (matchData is not MatchData md)
+                return;
+
+            for (int i = 0; i < md.ParticipationList.Count; i++)
+            {
+                if (string.Equals(md.ParticipationList[i].PlayerName, playerName, StringComparison.OrdinalIgnoreCase))
+                {
+                    md.ParticipationList[i] = md.ParticipationList[i] with { WasEarlyRequeued = true };
+                    return;
+                }
             }
         }
 
@@ -6705,9 +6729,10 @@ namespace SS.Matchmaking.Modules
                     int playerNameIndex = 0;
 
                     // Unset the players that are allowed to automatically requeue.
+                    // Skip players that were early-requeued (already unset by KoRequeue and may now be playing in a new match).
                     foreach (PlayerParticipationRecord record in matchData.ParticipationList)
                     {
-                        if (!record.LeftWithoutSub)
+                        if (!record.LeftWithoutSub && !record.WasEarlyRequeued)
                         {
                             playerNames[playerNameIndex++] = record.PlayerName;
                         }
@@ -7189,7 +7214,7 @@ namespace SS.Matchmaking.Modules
         /// <param name="PlayerName">The name of the player.</param>
         /// <param name="WasSubIn">Whether the player entered the match as a sub-in.</param>
         /// <param name="LeftWithoutSub">Whether the player left the match without having a replacement player ready sub-in.</param>
-        private record struct PlayerParticipationRecord(string PlayerName, bool WasSubIn, bool LeftWithoutSub);
+        private record struct PlayerParticipationRecord(string PlayerName, bool WasSubIn, bool LeftWithoutSub, bool WasEarlyRequeued = false);
 
         private class Team : ITeam
         {

@@ -19,7 +19,7 @@ namespace SS.Matchmaking.Modules
         Penalizes players that get KO'd too quickly after a match starts.
         For use with the {nameof(TeamVersusMatch)} module.
         """)]
-    public sealed class RecklessPlayPenalty : IModule, IArenaAttachableModule
+    public sealed class RecklessPlayPenalty : IModule, IArenaAttachableModule, IRecklessPlayPenalty
     {
         private readonly IChat _chat;
         private readonly IConfigManager _configManager;
@@ -27,6 +27,7 @@ namespace SS.Matchmaking.Modules
         private readonly IPlayerData _playerData;
 
         private IMatchmakingQueues? _matchmakingQueues;
+        private InterfaceRegistrationToken<IRecklessPlayPenalty>? _iRecklessPlayPenaltyToken;
 
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new(Constants.TargetArenaCount);
 
@@ -53,11 +54,15 @@ namespace SS.Matchmaking.Modules
                 return false;
             }
 
+            _iRecklessPlayPenaltyToken = broker.RegisterInterface<IRecklessPlayPenalty>(this);
             return true;
         }
 
         bool IModule.Unload(IComponentBroker broker)
         {
+            if (broker.UnregisterInterface(ref _iRecklessPlayPenaltyToken) != 0)
+                return false;
+
             broker.ReleaseInterface(ref _matchmakingQueues);
             return true;
         }
@@ -119,6 +124,23 @@ namespace SS.Matchmaking.Modules
             arenaData.PendingPenalties.Clear();
 
             return true;
+        }
+
+        #endregion
+
+        #region IRecklessPlayPenalty members
+
+        bool IRecklessPlayPenalty.HasPendingPenalty(IMatchData matchData, string playerName)
+        {
+            Arena? arena = matchData.Arena;
+            if (arena is null)
+                return false;
+
+            if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return false;
+
+            return arenaData.PendingPenalties.TryGetValue(matchData, out Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)>? matchPenalties)
+                && matchPenalties.ContainsKey(playerName);
         }
 
         #endregion
