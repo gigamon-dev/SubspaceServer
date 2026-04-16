@@ -28,7 +28,7 @@ namespace SS.Matchmaking.Modules
 
         private IMatchmakingQueues? _matchmakingQueues;
 
-        private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = [];
+        private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new(Constants.TargetArenaCount);
 
         public RecklessPlayPenalty(
             IChat chat,
@@ -66,6 +66,14 @@ namespace SS.Matchmaking.Modules
 
         #region IArenaAttachableModule members
 
+        [ConfigHelp<bool>("SS.Matchmaking.RecklessPlayPenalty", "Enabled", ConfigScope.Arena, Default = false,
+            Description = "Set to 1 to enable the reckless play penalty feature.")]
+        [ConfigHelp<int>("SS.Matchmaking.RecklessPlayPenalty", "ThresholdSeconds", ConfigScope.Arena, Default = 180,
+            Description = "KO within this many seconds of match start counts as reckless.")]
+        [ConfigHelp<int>("SS.Matchmaking.RecklessPlayPenalty", "PenaltyMinimumSeconds", ConfigScope.Arena, Default = 120,
+            Description = "Hold duration (seconds) when KO'd right at the threshold boundary.")]
+        [ConfigHelp<int>("SS.Matchmaking.RecklessPlayPenalty", "PenaltyMaximumSeconds", ConfigScope.Arena, Default = 600,
+            Description = "Hold duration (seconds) when KO'd almost instantly after match start.")]
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
             ArenaData arenaData = new();
@@ -106,7 +114,7 @@ namespace SS.Matchmaking.Modules
             if (!_arenaDataDictionary.Remove(arena, out ArenaData? arenaData))
                 return false;
 
-            foreach (Dictionary<string, TimeSpan> matchPenalties in arenaData.PendingPenalties.Values)
+            foreach (Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)> matchPenalties in arenaData.PendingPenalties.Values)
                 matchPenalties.Clear();
             arenaData.PendingPenalties.Clear();
 
@@ -158,15 +166,15 @@ namespace SS.Matchmaking.Modules
             if (string.IsNullOrEmpty(playerName))
                 return;
 
-            if (!arenaData.PendingPenalties.TryGetValue(matchData, out Dictionary<string, TimeSpan>? matchPenalties))
+            if (!arenaData.PendingPenalties.TryGetValue(matchData, out Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)>? matchPenalties))
             {
-                matchPenalties = new Dictionary<string, TimeSpan>(StringComparer.OrdinalIgnoreCase);
+                matchPenalties = new Dictionary<string, (TimeSpan, TimeSpan)>(StringComparer.OrdinalIgnoreCase);
                 arenaData.PendingPenalties[matchData] = matchPenalties;
             }
 
             // A player can only be KO'd once per match, but guard defensively and keep the larger penalty.
-            if (!matchPenalties.TryGetValue(playerName, out TimeSpan existing) || penalty > existing)
-                matchPenalties[playerName] = penalty;
+            if (!matchPenalties.TryGetValue(playerName, out (TimeSpan Penalty, TimeSpan ElapsedAtKo) existing) || penalty > existing.Penalty)
+                matchPenalties[playerName] = (penalty, elapsed);
 
             _logManager.LogM(LogLevel.Info, nameof(RecklessPlayPenalty),
                 $"[{arena.Name}] [{playerName}] Reckless KO at {elapsed.TotalSeconds:F1}s into match (threshold: {arenaData.Threshold.TotalSeconds}s). Pending penalty: {penalty.TotalSeconds:F0}s.");
@@ -182,7 +190,7 @@ namespace SS.Matchmaking.Modules
                 return;
 
             // Always remove from the dictionary to prevent memory leaks, regardless of whether penalties are applied.
-            if (!arenaData.PendingPenalties.Remove(matchData, out Dictionary<string, TimeSpan>? matchPenalties))
+            if (!arenaData.PendingPenalties.Remove(matchData, out Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)>? matchPenalties))
                 return;
 
             if (!arenaData.Enabled)
@@ -193,7 +201,7 @@ namespace SS.Matchmaking.Modules
             if (reason == MatchEndReason.Cancelled)
                 return;
 
-            foreach ((string playerName, TimeSpan penalty) in matchPenalties)
+            foreach ((string playerName, (TimeSpan penalty, TimeSpan elapsedAtKo)) in matchPenalties)
             {
                 // Apply the hold. Safe even if the player was already removed from the Playing state
                 // by another mechanism — UnsetPlayingWithHold early-returns when the name is not found.
@@ -202,12 +210,8 @@ namespace SS.Matchmaking.Modules
                 Player? player = _playerData.FindPlayer(playerName);
                 if (player is not null)
                 {
-                    TimeSpan elapsed = matchData.Started.HasValue
-                        ? DateTime.UtcNow - matchData.Started.Value
-                        : TimeSpan.Zero;
-
                     _chat.SendMessage(player,
-                        $"You were KO'd too quickly ({FormatDuration(elapsed)} into the match). " +
+                        $"You were KO'd too quickly ({FormatDuration(elapsedAtKo)} into the match). " +
                         $"You must wait {FormatDuration(penalty)} before queuing again.");
                 }
 
@@ -234,8 +238,8 @@ namespace SS.Matchmaking.Modules
             public TimeSpan PenaltyMaximum;
 
             // Outer key: IMatchData (reference equality — match objects live for the match duration)
-            // Inner key: player name (OrdinalIgnoreCase)
-            public readonly Dictionary<IMatchData, Dictionary<string, TimeSpan>> PendingPenalties = [];
+            // Inner key: player name (OrdinalIgnoreCase); value: penalty duration and elapsed time at the moment of KO
+            public readonly Dictionary<IMatchData, Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)>> PendingPenalties = [];
         }
     }
 }
