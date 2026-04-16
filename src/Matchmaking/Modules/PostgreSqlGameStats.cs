@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.HighPerformance.Buffers;
 using Microsoft.Extensions.ObjectPool;
+using Microsoft.IO;
 using Npgsql;
 using NpgsqlTypes;
 using SS.Core;
@@ -12,6 +13,7 @@ using SS.Utilities.ObjectPool;
 using System.Buffers;
 using System.Collections.ObjectModel;
 using System.Data;
+using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
 
@@ -38,6 +40,7 @@ namespace SS.Matchmaking.Modules
         private InterfaceRegistrationToken<ILeagueRepository>? _iLeagueRepositoryToken;
 
         private NpgsqlDataSource? _dataSource;
+        private string? _saveGameFallbackFolderPath;
         private bool _isDisposed;
 
         private readonly ObjectPool<List<string>> s_stringListPool = new DefaultObjectPool<List<string>>(new ListPooledObjectPolicy<string>() { InitialCapacity = Constants.TargetPlayerCount });
@@ -56,6 +59,8 @@ namespace SS.Matchmaking.Modules
             }
 
             _dataSource = NpgsqlDataSource.Create(connectionString);
+
+            _saveGameFallbackFolderPath = _configManager.GetStr(_configManager.Global, "SS.Matchmaking", "SaveGameFallbackFolderPath");
 
             _iGameStatsRepositoryToken = broker.RegisterInterface<IGameStatsRepository>(this);
             _iLeagueRepositoryToken = broker.RegisterInterface<ILeagueRepository>(this);
@@ -84,10 +89,12 @@ namespace SS.Matchmaking.Modules
 
         #region IGameStatsRepository
 
-        async Task<long?> IGameStatsRepository.SaveGameAsync(Stream jsonStream)
+        async Task<long?> IGameStatsRepository.SaveGameAsync(Stream gameJsonStream)
         {
             if (_dataSource is null)
                 throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            long? startingPosition = gameJsonStream.CanSeek ? gameJsonStream.Position : null;
 
             try
             {
@@ -95,7 +102,7 @@ namespace SS.Matchmaking.Modules
                 NpgsqlCommand command = new("select ss.save_game_bytea($1)", connection);
                 await using (command.ConfigureAwait(false))
                 {
-                    command.Parameters.AddWithValue(NpgsqlDbType.Bytea, jsonStream);
+                    command.Parameters.AddWithValue(NpgsqlDbType.Bytea, gameJsonStream);
                     await command.PrepareAsync().ConfigureAwait(false);
 
                     var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
@@ -111,8 +118,16 @@ namespace SS.Matchmaking.Modules
             catch (Exception ex)
             {
                 _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error saving game to the database. {ex}");
-                // TODO: add a fallback mechanism that saves the match json to a file to later send to the database as a retry?
-                // would need something to periodically look for files and try to retry the save
+
+                if (startingPosition is not null && !string.IsNullOrWhiteSpace(_saveGameFallbackFolderPath))
+                {
+                    // Reset back to the starting position.
+                    gameJsonStream.Position = startingPosition.Value;
+
+                    // As a fallback, save the match info a file so that it can later be used to retry.
+                    await Task.Run(async () => await SaveGameToFile(gameJsonStream, null, ex).ConfigureAwait(false)).ConfigureAwait(false);
+                }
+                
                 return null;
             }
         }
@@ -357,10 +372,12 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        async Task<long?> ILeagueRepository.SaveGameAsync(long seasonGameId, Stream jsonStream)
+        async Task<long?> ILeagueRepository.SaveGameAsync(long seasonGameId, Stream gameJsonStream)
         {
             if (_dataSource is null)
                 throw new InvalidOperationException(Constants.ErrorMessages.ModuleNotLoaded);
+
+            long? startingPosition = gameJsonStream.CanSeek ? gameJsonStream.Position : null;
 
             try
             {
@@ -369,7 +386,7 @@ namespace SS.Matchmaking.Modules
                 await using (command.ConfigureAwait(false))
                 {
                     command.Parameters.Add(new NpgsqlParameter<long>() { TypedValue = seasonGameId });
-                    command.Parameters.AddWithValue(NpgsqlDbType.Bytea, jsonStream);
+                    command.Parameters.AddWithValue(NpgsqlDbType.Bytea, gameJsonStream);
                     await command.PrepareAsync().ConfigureAwait(false);
 
                     var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
@@ -385,8 +402,16 @@ namespace SS.Matchmaking.Modules
             catch (Exception ex)
             {
                 _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error saving game to the database. {ex}");
-                // TODO: add a fallback mechanism that saves the match json to a file to later send to the database as a retry?
-                // would need something to periodically look for files and try to retry the save
+
+                if (startingPosition is not null && !string.IsNullOrWhiteSpace(_saveGameFallbackFolderPath))
+                {
+                    // Reset back to the starting position.
+                    gameJsonStream.Position = startingPosition.Value;
+
+                    // As a fallback, save the match info a file so that it can later be used to retry.
+                    await Task.Run(async () => await SaveGameToFile(gameJsonStream, seasonGameId, ex).ConfigureAwait(false)).ConfigureAwait(false);
+                }
+
                 return null;
             }
         }
@@ -1156,6 +1181,86 @@ namespace SS.Matchmaking.Modules
             {
                 _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling league.get_team_id. {ex}");
                 return null;
+            }
+        }
+
+        private async Task SaveGameToFile(Stream gameJsonStream, long? seasonGameId, Exception databaseException)
+        {
+            if (string.IsNullOrWhiteSpace(_saveGameFallbackFolderPath))
+                return;
+
+            try
+            {
+                // Create the directory if it doesn't already exist.
+                _ = Directory.CreateDirectory(_saveGameFallbackFolderPath);
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error creating save game fallback directory '{_saveGameFallbackFolderPath}'. {ex}");
+                return;
+            }
+
+            // Save the game info (game data JSON, optional id, and exception info) to a file.
+            string filePath = Path.Join(_saveGameFallbackFolderPath, $"Game_{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}.json");
+
+            try
+            {
+                using FileStream fileStream = new(filePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, true);
+                using Utf8JsonWriter writer = new(fileStream, default);
+
+                writer.WriteStartObject();
+
+                // season_game_id (league only)
+                if (seasonGameId is not null)
+                {
+                    writer.WriteNumber("season_game_id"u8, seasonGameId.Value);
+                }
+
+                // game data
+                writer.WritePropertyName("game_data"u8);
+
+                if (gameJsonStream is RecyclableMemoryStream rms)
+                {
+                    writer.WriteRawValue(rms.GetReadOnlySequence());
+                }
+                else
+                {
+                    await WriteRawFromStreamAsync(writer, gameJsonStream);
+                }
+
+                // exception
+                writer.WriteString("exception"u8, databaseException.ToString());
+
+                writer.WriteEndObject();
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error saving game data to file '{filePath}'. {ex}");
+                return;
+            }
+
+            _logManager.LogM(LogLevel.Info, nameof(PostgreSqlGameStats), $"Saved game data to file '{filePath}'.");
+
+            static async Task WriteRawFromStreamAsync(Utf8JsonWriter writer, Stream stream)
+            {
+                PipeReader reader = PipeReader.Create(stream);
+
+                while (true)
+                {
+                    ReadResult result = await reader.ReadAsync();
+                    ReadOnlySequence<byte> sequence = result.Buffer;
+
+                    // Check if we have the full JSON value.
+                    if (result.IsCompleted)
+                    {
+                        writer.WriteRawValue(sequence);
+                        reader.AdvanceTo(sequence.End);
+                        break;
+                    }
+
+                    // We don't have the full value yet. Tell the reader we haven't consumed anything yet.
+                    reader.AdvanceTo(sequence.Start, sequence.End);
+                }
             }
         }
 
