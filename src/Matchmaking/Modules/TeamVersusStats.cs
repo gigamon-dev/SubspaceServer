@@ -31,7 +31,6 @@ namespace SS.Matchmaking.Modules
     {
         #region Static members
 
-        private static readonly RecyclableMemoryStreamManager s_recyclableMemoryStreamManager = new();
         private static readonly ObjectPool<LinkedListNode<DamageInfo>> s_damageInfoLinkedListNodePool;
         private static readonly ObjectPool<LinkedListNode<WeaponUse>> s_weaponUseLinkedListNodePool;
         private static readonly ObjectPool<TickRangeCalculator> s_tickRangeCalculatorPool;
@@ -482,7 +481,7 @@ namespace SS.Matchmaking.Modules
                 _matchStatsDictionary.Add(matchData.MatchIdentifier, matchStats);
             }
 
-            matchStats.Initialize(matchData);
+            matchStats.Initialize(matchData, _objectPoolManager);
 
             DateTime now = DateTime.UtcNow;
             Dictionary<string, int> leaderboardRatings = _leaderboardRatingDictionaryPool.Get();
@@ -1637,7 +1636,7 @@ namespace SS.Matchmaking.Modules
                 // The RecyclableMemoryStream reuses underlying buffers, but maybe just having a pool of regular MemoryStream
                 // The Utf8JsonWriter has a Reset method.
 
-                using MemoryStream gameJsonStream = s_recyclableMemoryStreamManager.GetStream();
+                using MemoryStream gameJsonStream = _objectPoolManager.RecyclableMemoryStreamManager.GetStream();
                 using Utf8JsonWriter writer = new(gameJsonStream, default);
 
                 writer.WriteStartObject(); // game object
@@ -2693,9 +2692,6 @@ namespace SS.Matchmaking.Modules
         [CommandHelp(Description = "Prints stats for the currently focused match.")]
         private void Command_chart(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
-                return;
-
             IMatch? match = _matchFocus.GetFocusedMatch(player);
             if (match is null || match is not IMatchData matchData)
                 return;
@@ -3521,13 +3517,13 @@ namespace SS.Matchmaking.Modules
             private MemoryStream? _eventsJsonStream;
             private Utf8JsonWriter? _eventsJsonWriter;
 
-            public void Initialize(IMatchData matchData)
+            public void Initialize(IMatchData matchData, IObjectPoolManager objectPoolManager)
             {
                 Reset();
 
                 MatchData = matchData ?? throw new ArgumentNullException(nameof(matchData));
 
-                _eventsJsonStream = s_recyclableMemoryStreamManager.GetStream();
+                _eventsJsonStream = objectPoolManager.RecyclableMemoryStreamManager.GetStream();
                 _eventsJsonWriter = new Utf8JsonWriter(_eventsJsonStream);
                 _eventsJsonWriter.WriteStartArray();
             }

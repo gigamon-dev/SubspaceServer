@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using Microsoft.IO;
 using SS.Core.ComponentInterfaces;
 using SS.Utilities;
 using SS.Utilities.ObjectPool;
@@ -27,6 +28,7 @@ namespace SS.Core.Modules
         private readonly ObjectPool<HashSet<string>> _nameHashSetPool;
         private readonly ObjectPool<StringBuilder> _stringBuilderPool;
         private readonly ObjectPool<Crc32> _crc32Pool;
+        private readonly RecyclableMemoryStreamManager _recyclableMemoryStreamManager = new();
 
         public ObjectPoolManager()
         {
@@ -81,6 +83,8 @@ namespace SS.Core.Modules
         ObjectPool<StringBuilder> IObjectPoolManager.StringBuilderPool => _stringBuilderPool;
 
         ObjectPool<Crc32> IObjectPoolManager.Crc32Pool => _crc32Pool;
+
+        RecyclableMemoryStreamManager IObjectPoolManager.RecyclableMemoryStreamManager => _recyclableMemoryStreamManager;
 
         #endregion
 
