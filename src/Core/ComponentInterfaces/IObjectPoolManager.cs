@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using Microsoft.IO;
 using SS.Utilities;
 using System.Collections.Generic;
 using System.IO.Hashing;
@@ -93,5 +94,10 @@ namespace SS.Core.ComponentInterfaces
         /// Pool of <see cref="Crc32"/> objects.
         /// </summary>
         ObjectPool<Crc32> Crc32Pool { get; }
+
+        /// <summary>
+        /// Provides access to <see cref="RecyclableMemoryStream"/>s for which the buffers are pooled.
+        /// </summary>
+        RecyclableMemoryStreamManager RecyclableMemoryStreamManager { get; }
     }
 }

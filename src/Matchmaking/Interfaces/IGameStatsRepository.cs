@@ -11,14 +11,14 @@ namespace SS.Matchmaking.Interfaces
         /// <summary>
         /// Saves game stats to the database.
         /// </summary>
-        /// <param name="jsonStream">
+        /// <param name="gameJsonStream">
         /// JSON representing the game stats.
         /// The format differs for each game mode (e.g. solo games, slotted team games, ball games, ...).
         /// See the database function documentation for details.
         /// </param>
         /// <returns>The resulting gameId from the database. <see langword="null"/> if there was an error saving.</returns>
         /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
-        Task<long?> SaveGameAsync(Stream jsonStream);
+        Task<long?> SaveGameAsync(Stream gameJsonStream);
 
         /// <summary>
         /// Gets the current rank of player(s).
