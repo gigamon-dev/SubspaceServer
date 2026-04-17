@@ -620,22 +620,9 @@ namespace SS.Core.Modules
             if (string.IsNullOrWhiteSpace(text))
                 return;
 
-            StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
-
-            try
+            foreach (ReadOnlySpan<char> line in text.GetWrappedText(78, ' '))
             {
-                foreach (ReadOnlySpan<char> line in text.GetWrappedText(78, ' '))
-                {
-                    sb.Clear();
-                    sb.Append("  ");
-                    sb.Append(line);
-
-                    ((IChat)this).SendMessage(player, sb);
-                }
-            }
-            finally
-            {
-                _objectPoolManager.StringBuilderPool.Return(sb);
+                ((IChat)this).SendMessage(player, $"  {line}");
             }
         }
 
@@ -647,22 +634,37 @@ namespace SS.Core.Modules
             if (sb is null || sb.Length == 0)
                 return;
 
-            StringBuilder tempBuilder = _objectPoolManager.StringBuilderPool.Get();
-
-            try
+            foreach (ReadOnlySpan<char> line in sb.GetWrappedText(78, ' '))
             {
-                foreach (ReadOnlySpan<char> line in sb.GetWrappedText(78, ' ')) // foreach handles calling Dispose() on the enumerator
-                {
-                    tempBuilder.Clear();
-                    tempBuilder.Append("  ");
-                    tempBuilder.Append(line);
-
-                    ((IChat)this).SendMessage(player, tempBuilder);
-                }
+                ((IChat)this).SendMessage(player, $"  {line}");
             }
-            finally
+        }
+
+        void IChat.SendWrappedText(HashSet<Player> players, string text)
+        {
+            if (players is null)
+                return;
+
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            foreach (ReadOnlySpan<char> line in text.GetWrappedText(78, ' '))
             {
-                _objectPoolManager.StringBuilderPool.Return(tempBuilder);
+                ((IChat)this).SendSetMessage(players, $"  {line}");
+            }
+        }
+
+        void IChat.SendWrappedText(HashSet<Player> players, StringBuilder sb)
+        {
+            if (players is null)
+                return;
+
+            if (sb is null || sb.Length == 0)
+                return;
+
+            foreach (ReadOnlySpan<char> line in sb.GetWrappedText(78, ' '))
+            {
+                ((IChat)this).SendSetMessage(players, $"  {line}");
             }
         }
 

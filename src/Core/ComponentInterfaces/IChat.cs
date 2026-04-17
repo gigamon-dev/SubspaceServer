@@ -523,6 +523,20 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="sb">The message to send.</param>
         void SendWrappedText(Player player, StringBuilder sb);
 
+        /// <summary>
+        /// A utility function for sending lists of items in a chat message.
+        /// </summary>
+        /// <param name="players">The players to send the message to.</param>
+        /// <param name="text">The message to send.</param>
+        void SendWrappedText(HashSet<Player> players, string text);
+
+        /// <summary>
+        /// A utility function for sending lists of items in a chat message.
+        /// </summary>
+        /// <param name="players">The players to send the message to.</param>
+        /// <param name="sb">The message to send.</param>
+        void SendWrappedText(HashSet<Player> players, StringBuilder sb);
+
         #endregion
     }
 }

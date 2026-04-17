@@ -788,6 +788,10 @@ namespace SS.Utilities
     /// <summary>
     /// Provides the ability to enumerate on a <see cref="StringBuilder"/> to get wrapped lines.
     /// </summary>
+    /// <remarks>
+    /// The enumerator needs to be disposed.
+    /// However, when used in a foreach loop, the disposal is handled by the loop.
+    /// </remarks>
     public ref struct WrapTextStringBuilderEnumerator
     {
         private readonly StringBuilder _text;
