@@ -80,5 +80,23 @@ namespace SS.Matchmaking.Interfaces
         /// <param name="winningTeam">The team that won. <see langword="null"/> for no winner.</param>
         /// <returns><see langword="true"/> if chat notifications were sent. Otherwise, <see langword="false"/>.</returns>
         Task<bool> MatchEndedAsync(IMatchData matchData, MatchEndReason reason, ITeam? winningTeam);
+
+        /// <summary>
+        /// Selects the best N participants from a look-ahead candidate pool and balances them into teams.
+        /// Combines candidate selection (using ratings + skip boost + strict mode) and team assignment
+        /// (snake draft) into a single database-backed operation.
+        /// </summary>
+        /// <param name="matchConfiguration">Match configuration (provides N, skip nudge rate, strict disparity).</param>
+        /// <param name="candidates">All N+W candidates with their skip counts.</param>
+        /// <param name="teamList">Team lineups to fill. Must already contain the correct number of empty teams.</param>
+        /// <param name="preferences">Optional strict mode preference lookup. Null if module not loaded.</param>
+        /// <param name="skippedPlayerNames">Output: names of candidates in the window that were NOT selected.</param>
+        /// <returns>True if selection and balancing succeeded; false if ratings unavailable.</returns>
+        Task<bool> GetBalancedParticipantsAsync(
+            IMatchConfiguration matchConfiguration,
+            IReadOnlyList<PlayerCandidate> candidates,
+            IReadOnlyList<TeamLineup> teamList,
+            IMatchmakingPreferences? preferences,
+            List<string> skippedPlayerNames) => Task.FromResult(false);
     }
 }
