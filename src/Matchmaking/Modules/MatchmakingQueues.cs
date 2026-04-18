@@ -24,8 +24,31 @@ namespace SS.Matchmaking.Modules
     /// Other modules register queues through the <see cref="IMatchmakingQueues"/> interface.
     /// </remarks>
     [ModuleInfo("Manages matchmaking queues.")]
-    public sealed class MatchmakingQueues : IAsyncModule, IMatchmakingQueues, IPlayerGroupAdvisor
+    public sealed class MatchmakingQueues : IAsyncModule, IMatchmakingQueues, IPlayManager, IPlayerGroupAdvisor
     {
+        // TODO: Separate 'Playing' state and 'Play Holds' out of the MatchmakingQueues module and into another module, PlayManager. 
+        // MatchmakingQueues should only care about queues (Separation of Concerns).
+        // There are other ways to be 'Playing' in a match that are not through matchmaking queues: League Matches, Captains Matches
+        // So, all of the SetPlaying* and UnsetPlaying* methods should be moved to PlayManager.
+        // The MatchmakingQueues module still needs to keep track of which queues a player was in before joining a match,
+        // so that it can requeue the player when the player leaves the 'Playing' state.
+        // The MatchmakingQueues module needs to know details when a player starts or stops playing.
+        // When a player enters the 'Playing' state, MatchmakingQueues needs to know if the player is subbing in for it to know
+        // that the player should be restored to their original queue position when leaving the 'Playing' state.
+        // When a player leaves the 'Playing' state, MatchmakingQueues needs to know whether to requeue a player
+        // and if so, whether to restore to the original position in the queue(s) (cancelled match or was a sub)
+        // The PlayManager module could fire pub-sub callbacks that tell the MatchmakingQueues module when a player enters or leaves the 'Playing' state.
+        // The callbacks could pass reasons:
+        // PlayStartFlags
+        // - None
+        // - IsSub
+        // PlayEndFlags
+        // - None
+        // - Completed: the match completed
+        // - Cancelled: the match was cancelled --> requeue, unless Abandoned or Penalized
+        // - Abandoned: the player abandoned the match (e.g. left at start or left the match uncleanly without being subbed out)
+        // - Penalized: the player is being penalized (use together with Abandoned as an indicator of severity)
+
         // required dependencies
         private readonly IComponentBroker _broker;
         private readonly IChat _chat;
@@ -43,6 +66,7 @@ namespace SS.Matchmaking.Modules
         private ILeagueAuthorization? _leagueAuthorization;
 
         private InterfaceRegistrationToken<IMatchmakingQueues>? _iMatchmakingQueuesToken;
+        private InterfaceRegistrationToken<IPlayManager>? _iPlayManagerToken;
         private AdvisorRegistrationToken<IPlayerGroupAdvisor>? _iPlayerGroupAdvisorToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
@@ -141,6 +165,7 @@ namespace SS.Matchmaking.Modules
             _commandManager.AddCommand(CommandNames.ListQueueAlt, Command_listqueue);
 
             _iMatchmakingQueuesToken = broker.RegisterInterface<IMatchmakingQueues>(this);
+            _iPlayManagerToken = broker.RegisterInterface<IPlayManager>(this);
             _iPlayerGroupAdvisorToken = broker.RegisterAdvisor<IPlayerGroupAdvisor>(this);
             return true;
         }
@@ -148,6 +173,7 @@ namespace SS.Matchmaking.Modules
         async Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             broker.UnregisterInterface(ref _iMatchmakingQueuesToken);
+            broker.UnregisterInterface(ref _iPlayManagerToken);
             broker.UnregisterAdvisor(ref _iPlayerGroupAdvisorToken);
 
             _commandManager.RemoveCommand(CommandNames.Next, Command_next);
@@ -291,7 +317,15 @@ namespace SS.Matchmaking.Modules
             return null;
         }
 
-        void IMatchmakingQueues.SetPlaying(Player player)
+        bool IPlayManager.IsPlaying(Player player)
+        {
+            if (player is null || !player.TryGetExtraData(_puKey, out UsageData? usageData))
+                return false;
+
+            return usageData.State == QueueState.Playing;
+        }
+
+        void IPlayManager.SetPlaying(Player player)
         {
             if (player is null)
                 return;
@@ -299,7 +333,7 @@ namespace SS.Matchmaking.Modules
             SetPlaying(player, false);
         }
 
-        void IMatchmakingQueues.SetPlaying<T>(T players)
+        void IPlayManager.SetPlaying<T>(T players)
         {
             if (players is null)
                 return;
@@ -310,7 +344,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        void IMatchmakingQueues.SetPlayingAsSub(Player player)
+        void IPlayManager.SetPlayingAsSub(Player player)
         {
             SetPlaying(player, true);
         }
@@ -348,29 +382,29 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        void IMatchmakingQueues.UnsetPlayingDueToCancel(Player player)
+        void IPlayManager.UnsetPlayingDueToCancel(Player player)
         {
             UnsetPlaying(player, true, true);
         }
 
-        void IMatchmakingQueues.UnsetPlayingDueToCancel<T>(T players)
+        void IPlayManager.UnsetPlayingDueToCancel<T>(T players)
         {
             // First, unset all players (and their groups) to restore their previous queue positions.
             // Then, fire the change events for the affected queues.
             UnsetPlaying(players, true, true);
         }
 
-        void IMatchmakingQueues.UnsetPlaying(Player player, bool allowRequeue)
+        void IPlayManager.UnsetPlaying(Player player, bool allowRequeue)
         {
             UnsetPlaying(player, allowRequeue, false);
         }
 
-        void IMatchmakingQueues.UnsetPlaying<T>(T players, bool allowRequeue)
+        void IPlayManager.UnsetPlaying<T>(T players, bool allowRequeue)
         {
             UnsetPlaying(players, allowRequeue, false);
         }
 
-        void IMatchmakingQueues.UnsetPlayingByName(string playerName, bool allowRequeue)
+        void IPlayManager.UnsetPlayingByName(string playerName, bool allowRequeue)
         {
             Player? player = _playerData.FindPlayer(playerName);
             if (player is not null)
@@ -383,7 +417,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        void IMatchmakingQueues.UnsetPlayingByName<T>(T playerNames, bool allowAutoRequeue)
+        void IPlayManager.UnsetPlayingByName<T>(T playerNames, bool allowAutoRequeue)
         {
             Player[] players = ArrayPool<Player>.Shared.Rent(playerNames.Count);
 
@@ -412,15 +446,17 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        void IMatchmakingQueues.UnsetPlayingWithHold(string playerName, TimeSpan duration)
+        void IPlayManager.UnsetPlayingWithHold(string playerName, TimeSpan duration)
         {
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(duration, TimeSpan.Zero);
+
             if (!_playersPlaying.Remove(playerName))
                 return;
 
             Player? player = _playerData.FindPlayer(playerName);
             if (player is not null)
             {
-                SetPlayHold(player, duration);
+                AddPlayHold(player, duration);
                 UnsetPlaying(player, false, false);
             }
             else
@@ -435,14 +471,16 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        void IMatchmakingQueues.UnsetPlayingWithHold<T>(T playerNames, TimeSpan duration)
+        void IPlayManager.UnsetPlayingWithHold<T>(T playerNames, TimeSpan duration)
         {
             if (playerNames is null)
                 return;
 
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(duration, TimeSpan.Zero);
+
             foreach (string playerName in playerNames)
             {
-                ((IMatchmakingQueues)this).UnsetPlayingWithHold(playerName, duration);
+                ((IPlayManager)this).UnsetPlayingWithHold(playerName, duration);
             }
         }
 
@@ -502,10 +540,8 @@ namespace SS.Matchmaking.Modules
 
                 if (usageData.PreviousQueued.Count > 0)
                 {
-                    DateTime now = DateTime.UtcNow;
-                    DateTime? holdExpire = GetRefreshedPlayHoldExpiration(player);
-                    TimeSpan holdRemaining = holdExpire is null ? TimeSpan.Zero : holdExpire.Value - now;
-                    bool hasPlayHold = holdRemaining > TimeSpan.Zero;
+                    TimeSpan holdDuration = GetRefreshedPlayHoldDuration(player);
+                    bool hasPlayHold = holdDuration > TimeSpan.Zero;
 
                     if (!hasPlayHold && allowRequeue && (isDueToCancel || wasSub || usageData.AutoRequeue) && group is null)
                     {
@@ -549,7 +585,7 @@ namespace SS.Matchmaking.Modules
                             try
                             {
                                 sb.Append($"{CommandNames.Next}: Can't automatically requeue because you have a play hold. Remaining time: ");
-                                sb.AppendFriendlyTimeSpan(holdRemaining);
+                                sb.AppendFriendlyTimeSpan(holdDuration);
                                 _chat.SendMessage(player, sb);
                             }
                             finally
@@ -659,6 +695,79 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        void IPlayManager.AddPlayHold(Player player, TimeSpan duration)
+        {
+            ArgumentNullException.ThrowIfNull(player);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(duration, TimeSpan.Zero);
+
+            AddPlayHold(player, duration);
+        }
+
+        void IPlayManager.AddPlayHold(string playerName, TimeSpan duration)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(playerName);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(duration, TimeSpan.Zero);
+
+            Player? player = _playerData.FindPlayer(playerName);
+            if (player is not null)
+            {
+                AddPlayHold(player, duration);
+            }
+            else
+            {
+                // The player is not logged on.
+                // However, we still want to remember that the player should have a play hold if they reconnect.
+                if (!_pendingPlayHolds.TryGetValue(playerName, out TimeSpan existingDuration))
+                {
+                    _pendingPlayHolds[playerName] = duration;
+                }
+                else
+                {
+                    _pendingPlayHolds[playerName] = existingDuration + duration;
+                }
+            }
+        }
+
+        void IPlayManager.SetPlayHold(Player player, TimeSpan duration)
+        {
+            ArgumentNullException.ThrowIfNull(player);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(duration, TimeSpan.Zero);
+
+            SetPlayHold(player, duration);
+        }
+
+        void IPlayManager.SetPlayHold(string playerName, TimeSpan duration)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(playerName);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(duration, TimeSpan.Zero);
+
+            Player? player = _playerData.FindPlayer(playerName);
+            if (player is not null)
+            {
+                SetPlayHold(player, duration);
+            }
+            else
+            {
+                // The player is not logged on.
+                // However, we still want to remember that the player should have a play hold if they reconnect.
+                if (!_pendingPlayHolds.TryGetValue(playerName, out TimeSpan existingDuration)
+                    || existingDuration < duration)
+                {
+                    _pendingPlayHolds[playerName] = duration;
+                }
+            }
+        }
+
+        DateTime? IPlayManager.GetPlayHoldExpiration(Player player)
+        {
+            ArgumentNullException.ThrowIfNull(player);
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return null;
+
+            return playerData.RefreshPlayHoldExpiration();
+        }
+
         string IMatchmakingQueues.NextCommandName => CommandNames.Next;
         string IMatchmakingQueues.CancelCommandName => CommandNames.CancelNext;
 
@@ -740,22 +849,18 @@ namespace SS.Matchmaking.Modules
 
         private void Persist_GetData(Player? player, Stream outStream)
         {
-            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+            if (player is null)
                 return;
 
-            DateTime? playHoldExpire = playerData.GetRefreshedPlayHoldExpiration();
-            if (playHoldExpire is null)
-                return;
-
-            TimeSpan remainingDuration = playHoldExpire.Value - DateTime.UtcNow;
-            if (remainingDuration <= TimeSpan.Zero)
+            TimeSpan holdDuration = GetRefreshedPlayHoldDuration(player);
+            if (holdDuration <= TimeSpan.Zero)
                 return;
 
             try
             {
                 Persist.Protobuf.MatchmakingQueuesPlayerData protoPlayerData = new()
                 {
-                    PlayHoldDuration = Duration.FromTimeSpan(remainingDuration)
+                    PlayHoldDuration = Duration.FromTimeSpan(holdDuration)
                 };
 
                 protoPlayerData.WriteTo(outStream);
@@ -1071,10 +1176,7 @@ namespace SS.Matchmaking.Modules
                 // Print play hold info.
                 if (group is null)
                 {
-                    DateTime now = DateTime.UtcNow;
-                    DateTime? playHoldExpire = GetRefreshedPlayHoldExpiration(player);
-                    TimeSpan duration = playHoldExpire is null ? TimeSpan.Zero : playHoldExpire.Value - now;
-
+                    TimeSpan duration = GetRefreshedPlayHoldDuration(player);
                     if (duration > TimeSpan.Zero)
                     {
                         sb = _objectPoolManager.StringBuilderPool.Get();
@@ -1213,9 +1315,7 @@ namespace SS.Matchmaking.Modules
 
             if (group is null)
             {
-                DateTime now = DateTime.UtcNow;
-                DateTime? playHoldExpire = GetRefreshedPlayHoldExpiration(player);
-                TimeSpan duration = playHoldExpire is null ? TimeSpan.Zero : playHoldExpire.Value - now;
+                TimeSpan duration = GetRefreshedPlayHoldDuration(player);
 
                 if (duration > TimeSpan.Zero)
                 {
@@ -1696,12 +1796,13 @@ namespace SS.Matchmaking.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
-            Args = "<none> | -r | -a <duration seconds>",
+            Args = "<none> | -r |  [ -a | -s ] <duration seconds>",
             Description = """
                 Gets the amount of time a player currently has to wait before being allowed to re-queue with the ?next command.
                 Staff members can use:
                   -r to remove the target player's hold.
-                  -a to add a hold to the target player.
+                  -a to add a hold to the target player (adds to the existing amount)
+                  -s to set a target player's hold (overwrites existing amount)
                 """)]
         private void Command_nextHold(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -1717,7 +1818,7 @@ namespace SS.Matchmaking.Modules
             {
                 ReadOnlySpan<char> token = parameters[ranges[0]];
 
-                if (token.Contains("-r", StringComparison.OrdinalIgnoreCase))
+                if (token.Equals("-r", StringComparison.OrdinalIgnoreCase))
                 {
                     // The user wants to remove a hold.
                     if (!_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff)) // TODO: maybe add a capability specifically for this?
@@ -1732,7 +1833,8 @@ namespace SS.Matchmaking.Modules
                         return;
                     }
                 }
-                else if (token.Contains("-a", StringComparison.OrdinalIgnoreCase))
+                else if (token.Equals("-a", StringComparison.OrdinalIgnoreCase)
+                    || token.Equals("-s", StringComparison.OrdinalIgnoreCase))
                 {
                     // The user wants to add a hold.
                     if (!_capabilityManager.HasCapability(player, Constants.Capabilities.IsStaff)) // TODO: maybe add a capability specifically for this?
@@ -1762,10 +1864,18 @@ namespace SS.Matchmaking.Modules
                         return;
                     }
 
-                    // TODO: Provide a way to add seconds rather than just set.
-                    SetPlayHold(targetPlayer, TimeSpan.FromSeconds(durationSeconds));
-                    _chat.SendMessage(player, $"{CommandNames.NextHold}: Set hold on {targetPlayer.Name}.");
-                    return;
+                    if (token.Equals("-a", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AddPlayHold(targetPlayer, TimeSpan.FromSeconds(durationSeconds));
+                        _chat.SendMessage(player, $"{CommandNames.NextHold}: Added hold on {targetPlayer.Name}.");
+                    }
+                    else if (token.Equals("-s", StringComparison.OrdinalIgnoreCase))
+                    {
+                        SetPlayHold(targetPlayer, TimeSpan.FromSeconds(durationSeconds));
+                        _chat.SendMessage(player, $"{CommandNames.NextHold}: Set hold on {targetPlayer.Name}.");
+                    }
+                    
+                    // Continue and display hold info.
                 }
                 else if(!token.IsEmpty)
                 {
@@ -1775,9 +1885,7 @@ namespace SS.Matchmaking.Modules
                 }
 
                 // Display hold info.
-                DateTime now = DateTime.UtcNow;
-                DateTime? playHoldExpire = GetRefreshedPlayHoldExpiration(targetPlayer);
-                TimeSpan duration = playHoldExpire is null ? TimeSpan.Zero : playHoldExpire.Value - now;
+                TimeSpan duration = GetRefreshedPlayHoldDuration(targetPlayer);
 
                 if (duration > TimeSpan.Zero)
                 {
@@ -1988,6 +2096,25 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        private void RemoveFromAllQueues(Player player)
+        {
+            // Individual
+            if (player.TryGetExtraData(_puKey, out UsageData? playerUsageData)
+                && playerUsageData.State == QueueState.Queued)
+            {
+                RemoveFromAllQueues(player, null, playerUsageData, true);
+            }
+
+            // Group
+            IPlayerGroup? group = _playerGroups.GetGroup(player);
+            if (group is not null
+                && _groupUsageDictionary.TryGetValue(group, out UsageData? groupUsageData)
+                && groupUsageData.State == QueueState.Queued)
+            {
+                RemoveFromAllQueues(null, group, groupUsageData, true);
+            }
+        }
+
         private void RemoveFromAllQueues(Player? player, IPlayerGroup? group, UsageData usageData, bool notify)
         {
             if (player is null && group is null)
@@ -2053,54 +2180,50 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        private void AddPlayHold(Player player, TimeSpan duration)
+        {
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            playerData.AddPlayHold(duration);
+            RemoveFromAllQueues(player);
+        }
+
         private void SetPlayHold(Player player, TimeSpan duration)
         {
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             playerData.SetPlayHold(duration);
-
-            if (!player.TryGetExtraData(_puKey, out UsageData? playerUsageData))
-                return;
-
-            if (playerUsageData.State == QueueState.Queued)
-            {
-                RemoveFromAllQueues(player, null, playerUsageData, true);
-            }
-
-            IPlayerGroup? group = _playerGroups.GetGroup(player);
-            if (group is null || !_groupUsageDictionary.TryGetValue(group, out UsageData? groupUsageData))
-                return;
-
-            if (groupUsageData.State == QueueState.Queued)
-            {
-                RemoveFromAllQueues(null, group, groupUsageData, true);
-            }
+            RemoveFromAllQueues(player);
         }
 
-        private DateTime? GetRefreshedPlayHoldExpiration(Player player)
+        private TimeSpan GetRefreshedPlayHoldDuration(Player player, DateTime? asOf = null)
         {
-            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
-                return null;
+            asOf ??= DateTime.UtcNow;
 
-            return playerData.GetRefreshedPlayHoldExpiration();
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return TimeSpan.Zero;
+
+            return playerData.GetRefreshedPlayHoldDuration(asOf);
         }
 
         private int GetGroupPlayHolds(IPlayerGroup group, StringBuilder sb)
         {
             int holdCount = 0;
+            DateTime now = DateTime.UtcNow;
+
             foreach (Player member in group.Members)
             {
-                DateTime now = DateTime.UtcNow;
-                DateTime? holdExpiration = GetRefreshedPlayHoldExpiration(member);
-                if (holdExpiration is not null)
+                TimeSpan holdDuration = GetRefreshedPlayHoldDuration(member, now);
+                if (holdDuration > TimeSpan.Zero)
                 {
                     if (sb.Length > 0)
                         sb.Append(", ");
 
                     sb.Append(member.Name);
                     sb.Append(" (");
-                    sb.AppendFriendlyTimeSpan(now - holdExpiration.Value);
+                    sb.AppendFriendlyTimeSpan(holdDuration);
                     sb.Append(')');
 
                     holdCount++;
@@ -2154,15 +2277,17 @@ namespace SS.Matchmaking.Modules
             }
 
             /// <summary>
-            /// Refreshes the play hold expiration time and gets it.
+            /// Refreshes the play hold expiration, removing it if expired, and gets the value.
             /// </summary>
-            /// <param name="removed">Whether the expiration time was removed due to it expiring.</param>
+            /// <param name="asOf">The time that the expiration should be refreshed as of.</param>
             /// <returns>The expiration time.</returns>
-            public DateTime? GetRefreshedPlayHoldExpiration()
+            public DateTime? RefreshPlayHoldExpiration(DateTime? asOf = null)
             {
+                asOf ??= DateTime.UtcNow;
+
                 lock (_lock)
                 {
-                    if (_playHoldExpireTimestamp is not null && _playHoldExpireTimestamp.Value <= DateTime.UtcNow)
+                    if (_playHoldExpireTimestamp is not null && _playHoldExpireTimestamp.Value <= asOf)
                     {
                         _playHoldExpireTimestamp = null;
                     }
@@ -2171,26 +2296,39 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
+            public TimeSpan GetRefreshedPlayHoldDuration(DateTime? asOf = null)
+            {
+                asOf ??= DateTime.UtcNow;
+
+                DateTime? expiration = RefreshPlayHoldExpiration(asOf);
+                if (expiration is null)
+                    return TimeSpan.Zero;
+
+                return expiration.Value - asOf.Value;
+            }
+
+            public void AddPlayHold(TimeSpan duration)
+            {
+                lock (_lock)
+                {
+                    TimeSpan existingDuration = GetRefreshedPlayHoldDuration();
+                    SetPlayHold(existingDuration + duration);
+                }
+            }
+
             /// <summary>
             /// Sets the play hold expiration time.
             /// </summary>
             /// <param name="duration">How long from the current time the hold should last.</param>
             /// <returns><see langword="true"/> if the hold was set. <see langword="false"/> if there already is a hold that includes the <paramref name="duration"/>.</returns>
-            public bool SetPlayHold(TimeSpan duration)
+            public void SetPlayHold(TimeSpan duration)
             {
                 DateTime expireTimestamp = DateTime.UtcNow + duration;
 
                 lock (_lock)
                 {
-                    if (_playHoldExpireTimestamp is null
-                        || _playHoldExpireTimestamp.Value < expireTimestamp)
-                    {
-                        _playHoldExpireTimestamp = expireTimestamp;
-                        return true;
-                    }
+                    _playHoldExpireTimestamp = expireTimestamp;
                 }
-
-                return false;
             }
 
             /// <summary>

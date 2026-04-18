@@ -33,6 +33,7 @@ namespace SS.Matchmaking.Modules
         private readonly IMatchmakingQueues _matchmakingQueues;
         private readonly IObjectPoolManager _objectPoolManager;
         private readonly IPlayerData _playerData;
+        private readonly IPlayManager _playManager;
 
         private PlayerDataKey<PlayerData> _pdKey;
         private AdvisorRegistrationToken<IMatchmakingQueueAdvisor>? _iMatchmakingQueueAdvisorToken;
@@ -81,7 +82,8 @@ namespace SS.Matchmaking.Modules
             IMainloopTimer mainloopTimer,
             IMatchmakingQueues matchmakingQueues,
             IObjectPoolManager objectPoolManager,
-            IPlayerData playerData)
+            IPlayerData playerData,
+            IPlayManager playManager)
         {
             _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
@@ -93,6 +95,7 @@ namespace SS.Matchmaking.Modules
             _matchmakingQueues = matchmakingQueues ?? throw new ArgumentNullException(nameof(matchmakingQueues));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+            _playManager = playManager ?? throw new ArgumentNullException(nameof(playManager));
         }
 
         #region Module members
@@ -270,7 +273,7 @@ namespace SS.Matchmaking.Modules
                             }
 
                             QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                            _matchmakingQueues.UnsetPlaying(player, false);
+                            _playManager.UnsetPlaying(player, false);
                         }
                         else if (boxState.Player2 == player)
                         {
@@ -280,7 +283,7 @@ namespace SS.Matchmaking.Modules
                             }
 
                             QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                            _matchmakingQueues.UnsetPlaying(player, false);
+                            _playManager.UnsetPlaying(player, false);
                         }
                     }
                 }
@@ -381,13 +384,13 @@ namespace SS.Matchmaking.Modules
                     {
                         boxState.Player1State = PlayerMatchmakingState.GaveUp;
                         QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                        _matchmakingQueues.UnsetPlaying(player, false);
+                        _playManager.UnsetPlaying(player, false);
                     }
                     else if (boxState.Player2 == player && boxState.Player2State == PlayerMatchmakingState.Playing)
                     {
                         boxState.Player2State = PlayerMatchmakingState.GaveUp;
                         QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                        _matchmakingQueues.UnsetPlaying(player, false);
+                        _playManager.UnsetPlaying(player, false);
                     }
                 }
                 else
@@ -572,7 +575,7 @@ namespace SS.Matchmaking.Modules
                 set.Add(player1);
                 set.Add(player2);
 
-                _matchmakingQueues.SetPlaying(set);
+                _playManager.SetPlaying(set);
             }
             finally
             {
@@ -848,7 +851,7 @@ namespace SS.Matchmaking.Modules
 
             void DoUnsetPlaying(Player player)
             {
-                _matchmakingQueues.UnsetPlaying(player, true);
+                _playManager.UnsetPlaying(player, true);
             }
         }
 

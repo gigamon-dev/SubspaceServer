@@ -19,46 +19,30 @@ namespace SS.Matchmaking.Modules
         Penalizes players that get KO'd too quickly after a match starts.
         For use with the {nameof(TeamVersusMatch)} module.
         """)]
-    public sealed class RecklessPlayPenalty : IModule, IArenaAttachableModule
+    public sealed class RecklessPlayPenalty(
+        IChat chat,
+        IConfigManager configManager,
+        ILogManager logManager,
+        IPlayerData playerData,
+        IPlayManager playManager) : IModule, IArenaAttachableModule
     {
-        private readonly IChat _chat;
-        private readonly IConfigManager _configManager;
-        private readonly ILogManager _logManager;
-        private readonly IPlayerData _playerData;
-
-        private IMatchmakingQueues? _matchmakingQueues;
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+        private readonly IPlayManager _playManager = playManager ?? throw new ArgumentNullException(nameof(playManager));
 
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new(Constants.TargetArenaCount);
-
-        public RecklessPlayPenalty(
-            IChat chat,
-            IConfigManager configManager,
-            ILogManager logManager,
-            IPlayerData playerData)
-        {
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
-        }
 
         #region Module members
 
         bool IModule.Load(IComponentBroker broker)
         {
-            _matchmakingQueues = broker.GetInterface<IMatchmakingQueues>();
-            if (_matchmakingQueues is null)
-            {
-                _logManager.LogM(LogLevel.Error, nameof(RecklessPlayPenalty), $"Unable to get {nameof(IMatchmakingQueues)}.");
-                return false;
-            }
-
             return true;
         }
 
         bool IModule.Unload(IComponentBroker broker)
         {
-            broker.ReleaseInterface(ref _matchmakingQueues);
             return true;
         }
 
@@ -87,14 +71,14 @@ namespace SS.Matchmaking.Modules
             {
                 if (arenaData.Threshold <= TimeSpan.Zero)
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(RecklessPlayPenalty),
-                        $"[{arena.Name}] ThresholdSeconds must be positive. Reckless play penalty will never trigger.");
+                    _logManager.LogA(LogLevel.Warn, nameof(RecklessPlayPenalty), arena,
+                        $"ThresholdSeconds must be positive. Reckless play penalty will never trigger.");
                 }
 
                 if (arenaData.PenaltyMinimum > arenaData.PenaltyMaximum)
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(RecklessPlayPenalty),
-                        $"[{arena.Name}] PenaltyMinimumSeconds ({arenaData.PenaltyMinimum.TotalSeconds}) is greater than PenaltyMaximumSeconds ({arenaData.PenaltyMaximum.TotalSeconds}). Penalty will increase with elapsed time instead of decrease.");
+                    _logManager.LogA(LogLevel.Warn, nameof(RecklessPlayPenalty), arena,
+                        $"PenaltyMinimumSeconds ({arenaData.PenaltyMinimum.TotalSeconds}) is greater than PenaltyMaximumSeconds ({arenaData.PenaltyMaximum.TotalSeconds}). Penalty will increase with elapsed time instead of decrease.");
                 }
             }
 
@@ -162,8 +146,8 @@ namespace SS.Matchmaking.Modules
             if (penalty < arenaData.PenaltyMinimum) penalty = arenaData.PenaltyMinimum;
             if (penalty > arenaData.PenaltyMaximum) penalty = arenaData.PenaltyMaximum;
 
-            string? playerName = killedSlot.PlayerName;
-            if (string.IsNullOrEmpty(playerName))
+            Player? player = killedSlot.Player;
+            if (player is null)
                 return;
 
             if (!arenaData.PendingPenalties.TryGetValue(matchData, out Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)>? matchPenalties))
@@ -173,11 +157,11 @@ namespace SS.Matchmaking.Modules
             }
 
             // A player can only be KO'd once per match, but guard defensively and keep the larger penalty.
-            if (!matchPenalties.TryGetValue(playerName, out (TimeSpan Penalty, TimeSpan ElapsedAtKo) existing) || penalty > existing.Penalty)
-                matchPenalties[playerName] = (penalty, elapsed);
+            if (!matchPenalties.TryGetValue(player.Name!, out (TimeSpan Penalty, TimeSpan ElapsedAtKo) existing) || penalty > existing.Penalty)
+                matchPenalties[player.Name!] = (penalty, elapsed);
 
-            _logManager.LogM(LogLevel.Info, nameof(RecklessPlayPenalty),
-                $"[{arena.Name}] [{playerName}] Reckless KO at {elapsed.TotalSeconds:F1}s into match (threshold: {arenaData.Threshold.TotalSeconds}s). Pending penalty: {penalty.TotalSeconds:F0}s.");
+            _logManager.LogP(LogLevel.Info, nameof(RecklessPlayPenalty), player,
+                $"Reckless KO at {elapsed.TotalSeconds:F1}s into match (threshold: {arenaData.Threshold.TotalSeconds}s). Pending penalty: {penalty.TotalSeconds:F0}s.");
         }
 
         private void Callback_TeamVersusMatchEnded(IMatchData matchData, MatchEndReason reason, ITeam? winnerTeam)
@@ -205,7 +189,7 @@ namespace SS.Matchmaking.Modules
             {
                 // Apply the hold. Safe even if the player was already removed from the Playing state
                 // by another mechanism — UnsetPlayingWithHold early-returns when the name is not found.
-                _matchmakingQueues!.UnsetPlayingWithHold(playerName, penalty);
+                _playManager.AddPlayHold(playerName, penalty);
 
                 Player? player = _playerData.FindPlayer(playerName);
                 if (player is not null)

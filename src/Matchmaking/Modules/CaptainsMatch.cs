@@ -29,6 +29,8 @@ namespace SS.Matchmaking.Modules
     [ModuleInfo("Captain-based team formation with challenge system.")]
     public sealed class CaptainsMatch : IModule, IArenaAttachableModule, IMatchFocusAdvisor, IFreqManagerEnforcerAdvisor, IPlayerGroupAdvisor
     {
+        // required dependencies
+        private readonly IComponentBroker _broker;
         private readonly IChat _chat;
         private readonly ICommandManager _commandManager;
         private readonly IConfigManager _configManager;
@@ -39,24 +41,25 @@ namespace SS.Matchmaking.Modules
         private readonly IObjectPoolManager _objectPoolManager;
         private readonly IPlayerData _playerData;
 
+        // optional dependencies
+        private ITeamVersusStatsBehavior? _tvStatsBehavior;
+        private IMatchmakingQueues? _matchmakingQueues;
+        private IPlayerGroups? _playerGroups;
+        private IPlayManager? _playManager;
+
         // Ignore a second death packet within this window (50 ticks = 0.5 s) to mitigate a
         // client-side bug where a player receives two death packets for a single death.
         private const int DoubleDeathIgnoreTicks = 50;
 
-        private IComponentBroker? _broker;
         private PlayerDataKey<PlayerData> _pdKey;
         private AdvisorRegistrationToken<IMatchFocusAdvisor>? _iMatchFocusAdvisorToken;
         private AdvisorRegistrationToken<IPlayerGroupAdvisor>? _iPlayerGroupAdvisorToken;
-
-        // optional
-        private ITeamVersusStatsBehavior? _tvStatsBehavior;
-        private IMatchmakingQueues? _matchmakingQueues;
-        private IPlayerGroups? _playerGroups;
 
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new(Constants.TargetArenaCount);
         private static readonly DefaultObjectPool<ArenaData> _arenaDataPool = new(new DefaultPooledObjectPolicy<ArenaData>(), Constants.TargetArenaCount);
 
         public CaptainsMatch(
+            IComponentBroker broker,
             IChat chat,
             ICommandManager commandManager,
             IConfigManager configManager,
@@ -67,6 +70,7 @@ namespace SS.Matchmaking.Modules
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData)
         {
+            _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _chat = chat ?? throw new ArgumentNullException(nameof(chat));
             _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
@@ -82,10 +86,10 @@ namespace SS.Matchmaking.Modules
 
         bool IModule.Load(IComponentBroker broker)
         {
-            _broker = broker;
             _tvStatsBehavior = broker.GetInterface<ITeamVersusStatsBehavior>();
             _matchmakingQueues = broker.GetInterface<IMatchmakingQueues>();
             _playerGroups = broker.GetInterface<IPlayerGroups>();
+            _playManager = broker.GetInterface<IPlayManager>();
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             _iMatchFocusAdvisorToken = broker.RegisterAdvisor<IMatchFocusAdvisor>(this);
@@ -115,7 +119,9 @@ namespace SS.Matchmaking.Modules
             if (_playerGroups is not null)
                 broker.ReleaseInterface(ref _playerGroups);
 
-            _broker = null;
+            if (_playManager is not null)
+                broker.ReleaseInterface(ref _playManager);
+
             return true;
         }
 
@@ -2149,12 +2155,12 @@ namespace SS.Matchmaking.Modules
                 oldPd.ManagedArena = null;
 
             // If old player is still online and was set as Playing, unset them.
-            if (_matchmakingQueues is not null)
+            if (_playManager is not null)
             {
                 if (slot.LeftArena)
-                    _matchmakingQueues.UnsetPlayingByName(oldName, false);
+                    _playManager.UnsetPlayingByName(oldName, false);
                 else
-                    _matchmakingQueues.UnsetPlaying(oldPlayer, false);
+                    _playManager.UnsetPlaying(oldPlayer, false);
             }
 
             // Update the slot for the sub.
@@ -2183,7 +2189,7 @@ namespace SS.Matchmaking.Modules
                 match.Freq2SubsUsed++;
 
             // Set sub as playing in the matchmaking system.
-            _matchmakingQueues?.SetPlayingAsSub(sub);
+            _playManager?.SetPlayingAsSub(sub);
 
             // Fire the sub callback BEFORE the ship change so MatchLvz can refresh the statbox
             // with the new player's name (the slot's PlayerName is already updated above).
@@ -2489,18 +2495,18 @@ namespace SS.Matchmaking.Modules
         /// </summary>
         private void UnsetPlayingForMatch(ActiveMatch match)
         {
-            if (_matchmakingQueues is null)
+            if (_playManager is null)
                 return;
 
             foreach (var (p, slot) in match.ActiveSlots)
-                _matchmakingQueues.UnsetPlaying(p, false);
+                _playManager.UnsetPlaying(p, false);
 
             foreach (var (p, slot) in match.SpecOutSlots)
             {
                 if (slot.LeftArena)
-                    _matchmakingQueues.UnsetPlayingByName(slot.PlayerName!, false);
+                    _playManager.UnsetPlayingByName(slot.PlayerName!, false);
                 else
-                    _matchmakingQueues.UnsetPlaying(p, false);
+                    _playManager.UnsetPlaying(p, false);
             }
         }
 
@@ -2966,10 +2972,10 @@ namespace SS.Matchmaking.Modules
             matchData.SetTeams(team1, team2);
 
             // Mark all participants as Playing to block ?next queueing during countdown and match.
-            if (_matchmakingQueues is not null)
+            if (_playManager is not null)
             {
                 foreach (Player p in activeMatch.ActiveSlots.Keys)
-                    _matchmakingQueues.SetPlaying(p);
+                    _playManager.SetPlaying(p);
             }
 
             activeMatch.Freq1AbandonState = new AbandonState { Arena = arena, ArenaData = arenaData, Match = activeMatch, Freq = freq1 };
