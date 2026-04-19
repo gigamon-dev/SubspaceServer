@@ -1817,9 +1817,11 @@ namespace SS.Core.Modules
                 $"client: {targetPlayer.ClientName}  res: {targetPlayer.Xres}x{targetPlayer.Yres}  onFor: {connectedTimeSpan}  " +
                 $"connectAs: {(!string.IsNullOrWhiteSpace(targetPlayer.ConnectAs) ? targetPlayer.ConnectAs : "<default>")}");
 
+            bool seeSensitivePlayerInfo = _capabilityManager is not null && _capabilityManager.HasCapability(player, Constants.Capabilities.SeeSensitivePlayerInfo);
+
             if (targetPlayer.IsStandard)
             {
-                PrintCommonBandwidthInfo(player, targetPlayer, connectedTimeSpan, prefix, true);
+                PrintCommonBandwidthInfo(player, targetPlayer, connectedTimeSpan, prefix, seeSensitivePlayerInfo);
             }
 
             if (targetPlayer.IsChat)
@@ -1833,7 +1835,10 @@ namespace SS.Core.Modules
                         if (chatNetwork.TryGetClientStats(targetPlayer, ip, out int ipBytesWritten, out int port, out ChatClientStats stats))
                         {
                             ip = ip[..ipBytesWritten];
-                            _chat.SendMessage(player, $"{prefix}: ip: {ip}  port: {port}");
+                            if (seeSensitivePlayerInfo)
+                            {
+                                _chat.SendMessage(player, $"{prefix}: ip: {ip}  port: {port}");
+                            }
                             _chat.SendMessage(player, $"{prefix}: sent: {stats.BytesSent} B  received: {stats.BytesReceived} B");
                         }
                     }

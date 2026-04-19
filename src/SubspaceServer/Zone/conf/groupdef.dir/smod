@@ -10,6 +10,7 @@ higher_than_mod
 ; prefix chars
 prefix_>
 
+seesensitiveplayerinfo
 privcmd_info
 cmd_aa
 cmd_az

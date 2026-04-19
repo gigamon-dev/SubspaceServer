@@ -328,6 +328,11 @@ namespace SS.Core
             /// If a player can set their banner.
             /// </summary>
             public const string SetBanner = "setbanner";
+
+            /// <summary>
+            /// Whether sensitive player info (IP address, MacId, etc.) can be seen.
+            /// </summary>
+            public const string SeeSensitivePlayerInfo = "seesensitiveplayerinfo";
         }
 
         public static class ErrorMessages
