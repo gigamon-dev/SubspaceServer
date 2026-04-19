@@ -24,7 +24,7 @@ namespace SS.Matchmaking.Modules
         IConfigManager configManager,
         ILogManager logManager,
         IPlayerData playerData,
-        IPlayManager playManager) : IModule, IArenaAttachableModule
+        IPlayManager playManager) : IModule, IArenaAttachableModule, IRecklessPlayPenalty
     {
         private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
         private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
@@ -32,17 +32,21 @@ namespace SS.Matchmaking.Modules
         private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
         private readonly IPlayManager _playManager = playManager ?? throw new ArgumentNullException(nameof(playManager));
 
+        private InterfaceRegistrationToken<IRecklessPlayPenalty>? _iRecklessPlayPenaltyToken;
+
         private readonly Dictionary<Arena, ArenaData> _arenaDataDictionary = new(Constants.TargetArenaCount);
 
         #region Module members
 
         bool IModule.Load(IComponentBroker broker)
         {
+            _iRecklessPlayPenaltyToken = broker.RegisterInterface<IRecklessPlayPenalty>(this);
             return true;
         }
 
         bool IModule.Unload(IComponentBroker broker)
         {
+            broker.UnregisterInterface(ref _iRecklessPlayPenaltyToken);
             return true;
         }
 

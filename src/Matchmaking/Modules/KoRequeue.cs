@@ -28,7 +28,7 @@ namespace SS.Matchmaking.Modules
         private readonly IMainloopTimer _mainloopTimer;
         private readonly IPlayerData _playerData;
 
-        private IMatchmakingQueues? _matchmakingQueues;
+        private IPlayManager? _playManager;
         private IKoEarlyRequeue? _koEarlyRequeue;
         private IRecklessPlayPenalty? _recklessPlayPenalty; // optional
 
@@ -52,10 +52,10 @@ namespace SS.Matchmaking.Modules
 
         bool IModule.Load(IComponentBroker broker)
         {
-            _matchmakingQueues = broker.GetInterface<IMatchmakingQueues>();
-            if (_matchmakingQueues is null)
+            _playManager = broker.GetInterface<IPlayManager>();
+            if (_playManager is null)
             {
-                _logManager.LogM(LogLevel.Error, nameof(KoRequeue), $"Unable to get {nameof(IMatchmakingQueues)}.");
+                _logManager.LogM(LogLevel.Error, nameof(KoRequeue), $"Unable to get {nameof(IPlayManager)}.");
                 return false;
             }
 
@@ -63,7 +63,7 @@ namespace SS.Matchmaking.Modules
             if (_koEarlyRequeue is null)
             {
                 _logManager.LogM(LogLevel.Error, nameof(KoRequeue), $"Unable to get {nameof(IKoEarlyRequeue)}.");
-                broker.ReleaseInterface(ref _matchmakingQueues);
+                broker.ReleaseInterface(ref _playManager);
                 return false;
             }
 
@@ -79,7 +79,7 @@ namespace SS.Matchmaking.Modules
                 broker.ReleaseInterface(ref _recklessPlayPenalty);
 
             broker.ReleaseInterface(ref _koEarlyRequeue);
-            broker.ReleaseInterface(ref _matchmakingQueues);
+            broker.ReleaseInterface(ref _playManager);
             return true;
         }
 
@@ -206,7 +206,7 @@ namespace SS.Matchmaking.Modules
             // allowRequeue: true respects the player's auto-requeue preference:
             //   - if auto-requeue is on  → they are placed back in queue automatically
             //   - if auto-requeue is off → PreviousQueued is cleared; they must type ?next
-            _matchmakingQueues!.UnsetPlayingByName(playerName, allowRequeue: true);
+            _playManager!.UnsetPlayingByName(playerName, allowRequeue: true);
 
             // Mark this in the old match's participation record so EndMatch skips them.
             _koEarlyRequeue!.MarkPlayerKoEarlyRequeued(matchData, playerName);
