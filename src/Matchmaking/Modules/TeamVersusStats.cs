@@ -1435,7 +1435,29 @@ namespace SS.Matchmaking.Modules
                 // Rate players using the OpenSkill model.
                 //
 
-                // Prepare the rating calcuation inputs.
+                // Re-query ratings from DB before computing the update.
+                // This picks up any changes made by concurrent matches that ended while this match was running
+                // (e.g. a KO'd player who early-requeued and played another match before this one finished).
+                // Using the freshest available baseline ensures the optimistic-lock CAS check in SaveGameToDatabase
+                // will succeed without any in-memory propagation between matches.
+                // If the re-query fails, fall through using the cached start-of-match ratings.
+                if (_gameStatsRepository is not null && matchData.Configuration.GameTypeId is not null)
+                {
+                    try
+                    {
+                        await _gameStatsRepository.GetPlayerOpenSkillRatingsAsync(
+                            matchData.Configuration.GameTypeId.Value, matchStats.OpenSkillRatings);
+
+                        // Re-apply decay based on the freshly-read LastUpdated timestamps.
+                        AdjustOpenSkillRatingsForDecay(matchData.Configuration, matchStats.OpenSkillRatings, matchStats.EndTimestamp.Value);
+                    }
+                    catch
+                    {
+                        // DB unavailable; fall through with cached start-of-match ratings.
+                    }
+                }
+
+                // Prepare the rating calculation inputs.
                 TimeSpan matchDuration = matchStats.EndTimestamp.Value - matchStats.StartTimestamp;
                 List<OpenSkillRating.ITeam> teams = new(matchStats.Teams.Count);
                 List<double>? ranks = null;
