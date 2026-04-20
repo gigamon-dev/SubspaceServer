@@ -52,6 +52,9 @@
         AttachChange = 140,
         TurretKickoff = 141,
 
+        PositionWrapper = 150,
+        PositionWithExtraWrapper = 151,
+
         // TODO: bricks (allow multiple, allow specifying a time to allow for placing initial bricks)
     }
 }

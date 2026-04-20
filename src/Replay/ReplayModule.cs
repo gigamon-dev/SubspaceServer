@@ -37,20 +37,23 @@ namespace SS.Replay
     /// - flags (both static flags and carriable flags)
     /// - crowns
     /// - door & green seeds (door timings will be in sync, greens will gradually become in sync)
+    /// - attach, detach, turret kickoff
     ///
     /// Chat message functionality is also enhanced beyond that of ASSS.
     /// This module provides the ability to record and playback: public chat, public macro chat, spectator chat, team chat, and arena chat.
     /// There are config settings to toggle the recording and playback of each.
     /// 
     /// TODO:
-    /// - Record existing bricks when a recording starts. Unfortunately, there is no way to clear bricks on a client though.
+    /// - Record existing bricks when a recording starts.
     ///   Add an event type to record multiple bricks (to correspond to a brick packet containing multiple bricks, rather than just one).
-    /// 
-    /// Other info (to keep in mind):
-    /// ASSS does not record the Position packet "time" field. It actually stores playerId in it.
-    /// When it plays back a recording, the packet will be processed based on the event header ticks, and it uses the current tick count as "time".
-    /// This doesn't seem accurate. Is there a better way? 
-    /// The Game module's position packet handler does something similar when sending S2C position packets (rather than use the C2S position packet "time").
+    ///   Unfortunately, there is no built-in way to clear bricks on a client. A hacky workaround would be to override client settings and
+    ///   set Brick:BrickTime=0, send the client settings packet, unoverride, and send the client settings packet again.
+    ///   Also needed, would be to enhance the bricks module to allow faking a brick so that the brick time can be set.
+    /// - At the start of a replay, record the client settings packet. That way the client settings packet can be overriden on playback.
+    /// - Add a command arg to <code>?replay play</code> to skip the map check (to override the arena's PlaybackMapCheckEnabled setting)
+    /// - Add the ability to record multiple recordings in an arena at the same time.
+    ///   Include the abiltity to record short clips, with overlapping windows, temporarily to memory (RecyclableMemoryStream) for highlights and
+    ///   save them to disk when a highlight (goal scored, shot on goal, kill, use item) moment occurs.
     /// </remarks>
     [ModuleInfo($"""
         This module is based on the ASSS funky:record module. It also aims to be 
@@ -585,20 +588,24 @@ namespace SS.Replay
 
             ref readonly C2S_PositionPacket c2sPosition = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
 
-            byte[] buffer = _recordBufferPool.Rent(EventHeader.Length + length);
-            ref Position position = ref MemoryMarshal.AsRef<Position>(buffer.AsSpan(0, Position.Length));
-            position = new(ServerTick.Now, c2sPosition);
-            position.PositionPacket.Type = (byte)length;
-            position.PositionPacket.Time = (uint)player.Id;
-
-            if (length == C2S_PositionPacket.LengthWithExtra)
+            if (length == C2S_PositionPacket.Length)
             {
-                ref readonly ExtraPositionData extra = ref MemoryMarshal.AsRef<ExtraPositionData>(data.Slice(C2S_PositionPacket.Length, ExtraPositionData.Length));
-                ref PositionWithExtra positionWithExtra = ref MemoryMarshal.AsRef<PositionWithExtra>(buffer.AsSpan(0, PositionWithExtra.Length));
-                positionWithExtra.ExtraPositionData = extra;
+                // Does not have extra position data.
+                byte[] buffer = _recordBufferPool.Rent(PositionWrapper.Length);
+                ref PositionWrapper position = ref MemoryMarshal.AsRef<PositionWrapper>(buffer.AsSpan(0, PositionWrapper.Length));
+                position = new(ServerTick.Now, (short)player.Id, in c2sPosition);
+                ad.RecorderQueue.Add(new RecordBuffer(buffer, PositionWrapper.Length));
             }
+            else if (length == C2S_PositionPacket.LengthWithExtra)
+            {
+                // Has extra position data.
+                ref readonly ExtraPositionData extra = ref MemoryMarshal.AsRef<ExtraPositionData>(data.Slice(C2S_PositionPacket.Length, ExtraPositionData.Length));
 
-            ad.RecorderQueue.Add(new RecordBuffer(buffer, EventHeader.Length + length));
+                byte[] buffer = _recordBufferPool.Rent(PositionWithExtraWrapper.Length);
+                ref PositionWithExtraWrapper position = ref MemoryMarshal.AsRef<PositionWithExtraWrapper>(buffer.AsSpan(0, PositionWithExtraWrapper.Length));
+                position = new(ServerTick.Now, (short)player.Id, in c2sPosition, in extra);
+                ad.RecorderQueue.Add(new RecordBuffer(buffer, PositionWithExtraWrapper.Length));
+            }
         }
 
         [CommandHelp(
@@ -1160,9 +1167,19 @@ namespace SS.Replay
                         ref EventHeader eventHeader = ref MemoryMarshal.AsRef<EventHeader>(eventBytes);
 
                         // Normalize events to start from 0.
-                        eventHeader.Ticks = (ServerTick)(uint)(eventHeader.Ticks - started);
+                        eventHeader.Ticks = (ServerTick)(eventHeader.Ticks - started);
 
-                        if (eventHeader.Type == EventType.Enter)
+                        if (eventHeader.Type == EventType.PositionWrapper)
+                        {
+                            ref PositionWrapper positionEvent = ref MemoryMarshal.AsRef<PositionWrapper>(eventBytes);
+                            positionEvent.PositionPacket.Time = (ServerTick)(positionEvent.PositionPacket.Time - started);
+                        }
+                        else if (eventHeader.Type == EventType.PositionWithExtraWrapper)
+                        {
+                            ref PositionWithExtraWrapper positionEvent = ref MemoryMarshal.AsRef<PositionWithExtraWrapper>(eventBytes);
+                            positionEvent.PositionPacket.Time = (ServerTick)(positionEvent.PositionPacket.Time - started);
+                        }
+                        else if (eventHeader.Type == EventType.Enter)
                         {
                             // Keep track of the maximum playerId so that it can be written to the header when the recording is complete.
                             ref Enter enter = ref MemoryMarshal.AsRef<Enter>(eventBytes);
@@ -1172,14 +1189,14 @@ namespace SS.Replay
                         else if (eventHeader.Type == EventType.Brick)
                         {
                             ref Brick brick = ref MemoryMarshal.AsRef<Brick>(eventBytes);
-                            brick.BrickData.StartTime = (uint)(brick.BrickData.StartTime - started);
+                            brick.BrickData.StartTime = (ServerTick)(brick.BrickData.StartTime - started);
                         }
                         else if (eventHeader.Type == EventType.BallPacket)
                         {
                             ref BallPacketWrapper ballPacketWrapper = ref MemoryMarshal.AsRef<BallPacketWrapper>(eventBytes);
                             if (ballPacketWrapper.BallPacket.Time != 0)
                             {
-                                ballPacketWrapper.BallPacket.Time = (uint)(ballPacketWrapper.BallPacket.Time - started);
+                                ballPacketWrapper.BallPacket.Time = (ServerTick)(ballPacketWrapper.BallPacket.Time - started);
                             }
                         }
 
@@ -1713,6 +1730,11 @@ namespace SS.Replay
                                             _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {EventType.Brick} event.");
                                             return;
                                         }
+
+                                        // Adjust from a normalized time to a time relative to the playback start.
+                                        ref Brick brick = ref MemoryMarshal.AsRef<Brick>(buffer);
+                                        brick.BrickData.StartTime = started + brick.BrickData.StartTime;
+
                                         break;
 
                                     case EventType.BallFire:
@@ -1827,6 +1849,32 @@ namespace SS.Replay
                                             _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
                                             return;
                                         }
+                                        break;
+
+                                    case EventType.PositionWrapper:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..PositionWrapper.Length])) != PositionWrapper.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+
+                                        // Adjust from a normalized time to a time relative to the playback start.
+                                        ref PositionWrapper positionWrapper = ref MemoryMarshal.AsRef<PositionWrapper>(buffer);
+                                        positionWrapper.PositionPacket.Time = started + positionWrapper.PositionPacket.Time;
+
+                                        break;
+
+                                    case EventType.PositionWithExtraWrapper:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..PositionWithExtraWrapper.Length])) != PositionWithExtraWrapper.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+
+                                        // Adjust from a normalized time to a time relative to the playback start.
+                                        ref PositionWithExtraWrapper positionWithExtraWrapper = ref MemoryMarshal.AsRef<PositionWithExtraWrapper>(buffer);
+                                        positionWithExtraWrapper.PositionPacket.Time = started + positionWithExtraWrapper.PositionPacket.Time;
+
                                         break;
 
                                     default:
@@ -2075,6 +2123,7 @@ namespace SS.Replay
 
                         case EventType.Brick:
                             ref Brick brick = ref MemoryMarshal.AsRef<Brick>(buffer);
+                            // TODO: Add a way to drop a brick with a specified (prior) time: brick.BrickData.StartTime
                             _brickManager.DropBrick(arena, brick.BrickData.Freq, brick.BrickData.X1, brick.BrickData.Y1, brick.BrickData.X2, brick.BrickData.Y2);
                             break;
 
@@ -2284,6 +2333,22 @@ namespace SS.Replay
                             }
                             break;
 
+                        case EventType.PositionWrapper:
+                            ref PositionWrapper positionWrapper = ref MemoryMarshal.AsRef<PositionWrapper>(buffer);
+                            if (ad.PlayerIdMap.TryGetValue(positionWrapper.PlayerId, out player))
+                            {
+                                _game.FakePosition(player, ref positionWrapper.PositionPacket);
+                            }
+                            break;
+
+                        case EventType.PositionWithExtraWrapper:
+                            ref PositionWithExtraWrapper positionWithExtraWrapper = ref MemoryMarshal.AsRef<PositionWithExtraWrapper>(buffer);
+                            if (ad.PlayerIdMap.TryGetValue(positionWithExtraWrapper.PlayerId, out player))
+                            {
+                                _game.FakePosition(player, ref positionWithExtraWrapper.PositionPacket, ref positionWithExtraWrapper.ExtraPositionData);
+                            }
+                            break;
+
                         default:
                             break;
                     }
@@ -2348,12 +2413,8 @@ namespace SS.Replay
 
                 if (ex is not null)
                 {
-                    do
-                    {
-                        sb.Append(' ');
-                        sb.Append(ex.Message);
-                    }
-                    while ((ex = ex!.InnerException) is not null);
+                    sb.Append(' ');
+                    sb.Append(ex.ToString());
                 }
 
                 _logManager.LogA(LogLevel.Info, nameof(ReplayModule), arena, sb);
