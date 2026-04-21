@@ -64,7 +64,6 @@ namespace SS.Replay
         """)]
     public sealed class ReplayModule : IModule, IReplayController, IFreqManagerEnforcerAdvisor
     {
-        private const uint ReplayFileVersion = 2;
         private const uint MapChecksumKey = 0x46692018;
         private const int MaxRecordBuffer = 4096;
         private const string ReplayCommandName = "replay";
@@ -1101,7 +1100,7 @@ namespace SS.Replay
                 FileHeader fileHeader = new()
                 {
                     Header = "ass$game", // The $ temporary, we will update it at the end.
-                    Version = ReplayFileVersion,
+                    Version = FileVersion.Current,
                     Offset = (uint)FileHeader.Length + (uint)commentsLength,
                     Events = 0, // This will be updated at the end.
                     EndTime = 0, // This will be updated at the end.
@@ -1432,7 +1431,7 @@ namespace SS.Replay
                     LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"File is not a replay.");
                     return;
                 }
-                else if (fileHeader.Version != ReplayFileVersion)
+                else if (fileHeader.Version != FileVersion.ASSS && fileHeader.Version != FileVersion.Afluxion)
                 {
                     LogAndNotify(arena, ad.Settings.NotifyPlaybackError, $"Unsupported replay version.");
                     return;
