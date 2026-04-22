@@ -5406,7 +5406,7 @@ namespace SS.Matchmaking.Modules
 
                 if (players.Count > 0)
                 {
-                    _chat.SendSetMessage(players, $"A slot in an ongoing {matchData.Configuration.MatchType} match is available to be subbed. To sub use: ?{CommandNames.Sub} {matchData.Configuration.MatchType}");
+                    _chat.SendSetMessage(players, $"A slot in an ongoing {matchData.Configuration.MatchType} match is available to be subbed. To sub use: ?{CommandNames.Sub} {matchData.Configuration.QueueName}");
                 }
             }
             finally
