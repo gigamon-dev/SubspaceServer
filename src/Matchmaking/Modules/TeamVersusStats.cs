@@ -55,6 +55,13 @@ namespace SS.Matchmaking.Modules
         private const int DefaultRating = 500;
         private const int MinimumRating = 100;
 
+        /// <summary>
+        /// The energy window used when attributing a forced repel. Only damage dealt within the
+        /// equivalent recharge time for this much energy is considered when computing each attacker's
+        /// proportional share of the repel credit.
+        /// </summary>
+        private const short ForcedRepEnergyWindow = 800;
+
         private readonly IArenaManager _arenaManager;
         private readonly IChat _chat;
         private readonly IClientSettings _clientSettings;
@@ -1011,6 +1018,15 @@ namespace SS.Matchmaking.Modules
             short xCoord = killed.Position.X;
             short yCoord = killed.Position.Y;
 
+            // Capture the killed player's maximumRecharge before the delay, for EMP overcounting correction at death.
+            short killedMaximumRecharge = 0;
+            if (killedShip != ShipType.Spec
+                && killed.Arena is not null
+                && _arenaSettings.TryGetValue(killed.Arena.BaseName, out ArenaSettings? killedArenaSettings))
+            {
+                int shipIndex = (int)killedShip;
+                killedMaximumRecharge = GetClientSetting(killed, _shipClientSettingIds[shipIndex].MaximumRechargeId, killedArenaSettings.ShipSettings[shipIndex].MaximumRecharge);
+            }
             // Notify listeners of the updated kills/deaths stats (e.g., for Simple statbox display).
             Arena? matchArena = matchData.Arena;
             if (matchArena is not null)
@@ -1043,6 +1059,18 @@ namespace SS.Matchmaking.Modules
 
             try
             {
+                // Correct any EMP freeze damage that was overcounted for ticks extending past the player's death.
+                if (killedMaximumRecharge > 0 && killedMemberStats.FreezeEndTick > timestampTick)
+                {
+                    uint overcountedTicks = (uint)(killedMemberStats.FreezeEndTick - timestampTick);
+                    int overcountedDamage = (int)(overcountedTicks * killedMaximumRecharge / 1000f);
+                    killedMemberStats.DamageTakenBombs = Math.Max(0, killedMemberStats.DamageTakenBombs - overcountedDamage);
+                    if (killedMemberStats.FreezeHolder is not null)
+                        killedMemberStats.FreezeHolder.DamageDealtBombs = Math.Max(0, killedMemberStats.FreezeHolder.DamageDealtBombs - overcountedDamage);
+                }
+                killedMemberStats.FreezeEndTick = default;
+                killedMemberStats.FreezeHolder = null;
+
                 // Calculate damage stats.
                 CalculateDamageSources(timestampTick, killedMemberStats, killedShip, damageDictionary);
                 killedMemberStats.ClearRecentDamage();
@@ -1724,7 +1752,7 @@ namespace SS.Matchmaking.Modules
                             writer.WriteNumber("knockouts"u8, memberStats.Knockouts);
                             writer.WriteNumber("solo_kills"u8, memberStats.SoloKills);
                             writer.WriteNumber("assists"u8, memberStats.Assists);
-                            writer.WriteNumber("forced_reps"u8, memberStats.ForcedReps);
+                            writer.WriteNumber("forced_reps"u8, RoundToHalf(memberStats.ForcedReps));
                             writer.WriteNumber("gun_damage_dealt"u8, memberStats.DamageDealtBullets);
                             writer.WriteNumber("bomb_damage_dealt"u8, memberStats.DamageDealtBombs);
                             writer.WriteNumber("team_damage_dealt"u8, memberStats.DamageDealtTeam);
@@ -2290,8 +2318,6 @@ namespace SS.Matchmaking.Modules
 
                     short maximumEnergy = GetClientSetting(player, _shipClientSettingIds[shipIndex].MaximumEnergyId, shipSettings.MaximumEnergy);
 
-                    playerStats.RemoveOldRecentDamage(maximumEnergy, maximumRecharge);
-
                     // Calculate emp shutdown time.
                     uint empShutdownTicks = 0;
                     if (damageData.WeaponData.Type == WeaponCodes.Bomb || damageData.WeaponData.Type == WeaponCodes.ProxBomb)
@@ -2336,7 +2362,29 @@ namespace SS.Matchmaking.Modules
                             attackerPlayer.Freq,
                             attackerStats.SlotStats!.Slot!.SlotIdx),
                     };
-                    playerStats.RecentDamageTaken.AddLast(node);
+                    playerStats.AddRecentDamageTaken(node);
+
+                    if (empShutdownTicks > 0 && player.Freq != attackerPlayer.Freq)
+                    {
+                        // Credit the attacker only for the ticks by which this EMP extends the active freeze window.
+                        // If a freeze is already in progress, the first attacker already holds those ticks;
+                        // the new attacker earns only the extension beyond what remains.
+                        uint remaining = playerStats.FreezeEndTick > timestamp ? (uint)(playerStats.FreezeEndTick - timestamp) : 0u;
+                        uint extension = empShutdownTicks > remaining ? empShutdownTicks - remaining : 0u;
+                        if (extension > 0)
+                        {
+                            int freezeDamage = (int)(extension * maximumRecharge / 1000f);
+                            playerStats.DamageTakenBombs += freezeDamage;
+                            attackerStats.DamageDealtBombs += freezeDamage;
+                        }
+
+                        ServerTick newFreezeEnd = timestamp + empShutdownTicks;
+                        if (newFreezeEnd > playerStats.FreezeEndTick)
+                        {
+                            playerStats.FreezeEndTick = newFreezeEnd;
+                            playerStats.FreezeHolder = attackerStats;
+                        }
+                    }
                 }
 
                 //
@@ -2549,7 +2597,15 @@ namespace SS.Matchmaking.Modules
 
                     try
                     {
-                        CalculateDamageSources(ServerTick.Now, memberStats, player.Ship, damageDictionary);
+                        CalculateDamageSources(ServerTick.Now, memberStats, player.Ship, damageDictionary, ForcedRepEnergyWindow);
+
+                        // Sum enemy damage to use as the denominator for proportional ForcedReps attribution.
+                        int totalEnemyDamage = 0;
+                        foreach ((PlayerTeamSlot attacker, int damage) in damageDictionary)
+                        {
+                            if (memberStats.TeamStats!.Team!.Freq != attacker.Freq)
+                                totalEnemyDamage += damage;
+                        }
 
                         // Update attacker stats.
                         foreach ((PlayerTeamSlot attacker, int damage) in damageDictionary)
@@ -2565,7 +2621,8 @@ namespace SS.Matchmaking.Modules
                                     continue;
 
                                 attackerMemberStats.ForcedRepDamage += damage;
-                                attackerMemberStats.ForcedReps++; // TODO: do we want more criteria (a certain amount of damage or an even smaller damage window)?
+                                if (totalEnemyDamage > 0)
+                                    attackerMemberStats.ForcedReps += (float)damage / totalEnemyDamage;
 
                                 // Rating for forced rep to the attacker.
                                 float ratingRatio =
@@ -2841,7 +2898,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void CalculateDamageSources(ServerTick asOfTick, MemberStats memberStats, ShipType ship, Dictionary<PlayerTeamSlot, int> damageDictionary)
+        private void CalculateDamageSources(ServerTick asOfTick, MemberStats memberStats, ShipType ship, Dictionary<PlayerTeamSlot, int> damageDictionary, short? energyWindowOverride = null)
         {
             if (memberStats is null || damageDictionary is null)
                 return;
@@ -2857,87 +2914,55 @@ namespace SS.Matchmaking.Modules
                 return;
 
             ShipSettings killedShipSettings = arenaSettings.ShipSettings[(int)ship];
-            short maximumEnergy = killedShipSettings.MaximumEnergy;
             short rechargeRate = killedShipSettings.MaximumRecharge;
+            short maximumEnergy = energyWindowOverride ?? killedShipSettings.MaximumEnergy;
 
-            memberStats.RemoveOldRecentDamage(maximumEnergy, rechargeRate);
-
-            // How many ticks it takes for the player's ship to reach full energy from empty (maximum energy and recharge rate assumed).
+            // Only damage within the recharge window is still relevant at asOfTick.
             uint fullEnergyTicks = (uint)float.Ceiling(maximumEnergy * 1000f / rechargeRate);
             ServerTick cutoff = asOfTick - fullEnergyTicks;
 
-            // TODO: Maybe add a parameter for an additional logic when calculating damage for a kill, to add a check if the last damage record was for the killing blow.
-            // If not and there is at least one damage record, use the latest record to figure out how much damage the killer would have needed to inflict,
-            // accounting for how much the player would have recharged. Assume the killer did half the damage?
+            LinkedList<DamageInfo> recentDamageTaken = memberStats.GetRecentDamageTaken(rechargeRate);
 
-            // This calculator will assist with calculating how much damage to award due to EMP recharge shutdown.
-            // It will help us to determine how much shutdown time to allow when one EMP overlaps with another.
-            // Here we start with the most recent damage first. So, as we iterate, we're adding in older damage after more recent damage.
-            // For example, if we have damage from two EMPs and their shutdown time ranges overlap, the shutdown time awarded
-            // for the EMP that came earlier will not include the time that intersects with the more recent EMP.
-            // Note, this works for any # of overlapping EMPs too. Any range of overlap that is already counted will not be counted twice.
+            // We iterate oldest to newest so that the first-arriving EMP's attacker gets credit for
+            // the full duration of their freeze. A later EMP's attacker only gets credit for any ticks
+            // by which they extended the total freeze window beyond what was already claimed.
             TickRangeCalculator empShutdownCalculator = s_tickRangeCalculatorPool.Get();
 
             try
             {
-                LinkedListNode<DamageInfo>? node = memberStats.RecentDamageTaken.Last;
+                LinkedListNode<DamageInfo>? node = recentDamageTaken.First;
                 while (node is not null)
                 {
-                    LinkedListNode<DamageInfo>? previous = node.Previous;
                     ref DamageInfo damageInfo = ref node.ValueRef;
                     int damage = 0;
 
-                    if (damageInfo.Timestamp < cutoff)
-                    {
-                        // The damage happened outside of the recharge window.
-                        if (damageInfo.EmpBombShutdownTicks > 0)
-                        {
-                            // It was an emp, so we might be able to count emp recharge loss that crossed into the window.
-                            ServerTick empShutdownEndTick = damageInfo.Timestamp + damageInfo.EmpBombShutdownTicks;
-                            if (empShutdownEndTick > cutoff)
-                            {
-                                int empShutdownTicks = empShutdownCalculator.Add(cutoff, empShutdownEndTick);
-                                damage = (int)((rechargeRate / 1000f) * empShutdownTicks);
-                            }
-                            else
-                            {
-                                // The damage did not extend into the recharge window.
-                                // However, there can still be earlier emp damage with a shutdown time that is long enough.
-                                // So, we don't stop processing here, we want to keep reading previous nodes.
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // The damage happened inside of the recharge window.
-                        // We can count the full amount, minus any overlapping emp recharge damage.
-                        int empShutdownDamage = 0;
-                        if (damageInfo.EmpBombShutdownTicks > 0)
-                        {
-                            ServerTick empStartTimestamp = damageInfo.Timestamp;
-                            ServerTick empEndTimestamp = empStartTimestamp + damageInfo.EmpBombShutdownTicks;
+                    // Count direct weapon damage only if it falls within the recharge window.
+                    if (damageInfo.Timestamp >= cutoff)
+                        damage += damageInfo.Damage;
 
-                            // Calculate how much emp shutdown time is allowed.
-                            int empShutdownTicks = empShutdownCalculator.Add(empStartTimestamp, empEndTimestamp);
-                            empShutdownDamage = (int)((rechargeRate / 1000f) * empShutdownTicks);
-                        }
+                    // Convert EMP freeze ticks to an energy damage equivalent: the energy the victim
+                    // would have recharged had the freeze not occurred. Clip the freeze window to
+                    // [cutoff, asOfTick] so we only count ticks within the recharge window.
+                    if (damageInfo.EmpBombShutdownTicks > 0)
+                    {
+                        ServerTick empStart = damageInfo.Timestamp > cutoff ? damageInfo.Timestamp : cutoff;
+                        ServerTick empEnd = damageInfo.Timestamp + damageInfo.EmpBombShutdownTicks;
+                        if (empEnd > asOfTick)
+                            empEnd = asOfTick;
 
-                        damage = damageInfo.Damage + empShutdownDamage;
+                        int empTicks = empShutdownCalculator.Add(empStart, empEnd);
+                        damage += (int)(rechargeRate / 1000f * empTicks);
                     }
 
                     if (damage > 0)
                     {
-                        if (damageDictionary.TryGetValue(damageInfo.Attacker, out int totalDamage))
-                        {
-                            damageDictionary[damageInfo.Attacker] = totalDamage + damage;
-                        }
+                        if (damageDictionary.TryGetValue(damageInfo.Attacker, out int existingDamage))
+                            damageDictionary[damageInfo.Attacker] = existingDamage + damage;
                         else
-                        {
                             damageDictionary.Add(damageInfo.Attacker, damage);
-                        }
                     }
 
-                    node = previous;
+                    node = node.Next;
                 }
             }
             finally
@@ -2945,6 +2970,9 @@ namespace SS.Matchmaking.Modules
                 s_tickRangeCalculatorPool.Return(empShutdownCalculator);
             }
         }
+
+        /// <summary>Rounds a value to the nearest 0.5.</summary>
+        private static float RoundToHalf(float value) => MathF.Round(value * 2f) / 2f;
 
         private void PrintMatchStats(HashSet<Player> notifySet, MatchStats matchStats, MatchEndReason? reason, ITeam? winningTeam)
         {
@@ -3036,7 +3064,7 @@ namespace SS.Matchmaking.Modules
                 int totalTeamKills = 0;
                 int totalSoloKills = 0;
                 int totalAssists = 0;
-                int totalForcedReps = 0;
+                float totalForcedReps = 0f;
                 int totalWastedRepels = 0;
                 int totalWastedRockets = 0;
                 int totalLagOuts = 0;
@@ -3148,7 +3176,7 @@ namespace SS.Matchmaking.Modules
                             $" {memberStats.TeamKills,2}" +
                             $" {memberStats.SoloKills,2}" +
                             $" {memberStats.Assists,2}" +
-                            $" {memberStats.ForcedReps,2}" +
+                            $" {RoundToHalf(memberStats.ForcedReps),4:F1}" +
                             $" {memberStats.WastedRepels,2}" +
                             $" {memberStats.WastedRockets,3}" +
                             $" {wastedEnergy,4}" +
@@ -3182,7 +3210,7 @@ namespace SS.Matchmaking.Modules
                     $" {totalTeamKills,2}" +
                     $" {totalSoloKills,2}" +
                     $" {totalAssists,2}" +
-                    $" {totalForcedReps,2}" +
+                    $" {RoundToHalf(totalForcedReps),4:F1}" +
                     $" {totalWastedRepels,2}" +
                     $" {totalWastedRockets,3}" +
                     $"     " +
@@ -3271,13 +3299,6 @@ namespace SS.Matchmaking.Modules
                 {
                     foreach (MemberStats memberStats in slotStats.Members)
                     {
-                        LinkedListNode<DamageInfo>? node;
-                        while ((node = memberStats.RecentDamageTaken.First) is not null)
-                        {
-                            memberStats.RecentDamageTaken.Remove(node);
-                            s_damageInfoLinkedListNodePool.Return(node);
-                        }
-
                         memberStats.Reset();
 
                         // TODO: return memberStats to a pool
@@ -3900,14 +3921,37 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public int ForcedRepDamage;
 
+            private readonly LinkedList<DamageInfo> _recentDamageTaken = new();
+
             /// <summary>
-            /// Recent damage taken in order from oldest to newest.
+            /// The tick at which the current EMP freeze on this player expires. Default (0) means no active freeze.
+            /// Updated whenever an EMP hit arrives; used to compute how much a new EMP extends the freeze window.
+            /// </summary>
+            public ServerTick FreezeEndTick;
+
+            /// <summary>
+            /// The <see cref="MemberStats"/> of the attacker who last extended the EMP freeze window on this player.
+            /// Used at death time to correct any overcounted freeze damage for ticks that extended past the death.
+            /// </summary>
+            public MemberStats? FreezeHolder;
+
+            public void AddRecentDamageTaken(LinkedListNode<DamageInfo> node)
+            {
+                _recentDamageTaken.AddLast(node);
+            }
+
+            /// <summary>
+            /// Prunes stale damage entries and returns the remaining recent damage taken, ordered oldest to newest.
             /// </summary>
             /// <remarks>
             /// Used upon death to calculate <see cref="KillDamage"/>, <see cref="TeamKillDamage"/>, <see cref="SoloKills"/>, and <see cref="Assists"/>.
             /// Used upon repel usage to calculate <see cref="ForcedRepDamage"/> and <see cref="ForcedReps"/>.
             /// </remarks>
-            public readonly LinkedList<DamageInfo> RecentDamageTaken = new();
+            public LinkedList<DamageInfo> GetRecentDamageTaken(short rechargeRate)
+            {
+                RemoveOldRecentDamage(rechargeRate);
+                return _recentDamageTaken;
+            }
 
             #endregion
 
@@ -4038,8 +4082,10 @@ namespace SS.Matchmaking.Modules
 
             /// <summary>
             /// Repels forced out of enemy players.
+            /// Accumulated as fractional contributions: each repel event adds each attacker's share
+            /// of the recent enemy damage (their damage / total enemy damage in the window).
             /// </summary>
-            public short ForcedReps;
+            public float ForcedReps;
 
             /// <summary>
             /// Duration that the player was assigned to a slot in the game.
@@ -4103,22 +4149,68 @@ namespace SS.Matchmaking.Modules
                 RatingChange = 0;
             }
 
-            public void RemoveOldRecentDamage(short maximumEnergy, short rechargeRate)
+            /// <summary>
+            /// Starting from the oldest damage event, we cull the event if the damage that was incurred
+            /// has already been recharged. The rechargeRate parameterizes how long instances of damage
+            /// stay in the RecentDamageTaken list, a higher recharge rate means that each damage event
+            /// has a shorter lifetime in this list.
+            /// </summary>
+            /// <param name="rechargeRate"></param>
+            private void RemoveOldRecentDamage(short rechargeRate)
             {
-                // How many ticks it takes for the player's ship to reach full energy from empty (maximum energy and recharge rate assumed).
-                uint fullEnergyTicks = (uint)float.Ceiling(maximumEnergy * 1000f / rechargeRate);
+                ServerTick now = ServerTick.Now;
 
-                // Remove nodes that are too old to be relevant.
-                ServerTick cutoff = ServerTick.Now - fullEnergyTicks;
-                LinkedListNode<DamageInfo>? node = RecentDamageTaken.First;
+                // Collect EMP freeze intervals and merge any that overlap. EMPs refresh the freeze timer
+                // rather than accumulating, so overlapping intervals must not be double-counted.
+                // RecentDamageTaken is ordered oldest to newest, so EMP intervals are already sorted by start time.
+                List<(ServerTick Start, ServerTick End)> mergedEmpIntervals = [];
+                LinkedListNode<DamageInfo>? node = _recentDamageTaken.First;
                 while (node is not null)
                 {
-                    if (node.ValueRef.Timestamp + node.ValueRef.EmpBombShutdownTicks < cutoff)
+                    if (node.ValueRef.EmpBombShutdownTicks > 0)
+                    {
+                        ServerTick empStart = node.ValueRef.Timestamp;
+                        ServerTick empEnd = empStart + node.ValueRef.EmpBombShutdownTicks;
+                        if (mergedEmpIntervals.Count == 0 || empStart > mergedEmpIntervals[^1].End)
+                        {
+                            mergedEmpIntervals.Add((empStart, empEnd));
+                        }
+                        else
+                        {
+                            // Overlapping: merge by extending the end of the last interval if needed.
+                            (ServerTick lastStart, ServerTick lastEnd) = mergedEmpIntervals[^1];
+                            if (empEnd > lastEnd)
+                                mergedEmpIntervals[^1] = (lastStart, empEnd);
+                        }
+                    }
+                    node = node.Next;
+                }
+
+                node = _recentDamageTaken.First;
+                while (node is not null)
+                {
+                    uint recoveryTicksNeeded = (uint)float.Ceiling(node.ValueRef.Damage * 1000f / rechargeRate);
+                    ServerTick damageTimestamp = node.ValueRef.Timestamp;
+
+                    // Compute how many ticks recharging was disabled after this damage due to EMP freeze.
+                    // This is the total length of the merged EMP intervals clipped to [damageTimestamp, now].
+                    uint frozenTicks = 0;
+                    foreach ((ServerTick empStart, ServerTick empEnd) in mergedEmpIntervals)
+                    {
+                        ServerTick clampedStart = empStart > damageTimestamp ? empStart : damageTimestamp;
+                        ServerTick clampedEnd = empEnd < now ? empEnd : now;
+                        if (clampedStart < clampedEnd)
+                            frozenTicks += (uint)(clampedEnd - clampedStart);
+                    }
+
+                    int actualRechargeTicksElapsed = (int)(now - damageTimestamp) - (int)frozenTicks;
+
+                    if (actualRechargeTicksElapsed >= (int)recoveryTicksNeeded)
                     {
                         // The node represents damage taken from too long ago.
                         // Discard the node and continue with the next node.
                         LinkedListNode<DamageInfo>? next = node.Next;
-                        RecentDamageTaken.Remove(node);
+                        _recentDamageTaken.Remove(node);
                         s_damageInfoLinkedListNodePool.Return(node);
                         node = next;
                     }
@@ -4133,9 +4225,9 @@ namespace SS.Matchmaking.Modules
             public void ClearRecentDamage()
             {
                 LinkedListNode<DamageInfo>? node;
-                while ((node = RecentDamageTaken.First) is not null)
+                while ((node = _recentDamageTaken.First) is not null)
                 {
-                    RecentDamageTaken.Remove(node);
+                    _recentDamageTaken.Remove(node);
                     s_damageInfoLinkedListNodePool.Return(node);
                 }
             }
@@ -4159,6 +4251,8 @@ namespace SS.Matchmaking.Modules
                 KillDamage = 0;
                 TeamKillDamage = 0;
                 ClearRecentDamage();
+                FreezeEndTick = default;
+                FreezeHolder = null;
 
                 // accuracy fields
                 GunFireCount = 0;
