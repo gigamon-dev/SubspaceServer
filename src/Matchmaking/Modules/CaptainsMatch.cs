@@ -3757,6 +3757,7 @@ namespace SS.Matchmaking.Modules
             public IMatchData MatchData { get; }
             public int TeamIdx { get; }
             public short Freq { get; }
+            public LeagueTeamInfo? LeagueTeam => null;
             public ReadOnlyCollection<IPlayerSlot> Slots => _slotsReadOnly ??= _rawSlots.ConvertAll<IPlayerSlot>(s => s).AsReadOnly();
             public short Score { get; set; }
 

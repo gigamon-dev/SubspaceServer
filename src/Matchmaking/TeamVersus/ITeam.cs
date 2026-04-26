@@ -1,4 +1,5 @@
-﻿using System.Collections.ObjectModel;
+﻿using SS.Matchmaking.League;
+using System.Collections.ObjectModel;
 
 namespace SS.Matchmaking.TeamVersus
 {
@@ -18,6 +19,11 @@ namespace SS.Matchmaking.TeamVersus
         /// The freq # of the team.
         /// </summary>
         short Freq { get; }
+
+        /// <summary>
+        /// The league team. <see langword="null"/> if not league.
+        /// </summary>
+        LeagueTeamInfo? LeagueTeam { get; }
 
         /// <summary>
         /// The slots for players on the team.

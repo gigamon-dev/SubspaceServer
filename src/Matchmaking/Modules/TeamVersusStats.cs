@@ -578,10 +578,10 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        Task ITeamVersusStatsBehavior.MatchStartedAsync(IMatchData matchData)
+        async Task ITeamVersusStatsBehavior.MatchStartedAsync(IMatchData matchData)
         {
             if (!_matchStatsDictionary.TryGetValue(matchData.MatchIdentifier, out MatchStats? matchStats))
-                return Task.CompletedTask;
+                return;
 
             matchStats.StartTimestamp = matchData.Started!.Value;
 
@@ -633,79 +633,141 @@ namespace SS.Matchmaking.Modules
             // Predictions
             //
 
-            // Prepare the prediction calculation inputs.
-            List<OpenSkillRating.ITeam> teams = new(matchStats.Teams.Count);
-            foreach (TeamStats teamStats in matchStats.Teams.Values)
-            {
-                List<OpenSkillRating.IRating> players = new(matchData.Configuration.PlayersPerTeam);
-                teams.Add(new OpenSkillRating.Team() { Players = players });
-
-                foreach (SlotStats slotStats in teamStats.Slots)
-                {
-                    foreach (MemberStats memberStats in slotStats.Members)
-                    {
-                        // Rating
-                        if (memberStats.PlayerName is null
-                            || !matchStats.OpenSkillRatings.TryGetValue(memberStats.PlayerName!, out PlayerRating? rating))
-                        {
-                            continue;
-                        }
-
-                        players.Add(rating);
-                    }
-                }
-            }
-
-            // Calculate the win and draw probabilities.
-            IEnumerable<double> predictions = matchData.Configuration.OpenSkillModel.PredictWin(teams);
-            double drawProbabiilty = matchData.Configuration.OpenSkillModel.PredictDraw(teams);
-
-            // Send the predictions as chat.
-            StringBuilder predictionsBuilder = _objectPoolManager.StringBuilderPool.Get();
             try
             {
-                int teamIdx = 0;
-                foreach (double probability in predictions)
-                {
-                    if (predictionsBuilder.Length > 0)
-                        predictionsBuilder.Append(", ");
+                // Calculate predictions asynchronously since it may be a expensive operation.
+                // This does allocate a delegate, but that's minimal in consideration as this is not a hot path.
+                await Task.Run(() => RunPredictions(matchStats));
+            }
+            catch (Exception ex)
+            {
+                _logManager.Log(LogLevel.Error, $"Error running predictions. {ex}");
+            }
 
-                    predictionsBuilder.Append($"Freq {matchStats.Teams.Keys[teamIdx]} ({probability:0%})");
+            // local helper function to calculate predictions and send them in chat notifications
+            void RunPredictions(MatchStats matchStats)
+            {
+                IMatchData? matchData = matchStats.MatchData;
+                if (matchData is null)
+                    return;
+
+                // Prepare the prediction calculation inputs.
+                List<OpenSkillRating.ITeam> teams = new(matchStats.Teams.Count);
+                foreach (TeamStats teamStats in matchStats.Teams.Values)
+                {
+                    List<OpenSkillRating.IRating>? players = null;
+
+                    foreach (SlotStats slotStats in teamStats.Slots)
+                    {
+                        foreach (MemberStats memberStats in slotStats.Members)
+                        {
+                            // Rating
+                            if (memberStats.PlayerName is null
+                                || !matchStats.OpenSkillRatings.TryGetValue(memberStats.PlayerName!, out PlayerRating? rating))
+                            {
+                                continue;
+                            }
+
+                            players ??= new(matchData.Configuration.PlayersPerTeam);
+                            players.Add(rating);
+                        }
+                    }
+
+                    // A team without players cannot be included in predictions.
+                    if (players is not null)
+                    {
+                        teams.Add(new FreqTeam() { Freq = teamStats.Team!.Freq, Players = players });
+                    }
+                }
+
+                if (teams.Count < 2)
+                {
+                    // Predictions cannot be run if there are less than 2 teams.
+                    return;
+                }
+
+                // Calculate the win and draw probabilities.
+                IEnumerable<double> winPredictions;
+
+                try
+                {
+                    winPredictions = matchData.Configuration.OpenSkillModel.PredictWin(teams);
+                }
+                catch (Exception ex)
+                {
+                    _logManager.Log(LogLevel.Error, $"Error calculating win predictions. {ex}");
+                    return;
+                }
+
+                int teamIdx = 0;
+                foreach (double probability in winPredictions)
+                {
+                    if (teamIdx < teams.Count
+                        && teams[teamIdx] is FreqTeam freqTeam
+                        && matchStats.Teams.TryGetValue(freqTeam.Freq, out TeamStats? teamStats))
+                    {
+                        teamStats.WinProbability = probability;
+                    }
+
                     teamIdx++;
                 }
 
-                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                 try
                 {
-                    sb.Append("Odds to win: ");
-                    sb.Append(predictionsBuilder);
-                    sb.Append('.');
+                    matchStats.DrawProbability = matchData.Configuration.OpenSkillModel.PredictDraw(teams);
+                }
+                catch (Exception ex)
+                {
+                    _logManager.Log(LogLevel.Error, $"Error calculating draw probability. {ex}");
+                    return;
+                }
 
-                    HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
+                // Send the predictions as chat.
+                StringBuilder predictionsBuilder = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    foreach ((short freq, TeamStats teamStats) in matchStats.Teams)
+                    {
+                        if (teamStats.WinProbability is null)
+                            continue;
 
+                        if (predictionsBuilder.Length > 0)
+                            predictionsBuilder.Append(", ");
+
+                        predictionsBuilder.Append($"Freq {freq} ({teamStats.WinProbability:0%})");
+                    }
+
+                    StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                     try
                     {
-                        // Notification to players that have any association to the match, regardless of the arena they are in.
-                        _matchFocus.TryGetPlayers(matchStats.MatchData!, notifySet, MatchFocusReasons.Any, null);
-                        _chat.SendSetMessage(notifySet, sb);
-                        _chat.SendSetMessage(notifySet, $"Odds of a draw (match quality metric): {drawProbabiilty:0.##%}");
+                        sb.Append("Odds to win: ");
+                        sb.Append(predictionsBuilder);
+                        sb.Append('.');
+
+                        HashSet<Player> notifySet = _objectPoolManager.PlayerSetPool.Get();
+
+                        try
+                        {
+                            // Notification to players that have any association to the match, regardless of the arena they are in.
+                            _matchFocus.TryGetPlayers(matchData, notifySet, MatchFocusReasons.Any, null);
+                            _chat.SendSetMessage(notifySet, sb);
+                            _chat.SendSetMessage(notifySet, $"Odds of a draw (match quality metric): {matchStats.DrawProbability:0.##%}");
+                        }
+                        finally
+                        {
+                            _objectPoolManager.PlayerSetPool.Return(notifySet);
+                        }
                     }
                     finally
                     {
-                        _objectPoolManager.PlayerSetPool.Return(notifySet);
+                        _objectPoolManager.StringBuilderPool.Return(sb);
                     }
                 }
                 finally
                 {
-                    _objectPoolManager.StringBuilderPool.Return(sb);
+                    _objectPoolManager.StringBuilderPool.Return(predictionsBuilder);
                 }
             }
-            finally
-            {
-                _objectPoolManager.StringBuilderPool.Return(predictionsBuilder);
-            }
-
-            return Task.CompletedTask;
         }
 
         private bool MainloopTimer_ProcessPlayerDistances(MatchStats matchStats)
@@ -1435,114 +1497,15 @@ namespace SS.Matchmaking.Modules
                 // Rate players using the OpenSkill model.
                 //
 
-                // Prepare the rating calcuation inputs.
-                TimeSpan matchDuration = matchStats.EndTimestamp.Value - matchStats.StartTimestamp;
-                List<OpenSkillRating.ITeam> teams = new(matchStats.Teams.Count);
-                List<double>? ranks = null;
-                List<double>? scores = null;
-                List<IList<double>> weights = new(matchStats.Teams.Count);
-
-                // Check whether to rate using ranks or scores.
-                if (reason == MatchEndReason.Decided
-                    && winningTeam is not null
-                    && matchData.Configuration.OpenSkillUseScoresWhenPossible
-                    && WinningTeamHasHighestScore(winningTeam, matchStats))
+                try
                 {
-                    // Use scores. This allows having a score margin set on the model to improve accuracy.
-                    scores = new(matchStats.Teams.Count);
+                    // Rate players asynchronously since it may be a expensive operation.
+                    // This does allocate a delegate, but that's minimal in consideration as this is not a hot path.
+                    await Task.Run(() => RatePlayersWithOpenSkill(matchStats, reason, winningTeam));
                 }
-                else
+                catch (Exception ex)
                 {
-                    // Use ranks.
-                    ranks = new(matchStats.Teams.Count);
-                }
-
-                foreach (TeamStats teamStats in matchStats.Teams.Values)
-                {
-                    // Count how many played for this team.
-                    int teamPlayerCount = 0;
-                    foreach (SlotStats slotStats in teamStats.Slots)
-                    {
-                        foreach (MemberStats memberStats in slotStats.Members)
-                        {
-                            teamPlayerCount++;
-                        }
-                    }
-
-                    List<OpenSkillRating.IRating> players = new(teamPlayerCount);
-                    List<double> playerWeights = new(teamPlayerCount);
-
-                    foreach (SlotStats slotStats in teamStats.Slots)
-                    {
-                        foreach (MemberStats memberStats in slotStats.Members)
-                        {
-                            // Rating
-                            if (memberStats.PlayerName is null
-                                || !matchStats.OpenSkillRatings.TryGetValue(memberStats.PlayerName!, out PlayerRating? rating))
-                            {
-                                continue;
-                            }
-
-                            players.Add(rating);
-
-                            // Weight
-                            double playTimeRatio = (memberStats.GameTime >= matchDuration)
-                                ? playTimeRatio = 1.0 // full
-                                : memberStats.GameTime / matchDuration; // partial
-
-                            // TODO: Influence weight with rating? Would need to normalize it, ratings can be negative, but weight should not be.
-                            //memberStats.RatingChange
-
-                            playerWeights.Add(playTimeRatio);
-                        }
-                    }
-
-                    teams.Add(new OpenSkillRating.Team() { Players = players });
-
-                    if (ranks is not null)
-                    {
-                        if (reason == MatchEndReason.Draw)
-                        {
-                            // For draws, give every team the same rank.
-                            ranks.Add(1.0);
-                        }
-                        else
-                        {
-                            // Decided. The winning team is rank 1, all others are rank 2.
-                            ranks.Add((teamStats.Team == winningTeam) ? 1.0 : 2.0);
-                        }
-                    }
-                    else
-                    {
-                        // Decided
-                        scores?.Add(teamStats.Team!.Score);
-                    }
-                    
-                    weights.Add(playerWeights);
-                }
-
-                // Calculate the new ratings.
-                IEnumerable<OpenSkillRating.ITeam> rateResult = matchData.Configuration.OpenSkillModel.Rate(
-                    teams,
-                    ranks: ranks,
-                    scores: scores,
-                    weights: weights);
-
-                // Copy the result back into the original rating objects.
-                foreach (OpenSkillRating.ITeam team in rateResult)
-                {
-                    foreach (OpenSkillRating.IRating rating in team.Players)
-                    {
-                        if (rating is not PlayerRating playerRating)
-                            continue;
-
-                        if (!matchStats.OpenSkillRatings.TryGetValue(playerRating.PlayerName, out PlayerRating? original))
-                            continue;
-
-                        // Update the original object with the newly calculated rating.
-                        original.Mu = playerRating.Mu;
-                        original.Sigma = playerRating.Sigma;
-                    }
+                    _logManager.LogM(LogLevel.Error, nameof(TeamVersusStats), $"Error rating players with OpenSkill. {ex}");
                 }
             }
 
@@ -1604,19 +1567,150 @@ namespace SS.Matchmaking.Modules
 
             return true;
 
-            // local function that checks whether the team that won has a higher score than all other teams.
-            static bool WinningTeamHasHighestScore(ITeam winningTeam, MatchStats matchStats)
+            // local function that uses OpenSkill to rate players
+            static void RatePlayersWithOpenSkill(MatchStats matchStats, MatchEndReason reason, ITeam? winningTeam)
             {
-                foreach (TeamStats otherTeam in matchStats.Teams.Values)
-                {
-                    if (otherTeam.Team == winningTeam)
-                        continue;
+                IMatchData? matchData = matchStats.MatchData;
+                if (matchData is null)
+                    return;
 
-                    if (otherTeam.Team?.Score >= winningTeam.Score)
-                        return false;
+                if (matchStats.EndTimestamp is null)
+                    return;
+
+                // Prepare the rating calcuation inputs.
+                TimeSpan matchDuration = matchStats.EndTimestamp.Value - matchStats.StartTimestamp;
+                List<OpenSkillRating.ITeam> teams = new(matchStats.Teams.Count);
+                List<double>? ranks = null;
+                List<double>? scores = null;
+                List<IList<double>> weights = new(matchStats.Teams.Count);
+
+                // Check whether to rate using ranks or scores.
+                if (reason == MatchEndReason.Decided
+                    && winningTeam is not null
+                    && matchData.Configuration.OpenSkillUseScoresWhenPossible
+                    && WinningTeamHasHighestScore(winningTeam, matchStats))
+                {
+                    // Use scores. This allows having a score margin set on the model to improve accuracy.
+                    scores = new(matchStats.Teams.Count);
+                }
+                else
+                {
+                    // Use ranks.
+                    ranks = new(matchStats.Teams.Count);
                 }
 
-                return true;
+                foreach (TeamStats teamStats in matchStats.Teams.Values)
+                {
+                    // Count how many played for this team.
+                    int teamPlayerCount = 0;
+                    foreach (SlotStats slotStats in teamStats.Slots)
+                    {
+                        foreach (MemberStats memberStats in slotStats.Members)
+                        {
+                            teamPlayerCount++;
+                        }
+                    }
+
+                    // At least one player is required to rate.
+                    if (teamPlayerCount < 1)
+                        continue;
+
+                    List<OpenSkillRating.IRating> players = new(teamPlayerCount);
+                    List<double> playerWeights = new(teamPlayerCount);
+
+                    foreach (SlotStats slotStats in teamStats.Slots)
+                    {
+                        foreach (MemberStats memberStats in slotStats.Members)
+                        {
+                            // Rating
+                            if (memberStats.PlayerName is null
+                                || !matchStats.OpenSkillRatings.TryGetValue(memberStats.PlayerName!, out PlayerRating? rating))
+                            {
+                                continue;
+                            }
+
+                            players.Add(rating);
+
+                            // Weight
+                            double playTimeRatio = (memberStats.GameTime >= matchDuration)
+                                ? playTimeRatio = 1.0 // full
+                                : memberStats.GameTime / matchDuration; // partial
+
+                            // TODO: Influence weight with rating? Would need to normalize it, ratings can be negative, but weight should not be.
+                            //memberStats.RatingChange
+
+                            playerWeights.Add(playTimeRatio);
+                        }
+                    }
+
+                    teams.Add(new OpenSkillRating.Team() { Players = players });
+
+                    if (ranks is not null)
+                    {
+                        if (reason == MatchEndReason.Draw)
+                        {
+                            // For draws, give every team the same rank.
+                            ranks.Add(1.0);
+                        }
+                        else
+                        {
+                            // Decided. The winning team is rank 1, all others are rank 2.
+                            ranks.Add((teamStats.Team == winningTeam) ? 1.0 : 2.0);
+                        }
+                    }
+                    else
+                    {
+                        // Decided
+                        scores?.Add(teamStats.Team!.Score);
+                    }
+
+                    weights.Add(playerWeights);
+                }
+
+                if (teams.Count < 2)
+                {
+                    // Cannot rate if there are less than 2 teams.
+                    return;
+                }
+
+                // Calculate the new ratings.
+                IEnumerable<OpenSkillRating.ITeam> rateResult = matchData.Configuration.OpenSkillModel.Rate(
+                    teams,
+                    ranks: ranks,
+                    scores: scores,
+                    weights: weights);
+
+                // Copy the result back into the original rating objects.
+                foreach (OpenSkillRating.ITeam team in rateResult)
+                {
+                    foreach (OpenSkillRating.IRating rating in team.Players)
+                    {
+                        if (rating is not PlayerRating playerRating)
+                            continue;
+
+                        if (!matchStats.OpenSkillRatings.TryGetValue(playerRating.PlayerName, out PlayerRating? original))
+                            continue;
+
+                        // Update the original object with the newly calculated rating.
+                        original.Mu = playerRating.Mu;
+                        original.Sigma = playerRating.Sigma;
+                    }
+                }
+
+                // local function that checks whether the team that won has a higher score than all other teams.
+                static bool WinningTeamHasHighestScore(ITeam winningTeam, MatchStats matchStats)
+                {
+                    foreach (TeamStats otherTeam in matchStats.Teams.Values)
+                    {
+                        if (otherTeam.Team == winningTeam)
+                            continue;
+
+                        if (otherTeam.Team?.Score >= winningTeam.Score)
+                            return false;
+                    }
+
+                    return true;
+                }
             }
 
             // local function that saves match stats to the database
@@ -1632,200 +1726,8 @@ namespace SS.Matchmaking.Modules
                 if (matchData.Configuration.GameTypeId is null)
                     return;
 
-                // TODO: Maybe pool the MemoryStream and Utf8JsonWriter?
-                // The RecyclableMemoryStream reuses underlying buffers, but maybe just having a pool of regular MemoryStream
-                // The Utf8JsonWriter has a Reset method.
-
                 using MemoryStream gameJsonStream = _objectPoolManager.RecyclableMemoryStreamManager.GetStream();
-                using Utf8JsonWriter writer = new(gameJsonStream, default);
-
-                writer.WriteStartObject(); // game object
-                writer.WriteNumber("game_type_id"u8, matchData.Configuration.GameTypeId.Value);
-                writer.WriteString("zone_server_name"u8, _zoneServerName);
-                writer.WriteString("arena"u8, matchData.ArenaName);
-                writer.WriteNumber("box_number"u8, matchData.MatchIdentifier.BoxIdx);
-                WriteLvlInfo(writer, matchData);
-                writer.WriteString("start_timestamp"u8, matchStats.StartTimestamp);
-                writer.WriteString("end_timestamp"u8, matchStats.EndTimestamp!.Value);
-                writer.WriteString("replay_path"u8, (string?)null); // TODO: add the ability automatically record games
-
-                // Player info
-                writer.WriteStartObject("players"u8);
-                foreach ((string playerName, PlayerInfo playerInfo) in matchStats.PlayerInfoDictionary)
-                {
-                    writer.WriteStartObject(playerName); // player object
-                    writer.WriteString("squad"u8, playerInfo.Squad); // write it even if there is no squad (so that the database knows to clear the player's current squad)
-
-                    if (playerInfo.XRes is not null && playerInfo.YRes is not null)
-                    {
-                        writer.WriteNumber("x_res"u8, playerInfo.XRes.Value);
-                        writer.WriteNumber("y_res"u8, playerInfo.YRes.Value);
-                    }
-
-                    writer.WriteEndObject(); // player object
-                }
-                writer.WriteEndObject(); // players object
-
-                // OpenSkill ratings
-                writer.WriteStartObject("openskill_ratings"u8);
-                foreach ((string playerName, PlayerRating? rating) in matchStats.OpenSkillRatings)
-                {
-                    if (rating is null)
-                        continue;
-
-                    writer.WriteStartObject(playerName);
-
-                    writer.WriteNumber("mu"u8, rating.Mu);
-                    writer.WriteNumber("sigma"u8, rating.Sigma);
-
-                    // last_updated is used by the database to tell whether the rating should be inserted or updated.
-                    // If null (omitted), the database considers it a new, initial rating that it should try to INSERT only (no update).
-                    // If not null, the database knows it should UPDATE the existing rating, but only if the timestamp matches.
-                    // This way, an existing rating won't get overwritten with an initial one (e.g. if it failed to get the current rating).
-                    // Also, it will not overwrite with old data (e.g. if this json were later used to backload/retry saving later on).
-                    if (rating.LastUpdated is not null)
-                    {
-                        writer.WriteString("last_updated"u8, rating.LastUpdated.Value);
-                    }
-
-                    writer.WriteEndObject(); // player rating object
-                }
-                writer.WriteEndObject(); // openskill_ratings object
-
-                // Team stats
-                writer.WriteStartArray("team_stats"u8); // team_stats array
-
-                foreach (TeamStats teamStats in matchStats.Teams.Values)
-                {
-                    writer.WriteStartObject(); // team object
-                    writer.WriteNumber("freq"u8, teamStats.Team!.Freq);
-                    writer.WriteBoolean("is_winner"u8, teamStats.Team == winningTeam);
-                    writer.WriteNumber("score"u8, teamStats.Team.Score);
-                    writer.WriteStartArray("player_slots"u8); // player_slots array
-
-                    foreach (SlotStats slotStats in teamStats.Slots)
-                    {
-                        writer.WriteStartObject(); // slot object
-                        writer.WriteStartArray("player_stats"u8);
-
-                        foreach (MemberStats memberStats in slotStats.Members)
-                        {
-                            writer.WriteStartObject(); // team member object
-                            writer.WriteString("player"u8, memberStats.PlayerName);
-
-                            if (memberStats.PremadeGroupId is not null)
-                                writer.WriteNumber("premade_group"u8, memberStats.PremadeGroupId.Value); // TODO: change the database to use this and track stats separately for solo vs grouped play
-
-                            writer.TryWriteTimeSpanAsISO8601("play_duration"u8, memberStats.PlayTime);
-                            writer.WriteNumber("lag_outs"u8, memberStats.LagOuts);
-                            writer.WriteNumber("kills"u8, memberStats.Kills);
-                            writer.WriteNumber("deaths"u8, memberStats.Deaths);
-                            writer.WriteNumber("team_kills"u8, memberStats.TeamKills);
-                            writer.WriteNumber("knockouts"u8, memberStats.Knockouts);
-                            writer.WriteNumber("solo_kills"u8, memberStats.SoloKills);
-                            writer.WriteNumber("assists"u8, memberStats.Assists);
-                            writer.WriteNumber("forced_reps"u8, memberStats.ForcedReps);
-                            writer.WriteNumber("gun_damage_dealt"u8, memberStats.DamageDealtBullets);
-                            writer.WriteNumber("bomb_damage_dealt"u8, memberStats.DamageDealtBombs);
-                            writer.WriteNumber("team_damage_dealt"u8, memberStats.DamageDealtTeam);
-                            writer.WriteNumber("gun_damage_taken"u8, memberStats.DamageTakenBullets);
-                            writer.WriteNumber("bomb_damage_taken"u8, memberStats.DamageTakenBombs);
-                            writer.WriteNumber("team_damage_taken"u8, memberStats.DamageTakenTeam);
-                            writer.WriteNumber("self_damage"u8, memberStats.DamageSelf);
-                            writer.WriteNumber("kill_damage"u8, memberStats.KillDamage);
-                            writer.WriteNumber("team_kill_damage"u8, memberStats.TeamKillDamage);
-                            writer.WriteNumber("forced_rep_damage"u8, memberStats.ForcedRepDamage);
-                            writer.WriteNumber("bullet_fire_count"u8, memberStats.GunFireCount);
-                            writer.WriteNumber("bomb_fire_count"u8, memberStats.BombFireCount);
-                            writer.WriteNumber("mine_fire_count"u8, memberStats.MineFireCount);
-                            writer.WriteNumber("bullet_hit_count"u8, memberStats.GunHitCount);
-                            writer.WriteNumber("bomb_hit_count"u8, memberStats.BombHitCount);
-                            writer.WriteNumber("mine_hit_count"u8, memberStats.MineHitCount);
-
-                            if (matchStats.FirstOut == memberStats)
-                            {
-                                writer.WriteNumber("first_out"u8, matchStats.FirstOutCritical ? (short)FirstOut.YesCritical : (short)FirstOut.Yes);
-                            }
-
-                            writer.WriteNumber("wasted_energy"u8, memberStats.WastedEnergy);
-
-                            if (memberStats.WastedRepels > 0)
-                                writer.WriteNumber("wasted_repel"u8, memberStats.WastedRepels);
-
-                            if (memberStats.WastedRockets > 0)
-                                writer.WriteNumber("wasted_rocket"u8, memberStats.WastedRockets);
-
-                            if (memberStats.WastedThors > 0)
-                                writer.WriteNumber("wasted_thor"u8, memberStats.WastedThors);
-
-                            if (memberStats.WastedBursts > 0)
-                                writer.WriteNumber("wasted_burst"u8, memberStats.WastedBursts);
-
-                            if (memberStats.WastedDecoys > 0)
-                                writer.WriteNumber("wasted_decoy"u8, memberStats.WastedDecoys);
-
-                            if (memberStats.WastedPortals > 0)
-                                writer.WriteNumber("wasted_portal"u8, memberStats.WastedPortals);
-
-                            if (memberStats.WastedBricks > 0)
-                                writer.WriteNumber("wasted_brick"u8, memberStats.WastedBricks);
-
-                            if (memberStats.DistanceToEnemySum is not null && memberStats.DistanceToEnemySamples is not null && memberStats.DistanceToEnemySamples > 0)
-                            {
-                                writer.WriteNumber("enemy_distance_sum"u8, memberStats.DistanceToEnemySum.Value);
-                                writer.WriteNumber("enemy_distance_samples"u8, memberStats.DistanceToEnemySamples.Value);
-                            }
-
-                            if (memberStats.DistanceToTeamSum is not null && memberStats.DistanceToTeamSamples is not null && memberStats.DistanceToTeamSamples > 0)
-                            {
-                                writer.WriteNumber("team_distance_sum"u8, memberStats.DistanceToTeamSum.Value);
-                                writer.WriteNumber("team_distance_samples"u8, memberStats.DistanceToTeamSamples.Value);
-                            }
-
-                            writer.WriteNumber("rating_change"u8, (int)memberStats.RatingChange); // round towards zero (cut any fractional part off)
-
-                            writer.WriteStartObject("ship_usage"u8);
-                            for (int shipIndex = 0; shipIndex < memberStats.ShipUsage.Length; shipIndex++)
-                            {
-                                TimeSpan usage = memberStats.ShipUsage[shipIndex];
-                                if (usage > TimeSpan.Zero)
-                                {
-                                    switch (shipIndex)
-                                    {
-                                        case 0: writer.TryWriteTimeSpanAsISO8601("warbird"u8, usage); break;
-                                        case 1: writer.TryWriteTimeSpanAsISO8601("javelin"u8, usage); break;
-                                        case 2: writer.TryWriteTimeSpanAsISO8601("spider"u8, usage); break;
-                                        case 3: writer.TryWriteTimeSpanAsISO8601("leviathan"u8, usage); break;
-                                        case 4: writer.TryWriteTimeSpanAsISO8601("terrier"u8, usage); break;
-                                        case 5: writer.TryWriteTimeSpanAsISO8601("weasel"u8, usage); break;
-                                        case 6: writer.TryWriteTimeSpanAsISO8601("lancaster"u8, usage); break;
-                                        case 7: writer.TryWriteTimeSpanAsISO8601("shark"u8, usage); break;
-                                        default:
-                                            continue;
-                                    }
-                                }
-                            }
-                            writer.WriteEndObject(); // ship_usage
-
-                            writer.WriteEndObject(); // team member object
-                        }
-
-                        writer.WriteEndArray(); // player_stats
-                        writer.WriteEndObject(); // slot object
-                    }
-
-                    writer.WriteEndArray(); // player_slots array
-                    writer.WriteEndObject(); // team object
-                }
-
-                writer.WriteEndArray(); // team_stats array
-
-                writer.WritePropertyName("events"u8);
-                matchStats.WriteEventsArray(writer);
-
-                writer.WriteEndObject(); // game object
-
-                writer.Flush();
+                WriteGameJson(gameJsonStream, matchData, matchStats, winningTeam);
                 gameJsonStream.Position = 0;
 
                 // DEBUG - REMOVE ME ***************************************************
@@ -1857,24 +1759,264 @@ namespace SS.Matchmaking.Modules
                     // TODO: Write to a file or message queue so that it can be retried later (either by another service or manual intervention).
                 }
 
-
-                void WriteLvlInfo(Utf8JsonWriter writer, IMatchData matchData)
+                void WriteGameJson(MemoryStream gameJsonStream, IMatchData matchData, MatchStats matchStats, ITeam? winningTeam)
                 {
-                    ReadOnlySpan<char> arenaBaseName;
-                    if (matchData.Arena is not null)
-                        arenaBaseName = matchData.Arena.BaseName;
-                    else if (!Arena.TryParseArenaName(matchData.ArenaName, out arenaBaseName, out _))
-                        arenaBaseName = "";
+                    if (matchData.Configuration.GameTypeId is null)
+                        return;
 
-                    if (_arenaMapInfoLookup.TryGetValue(arenaBaseName, out var lvlTuple))
+                    using Utf8JsonWriter writer = new(gameJsonStream, default);
+
+                    writer.WriteStartObject(); // game object
+                    writer.WriteNumber("game_type_id"u8, matchData.Configuration.GameTypeId.Value);
+                    writer.WriteString("zone_server_name"u8, _zoneServerName);
+                    writer.WriteString("arena"u8, matchData.ArenaName);
+                    writer.WriteNumber("box_number"u8, matchData.MatchIdentifier.BoxIdx);
+                    WriteLvlInfo(writer, matchData);
+                    writer.WriteString("start_timestamp"u8, matchStats.StartTimestamp);
+                    writer.WriteString("end_timestamp"u8, matchStats.EndTimestamp!.Value);
+                    writer.WriteString("replay_path"u8, (string?)null); // TODO: add the ability automatically record games
+
+                    if (matchStats.DrawProbability is not null && double.IsFinite(matchStats.DrawProbability.Value))
                     {
-                        writer.WriteString("lvl_file_name"u8, lvlTuple.LvlFilename);
-                        writer.WriteNumber("lvl_checksum"u8, (int)lvlTuple.Checksum);
+                        writer.WriteNumber("draw_probability"u8, matchStats.DrawProbability.Value);
                     }
-                    else
+
+                    // Info about players that participated.
+                    WritePlayersInfo(writer, matchStats);
+
+                    // OpenSkill ratings
+                    WriteOpenSkillRatings(writer, matchStats);
+
+                    // Team stats
+                    WriteTeamStats(writer, matchStats, winningTeam);
+
+                    // Events
+                    writer.WritePropertyName("events"u8);
+                    matchStats.WriteEventsArray(writer);
+
+                    writer.WriteEndObject(); // game object
+
+                    // local helper function that writes LVL info JSON
+                    void WriteLvlInfo(Utf8JsonWriter writer, IMatchData matchData)
                     {
-                        writer.WriteString("lvl_file_name"u8, "");
-                        writer.WriteNumber("lvl_checksum"u8, 0);
+                        ReadOnlySpan<char> arenaBaseName;
+                        if (matchData.Arena is not null)
+                            arenaBaseName = matchData.Arena.BaseName;
+                        else if (!Arena.TryParseArenaName(matchData.ArenaName, out arenaBaseName, out _))
+                            arenaBaseName = "";
+
+                        if (_arenaMapInfoLookup.TryGetValue(arenaBaseName, out var lvlTuple))
+                        {
+                            writer.WriteString("lvl_file_name"u8, lvlTuple.LvlFilename);
+                            writer.WriteNumber("lvl_checksum"u8, (int)lvlTuple.Checksum);
+                        }
+                        else
+                        {
+                            writer.WriteString("lvl_file_name"u8, "");
+                            writer.WriteNumber("lvl_checksum"u8, 0);
+                        }
+                    }
+
+                    // local helper function that writes players info JSON
+                    static void WritePlayersInfo(Utf8JsonWriter writer, MatchStats matchStats)
+                    {
+                        writer.WriteStartObject("players"u8);
+                        foreach ((string playerName, PlayerInfo playerInfo) in matchStats.PlayerInfoDictionary)
+                        {
+                            writer.WriteStartObject(playerName); // player object
+                            writer.WriteString("squad"u8, playerInfo.Squad); // write it even if there is no squad (so that the database knows to clear the player's current squad)
+
+                            if (playerInfo.XRes is not null && playerInfo.YRes is not null)
+                            {
+                                writer.WriteNumber("x_res"u8, playerInfo.XRes.Value);
+                                writer.WriteNumber("y_res"u8, playerInfo.YRes.Value);
+                            }
+
+                            writer.WriteEndObject(); // player object
+                        }
+                        writer.WriteEndObject(); // players object
+                    }
+
+                    // local helper function that writes OpenSkill ratings JSON
+                    static void WriteOpenSkillRatings(Utf8JsonWriter writer, MatchStats matchStats)
+                    {
+                        writer.WriteStartObject("openskill_ratings"u8);
+                        foreach ((string playerName, PlayerRating? rating) in matchStats.OpenSkillRatings)
+                        {
+                            if (rating is null)
+                                continue;
+
+                            writer.WriteStartObject(playerName);
+
+                            // TODO: write the starting open skill rating to snapshot for the game (to help explain team balance)
+                            //writer.WriteStartObject("start");
+                            //writer.WriteEndObject(); // openskill_start
+                            // If we add starting rating, then the ending rating needs to be separated out too
+                            //writer.WriteStartObject("end");
+                            //writer.WriteEndObject(); // openskill_end
+
+                            if (double.IsFinite(rating.Mu) && double.IsFinite(rating.Sigma))
+                            {
+                                writer.WriteNumber("mu"u8, rating.Mu);
+                                writer.WriteNumber("sigma"u8, rating.Sigma);
+                            }
+
+                            // last_updated is used by the database to tell whether the rating should be inserted or updated.
+                            // If null (omitted), the database considers it a new, initial rating that it should try to INSERT only (no update).
+                            // If not null, the database knows it should UPDATE the existing rating, but only if the timestamp matches.
+                            // This way, an existing rating won't get overwritten with an initial one (e.g. if it failed to get the current rating).
+                            // Also, it will not overwrite with old data (e.g. if this json were later used to backload/retry saving later on).
+                            if (rating.LastUpdated is not null)
+                            {
+                                writer.WriteString("last_updated"u8, rating.LastUpdated.Value);
+                            }
+
+                            writer.WriteEndObject(); // player rating object
+                        }
+                        writer.WriteEndObject(); // openskill_ratings object
+                    }
+
+                    // local helper function that writes team stats JSON
+                    static void WriteTeamStats(Utf8JsonWriter writer, MatchStats matchStats, ITeam? winningTeam)
+                    {
+                        writer.WriteStartArray("team_stats"u8); // team_stats array
+
+                        foreach (TeamStats teamStats in matchStats.Teams.Values)
+                        {
+                            writer.WriteStartObject(); // team object
+                            writer.WriteNumber("freq"u8, teamStats.Team!.Freq);
+                            writer.WriteBoolean("is_winner"u8, teamStats.Team == winningTeam);
+                            writer.WriteNumber("score"u8, teamStats.Team.Score);
+
+                            if (teamStats.WinProbability is not null && double.IsFinite(teamStats.WinProbability.Value))
+                            {
+                                writer.WriteNumber("win_probability"u8, teamStats.WinProbability.Value);
+                            }
+
+                            writer.WriteStartArray("player_slots"u8); // player_slots array
+
+                            foreach (SlotStats slotStats in teamStats.Slots)
+                            {
+                                writer.WriteStartObject(); // slot object
+                                writer.WriteStartArray("player_stats"u8);
+
+                                foreach (MemberStats memberStats in slotStats.Members)
+                                {
+                                    writer.WriteStartObject(); // team member object
+                                    writer.WriteString("player"u8, memberStats.PlayerName);
+
+                                    if (memberStats.PremadeGroupId is not null)
+                                        writer.WriteNumber("premade_group"u8, memberStats.PremadeGroupId.Value); // TODO: change the database to use this and track stats separately for solo vs grouped play
+
+                                    writer.TryWriteTimeSpanAsISO8601("play_duration"u8, memberStats.PlayTime);
+                                    writer.WriteNumber("lag_outs"u8, memberStats.LagOuts);
+                                    writer.WriteNumber("kills"u8, memberStats.Kills);
+                                    writer.WriteNumber("deaths"u8, memberStats.Deaths);
+                                    writer.WriteNumber("team_kills"u8, memberStats.TeamKills);
+                                    writer.WriteNumber("knockouts"u8, memberStats.Knockouts);
+                                    writer.WriteNumber("solo_kills"u8, memberStats.SoloKills);
+                                    writer.WriteNumber("assists"u8, memberStats.Assists);
+                                    writer.WriteNumber("forced_reps"u8, memberStats.ForcedReps);
+                                    writer.WriteNumber("gun_damage_dealt"u8, memberStats.DamageDealtBullets);
+                                    writer.WriteNumber("bomb_damage_dealt"u8, memberStats.DamageDealtBombs);
+                                    writer.WriteNumber("team_damage_dealt"u8, memberStats.DamageDealtTeam);
+                                    writer.WriteNumber("gun_damage_taken"u8, memberStats.DamageTakenBullets);
+                                    writer.WriteNumber("bomb_damage_taken"u8, memberStats.DamageTakenBombs);
+                                    writer.WriteNumber("team_damage_taken"u8, memberStats.DamageTakenTeam);
+                                    writer.WriteNumber("self_damage"u8, memberStats.DamageSelf);
+                                    writer.WriteNumber("kill_damage"u8, memberStats.KillDamage);
+                                    writer.WriteNumber("team_kill_damage"u8, memberStats.TeamKillDamage);
+                                    writer.WriteNumber("forced_rep_damage"u8, memberStats.ForcedRepDamage);
+                                    writer.WriteNumber("bullet_fire_count"u8, memberStats.GunFireCount);
+                                    writer.WriteNumber("bomb_fire_count"u8, memberStats.BombFireCount);
+                                    writer.WriteNumber("mine_fire_count"u8, memberStats.MineFireCount);
+                                    writer.WriteNumber("bullet_hit_count"u8, memberStats.GunHitCount);
+                                    writer.WriteNumber("bomb_hit_count"u8, memberStats.BombHitCount);
+                                    writer.WriteNumber("mine_hit_count"u8, memberStats.MineHitCount);
+
+                                    if (matchStats.FirstOut == memberStats)
+                                    {
+                                        writer.WriteNumber("first_out"u8, matchStats.FirstOutCritical ? (short)FirstOut.YesCritical : (short)FirstOut.Yes);
+                                    }
+
+                                    writer.WriteNumber("wasted_energy"u8, memberStats.WastedEnergy);
+
+                                    if (memberStats.WastedRepels > 0)
+                                        writer.WriteNumber("wasted_repel"u8, memberStats.WastedRepels);
+
+                                    if (memberStats.WastedRockets > 0)
+                                        writer.WriteNumber("wasted_rocket"u8, memberStats.WastedRockets);
+
+                                    if (memberStats.WastedThors > 0)
+                                        writer.WriteNumber("wasted_thor"u8, memberStats.WastedThors);
+
+                                    if (memberStats.WastedBursts > 0)
+                                        writer.WriteNumber("wasted_burst"u8, memberStats.WastedBursts);
+
+                                    if (memberStats.WastedDecoys > 0)
+                                        writer.WriteNumber("wasted_decoy"u8, memberStats.WastedDecoys);
+
+                                    if (memberStats.WastedPortals > 0)
+                                        writer.WriteNumber("wasted_portal"u8, memberStats.WastedPortals);
+
+                                    if (memberStats.WastedBricks > 0)
+                                        writer.WriteNumber("wasted_brick"u8, memberStats.WastedBricks);
+
+                                    if (memberStats.DistanceToEnemySum is not null && memberStats.DistanceToEnemySamples is not null && memberStats.DistanceToEnemySamples > 0)
+                                    {
+                                        writer.WriteNumber("enemy_distance_sum"u8, memberStats.DistanceToEnemySum.Value);
+                                        writer.WriteNumber("enemy_distance_samples"u8, memberStats.DistanceToEnemySamples.Value);
+                                    }
+
+                                    if (memberStats.DistanceToTeamSum is not null && memberStats.DistanceToTeamSamples is not null && memberStats.DistanceToTeamSamples > 0)
+                                    {
+                                        writer.WriteNumber("team_distance_sum"u8, memberStats.DistanceToTeamSum.Value);
+                                        writer.WriteNumber("team_distance_samples"u8, memberStats.DistanceToTeamSamples.Value);
+                                    }
+
+                                    writer.WriteNumber("rating_change"u8, (int)memberStats.RatingChange); // round towards zero (cut any fractional part off)
+
+                                    WriteShipUsage(writer, memberStats);
+
+                                    writer.WriteEndObject(); // team member object
+                                }
+
+                                writer.WriteEndArray(); // player_stats
+                                writer.WriteEndObject(); // slot object
+                            }
+
+                            writer.WriteEndArray(); // player_slots array
+                            writer.WriteEndObject(); // team object
+                        }
+
+                        writer.WriteEndArray(); // team_stats array
+
+                        // local helper function that writes ship usage JSON
+                        static void WriteShipUsage(Utf8JsonWriter writer, MemberStats memberStats)
+                        {
+                            writer.WriteStartObject("ship_usage"u8);
+                            for (int shipIndex = 0; shipIndex < memberStats.ShipUsage.Length; shipIndex++)
+                            {
+                                TimeSpan usage = memberStats.ShipUsage[shipIndex];
+                                if (usage > TimeSpan.Zero)
+                                {
+                                    switch (shipIndex)
+                                    {
+                                        case 0: writer.TryWriteTimeSpanAsISO8601("warbird"u8, usage); break;
+                                        case 1: writer.TryWriteTimeSpanAsISO8601("javelin"u8, usage); break;
+                                        case 2: writer.TryWriteTimeSpanAsISO8601("spider"u8, usage); break;
+                                        case 3: writer.TryWriteTimeSpanAsISO8601("leviathan"u8, usage); break;
+                                        case 4: writer.TryWriteTimeSpanAsISO8601("terrier"u8, usage); break;
+                                        case 5: writer.TryWriteTimeSpanAsISO8601("weasel"u8, usage); break;
+                                        case 6: writer.TryWriteTimeSpanAsISO8601("lancaster"u8, usage); break;
+                                        case 7: writer.TryWriteTimeSpanAsISO8601("shark"u8, usage); break;
+                                        default:
+                                            continue;
+                                    }
+                                }
+                            }
+                            writer.WriteEndObject(); // ship_usage
+                        }
                     }
                 }
             }
@@ -3002,8 +3144,10 @@ namespace SS.Matchmaking.Modules
                     }
                 }
 
-                TimeSpan gameDuration = (matchStats.EndTimestamp ?? now) - matchStats.StartTimestamp;
                 sb.Append($" -- Game Time: ");
+                TimeSpan gameDuration = (matchStats.StartTimestamp == DateTime.MinValue)
+                    ? TimeSpan.Zero // Not started yet
+                    : (matchStats.EndTimestamp ?? now) - matchStats.StartTimestamp;
                 sb.AppendFriendlyTimeSpan(gameDuration);
 
                 if (matchStats.GameId is not null)
@@ -3028,7 +3172,48 @@ namespace SS.Matchmaking.Modules
             foreach (TeamStats teamStats in matchStats.Teams.Values)
             {
                 SendHorizonalRule(notifySet);
-                _chat.SendSetMessage(notifySet, $"| Freq {teamStats.Team!.Freq,-4}            Ki/De TK SK AS FR WR WRk WEPM   dE Mi LO PTime | DDealt/DTaken DmgE KiDmg FRDmg TmDmg | AcB AcG | Rat TRat ERat |");
+                StringBuilder column = _objectPoolManager.StringBuilderPool.Get();
+                StringBuilder header = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    const int columnWidth = 20; // The first column is 20 characters long.
+                    if (teamStats.Team?.LeagueTeam is not null)
+                    {
+                        // Show team name for league games.
+                        ReadOnlySpan<char> teamName = teamStats.Team?.LeagueTeam.TeamName;
+                        if (teamName.Length > columnWidth)
+                            teamName = teamName[..columnWidth];
+
+                        column.Append(teamName);
+                    }
+                    else
+                    {
+                        // Show freq and win prediction for non-league games.
+                        column.Append($"Freq {teamStats.Team!.Freq}");
+                        if (teamStats.WinProbability is not null)
+                        {
+                            column.Append($" ({teamStats.WinProbability:0%})");
+                        }
+                    }
+
+                    // Fill in spaces for the remaining characters in the column.
+                    int spaces = columnWidth - column.Length; 
+                    if (spaces > 0)
+                    {
+                        column.Append(' ', spaces);
+                    }
+
+                    header.Append($"| ");
+                    header.Append(column);
+                    header.Append($" Ki/De TK SK AS FR WR WRk WEPM   dE Mi LO PTime | DDealt/DTaken DmgE KiDmg FRDmg TmDmg | AcB AcG | Rat TRat ERat |");
+
+                    _chat.SendSetMessage(notifySet, header);
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(column);
+                    _objectPoolManager.StringBuilderPool.Return(header);
+                }
                 SendHorizonalRule(notifySet);
 
                 int totalKills = 0;
@@ -3493,6 +3678,7 @@ namespace SS.Matchmaking.Modules
             public DateTime StartTimestamp;
             public DateTime? EndTimestamp;
             public long? GameId;
+            public double? DrawProbability = null;
 
             #region First Out
 
@@ -3537,6 +3723,7 @@ namespace SS.Matchmaking.Modules
                 StartTimestamp = DateTime.MinValue;
                 EndTimestamp = null;
                 GameId = null;
+                DrawProbability = null;
                 FirstOutProcessed = false;
                 FirstOut = null;
                 FirstOutCritical = false;
@@ -3702,17 +3889,21 @@ namespace SS.Matchmaking.Modules
                     return;
 
                 _eventsJsonWriter.WriteEndArray();
-                _eventsJsonWriter.Flush();
+                _eventsJsonWriter.Dispose();
+                _eventsJsonWriter = null;
 
-                _eventsJsonStream!.Position = 0;
+                if (_eventsJsonStream is not null)
+                {
+                    _eventsJsonStream.Position = 0;
 
-                if (_eventsJsonStream is RecyclableMemoryStream rms)
-                {
-                    writer.WriteRawValue(rms.GetReadOnlySequence());
-                }
-                else
-                {
-                    writer.WriteNullValue();
+                    if (_eventsJsonStream is RecyclableMemoryStream rms)
+                    {
+                        writer.WriteRawValue(rms.GetReadOnlySequence());
+                    }
+                    else
+                    {
+                        writer.WriteNullValue();
+                    }
                 }
             }
         }
@@ -3730,13 +3921,16 @@ namespace SS.Matchmaking.Modules
 
             public int RemainingSlots;
             public int AverageRating;
+            public double? WinProbability;
 
             public void Initialize(MatchStats matchStats, ITeam team)
             {
                 MatchStats = matchStats ?? throw new ArgumentNullException(nameof(matchStats));
                 Team = team ?? throw new ArgumentNullException(nameof(team));
 
+                RemainingSlots = 0;
                 AverageRating = DefaultRating;
+                WinProbability = null;
             }
 
             public void RefreshRemainingSlotsAndAverageRating()
@@ -3774,6 +3968,7 @@ namespace SS.Matchmaking.Modules
                 Slots.Clear();
                 RemainingSlots = 0;
                 AverageRating = DefaultRating;
+                WinProbability = null;
             }
         }
 
