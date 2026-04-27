@@ -58,6 +58,10 @@ namespace SS.Matchmaking.Modules
             Description = "Hold duration (seconds) when KO'd right at the threshold boundary.")]
         [ConfigHelp<int>("SS.Matchmaking.RecklessPlayPenalty", "PenaltyMaximumSeconds", ConfigScope.Arena, Default = 600,
             Description = "Hold duration (seconds) when KO'd almost instantly after match start.")]
+        [ConfigHelp<bool>("SS.Matchmaking.RecklessPlayPenalty", "NotifyPlayer", ConfigScope.Arena, Default = true,
+            Description = "Set to 1 to privately notify a player when a reckless play queue hold is applied.")]
+        [ConfigHelp<bool>("SS.Matchmaking.RecklessPlayPenalty", "NotifyArena", ConfigScope.Arena, Default = false,
+            Description = "Set to 1 to notify the arena when a reckless play queue hold is applied.")]
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
             ArenaData arenaData = new();
@@ -66,6 +70,8 @@ namespace SS.Matchmaking.Modules
             arenaData.Threshold      = TimeSpan.FromSeconds(_configManager.GetInt(arena.Cfg!, "SS.Matchmaking.RecklessPlayPenalty", "ThresholdSeconds",      180));
             arenaData.PenaltyMinimum = TimeSpan.FromSeconds(_configManager.GetInt(arena.Cfg!, "SS.Matchmaking.RecklessPlayPenalty", "PenaltyMinimumSeconds", 120));
             arenaData.PenaltyMaximum = TimeSpan.FromSeconds(_configManager.GetInt(arena.Cfg!, "SS.Matchmaking.RecklessPlayPenalty", "PenaltyMaximumSeconds", 600));
+            arenaData.NotifyPlayer   = _configManager.GetBool(arena.Cfg!, "SS.Matchmaking.RecklessPlayPenalty", "NotifyPlayer", true);
+            arenaData.NotifyArena    = _configManager.GetBool(arena.Cfg!, "SS.Matchmaking.RecklessPlayPenalty", "NotifyArena", false);
 
             if (arenaData.Enabled)
             {
@@ -98,7 +104,7 @@ namespace SS.Matchmaking.Modules
             if (!_arenaDataDictionary.Remove(arena, out ArenaData? arenaData))
                 return false;
 
-            foreach (Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)> matchPenalties in arenaData.PendingPenalties.Values)
+            foreach (Dictionary<string, PendingPenalty> matchPenalties in arenaData.PendingPenalties.Values)
                 matchPenalties.Clear();
             arenaData.PendingPenalties.Clear();
 
@@ -150,18 +156,30 @@ namespace SS.Matchmaking.Modules
             if (player is null)
                 return;
 
-            if (!arenaData.PendingPenalties.TryGetValue(matchData, out Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)>? matchPenalties))
+            int knockoutOrder = GetKnockoutOrder(matchData);
+            bool isFirstOut = knockoutOrder == 1;
+            string reason = isFirstOut ? "first out before the prac integrity threshold" : "early death-out";
+
+            if (!arenaData.PendingPenalties.TryGetValue(matchData, out Dictionary<string, PendingPenalty>? matchPenalties))
             {
-                matchPenalties = new Dictionary<string, (TimeSpan, TimeSpan)>(StringComparer.OrdinalIgnoreCase);
+                matchPenalties = new Dictionary<string, PendingPenalty>(StringComparer.OrdinalIgnoreCase);
                 arenaData.PendingPenalties[matchData] = matchPenalties;
             }
 
             // A player can only be KO'd once per match, but guard defensively and keep the larger penalty.
-            if (!matchPenalties.TryGetValue(player.Name!, out (TimeSpan Penalty, TimeSpan ElapsedAtKo) existing) || penalty > existing.Penalty)
-                matchPenalties[player.Name!] = (penalty, elapsed);
+            if (!matchPenalties.TryGetValue(player.Name!, out PendingPenalty? existing) || penalty > existing.Penalty)
+            {
+                matchPenalties[player.Name!] = new PendingPenalty(
+                    player.Name!,
+                    penalty,
+                    elapsed,
+                    knockoutOrder,
+                    isFirstOut,
+                    reason);
+            }
 
             _logManager.LogP(LogLevel.Info, nameof(RecklessPlayPenalty), player,
-                $"Reckless KO at {elapsed.TotalSeconds:F1}s into match (threshold: {arenaData.Threshold.TotalSeconds}s). Pending penalty: {penalty.TotalSeconds:F0}s.");
+                $"Reckless KO at {elapsed.TotalSeconds:F1}s into match (threshold: {arenaData.Threshold.TotalSeconds}s, order: {knockoutOrder}, reason: {reason}). Pending penalty: {penalty.TotalSeconds:F0}s.");
         }
 
         private void Callback_TeamVersusMatchEnded(IMatchData matchData, MatchEndReason reason, ITeam? winnerTeam)
@@ -174,7 +192,7 @@ namespace SS.Matchmaking.Modules
                 return;
 
             // Always remove from the dictionary to prevent memory leaks, regardless of whether penalties are applied.
-            if (!arenaData.PendingPenalties.Remove(matchData, out Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)>? matchPenalties))
+            if (!arenaData.PendingPenalties.Remove(matchData, out Dictionary<string, PendingPenalty>? matchPenalties))
                 return;
 
             if (!arenaData.Enabled)
@@ -185,45 +203,99 @@ namespace SS.Matchmaking.Modules
             if (reason == MatchEndReason.Cancelled)
                 return;
 
-            foreach ((string playerName, (TimeSpan penalty, TimeSpan elapsedAtKo)) in matchPenalties)
+            foreach (PendingPenalty pendingPenalty in matchPenalties.Values)
             {
                 // Apply the hold. Safe even if the player was already removed from the Playing state
                 // by another mechanism — UnsetPlayingWithHold early-returns when the name is not found.
-                _playManager.AddPlayHold(playerName, penalty);
+                _playManager.AddPlayHold(pendingPenalty.PlayerName, pendingPenalty.Penalty);
 
-                Player? player = _playerData.FindPlayer(playerName);
-                if (player is not null)
+                if (arenaData.NotifyPlayer)
                 {
-                    _chat.SendMessage(player,
-                        $"You were KO'd too quickly ({FormatDuration(elapsedAtKo)} into the match). " +
-                        $"You must wait {FormatDuration(penalty)} before queuing again.");
+                    Player? player = _playerData.FindPlayer(pendingPenalty.PlayerName);
+                    if (player is not null)
+                    {
+                        _chat.SendMessage(player,
+                            $"You received a {FormatNoticeDuration(pendingPenalty.Penalty)} queue timeout for {GetPlayerNoticeReason(pendingPenalty)}.");
+                    }
+                }
+
+                if (arenaData.NotifyArena)
+                {
+                    _chat.SendArenaMessage(arena,
+                        $"NOTICE: {pendingPenalty.PlayerName} received a {FormatNoticeDuration(pendingPenalty.Penalty)} queue timeout for {pendingPenalty.Reason}.");
                 }
 
                 _logManager.LogM(LogLevel.Info, nameof(RecklessPlayPenalty),
-                    $"[{arena.Name}] [{playerName}] Reckless play penalty applied: {penalty.TotalSeconds:F0}s.");
+                    $"[{arena.Name}] [{pendingPenalty.PlayerName}] Reckless play penalty applied: {pendingPenalty.Penalty.TotalSeconds:F0}s. " +
+                    $"Elapsed: {pendingPenalty.KnockoutElapsedTime.TotalSeconds:F1}s. Order: {pendingPenalty.KnockoutOrder}. FirstOut: {pendingPenalty.IsFirstOut}. Reason: {pendingPenalty.Reason}.");
             }
         }
 
         #endregion
 
-        private static string FormatDuration(TimeSpan duration)
+        private static int GetKnockoutOrder(IMatchData matchData)
+        {
+            int knockedOutCount = 0;
+
+            foreach (ITeam team in matchData.Teams)
+            {
+                foreach (IPlayerSlot slot in team.Slots)
+                {
+                    if (slot.Status == PlayerSlotStatus.KnockedOut)
+                        knockedOutCount++;
+                }
+            }
+
+            return Math.Max(1, knockedOutCount);
+        }
+
+        private static string GetPlayerNoticeReason(PendingPenalty pendingPenalty)
+        {
+            return pendingPenalty.IsFirstOut
+                ? pendingPenalty.Reason
+                : $"{pendingPenalty.Reason} before the prac integrity threshold";
+        }
+
+        private static string FormatNoticeDuration(TimeSpan duration)
         {
             int totalSeconds = Math.Max(0, (int)duration.TotalSeconds);
             int minutes = totalSeconds / 60;
             int seconds = totalSeconds % 60;
-            return minutes > 0 ? $"{minutes}m {seconds}s" : $"{seconds}s";
+
+            if (minutes > 0 && seconds > 0)
+                return $"{minutes} {Pluralize(minutes, "minute")} {seconds} {Pluralize(seconds, "second")}";
+
+            if (minutes > 0)
+                return $"{minutes} {Pluralize(minutes, "minute")}";
+
+            return $"{seconds} {Pluralize(seconds, "second")}";
         }
+
+        private static string Pluralize(int value, string singular)
+        {
+            return value == 1 ? singular : $"{singular}s";
+        }
+
+        private sealed record PendingPenalty(
+            string PlayerName,
+            TimeSpan Penalty,
+            TimeSpan KnockoutElapsedTime,
+            int KnockoutOrder,
+            bool IsFirstOut,
+            string Reason);
 
         private sealed class ArenaData
         {
             public bool Enabled;
+            public bool NotifyPlayer;
+            public bool NotifyArena;
             public TimeSpan Threshold;
             public TimeSpan PenaltyMinimum;
             public TimeSpan PenaltyMaximum;
 
             // Outer key: IMatchData (reference equality — match objects live for the match duration)
-            // Inner key: player name (OrdinalIgnoreCase); value: penalty duration and elapsed time at the moment of KO
-            public readonly Dictionary<IMatchData, Dictionary<string, (TimeSpan Penalty, TimeSpan ElapsedAtKo)>> PendingPenalties = [];
+            // Inner key: player name (OrdinalIgnoreCase); value: pending penalty details captured at the moment of KO
+            public readonly Dictionary<IMatchData, Dictionary<string, PendingPenalty>> PendingPenalties = [];
         }
     }
 }
