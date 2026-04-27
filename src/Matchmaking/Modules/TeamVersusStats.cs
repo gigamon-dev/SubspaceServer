@@ -379,8 +379,11 @@ namespace SS.Matchmaking.Modules
                 // Adjust ratings based on player inactivity.
                 AdjustOpenSkillRatingsForDecay(matchConfiguration, ratings, DateTime.UtcNow);
 
-                // Snake draft
-                BalanceTeamsSnakeDraft(teamList, ratings);
+                // Best-partition for the common 4v4 solo case, otherwise snake draft.
+                if (!TryBalanceTwoTeamEightSoloBestPartition(teamList, ratings))
+                {
+                    BalanceTeamsSnakeDraft(teamList, ratings);
+                }
 
                 // TODO: Add other team balancing algorithms and add the ability to configure it to randomize which are used with weights on each.
 
@@ -402,6 +405,113 @@ namespace SS.Matchmaking.Modules
             }
 
             return true;
+
+            bool TryBalanceTwoTeamEightSoloBestPartition(IReadOnlyList<TeamLineup> teamList, Dictionary<string, PlayerRating> ratings)
+            {
+                const double ScoreEpsilon = 0.000000001;
+                const int PlayerCount = 8;
+                const int TeamSize = 4;
+
+                if (teamList.Count != 2)
+                    return false;
+
+                HashSet<string> seenPlayerNames = new(StringComparer.OrdinalIgnoreCase);
+                List<(string PlayerName, double Ordinal)> playerRatingList = new(PlayerCount);
+
+                foreach (TeamLineup teamLineup in teamList)
+                {
+                    foreach ((string playerName, int? premadeGroupId) in teamLineup.Players)
+                    {
+                        if (premadeGroupId is not null)
+                            return false;
+
+                        if (!seenPlayerNames.Add(playerName))
+                            return false;
+
+                        if (!ratings.TryGetValue(playerName, out PlayerRating? playerRating))
+                            return false;
+
+                        playerRatingList.Add((playerName, playerRating.GetOrdinal()));
+                    }
+                }
+
+                if (playerRatingList.Count != PlayerCount)
+                    return false;
+
+                playerRatingList.Sort(static (x, y) => StringComparer.OrdinalIgnoreCase.Compare(x.PlayerName, y.PlayerName));
+
+                int bestA = -1;
+                int bestB = -1;
+                int bestC = -1;
+                double bestScore = double.MaxValue;
+                string? bestTeamASignature = null;
+
+                // Generate unique partitions by forcing index 0 onto Team A, then choosing 3 of indexes 1..7.
+                for (int a = 1; a <= 5; a++)
+                {
+                    for (int b = a + 1; b <= 6; b++)
+                    {
+                        for (int c = b + 1; c <= 7; c++)
+                        {
+                            double teamASum =
+                                playerRatingList[0].Ordinal
+                                + playerRatingList[a].Ordinal
+                                + playerRatingList[b].Ordinal
+                                + playerRatingList[c].Ordinal;
+                            double teamBSum = 0;
+
+                            for (int i = 1; i < PlayerCount; i++)
+                            {
+                                if (i != a && i != b && i != c)
+                                {
+                                    teamBSum += playerRatingList[i].Ordinal;
+                                }
+                            }
+
+                            double score = Math.Abs(teamASum - teamBSum);
+                            string teamASignature = string.Join(
+                                '\0',
+                                playerRatingList[0].PlayerName,
+                                playerRatingList[a].PlayerName,
+                                playerRatingList[b].PlayerName,
+                                playerRatingList[c].PlayerName);
+
+                            if (score < bestScore - ScoreEpsilon
+                                || (Math.Abs(score - bestScore) <= ScoreEpsilon
+                                    && (bestTeamASignature is null || StringComparer.OrdinalIgnoreCase.Compare(teamASignature, bestTeamASignature) < 0)))
+                            {
+                                bestScore = score;
+                                bestTeamASignature = teamASignature;
+                                bestA = a;
+                                bestB = b;
+                                bestC = c;
+                            }
+                        }
+                    }
+                }
+
+                if (bestTeamASignature is null)
+                    return false;
+
+                foreach (TeamLineup teamLineup in teamList)
+                {
+                    teamLineup.Players.Clear();
+                }
+
+                for (int i = 0; i < PlayerCount; i++)
+                {
+                    TeamLineup teamLineup = (i == 0 || i == bestA || i == bestB || i == bestC)
+                        ? teamList[0]
+                        : teamList[1];
+
+                    teamLineup.Players.Add(playerRatingList[i].PlayerName, null);
+                }
+
+                Debug.Assert(teamList[0].Players.Count == TeamSize);
+                Debug.Assert(teamList[1].Players.Count == TeamSize);
+
+                return true;
+            }
 
             void BalanceTeamsSnakeDraft(IReadOnlyList<TeamLineup> teamList, Dictionary<string, PlayerRating> ratings)
             {
