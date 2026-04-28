@@ -694,11 +694,16 @@ namespace SS.Utilities
         /// <returns>The <paramref name="builder"/> that was passed in.</returns>
         public static StringBuilder AppendFriendlyTimeSpan(this StringBuilder builder, TimeSpan value)
         {
-            if (value.Days > 0)
+            if (value < TimeSpan.Zero)
+            {
+                builder.Append('-');
+            }
+
+            if (Math.Abs(value.Days) > 0)
             {
                 builder.Append($"{value:d'.'hh':'mm':'ss}");
             }
-            else if (value.Hours > 0)
+            else if (Math.Abs(value.Hours) > 0)
             {
                 builder.Append($"{value:h':'mm':'ss}");
             }
