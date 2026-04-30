@@ -1932,7 +1932,7 @@ namespace SS.Matchmaking.Modules
             {
                 if (usageData.State == QueueState.Playing)
                 {
-                    UnsetPlaying(player, false, false);
+                    UnsetPlaying(targetPlayer, false, false);
                     _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: Unset {targetPlayer.Name} from the {QueueState.Playing} state.");
                 }
             }
