@@ -344,14 +344,14 @@ namespace SS.Core.Modules
 
             // check conditions for disallowing flags/balls
             player.Flags.NoFlagsBalls = averagePing > lagLimits.Ping.NoFlags
-                || packetloss.S2C > lagLimits.S2CLoss.NoFlags
-                || packetloss.S2CWeapon > lagLimits.WeaponLoss.NoFlags
-                || packetloss.C2S > lagLimits.C2SLoss.NoFlags;
+                || Math.Abs(packetloss.S2C) > lagLimits.S2CLoss.NoFlags
+                || Math.Abs(packetloss.S2CWeapon) > lagLimits.WeaponLoss.NoFlags
+                || Math.Abs(packetloss.C2S) > lagLimits.C2SLoss.NoFlags;
 
             // calculate weapon ignore percent
             double ignore1 = (double)(averagePing - lagLimits.Ping.IgnoreWeaponStart) / (lagLimits.Ping.IgnoreWeaponAll - lagLimits.Ping.IgnoreWeaponStart);
-            double ignore2 = (double)(packetloss.S2C - lagLimits.S2CLoss.IgnoreWeaponStart) / (lagLimits.S2CLoss.IgnoreWeaponAll - lagLimits.S2CLoss.IgnoreWeaponStart);
-            double ignore3 = (double)(packetloss.S2CWeapon - lagLimits.WeaponLoss.IgnoreWeaponStart) / (lagLimits.WeaponLoss.IgnoreWeaponAll - lagLimits.WeaponLoss.IgnoreWeaponStart);
+            double ignore2 = (double)(Math.Abs(packetloss.S2C) - lagLimits.S2CLoss.IgnoreWeaponStart) / (lagLimits.S2CLoss.IgnoreWeaponAll - lagLimits.S2CLoss.IgnoreWeaponStart);
+            double ignore3 = (double)(Math.Abs(packetloss.S2CWeapon) - lagLimits.WeaponLoss.IgnoreWeaponStart) / (lagLimits.WeaponLoss.IgnoreWeaponAll - lagLimits.WeaponLoss.IgnoreWeaponStart);
 
             // use the max of the 3
             _game.SetIgnoreWeapons(player, Math.Clamp(Math.Max(Math.Max(ignore1, ignore2), ignore3), 0d, 1d));
