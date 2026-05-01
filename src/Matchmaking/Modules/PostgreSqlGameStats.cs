@@ -1093,7 +1093,7 @@ namespace SS.Matchmaking.Modules
             catch (Exception ex)
             {
                 _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling league.get_league_player_role_last_updated. {ex}");
-                return null;
+                throw;
             }
         }
 
@@ -1140,6 +1140,7 @@ namespace SS.Matchmaking.Modules
             catch (Exception ex)
             {
                 _logManager.LogM(LogLevel.Error, nameof(PostgreSqlGameStats), $"Error calling league.get_league_player_role_grants. {ex}");
+                throw;
             }
         }
 

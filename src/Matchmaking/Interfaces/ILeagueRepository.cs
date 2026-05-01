@@ -131,6 +131,7 @@ namespace SS.Matchmaking.Interfaces
         /// <param name="role">The role to get data for.</param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
+        /// <exception cref="Exception">Database error.</exception>
         Task<DateTime?> GetLeaguePlayerRoleLastUpdatedAsync(long leagueId, LeagueRole role, CancellationToken cancellationToken);
 
         /// <summary>
@@ -141,6 +142,7 @@ namespace SS.Matchmaking.Interfaces
         /// <param name="grants">A set to populate with player names.</param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
+        /// <exception cref="Exception">Database error.</exception>
         Task GetLeaguePlayerRoleGrantsAsync(long leagueId, LeagueRole role, HashSet<string> grants, CancellationToken cancellationToken);
 
         #endregion
