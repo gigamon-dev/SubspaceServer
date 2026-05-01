@@ -316,21 +316,21 @@ namespace SS.Core.Modules
                 if (Spec(player, lagLimits.SpecFreq, "ping"))
                     _chat.SendMessage(player, $"You have been specced for excessive ping ({averagePing} > {lagLimits.Ping.ForceSpec}.");
             }
-            else if (packetloss.S2C > lagLimits.S2CLoss.ForceSpec)
+            else if (Math.Abs(packetloss.S2C) > lagLimits.S2CLoss.ForceSpec)
             {
                 player.Flags.NoShip = true;
 
                 if (Spec(player, lagLimits.SpecFreq, "s2c ploss"))
                     _chat.SendMessage(player, $"You have been specced for excessive S2C packetloss ({packetloss.S2C:P2} > {lagLimits.S2CLoss.ForceSpec:P2}.");
             }
-            else if (packetloss.S2CWeapon > lagLimits.WeaponLoss.ForceSpec)
+            else if (Math.Abs(packetloss.S2CWeapon) > lagLimits.WeaponLoss.ForceSpec)
             {
                 player.Flags.NoShip = true;
 
                 if (Spec(player, lagLimits.SpecFreq, "s2c wpn ploss"))
                     _chat.SendMessage(player, $"You have been specced for excessive S2C weapon packetloss ({packetloss.S2CWeapon:P2} > {lagLimits.WeaponLoss.ForceSpec:P2}.");
             }
-            else if (packetloss.C2S > lagLimits.C2SLoss.ForceSpec)
+            else if (Math.Abs(packetloss.C2S) > lagLimits.C2SLoss.ForceSpec)
             {
                 player.Flags.NoShip = true;
 
