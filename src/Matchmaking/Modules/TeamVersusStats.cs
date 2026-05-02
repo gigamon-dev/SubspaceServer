@@ -293,6 +293,7 @@ namespace SS.Matchmaking.Modules
 
             _commandManager.AddCommand(CommandNames.Chart, Command_chart, arena);
             _commandManager.AddCommand(CommandNames.ChartHelp, Command_charthelp, arena);
+            _commandManager.AddCommand(CommandNames.Rank, Command_rank, arena);
 
             arenaData.ILeagueHelpToken = arena.RegisterInterface<ILeagueHelp>(this, nameof(TeamVersusStats));
 
@@ -316,6 +317,7 @@ namespace SS.Matchmaking.Modules
 
             _commandManager.RemoveCommand(CommandNames.Chart, Command_chart, arena);
             _commandManager.RemoveCommand(CommandNames.ChartHelp, Command_charthelp, arena);
+            _commandManager.RemoveCommand(CommandNames.Rank, Command_rank, arena);
 
             TeamVersusMatchPlayerLagOutCallback.Unregister(arena, Callback_TeamVersusMatchPlayerLagOut);
             TeamVersusMatchPlayerShipChangedCallback.Unregister(arena, Callback_TeamVersusMatchPlayerShipChanged);
@@ -3003,6 +3005,88 @@ namespace SS.Matchmaking.Modules
             _chat.SendMessage(player, "^ Accounts for active utility drain: Stealth, Cloak, X-Radar, and Anti-Warp.");
         }
 
+        [CommandHelp(
+            Args = "[player]",
+            Description = "Prints a player's Nexus Rank for the currently focused TeamVersus match type.")]
+        private void Command_rank(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            string? targetPlayerName = parameters.IsWhiteSpace()
+                ? player.Name
+                : parameters.Trim().ToString();
+
+            if (string.IsNullOrWhiteSpace(targetPlayerName))
+            {
+                _chat.SendMessage(player, "Nexus Rank: Unrated");
+                return;
+            }
+
+            _ = CommandRankAsync(player, targetPlayerName);
+        }
+
+        private async Task CommandRankAsync(Player player, string targetPlayerName)
+        {
+            try
+            {
+                IMatch? match = _matchFocus.GetFocusedMatch(player);
+                if (match is not IMatchData matchData || matchData.Configuration.GameTypeId is not long gameTypeId)
+                {
+                    _chat.SendMessage(player, "Nexus Rank is unavailable here. Join or spectate a TeamVersus match and try again.");
+                    return;
+                }
+
+                IMatchConfiguration matchConfiguration = matchData.Configuration;
+                PlayerRating? rating = null;
+                Dictionary<string, PlayerRating> ratings = _playerRatingDictionaryPool.Get();
+
+                try
+                {
+                    ratings[targetPlayerName] = new PlayerRating
+                    {
+                        PlayerName = targetPlayerName,
+                        Mu = matchConfiguration.OpenSkillModel.Mu,
+                        Sigma = matchConfiguration.OpenSkillModel.Sigma,
+                    };
+
+                    if (_gameStatsRepository is not null)
+                    {
+                        await _gameStatsRepository.GetPlayerOpenSkillRatingsAsync(gameTypeId, ratings);
+                    }
+
+                    if (ratings.TryGetValue(targetPlayerName, out PlayerRating? foundRating)
+                        && foundRating.LastUpdated is not null)
+                    {
+                        AdjustOpenSkillRatingsForDecay(matchConfiguration, ratings, DateTime.UtcNow);
+                        rating = foundRating;
+                    }
+                }
+                catch
+                {
+                    rating = null;
+                }
+                finally
+                {
+                    _playerRatingDictionaryPool.Return(ratings);
+                }
+
+                if (rating is null)
+                {
+                    _chat.SendMessage(player, $"Nexus Rank: {targetPlayerName} — Unrated");
+                    return;
+                }
+
+                double visibleRank = Math.Floor(rating.GetOrdinal(
+                    z: matchConfiguration.OpenSkillDisplayOrdinal.Z,
+                    alpha: matchConfiguration.OpenSkillDisplayOrdinal.Alpha,
+                    target: matchConfiguration.OpenSkillDisplayOrdinal.Target));
+
+                _chat.SendMessage(player, $"Nexus Rank: {targetPlayerName} — {visibleRank:F0}");
+            }
+            catch
+            {
+                _chat.SendMessage(player, $"Nexus Rank: {targetPlayerName} — Unrated");
+            }
+        }
+
         #endregion
 
         private static void AddOrUpdatePlayerInfo(MatchStats matchStats, string playerName, Player? player)
@@ -4822,6 +4906,7 @@ namespace SS.Matchmaking.Modules
         {
             public const string Chart = "chart";
             public const string ChartHelp = "charthelp";
+            public const string Rank = "rank";
         }
 
         #endregion
