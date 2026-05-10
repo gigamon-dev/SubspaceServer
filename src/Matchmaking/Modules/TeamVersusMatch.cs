@@ -4230,6 +4230,10 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
+            int playerKillDamageStatsDelayMs = _configManager.GetInt(ch, matchType, "PlayerKillStatsDelayMs", 200);
+            if (playerKillDamageStatsDelayMs < 0)
+                playerKillDamageStatsDelayMs = 0; // no delay
+
             string? winConditionDelayStr = _configManager.GetStr(ch, matchType, "WinConditionDelay");
             if (string.IsNullOrWhiteSpace(winConditionDelayStr)
                 || !TimeSpan.TryParse(winConditionDelayStr, out TimeSpan winConditionDelay))
@@ -4366,6 +4370,7 @@ namespace SS.Matchmaking.Modules
                 StartCountdownDuration = startCountdownDuration,
                 TimeLimit = timeLimit,
                 OverTimeLimit = overTimeLimit,
+                PlayerKillDamageStatsDelayMs = playerKillDamageStatsDelayMs,
                 WinConditionDelay = winConditionDelay,
                 InactiveTeamsMatchCompletionDelay = inactiveTeamsMatchCompletionDelay,
                 TimeLimitWinBy = timeLimitWinBy,
@@ -6938,6 +6943,7 @@ namespace SS.Matchmaking.Modules
             public required TimeSpan StartCountdownDuration { get; init; }
             public required TimeSpan TimeLimit { get; init; }
             public required TimeSpan? OverTimeLimit { get; init; }
+            public required int PlayerKillDamageStatsDelayMs { get; init; }
             public required TimeSpan WinConditionDelay { get; init; }
             public required TimeSpan InactiveTeamsMatchCompletionDelay { get; init; }
             public required int TimeLimitWinBy { get; init; }

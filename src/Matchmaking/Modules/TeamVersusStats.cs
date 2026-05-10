@@ -1199,7 +1199,10 @@ namespace SS.Matchmaking.Modules
             // This gives a chance for C2S Damage packets to make it to the server and therefore more accurate damage stats.
             //
 
-            await Task.Delay(200);
+            if (matchData.Configuration.PlayerKillDamageStatsDelayMs > 0)
+            {
+                await Task.Delay(matchData.Configuration.PlayerKillDamageStatsDelayMs);
+            }
 
             // The Player objects (and therefore the PlayerData objects too) might be invalid after the await
             // (e.g. if a player disconnected during the delay).

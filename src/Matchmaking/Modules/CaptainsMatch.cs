@@ -143,6 +143,8 @@ namespace SS.Matchmaking.Modules
             Description = "Duration (TimeSpan, e.g. 00:30:00) of each match. Empty = untimed. When time expires the team whose score leads by TimeLimitWinBy wins; otherwise overtime or draw.")]
         [ConfigHelp("CaptainsMatch", "OverTimeLimit", ConfigScope.Arena,
             Description = "Duration (TimeSpan) of overtime when no team leads by TimeLimitWinBy at the end of regular time. Requires TimeLimit. Empty = no overtime (draw instead).")]
+        [ConfigHelp<int>("CaptainsMatch", "PlayerKillStatsDelayMs", ConfigScope.Arena, Default = 200,
+            Description = "Delay (milliseconds) in processing damage related stats after a player is killed to allow the damage packet to arrive and get processed.")]
         [ConfigHelp("CaptainsMatch", "WinConditionDelay", ConfigScope.Arena, Default = "00:00:02",
             Description = "Delay (TimeSpan) after a knockout before checking for team elimination. Allows double-KO draws.")]
         [ConfigHelp<int>("CaptainsMatch", "TimeLimitWinBy", ConfigScope.Arena, Default = 2,
@@ -165,6 +167,24 @@ namespace SS.Matchmaking.Modules
             Description = "Amount added to a player's sigma per day of inactivity (rating uncertainty growth).")]
         [ConfigHelp<bool>("CaptainsMatch", "OpenSkillUseScoresWhenPossible", ConfigScope.Arena, Default = false,
             Description = "Whether to rate teams using kill scores rather than ranks when possible.")]
+        [ConfigHelp<double>("CaptainsMatch", "OpenSkillDisplayOrdinalZ", ConfigScope.Arena, Default = 3,
+            Description = """
+                For calculating the ordinal display value of a player's OpenSkill rating.
+                A number that represents the number of standard deviations to subtract from the mean.
+                By default, this value is 3.0, which corresponds to a 99.7% confidence interval in a normal distribution.
+                """)]
+        [ConfigHelp<double>("CaptainsMatch", "OpenSkillDisplayOrdinalAlpha", ConfigScope.Arena, Default = 1,
+            Description = """
+                For calculating the ordinal display value of a player's OpenSkill rating.
+                A number that represents a scaling factor applied to the entire calculation.
+                Adjusts the overall scale of the ordinal value.
+                """)]
+        [ConfigHelp<double>("CaptainsMatch", "OpenSkillDisplayOrdinalTarget", ConfigScope.Arena, Default = 0,
+            Description = """
+                For calculating the ordinal display value of a player's OpenSkill rating.
+                A number used to shift the ordinal value towards a specific target.
+                The shift is adjusted by the OpenSkillDisplayOrdinalAlpha scaling factor.
+                """)]
         [ConfigHelp("CaptainsMatch", "FreqNStartLocation", ConfigScope.Arena,
             Description = "Tile coordinates (x,y) to warp freq N's players to at match start. E.g., Freq100StartLocation = 354,354. Optional; omit to skip warping.")]
         bool IArenaAttachableModule.AttachModule(Arena arena)
@@ -249,6 +269,10 @@ namespace SS.Matchmaking.Modules
                 }
             }
 
+            int playerKillDamageStatsDelayMs = _configManager.GetInt(ch, "CaptainsMatch", "PlayerKillStatsDelayMs", 200);
+            if (playerKillDamageStatsDelayMs < 0)
+                playerKillDamageStatsDelayMs = 0; // no delay
+
             // WinConditionDelay (default 2 seconds)
             TimeSpan winConditionDelay = TimeSpan.FromSeconds(2);
             string? wcdStr = _configManager.GetStr(ch, "CaptainsMatch", "WinConditionDelay");
@@ -318,6 +342,7 @@ namespace SS.Matchmaking.Modules
                 KickCooldown = TimeSpan.FromSeconds(_configManager.GetInt(ch, "CaptainsMatch", "KickCooldownSeconds", 60)),
                 TimeLimit = timeLimit,
                 OverTimeLimit = overTimeLimit,
+                PlayerKillDamageStatsDelayMs = playerKillDamageStatsDelayMs,
                 WinConditionDelay = winConditionDelay,
                 TimeLimitWinBy = Math.Max(1, _configManager.GetInt(ch, "CaptainsMatch", "TimeLimitWinBy", 2)),
                 MaxLagOuts = _configManager.GetInt(ch, "CaptainsMatch", "MaxLagOuts", 3),
@@ -3510,6 +3535,7 @@ namespace SS.Matchmaking.Modules
             public required TimeSpan KickCooldown;
             public required TimeSpan TimeLimit;
             public required TimeSpan? OverTimeLimit;
+            public required int PlayerKillDamageStatsDelayMs;
             public required TimeSpan WinConditionDelay;
             public required int TimeLimitWinBy;
             public required int MaxLagOuts;
@@ -3717,6 +3743,7 @@ namespace SS.Matchmaking.Modules
             public TimeSpan WinConditionDelay => _config.WinConditionDelay;
             public int TimeLimitWinBy => _config.TimeLimitWinBy;
             public int MaxLagOuts => _config.MaxLagOuts;
+            public int PlayerKillDamageStatsDelayMs => _config.PlayerKillDamageStatsDelayMs;
             public ReadOnlySpan<IMatchBoxConfiguration> Boxes => _boxes;
             public IOpenSkillModel OpenSkillModel => _config.OpenSkillModel;
             public double OpenSkillSigmaDecayPerDay => _config.OpenSkillSigmaDecayPerDay;

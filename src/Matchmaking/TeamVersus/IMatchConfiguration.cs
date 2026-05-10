@@ -47,6 +47,23 @@ namespace SS.Matchmaking.TeamVersus
         TimeSpan? OverTimeLimit { get; }
 
         /// <summary>
+        /// How long, in milliseconds, to delay processing of damage related stats after a player is killed.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Continuum sends the C2S Damage packet after the death packet.
+        /// This can be set to provide a short delay to allow the damage packet to arrive and get processed.
+        /// 0 means no delay (damage stats for the kill will not be 100% accurate since the final damage packet would not have been processed).
+        /// </para>
+        /// <para>
+        /// Rating change is dependent on damage stats. 
+        /// All rating change calculations occur after the delay (if there is one), 
+        /// not just assists (which is based on damage dealt to the killed player).
+        /// </para>
+        /// </remarks>
+        int PlayerKillDamageStatsDelayMs { get; }
+
+        /// <summary>
         /// Gets the configuration of the match boxes.
         /// </summary>
         ReadOnlySpan<IMatchBoxConfiguration> Boxes { get; }
