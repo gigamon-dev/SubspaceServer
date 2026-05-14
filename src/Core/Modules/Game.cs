@@ -754,7 +754,7 @@ namespace SS.Core.Modules
         [ConfigHelp<int>("Net", "AntiwarpSendPercent", ConfigScope.Arena, Default = 5,
             Description = "Percent of position packets with antiwarp enabled to send to the whole arena.")]
         [ConfigHelp<bool>("Net", "SendRepelTwice", ConfigScope.Arena, Default = false,
-            Description = "Whether to send each repel weapon packet twice (unreliable) for redundancy. Repels are gameplay-critical and otherwise vulnerable to UDP packet loss. The duplicate is sent with the Urgent flag so it bypasses the grouper and lands in its own UDP datagram.")]
+            Description = "Whether to send each repel weapon packet twice (unreliable) for redundancy. Repels are gameplay-critical and otherwise vulnerable to UDP packet loss.")]
         // Note: Toggle:AntiwarpPixels is a client setting, so its [ConfigHelp] is in ClientSettingsConfig.cs
         // Note: Kill:EnterDelay is a client setting, so its [ConfigHelp] is in ClientSettingsConfig.cs
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
@@ -1613,13 +1613,14 @@ namespace SS.Core.Modules
                                         _network.SendToOne(otherPlayer, data, sendFlags);
 
                                         // Repels are gameplay-critical; resend unreliably for redundancy.
-                                        // The Urgent flag forces the duplicate down SendOrBufferPacket's fast path (SendRaw), so it
-                                        // lands in its own UDP datagram rather than being coalesced with the original into a 0x00 0x0E
-                                        // grouped packet. That gives the duplicate independent fate against per-datagram wire loss.
+                                        // Both sends use sendFlags (which contains PriorityP5 → Urgent bit), so each goes out
+                                        // via SendRaw as its own UDP datagram. The two datagrams have independent fate against
+                                        // single-packet wire loss, though they're sent microseconds apart so correlated burst
+                                        // loss (router queue overflow, Wi-Fi retry window) can still take both.
                                         // Don't increment the lag-stat weapon-sent counter again — this is one logical weapon event.
                                         if (posCopy.Weapon.Type == WeaponCodes.Repel && arenaData.SendRepelTwice)
                                         {
-                                            _network.SendToOne(otherPlayer, data, sendFlags | NetSendFlags.Urgent);
+                                            _network.SendToOne(otherPlayer, data, sendFlags);
                                         }
                                     }
                                     else
