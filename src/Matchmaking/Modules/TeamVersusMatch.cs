@@ -5725,7 +5725,7 @@ namespace SS.Matchmaking.Modules
                             to.Clear();
                             to.Add(player);
 
-                            _chat.SendRemotePrivMessage(to, ChatSound.None, [], player.Name, "You have 15 seconds to indicate that you are READY by rotating your ship or by firing a weapon.");
+                            _chat.SendRemotePrivMessage(to, ChatSound.None, [], player.Name, $"You have {matchData.Configuration.ReadyWaitDuration.TotalSeconds:N0} seconds to indicate that you are READY by rotating your ship or by firing a weapon.");
                         }
                     }
                     finally
