@@ -686,7 +686,7 @@ namespace SS.Core.Modules
                 S2CFastTotal = pkt.S2CFastTotal,
                 S2CSlowCurrent = pkt.S2CSlowCurrent,
                 S2CFastCurrent = pkt.S2CFastCurrent,
-                Unknown1 = pkt.Unknown1,
+                S2CAverageCurrent = pkt.S2CAverageCurrent,
                 LastPing = pkt.LastPing,
                 AveragePing = pkt.AveragePing,
                 LowestPing = pkt.LowestPing,

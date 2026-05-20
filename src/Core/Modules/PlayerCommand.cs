@@ -584,7 +584,7 @@ namespace SS.Core.Modules
                 double s2cRelLoss = (reliableLag.Retries == 0) ? 0d : ((reliableLag.Retries - reliableLag.AckDups) * 100d / reliableLag.ReliablePacketsSent);
                 _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.S2C * 100d:F2}  c2s: {packetloss.C2S * 100d:F2}  s2cwpn: {packetloss.S2CWeapon * 100d:F2}  s2crel: {s2cRelLoss:F2}");
                 _chat.SendMessage(player, $"{prefix}: reliable: dups: {reliableLag.RelDups * 100d / reliableLag.ReliablePacketsReceived:F2}%  resends: {reliableLag.Retries * 100d / reliableLag.ReliablePacketsSent:F2}%");
-                _chat.SendMessage(player, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal}  s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal}");
+                _chat.SendMessage(player, $"{prefix}: s2c slow: {clientPing.S2CSlowCurrent}/{clientPing.S2CSlowTotal}  s2c fast: {clientPing.S2CFastCurrent}/{clientPing.S2CFastTotal} s2c avg: {clientPing.S2CAverageCurrent * 10}");
 
                 PrintCommonBandwidthInfo(player, targetPlayer, DateTime.UtcNow - targetPlayer.ConnectTime, prefix, false);
             }

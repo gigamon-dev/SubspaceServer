@@ -11,7 +11,7 @@ namespace SS.Core.ComponentInterfaces
     {
         public int Current, Average, Min, Max;
         public uint S2CSlowTotal, S2CFastTotal;
-        public ushort S2CSlowCurrent, S2CFastCurrent;
+        public ushort S2CSlowCurrent, S2CFastCurrent, S2CAverageCurrent;
     }
 
     public struct PacketlossSummary

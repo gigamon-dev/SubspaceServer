@@ -34,7 +34,7 @@ namespace SS.Packets.Game
         private uint s2CFastTotal;
         private ushort s2CSlowCurrent;
         private ushort s2CFastCurrent;
-        private ushort unknown1;
+        private ushort s2CAverageCurrent;
         private ushort lastPing;
         private ushort averagePing;
         private ushort lowestPing;
@@ -92,10 +92,10 @@ namespace SS.Packets.Game
             set => s2CFastCurrent = LittleEndianConverter.Convert(value);
         }
 
-        public ushort Unknown1
+        public ushort S2CAverageCurrent
         {
-            readonly get => LittleEndianConverter.Convert(unknown1);
-            set => unknown1 = LittleEndianConverter.Convert(value);
+            readonly get => LittleEndianConverter.Convert(s2CAverageCurrent);
+            set => s2CAverageCurrent = LittleEndianConverter.Convert(value);
         }
 
         public ushort LastPing

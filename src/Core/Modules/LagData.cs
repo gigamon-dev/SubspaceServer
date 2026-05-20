@@ -501,6 +501,7 @@ namespace SS.Core.Modules
                     ping.S2CFastTotal = ClientReportedData.S2CFastTotal;
                     ping.S2CSlowCurrent = ClientReportedData.S2CSlowCurrent;
                     ping.S2CFastCurrent = ClientReportedData.S2CFastCurrent;
+                    ping.S2CAverageCurrent = ClientReportedData.S2CAverageCurrent;
                 }
             }
 

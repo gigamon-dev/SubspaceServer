@@ -10,7 +10,7 @@
         public readonly uint S2CFastTotal { get; init; }
         public readonly ushort S2CSlowCurrent { get; init; }
         public readonly ushort S2CFastCurrent { get; init; }
-        public readonly ushort Unknown1 { get; init; }
+        public readonly ushort S2CAverageCurrent { get; init; }
         public readonly ushort LastPing { get; init; }
         public readonly ushort AveragePing { get; init; }
         public readonly ushort LowestPing { get; init; }
