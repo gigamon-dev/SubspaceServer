@@ -753,6 +753,8 @@ namespace SS.Core.Modules
             Description = "How far away to to send positions of players on radar (in pixels).")]
         [ConfigHelp<int>("Net", "AntiwarpSendPercent", ConfigScope.Arena, Default = 5,
             Description = "Percent of position packets with antiwarp enabled to send to the whole arena.")]
+        [ConfigHelp<bool>("Net", "SendRepelTwice", ConfigScope.Arena, Default = false,
+            Description = "Whether to send each repel weapon packet twice (unreliable) for redundancy. Repels are gameplay-critical and otherwise vulnerable to UDP packet loss.")]
         // Note: Toggle:AntiwarpPixels is a client setting, so its [ConfigHelp] is in ClientSettingsConfig.cs
         // Note: Kill:EnterDelay is a client setting, so its [ConfigHelp] is in ClientSettingsConfig.cs
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
@@ -808,6 +810,8 @@ namespace SS.Core.Modules
 
                 ad.SendAnti = _configManager.GetInt(ch, "Net", "AntiwarpSendPercent", ArenaSettings.Net.AntiwarpSendPercent.Default);
                 ad.SendAnti = Constants.RandMax / 100 * ad.SendAnti;
+
+                ad.SendRepelTwice = _configManager.GetBool(ch, "Net", "SendRepelTwice", ArenaSettings.Net.SendRepelTwice.Default);
 
                 int cfg_AntiwarpPixels = _configManager.GetInt(ch, "Toggle", "AntiwarpPixels", 1);
                 ad.AntiWarpRange = cfg_AntiwarpPixels * cfg_AntiwarpPixels;
@@ -1607,6 +1611,17 @@ namespace SS.Core.Modules
                                             data = data[..length];
 
                                         _network.SendToOne(otherPlayer, data, sendFlags);
+
+                                        // Repels are gameplay-critical; resend unreliably for redundancy.
+                                        // Both sends use sendFlags (which contains PriorityP5 → Urgent bit), so each goes out
+                                        // via SendRaw as its own UDP datagram. The two datagrams have independent fate against
+                                        // single-packet wire loss, though they're sent microseconds apart so correlated burst
+                                        // loss (router queue overflow, Wi-Fi retry window) can still take both.
+                                        // Don't increment the lag-stat weapon-sent counter again — this is one logical weapon event.
+                                        if (posCopy.Weapon.Type == WeaponCodes.Repel && arenaData.SendRepelTwice)
+                                        {
+                                            _network.SendToOne(otherPlayer, data, sendFlags);
+                                        }
                                     }
                                     else
                                     {
@@ -2995,6 +3010,11 @@ namespace SS.Core.Modules
             public int SendAnti;
 
             /// <summary>
+            /// Whether to send each repel weapon packet twice (unreliable) for redundancy.
+            /// </summary>
+            public bool SendRepelTwice;
+
+            /// <summary>
             /// Distance anti-warp affects other players (in pixels).
             /// </summary>
             public int AntiWarpRange;
@@ -3029,6 +3049,7 @@ namespace SS.Core.Modules
                 FastBombingThreshold = 0;
                 PositionPixels = 0;
                 SendAnti = 0;
+                SendRepelTwice = false;
                 AntiWarpRange = 0;
                 EnterDelay = 0;
                 Array.Clear(WeaponRange);
