@@ -219,7 +219,7 @@ namespace SS.Core.Modules
 
             if (targetPlayer.IsStandard)
             {
-                drift = _lagQuery.QueryTimeSyncDrift(targetPlayer);
+                _lagQuery.QueryTimeSyncDrift(targetPlayer, out drift, out _);
             }
 
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();

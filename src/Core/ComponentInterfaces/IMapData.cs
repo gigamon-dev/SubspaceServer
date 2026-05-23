@@ -88,16 +88,29 @@ namespace SS.Core.ComponentInterfaces
         IReadOnlyList<string> GetErrors(Arena arena);
 
         /// <summary>
-        /// Get the map checksum.
+        /// Get the map tiles checksum.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// Used by the Security module to validate clients.
         /// Used by the Recording module to make sure the recording plays on the same map that is was recorded on.
+        /// </para>
+        /// <para>
+        /// For the CRC-32 checksum (Continuum only), use <see cref="TryGetCrc32(Arena, out uint)"/> instead.
+        /// </para>
         /// </remarks>
         /// <param name="arena">The arena to retrieve the map info for.</param>
-        /// <param name="key"></param>
+        /// <param name="key">The key to calculate the checksum with.</param>
         /// <returns></returns>
         uint GetChecksum(Arena arena, uint key);
+
+        /// <summary>
+        /// Gets the map tiles CRC-32 checksum. (Continuum only)
+        /// </summary>
+        /// <param name="arena">The arena to retrieve the map info for.</param>
+        /// <param name="crc32">When this method returns, contains the CRC-32 checksum of the <paramref name="arena"/>'s map, if loaded; otherwise, 0.</param>
+        /// <returns><see langword="true"/> if the map is loaded; otherwise <see langword="false'"/>.</returns>
+        bool TryGetCrc32(Arena arena, out uint crc32);
 
         #endregion
 

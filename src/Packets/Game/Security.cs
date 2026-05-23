@@ -6,6 +6,9 @@ namespace SS.Packets.Game
     /// <summary>
     /// Packet that clients respond with after receiving a <see cref="S2C_Security"/> (<see cref="S2CPacketType.Security"/>) request.
     /// </summary>
+    /// <remarks>
+    /// Continuum sends the <see cref="C2S_SecurityContinuum"/> variation which includes additional fields.
+    /// </remarks>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct C2S_Security
     {
@@ -14,10 +17,6 @@ namespace SS.Packets.Game
         /// <summary>
         /// Number of bytes in a packet.
         /// </summary>
-        /// <remarks>
-        /// This is the minimum # of bytes.
-        /// Continuum sends more data. Presumably for it to do additional checks with subgame?
-        /// </remarks>
         public static readonly int Length = Marshal.SizeOf<C2S_Security>();
 
         #endregion
@@ -124,6 +123,42 @@ namespace SS.Packets.Game
     }
 
     /// <summary>
+    /// Packet that Continuum clients respond with after receiving a <see cref="S2C_Security"/> (<see cref="S2CPacketType.Security"/>) request. 
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct C2S_SecurityContinuum
+    {
+        #region Static members
+
+        /// <summary>
+        /// Number of bytes in a packet.
+        /// </summary>
+        public static readonly int Length = Marshal.SizeOf<C2S_SecurityContinuum>();
+
+        #endregion
+
+        public C2S_Security Basic;
+        private short timerDrift;
+        private uint mapCrc;
+
+        #region Helper Properties
+
+        public short TimerDrift
+        {
+            readonly get => LittleEndianConverter.Convert(timerDrift);
+            set => timerDrift = LittleEndianConverter.Convert(value);
+        }
+
+        public uint MapCrc
+        {
+            readonly get => LittleEndianConverter.Convert(mapCrc);
+            set => mapCrc = LittleEndianConverter.Convert(value);
+        }
+
+        #endregion
+    }
+
+    /// <summary>
     /// Packet that the server sends to either:
     /// <list type="bullet">
     /// <item>synchronize a client when the player enters an arena</item>
@@ -162,7 +197,7 @@ namespace SS.Packets.Game
         /// </summary>
         public uint GreenSeed
         {
-            get => LittleEndianConverter.Convert(greenSeed);
+            readonly get => LittleEndianConverter.Convert(greenSeed);
             set => greenSeed = LittleEndianConverter.Convert(value);
         }
 
@@ -171,7 +206,7 @@ namespace SS.Packets.Game
         /// </summary>
         public uint DoorSeed
         {
-            get => LittleEndianConverter.Convert(doorSeed);
+            readonly get => LittleEndianConverter.Convert(doorSeed);
             set => doorSeed = LittleEndianConverter.Convert(value);
         }
 
@@ -180,7 +215,7 @@ namespace SS.Packets.Game
         /// </summary>
         public uint Timestamp
         {
-            get => LittleEndianConverter.Convert(timestamp);
+            readonly get => LittleEndianConverter.Convert(timestamp);
             set => timestamp = LittleEndianConverter.Convert(value);
         }
 
@@ -195,7 +230,7 @@ namespace SS.Packets.Game
         /// </summary>
         public uint Key
         {
-            get => LittleEndianConverter.Convert(key);
+            readonly get => LittleEndianConverter.Convert(key);
             set => key = LittleEndianConverter.Convert(value);
         }
 

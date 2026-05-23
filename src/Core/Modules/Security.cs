@@ -280,10 +280,20 @@ namespace SS.Core.Modules
                         if (arena.Status == ArenaState.Running)
                         {
                             ad.MapChecksum = _mapData.GetChecksum(arena, _packet.Key);
+
+                            if (_mapData.TryGetCrc32(arena, out uint crc32))
+                            {
+                                ad.MapCrc = crc32;
+                            }
+                            else
+                            {
+                                ad.MapCrc = null;
+                            }
                         }
                         else
                         {
-                            ad.MapChecksum = 0;
+                            ad.MapChecksum = null;
+                            ad.MapCrc = null;
                         }
                     }
                 }
@@ -559,7 +569,8 @@ namespace SS.Core.Modules
             if (player is null)
                 return;
 
-            if (data.Length < C2S_Security.Length)
+            if (player.Type == ClientType.VIE && data.Length != C2S_Security.Length
+                || player.Type == ClientType.Continuum && data.Length != C2S_SecurityContinuum.Length)
             {
                 if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                 {
@@ -570,7 +581,6 @@ namespace SS.Core.Modules
             }
 
             Arena? arena = player.Arena;
-
             if (arena is null)
             {
                 if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
@@ -590,6 +600,7 @@ namespace SS.Core.Modules
                 return;
 
             ref readonly C2S_Security pkt = ref MemoryMarshal.AsRef<C2S_Security>(data);
+            short? timerDrift = null;
 
             lock (_lock)
             {
@@ -623,7 +634,7 @@ namespace SS.Core.Modules
                         kick = true;
                     }
 
-                    if (ad.MapChecksum != 0 && pkt.MapChecksum != ad.MapChecksum)
+                    if (ad.MapChecksum is not null && pkt.MapChecksum != ad.MapChecksum)
                     {
                         if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                         {
@@ -644,6 +655,19 @@ namespace SS.Core.Modules
                     }
                     else if (player.Type == ClientType.Continuum)
                     {
+                        ref readonly C2S_SecurityContinuum pktCont = ref MemoryMarshal.AsRef<C2S_SecurityContinuum>(data);
+                        timerDrift = pktCont.TimerDrift;
+
+                        if (ad.MapCrc is not null && pktCont.MapCrc != ad.MapCrc.Value)
+                        {
+                            if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
+                            {
+                                _logManager.LogP(LogLevel.Malicious, nameof(Security), player, "Map CRC-32 mismatch.");
+                            }
+
+                            kick = true;
+                        }
+
                         if (_continuumExeChecksum != 0)
                         {
                             if (_continuumExeChecksum == pkt.ExeChecksum)
@@ -691,6 +715,7 @@ namespace SS.Core.Modules
                 AveragePing = pkt.AveragePing,
                 LowestPing = pkt.LowestPing,
                 HighestPing = pkt.HighestPing,
+                TimerDrift = timerDrift,
             };
 
             _lagCollect.ClientLatency(player, in cld);
@@ -702,9 +727,17 @@ namespace SS.Core.Modules
         private class ArenaData : IResettable
         {
             /// <summary>
-            /// Shared checksums
+            /// Checksum of the map tiles.
             /// </summary>
-            public uint MapChecksum;
+            public uint? MapChecksum;
+
+            /// <summary>
+            /// Checksum of the map tiles (CRC-32).
+            /// </summary>
+            /// <remarks>
+            /// Continuum only.
+            /// </remarks>
+            public uint? MapCrc;
 
             /// <summary>
             /// The S2C security packet for when seeds are overridden.
@@ -714,7 +747,8 @@ namespace SS.Core.Modules
 
             public bool TryReset()
             {
-                MapChecksum = 0;
+                MapChecksum = null;
+                MapCrc = null;
                 OverridePacket = null;
                 return true;
             }

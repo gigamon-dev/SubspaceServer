@@ -15,6 +15,12 @@
         public readonly ushort AveragePing { get; init; }
         public readonly ushort LowestPing { get; init; }
         public readonly ushort HighestPing { get; init; }
+
+        /// <remarks>
+        /// Continuum only.
+        /// <see langword="null"/> for VIE clients.
+        /// </remarks>
+        public readonly short? TimerDrift { get; init; }
     }
 
     /// <summary>

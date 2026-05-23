@@ -113,7 +113,11 @@ namespace SS.Core.Modules
         void ILagCollect.ClientLatency(Player player, ref readonly ClientLatencyData data)
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+            {
                 lagStats.UpdateClientLatencyStats(in data);
+
+                PlayerLatencyStatsUpdatedCallback.Fire(_broker, player);
+            }
         }
 
         void ILagCollect.TimeSync(Player player, ref readonly TimeSyncData data)
@@ -199,12 +203,18 @@ namespace SS.Core.Modules
                 records?.Clear();
         }
 
-        int? ILagQuery.QueryTimeSyncDrift(Player player)
+        void ILagQuery.QueryTimeSyncDrift(Player player, out int? timeDrift, out int? clientTimeDrift)
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
-                return lagStats.QueryTimeSyncDrift();
+            {
+                timeDrift = lagStats.QueryTimeSyncDrift();
+                clientTimeDrift = lagStats.QueryClientTimeSyncDrift();
+            }
             else
-                return null;
+            {
+                timeDrift = null;
+                clientTimeDrift = null;
+            }
         }
 
         bool ILagQuery.GetPositionPingHistogram(Player player, ICollection<PingHistogramBucket> data)
@@ -496,12 +506,11 @@ namespace SS.Core.Modules
                     ping.Average = ClientReportedData.AveragePing * 10;
                     ping.Min = ClientReportedData.LowestPing * 10;
                     ping.Max = ClientReportedData.HighestPing * 10;
-
+                    ping.S2CAverageCurrent = ClientReportedData.S2CAverageCurrent * 10;
                     ping.S2CSlowTotal = ClientReportedData.S2CSlowTotal;
                     ping.S2CFastTotal = ClientReportedData.S2CFastTotal;
                     ping.S2CSlowCurrent = ClientReportedData.S2CSlowCurrent;
                     ping.S2CFastCurrent = ClientReportedData.S2CFastCurrent;
-                    ping.S2CAverageCurrent = ClientReportedData.S2CAverageCurrent;
                 }
             }
 
@@ -570,6 +579,14 @@ namespace SS.Core.Modules
                 lock (_lock)
                 {
                     return TimeSync.Drift;
+                }
+            }
+
+            public int? QueryClientTimeSyncDrift()
+            {
+                lock (_lock)
+                {
+                    return ClientReportedData.TimerDrift;
                 }
             }
 
