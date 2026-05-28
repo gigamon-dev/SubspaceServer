@@ -85,6 +85,7 @@ namespace SS.Matchmaking.Modules
         /// Can't use Player objects since it needs to exist even if the player disconnects.
         /// </remarks>
         private readonly HashSet<string> _playersPlaying = new(Constants.TargetPlayerCount, StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> _playersPlayingLookup;
 
         /// <summary>
         /// Pending play holds on players that have disconnected.
@@ -118,6 +119,7 @@ namespace SS.Matchmaking.Modules
             IPlayerGroups playerGroups)
         {
             _queuesLookup = _queues.GetAlternateLookup<ReadOnlySpan<char>>();
+            _playersPlayingLookup = _playersPlaying.GetAlternateLookup<ReadOnlySpan<char>>();
 
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
             _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
@@ -1911,34 +1913,126 @@ namespace SS.Matchmaking.Modules
 
         [CommandHelp(
             Targets = CommandTarget.Player,
-            Args = "<none> | -r",
-            Description = """
+            Args = "[ {-r | --remove} [<player name>] | {-l | --list} ]",
+            Description = $"""
                 For staff members to investigate and work-around when a player gets stuck in the "Already playing in a match" state.
-                When used with no args, it prints out whether the player is in the playing state.
-                When used with -r it removes the playing state from the targeted player.
+                When used with no args, it prints out whether the targeted player is in the playing state.
+                Use -r (--remove) to remove the playing state from the targeted player.
+                To target a player, private message the command to the desired player (e.g. /?{CommandNames.ManagePlayingState}) 
+                or fill in the <player name> field (useful when the player is no longer online).
+                Use -l (--list) to print out the names of all players that are in the playing state.
                 """)]
         private void Command_manageplayingstate(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
+            if (parameters.IsWhiteSpace())
             {
-                _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: A target player is required.");
+                if (!target.TryGetPlayerTarget(out Player? targetPlayer))
+                {
+                    // No target specified. Use the player themself as the target.
+                    targetPlayer = player;
+                }
+
+                if (!targetPlayer.TryGetExtraData(_puKey, out UsageData? targetUsage))
+                    return;
+
+                // Print out the target player's state.
+                PrintState(player, targetPlayer, targetUsage);
                 return;
             }
 
-            if (!targetPlayer.TryGetExtraData(_puKey, out UsageData? usageData))
-                return;
-
-            if (parameters.Equals("-r", StringComparison.OrdinalIgnoreCase))
+            Span<Range> ranges = stackalloc Range[2];
+            ReadOnlySpan<char> token;
+            ReadOnlySpan<char> remaining;
+            int numRanges = parameters.Split(ranges, ' ', StringSplitOptions.TrimEntries);
+            if (numRanges == 1)
             {
+                token = parameters[ranges[0]];
+                remaining = [];
+            }
+            else if (numRanges == 2)
+            {
+                token = parameters[ranges[0]];
+                remaining = parameters[ranges[1]];
+            }
+            else
+            {
+                return;
+            }
+
+            if (token.Equals("-l", StringComparison.OrdinalIgnoreCase) || token.Equals("--list", StringComparison.OrdinalIgnoreCase))
+            {
+                // Send list of players that are in the 'Playing' state.
+                StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
+                try
+                {
+                    foreach (string playerName in _playersPlaying)
+                    {
+                        if (sb.Length > 0)
+                            sb.Append(", ");
+
+                        sb.Append(playerName);
+                    }
+
+                    if (sb.Length > 0)
+                    {
+                        _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: {_playersPlaying.Count} player{(_playersPlaying.Count == 1 ? "" : "s")} are in the '{QueueState.Playing}' state:");
+                        _chat.SendWrappedText(player, sb);
+                    }
+                    else
+                    {
+                        _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: No players are in the '{QueueState.Playing}' state.");
+                    }
+                }
+                finally
+                {
+                    _objectPoolManager.StringBuilderPool.Return(sb);
+                }
+            }
+            else if (token.Equals("-r", StringComparison.OrdinalIgnoreCase) || token.Equals("--remove", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!target.TryGetPlayerTarget(out Player? targetPlayer))
+                {
+                    if (remaining.IsEmpty)
+                    {
+                        _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: A target player must be specified.");
+                        return;
+                    }
+
+                    targetPlayer = _playerData.FindPlayer(remaining);
+                    if (targetPlayer is null)
+                    {
+                        // There is no player currently connected with the specified name.
+                        // The player may have disconnected, but still be in a match.
+                        if (_playersPlayingLookup.Remove(remaining))
+                        {
+                            _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: Unset {remaining} from the '{QueueState.Playing}' state.");
+                            return;
+                        }
+                        else
+                        {
+                            _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: Player '{remaining}' not found.");
+                            return;
+                        }
+                    }
+                }
+
+                if (!targetPlayer.TryGetExtraData(_puKey, out UsageData? usageData))
+                    return;
+
                 if (usageData.State == QueueState.Playing)
                 {
                     UnsetPlaying(targetPlayer, false, false);
-                    _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: Unset {targetPlayer.Name} from the {QueueState.Playing} state.");
+                    _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: Unset {targetPlayer.Name} from the '{QueueState.Playing}' state.");
                 }
+
+                // No matter what, always output the player's state.
+                PrintState(player, targetPlayer, usageData);
             }
 
-            // No matter what, always output the player's state.
-            _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: {targetPlayer.Name} is in the '{usageData.State}' state.");
+            void PrintState(Player player, Player targetPlayer, UsageData targetUsage)
+            {
+                _chat.SendMessage(player, $"{CommandNames.ManagePlayingState}: {targetPlayer.Name} is in the '{targetUsage.State}' state.");
+            }
         }
 
         [CommandHelp(
