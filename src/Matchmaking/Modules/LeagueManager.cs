@@ -511,6 +511,12 @@ namespace SS.Matchmaking.Modules
                 """)]
         private void Command_leaguepermit(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            if (!player.Flags.Authenticated)
+            {
+                _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: You are not authenticated.");
+                return;
+            }
+
             Span<Range> ranges = stackalloc Range[2];
             if (parameters.Split(ranges, ' ', StringSplitOptions.None) != 2)
             {
@@ -530,6 +536,12 @@ namespace SS.Matchmaking.Modules
                 if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 {
                     targetPlayer = player;
+                }
+
+                if (!targetPlayer.Flags.Authenticated)
+                {
+                    _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: {targetPlayer.Name} is not authenticated.");
+                    return;
                 }
 
                 RequestPermitAsync(targetPlayer.Name!, leagueId, player.Name);
@@ -560,6 +572,12 @@ namespace SS.Matchmaking.Modules
                 ReadOnlySpan<char> targetPlayerNameSpan;
                 if (target.TryGetPlayerTarget(out Player? targetPlayer))
                 {
+                    if (!targetPlayer.Flags.Authenticated)
+                    {
+                        _chat.SendMessage(player, $"{CommandNames.LeaguePermit}: {targetPlayer.Name} is not authenticated.");
+                        return;
+                    }
+
                     queueName = parameters[ranges[1]]; ;
                     targetPlayerNameSpan = targetPlayer.Name;
                 }
