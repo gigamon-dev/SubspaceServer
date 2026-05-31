@@ -3839,7 +3839,7 @@ namespace SS.Matchmaking.Modules
                         return;
                     }
 
-                    slot = team.Slots[slotNumber];
+                    slot = team.Slots[slotNumber - 1];
                 }
             }
 
