@@ -502,7 +502,7 @@ namespace SS.Matchmaking.Modules
                     }
 
                     long seasonGameId = reader.GetInt64(column_seasonGameId);
-                    DateTime? gameTimestamp = reader.IsDBNull(column_gameTimestamp) ? null : reader.GetDateTime(column_gameTimestamp);
+                    DateTime? gameTimestamp = reader.IsDBNull(column_gameTimestamp) ? null : reader.GetDateTime(column_gameTimestamp).ToLocalTime();
 
                     char[] teams = ArrayPool<char>.Shared.Rent(ChatPacket.MaxMessageChars);
                     try
@@ -703,7 +703,7 @@ namespace SS.Matchmaking.Modules
 
                     while (await reader.ReadAsync())
                     {
-                        DateTime? gameTimestamp = reader.IsDBNull(column_gameTimestamp) ? null : reader.GetDateTime(column_gameTimestamp);
+                        DateTime? gameTimestamp = reader.IsDBNull(column_gameTimestamp) ? null : reader.GetDateTime(column_gameTimestamp).ToLocalTime();
                         long? gameId = reader.IsDBNull(column_gameId) ? null : reader.GetInt64(column_gameId);
                         long charsRead = reader.GetChars(column_teams, 0, teamsArray, 0, teamsArray.Length);
                         ReadOnlySpan<char> teamsSpan = new(teamsArray, 0, (int)charsRead);
@@ -816,7 +816,7 @@ namespace SS.Matchmaking.Modules
                         if (reader.IsDBNull(column_enrollTimestamp))
                             enrollTimestamp = null;
                         else
-                            enrollTimestamp = reader.GetDateTime(column_enrollTimestamp);
+                            enrollTimestamp = reader.GetDateTime(column_enrollTimestamp).ToLocalTime();
 
                         player = _playerData.FindPlayer(playerName); // Check that the player is still connected, between awaits.
                         if (player is null)
@@ -939,7 +939,7 @@ namespace SS.Matchmaking.Modules
                             {
                                 long charsRead = reader.GetChars(column_playerName, 0, nameArray, 0, nameArray.Length);
                                 ReadOnlySpan<char> playerNameSpan = new(nameArray, 0, (int)charsRead);
-                                DateTime requestTimestamp = reader.GetDateTime(column_requestTimestamp);
+                                DateTime requestTimestamp = reader.GetDateTime(column_requestTimestamp).ToLocalTime();
 
                                 player = _playerData.FindPlayer(playerName); // Check that the player is still connected, between awaits.
                                 if (player is null)
