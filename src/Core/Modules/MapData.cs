@@ -1061,7 +1061,7 @@ namespace SS.Core.Modules
                     // A flag can override an existing brick.
                     // A brick can override an existing brick.
                     if ((key.Tile == MapTile.Flag && existing.Tile == MapTile.Brick)
-                        && (key.Tile == MapTile.Brick && existing.Tile == MapTile.Brick))
+                        || (key.Tile == MapTile.Brick && existing.Tile == MapTile.Brick))
                     {
                         _tiles[coordinates] = key;
                         return true;
