@@ -356,29 +356,41 @@ namespace SS.Core.Modules
 
             try
             {
-                if (ad.Lvl is null)
+                if (ad.LvlData is null)
                     throw new InvalidOperationException(Error_ArenaDataNotLoaded);
 
-                crc32 = uint.MaxValue;
-
-                for (short y = 0; y < 1024; y++)
+                if (ad.LvlData.TilesCrc32 is not null)
                 {
-                    for (short x = 0; x < 1024; x++)
-                    {
-                        if (ad.Lvl.TryGetTile(new TileCoordinates(x, y), out MapTile tile)
-                            && (tile >= MapTile.TileStart && (tile <= MapTile.TileEnd || tile.IsSafe)))
-                        {
-                            crc32 = Crc32Lookup[(byte)tile ^ (byte)crc32] ^ crc32 >> 8;
-                        }
-                    }
+                    crc32 = ad.LvlData.TilesCrc32.Value;
+                    return true;
                 }
-
-                return true;
             }
             finally
             {
                 ad.Lock.ExitReadLock();
             }
+
+            crc32 = default;
+            return false;
+        }
+
+        private static uint GetTilesCrc32(ExtendedLvl lvl, uint initialCrc32 = uint.MaxValue)
+        {
+            uint crc32 = initialCrc32;
+
+            for (short y = 0; y < 1024; y++)
+            {
+                for (short x = 0; x < 1024; x++)
+                {
+                    if (lvl.TryGetTile(new TileCoordinates(x, y), out MapTile tile)
+                        && (tile >= MapTile.TileStart && (tile <= MapTile.TileEnd || tile.IsSafe)))
+                    {
+                        crc32 = Crc32Lookup[(byte)tile ^ (byte)crc32] ^ crc32 >> 8;
+                    }
+                }
+            }
+
+            return crc32;
         }
 
         MapTile IMapData.GetTile(Arena arena, TileCoordinates coordinates)
@@ -907,18 +919,21 @@ namespace SS.Core.Modules
         {
             public LvlDataId? Id { get; private set; }
             public ExtendedLvl? Lvl { get; private set; }
+            public uint? TilesCrc32 = null;
             public readonly HashSet<Arena> Arenas = new(Constants.TargetArenaCount);
 
             public void Initialize(LvlDataId id, ExtendedLvl lvl)
             {
                 Id = id;
                 Lvl = lvl;
+                TilesCrc32 = GetTilesCrc32(lvl);
             }
 
             bool IResettable.TryReset()
             {
                 Id = default;
                 Lvl = null;
+                TilesCrc32 = null;
                 Arenas.Clear();
                 return true;
             }
