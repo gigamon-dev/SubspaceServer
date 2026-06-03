@@ -581,7 +581,7 @@ namespace SS.Core.Modules
                 _chat.SendMessage(player, $"{prefix}: rel ping: {reliablePing.Current} {reliablePing.Average} ({reliablePing.Min}-{reliablePing.Max}) (reliable ping)");
                 _chat.SendMessage(player, $"{prefix}: effective ping: {average} (average of above)");
 
-                float s2cRelLoss = (reliableLag.Retries == 0) ? 0f : ((reliableLag.Retries - reliableLag.AckDups) * 100f / reliableLag.ReliablePacketsSent);
+                double s2cRelLoss = (reliableLag.Retries == 0) ? 0d : ((reliableLag.Retries - reliableLag.AckDups) * 100d / reliableLag.ReliablePacketsSent);
                 _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.S2C * 100d:F2}  c2s: {packetloss.C2S * 100d:F2}  s2cwpn: {packetloss.S2CWeapon * 100d:F2}  s2crel: {s2cRelLoss:F2}");
                 _chat.SendMessage(player, $"{prefix}: reliable: dups: {reliableLag.RelDups * 100d / reliableLag.ReliablePacketsReceived:F2}%  resends: {reliableLag.Retries * 100d / reliableLag.ReliablePacketsSent:F2}%");
 
@@ -597,7 +597,7 @@ namespace SS.Core.Modules
                     sb.Append("  last slow: ");
                     if (intervalTotal > 0)
                     {
-                        sb.Append($"{((float)clientPing.S2CSlowCurrent / intervalTotal):F2} ({clientPing.S2CSlowCurrent}/{intervalTotal})");
+                        sb.Append($"{((double)clientPing.S2CSlowCurrent / intervalTotal):F2} ({clientPing.S2CSlowCurrent}/{intervalTotal})");
                     }
                     else
                     {
@@ -610,7 +610,7 @@ namespace SS.Core.Modules
                     if (allTotal > 0)
                     {
                         uint allSlow = clientPing.S2CSlowCurrent + clientPing.S2CSlowTotal;
-                        sb.Append($"{((float)allSlow / allTotal):F2} ({allSlow}/{allTotal})");
+                        sb.Append($"{((double)allSlow / allTotal):F2} ({allSlow}/{allTotal})");
                     }
                     else
                     {
