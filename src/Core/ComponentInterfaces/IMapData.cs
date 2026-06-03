@@ -37,6 +37,7 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="mapname"><see langword="null"/> if you're looking for an lvl, or the name of an lvz file.</param>
         /// <returns>The path if the lvl or lvz file could be found; otherwise, <see langword="null"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
         Task<string?> GetMapFilenameAsync(Arena arena, string? mapname);
 
         /// <summary>
@@ -44,6 +45,7 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <returns>A collection of lvz file info.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
         IAsyncEnumerable<LvzFileInfo> LvzFilenamesAsync(Arena arena);
 
         #endregion
@@ -56,6 +58,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="key">The key of the attribute to retrieve.</param>
         /// <returns>The value if found; otherwise, <see langword="null"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         string? GetAttribute(Arena arena, string key);
 
         /// <summary>
@@ -64,6 +69,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="chunkType">The type of data to retrieve.</param>
         /// <returns>A collection of chunk payloads (chunk header not included).</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         IEnumerable<ReadOnlyMemory<byte>> ChunkData(Arena arena, uint chunkType);
 
         /// <summary>
@@ -71,6 +79,9 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <returns>The # of tiles.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         int GetTileCount(Arena arena);
 
         /// <summary>
@@ -78,6 +89,9 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <returns>The # of flags.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         int GetFlagCount(Arena arena);
 
         /// <summary>
@@ -85,6 +99,9 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <returns>A collection of error descriptions.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         IReadOnlyList<string> GetErrors(Arena arena);
 
         /// <summary>
@@ -102,6 +119,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="key">The key to calculate the checksum with.</param>
         /// <returns></returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         uint GetChecksum(Arena arena, uint key);
 
         /// <summary>
@@ -110,6 +130,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="crc32">When this method returns, contains the CRC-32 checksum of the <paramref name="arena"/>'s map, if loaded; otherwise, 0.</param>
         /// <returns><see langword="true"/> if the map is loaded; otherwise <see langword="false'"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         bool TryGetCrc32(Arena arena, out uint crc32);
 
         #endregion
@@ -126,6 +149,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="coordinates">The coordinates to check.</param>
         /// <returns>The tile. <see cref="MapTile.None"/> indicates no tile.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         MapTile GetTile(Arena arena, TileCoordinates coordinates);
 
         /// <summary>
@@ -135,6 +161,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="coordinates">The coordinates to check.</param>
         /// <param name="includeTemporaryTiles">Whether to include temporary tiles such as bricks and dropped flags.</param>
         /// <returns>The tile. <see cref="MapTile.None"/> indicates no tile.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         MapTile GetTile(Arena arena, TileCoordinates coordinates, bool includeTemporaryTiles);
 
         /// <summary>
@@ -144,6 +173,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="flagId">Id of the flag to get the coordinate of.</param>
         /// <param name="coordinates">The coordinates of the flag.</param>
         /// <returns><see langword="true"/> if the coordinate could be retrieved. Otherwise, <see langword="false"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         bool TryGetFlagCoordinates(Arena arena, short flagId, out TileCoordinates coordinates);
 
         /// <summary>
@@ -155,6 +187,9 @@ namespace SS.Core.ComponentInterfaces
         /// <returns>
         /// True if a coordinate with no tile was found. Otherwise, false.
         /// </returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         bool TryFindEmptyTileNear(Arena arena, ref short x, ref short y);
 
         #endregion
@@ -166,6 +201,9 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <returns>The # of regions.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         int GetRegionCount(Arena arena);
 
         /// <summary>
@@ -174,6 +212,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="name">Name of the region to search for.</param>
         /// <returns>The region if found; otherwise, <see langword="null"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         MapRegion? FindRegionByName(Arena arena, string name);
 
         /// <summary>
@@ -183,6 +224,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to retrieve the map info for.</param>
         /// <param name="coordinates">The coordinates to check.</param>
         /// <returns>A set of regions (empty if the coordinate is not in a region).</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         ImmutableHashSet<MapRegion> RegionsAt(Arena arena, TileCoordinates coordinates);
 
         /// <summary>
@@ -193,6 +237,9 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="x">X coordinate to check.</param>
         /// <param name="y">Y coordinate to check.</param>
         /// <returns>A set of regions (empty if the coordinate is not in a region).</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         ImmutableHashSet<MapRegion> RegionsAt(Arena arena, short x, short y);
 
         #endregion
@@ -207,6 +254,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="start">The starting coordinates of the brick.</param>
         /// <param name="end">The ending coordinates of the brick.</param>
         /// <returns><see langword="true"/> if a change was made; otherwise, <see langword="false"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
         bool TryAddBrick(Arena arena, int brickId, TileCoordinates start, TileCoordinates end);
 
         /// <summary>
@@ -215,6 +264,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to remove the temporarily placed tiles from.</param>
         /// <param name="brickId">The Id of the brick.</param>
         /// <returns><see langword="true"/> if a change was made; otherwise, <see langword="false"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
         bool TryRemoveBrick(Arena arena, int brickId);
 
         /// <summary>
@@ -227,6 +278,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="flagId">The Id of the flag.</param>
         /// <param name="coordinates">The coordinates the flag is being dropped at.</param>
         /// <returns><see langword="true"/> if a change was made; otherwise, <see langword="false"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
         bool TryAddDroppedFlag(Arena arena, short flagId, TileCoordinates coordinates);
 
         /// <summary>
@@ -235,6 +288,8 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena to remove the temporarily placed tile from.</param>
         /// <param name="flagId">The Id of the flag.</param>
         /// <returns><see langword="true"/> if a change was made; otherwise, <see langword="false"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
         bool TryRemoveDroppedFlag(Arena arena, short flagId);
 
         #endregion
@@ -246,9 +301,11 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="arena">The arena of the map to save.</param>
         /// <param name="path">The path of the file. The image format is automatically determined based on the filename extension.</param>
-        /// <exception cref="ArgumentNullException">The <paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">The <paramref name="path"/> is null or white-space.</exception>
         /// <exception cref="ArgumentException">The <paramref name="path"/> file extension specifies an unsupported image format.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         /// <exception cref="Exception">Error encoding image.</exception>
         void SaveImage(Arena arena, string path);
 
@@ -258,9 +315,11 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="arena">The arena of the map to save.</param>
         /// <param name="stream">The stream to write the image data to.</param>
         /// <param name="imageFormat">The format to save the image as. Supported formats: 'png', 'jpg', and 'webp'.</param>
-        /// <exception cref="ArgumentNullException">The <paramref name="arena"/> is <see langword="null"/>.</exception>
-        /// <exception cref="ArgumentNullException">The <paramref name="stream"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="arena"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="stream"/> is <see langword="null"/>.</exception>
         /// <exception cref="ArgumentException">Unsupported image format for the provided <paramref name="imageFormat"/>.</exception>
+        /// <exception cref="InvalidOperationException">The module is not loaded.</exception>
+        /// <exception cref="InvalidOperationException">The <paramref name="arena"/> data is not loaded.</exception>
         /// <exception cref="Exception">Error encoding image.</exception>
         void SaveImage(Arena arena, Stream stream, ReadOnlySpan<char> imageFormat);
 
