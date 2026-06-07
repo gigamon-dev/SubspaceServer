@@ -219,7 +219,8 @@ namespace SS.Core.Modules
 
             if (targetPlayer.IsStandard)
             {
-                _lagQuery.QueryTimeSyncDrift(targetPlayer, out drift, out _);
+                // Assuming it should return ticks and the client reported drift as opposed to the server calculated drift.
+                _lagQuery.QueryTimeSyncDriftTicks(targetPlayer, out drift, out _, out _);
             }
 
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();

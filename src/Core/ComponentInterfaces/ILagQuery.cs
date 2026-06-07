@@ -132,12 +132,22 @@ namespace SS.Core.ComponentInterfaces
         void QueryTimeSyncHistory(Player player, ICollection<TimeSyncRecord> records);
 
         /// <summary>
-        /// Gets a player's average drift in time syncs.
+        /// Gets a player's time sync drift data, in ticks (centiseconds).
         /// </summary>
         /// <param name="player">The player to get data about.</param>
-        /// <param name="timeDrift">The server calculated average drift based on time sync requests. <see langword="null"/> if not available (must have received a C2S security packet).</param>
-        /// <param name="clientTimeDrift">The client reported drift. <see langword="null"/> if not available (must have received a C2S security packet, and Continuum only).</param>
-        void QueryTimeSyncDrift(Player player, out int? timeDrift, out int? clientTimeDrift);
+        /// <param name="clientDrift">The client reported drift. <see langword="null"/> if not available (must have received a C2S security packet, and Continuum only).</param>
+        /// <param name="serverDriftAvg">The server calculated average drift based on time sync requests. <see langword="null"/> if not available (must have received a C2S security packet).</param>
+        /// <param name="serverDriftStdDev">The server calculated standard deviation of drift based on time sync requests. <see langword="null"/> if not available (must have received a C2S security packet).</param>
+        void QueryTimeSyncDriftTicks(Player player, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev);
+
+        /// <summary>
+        /// Gets a player's time sync drift data, in milliseconds.
+        /// </summary>
+        /// <param name="player">The player to get data about.</param>
+        /// <param name="clientDrift">The client reported drift. <see langword="null"/> if not available (must have received a C2S security packet, and Continuum only).</param>
+        /// <param name="serverDriftAvg">The server calculated average drift based on time sync requests. <see langword="null"/> if not available (must have received a C2S security packet).</param>
+        /// <param name="serverDriftStdDev">The server calculated standard deviation of drift based on time sync requests. <see langword="null"/> if not available (must have received a C2S security packet).</param>
+        void QueryTimeSyncDriftMs(Player player, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev);
 
         /// <summary>
         /// Gets a player's ping histogram data based on C2S position packets.

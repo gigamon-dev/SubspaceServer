@@ -203,17 +203,32 @@ namespace SS.Core.Modules
                 records?.Clear();
         }
 
-        void ILagQuery.QueryTimeSyncDrift(Player player, out int? timeDrift, out int? clientTimeDrift)
+        void ILagQuery.QueryTimeSyncDriftTicks(Player player, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev)
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
             {
-                timeDrift = lagStats.QueryTimeSyncDrift();
-                clientTimeDrift = lagStats.QueryClientTimeSyncDrift();
+                lagStats.QueryTimeSyncDriftTicks(out clientDrift, out serverDriftAvg, out serverDriftStdDev);
+                
             }
             else
             {
-                timeDrift = null;
-                clientTimeDrift = null;
+                clientDrift = null;
+                serverDriftAvg = null;
+                serverDriftStdDev = null;
+            }
+        }
+
+        void ILagQuery.QueryTimeSyncDriftMs(Player player, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+            {
+                lagStats.QueryTimeSyncDriftMs(out clientDrift, out serverDriftAvg, out serverDriftStdDev);
+            }
+            else
+            {
+                clientDrift = null;
+                serverDriftAvg = null;
+                serverDriftStdDev = null;
             }
         }
 
@@ -306,6 +321,9 @@ namespace SS.Core.Modules
             private readonly TimeSyncRecord[] _records = new TimeSyncRecord[TimeSyncSamples];
             private int _next = 0;
             private int _count = 0;
+            private int? _driftAvg = null;
+            private double? _driftStdDev = null;
+            private bool _driftIsDirty = false;
 
             public void Update(uint serverTime, uint clientTime)
             {
@@ -313,6 +331,7 @@ namespace SS.Core.Modules
                 _records[sampleIndex].ServerTime = serverTime;
                 _records[sampleIndex].ClientTime = clientTime;
                 _next = (sampleIndex + 1) % _records.Length;
+                _driftIsDirty = true; // drift is calculated lazily when accessed
 
                 if (_count < _records.Length)
                     _count++;
@@ -323,31 +342,89 @@ namespace SS.Core.Modules
                 Array.Clear(_records);
                 _next = 0;
                 _count = 0;
+                _driftAvg = null;
+                _driftStdDev = null;
+                _driftIsDirty = false;
             }
 
-            public int? Drift
+            /// <summary>
+            /// Average drift (milliseconds)
+            /// </summary>
+            public int? DriftAvg
             {
                 get
                 {
-                    int drift = 0;
-                    int count = 0;
+                    RefreshDrift();
+                    return _driftAvg;
+                }
+            }
 
-                    for (int i = _count; i > 1; i--)
+            /// <summary>
+            /// Standard deviation of drift.
+            /// </summary>
+            public double? DriftStdDev
+            {
+                get
+                {
+                    RefreshDrift();
+                    return _driftStdDev;
+                }
+            }
+
+            void RefreshDrift()
+            {
+                if (!_driftIsDirty)
+                {
+                    // Already up to date.
+                    return;
+                }
+
+                _driftIsDirty = false;
+
+                if (_count < 2)
+                {
+                    // Need at least 2 time sync samples to calculate drift.
+                    return;
+                }
+
+                Span<int> driftValues = stackalloc int[_count - 1];
+                int total = 0;
+                int count = 0;
+
+                for (int i = _count; i > 1; i--)
+                {
+                    int j = (_next + _records.Length - i) % _records.Length;
+                    int k = (_next + _records.Length - (i - 1)) % _records.Length;
+
+                    int delta = (new ServerTick(_records[j].ServerTime) - new ServerTick(_records[j].ClientTime))
+                        - (new ServerTick(_records[k].ServerTime) - new ServerTick(_records[k].ClientTime));
+
+                    if (delta >= -10000 && delta <= 10000)
                     {
-                        int j = (_next + _records.Length - i) % _records.Length;
-                        int k = (_next + _records.Length - (i - 1)) % _records.Length;
+                        // Convert from ticks (centiseconds) to milliseconds
+                        delta *= 10;
 
-                        int delta = (new ServerTick(_records[j].ServerTime) - new ServerTick(_records[j].ClientTime))
-                            - (new ServerTick(_records[k].ServerTime) - new ServerTick(_records[k].ClientTime));
-
-                        if (delta >= -10000 && delta <= 10000)
-                        {
-                            drift += delta;
-                            count++;
-                        }
+                        driftValues[count] = delta;
+                        total += delta;
+                        count++;
                     }
+                }
 
-                    return count > 0 ? drift / count : null;
+                _driftAvg = count > 0 ? total / count : null;
+
+                // Need at least 2 drift samples to calculate standard deviation.
+                if (count >= 2)
+                {
+                    driftValues = driftValues[..count];
+
+                    double variance = 0;
+                    foreach (int val in driftValues)
+                    {
+                        int difference = val - _driftAvg!.Value;
+                        variance += (difference * difference);
+                    }
+                    variance /= count;
+                    _driftStdDev = Math.Sqrt(variance);
                 }
             }
 
@@ -574,19 +651,29 @@ namespace SS.Core.Modules
                 }
             }
 
-            public int? QueryTimeSyncDrift()
+            public void QueryTimeSyncDriftTicks(out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev)
             {
                 lock (_lock)
                 {
-                    return TimeSync.Drift;
+                    // Client value is already in ticks.
+                    clientDrift = ClientReportedData.TimerDrift;
+
+                    // Server values are in milliseconds, convert to ticks.
+                    serverDriftAvg = TimeSync.DriftAvg / 10;
+                    serverDriftStdDev = TimeSync.DriftStdDev / 10;
                 }
             }
 
-            public int? QueryClientTimeSyncDrift()
+            public void QueryTimeSyncDriftMs(out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev)
             {
                 lock (_lock)
                 {
-                    return ClientReportedData.TimerDrift;
+                    // Client value is in ticks, convert to milliseconds.
+                    clientDrift = ClientReportedData.TimerDrift * 10;
+
+                    // Server values are already in milliseconds.
+                    serverDriftAvg = TimeSync.DriftAvg;
+                    serverDriftStdDev = TimeSync.DriftStdDev;
                 }
             }
 

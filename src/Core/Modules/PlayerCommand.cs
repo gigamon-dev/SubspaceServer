@@ -562,6 +562,7 @@ namespace SS.Core.Modules
             _lagQuery.QueryClientPing(targetPlayer, out ClientPingSummary clientPing);
             _lagQuery.QueryReliablePing(targetPlayer, out PingSummary reliablePing);
             _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetloss);
+            _lagQuery.QueryTimeSyncDriftMs(targetPlayer, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev);
 
             // weight reliable ping twice the S2C and C2S
             int average = (positionPing.Average + clientPing.Average + 2 * reliablePing.Average) / 4;
@@ -585,10 +586,13 @@ namespace SS.Core.Modules
                 _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.S2C * 100d:F2}  c2s: {packetloss.C2S * 100d:F2}  s2cwpn: {packetloss.S2CWeapon * 100d:F2}  s2crel: {s2cRelLoss:F2}");
                 _chat.SendMessage(player, $"{prefix}: reliable: dups: {reliableLag.RelDups * 100d / reliableLag.ReliablePacketsReceived:F2}%  resends: {reliableLag.Retries * 100d / reliableLag.ReliablePacketsSent:F2}%");
 
-                // s2c pos (reported by client)
                 StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
                 try
                 {
+                    //
+                    // s2c pos (reported by client)
+                    //
+
                     // avg (last interval)
                     sb.Append($"{prefix}: s2c pos: last avg: {clientPing.S2CAverageCurrent}");
 
@@ -611,6 +615,50 @@ namespace SS.Core.Modules
                     {
                         uint allSlow = clientPing.S2CSlowCurrent + clientPing.S2CSlowTotal;
                         sb.Append($"{((double)allSlow / allTotal):F2} ({allSlow}/{allTotal})");
+                    }
+                    else
+                    {
+                        sb.Append("n/a");
+                    }
+
+                    _chat.SendMessage(player, sb);
+
+                    sb.Clear();
+
+                    //
+                    // timer drift
+                    //
+
+                    sb.Append($"{prefix}: timer drift: client reported: ");
+
+                    // client reported timer drift
+                    if (clientDrift is not null)
+                    {
+                        sb.Append(clientDrift.Value);
+                    }
+                    else
+                    {
+                        sb.Append("n/a");
+                    }
+
+                    // server calculated average timer drift
+                    sb.Append("  server avg: ");
+
+                    if (serverDriftAvg is not null)
+                    {
+                        sb.Append(serverDriftAvg.Value);
+                    }
+                    else
+                    {
+                        sb.Append("n/a");
+                    }
+
+                    // server calculated standard deviation of timer drift
+                    sb.Append("  server std dev: ");
+
+                    if (serverDriftStdDev is not null)
+                    {
+                        sb.Append($"{serverDriftStdDev.Value:F0}");
                     }
                     else
                     {
