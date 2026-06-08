@@ -5362,7 +5362,7 @@ namespace SS.Matchmaking.Modules
                         bool hasActivePlayer = false;
                         foreach (PlayerSlot otherSlot in team.Slots)
                         {
-                            if (slot.Status == PlayerSlotStatus.Playing)
+                            if (otherSlot.Status == PlayerSlotStatus.Playing)
                             {
                                 hasActivePlayer = true;
                                 break;
