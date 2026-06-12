@@ -748,7 +748,7 @@ namespace SS.Core.Modules
         [ConfigHelp<int>("Net", "BulletPixels", ConfigScope.Arena, Default = 1500,
             Description = "How far away to always send bullets (in pixels).")]
         [ConfigHelp<int>("Net", "WeaponPixels", ConfigScope.Arena, Default = 2000,
-            Description = "How far away to always weapons (in pixels).")]
+            Description = "How far away to always send weapons (in pixels).")]
         [ConfigHelp<int>("Net", "PositionExtraPixels", ConfigScope.Arena, Default = 8000,
             Description = "How far away to to send positions of players on radar (in pixels).")]
         [ConfigHelp<int>("Net", "AntiwarpSendPercent", ConfigScope.Arena, Default = 5,
