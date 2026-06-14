@@ -3075,6 +3075,11 @@ namespace SS.Matchmaking.Modules
                         if (team.LeagueTeam is not null)
                         {
                             sb.Append($": {team.LeagueTeam.TeamName}");
+
+                            if (matchData.Status < MatchStatus.InProgress)
+                            {
+                                sb.Append($" -- {(team.IsReady ? "READY" : "NOT READY")}");
+                            }
                         }
 
                         _chat.SendMessage(player, sb);
