@@ -518,7 +518,7 @@ namespace SS.Matchmaking.Modules
 
                             if (gameTimestamp is not null)
                             {
-                                sb.Append($" {gameTimestamp:yyyy-MM-dd hh:mm:ss}");
+                                sb.Append($" {gameTimestamp:yyyy-MM-dd hh:mm tt}");
                             }
                             else
                             {
