@@ -2489,7 +2489,7 @@ namespace SS.Matchmaking.Modules
                 {
                     if (slot.Team.RemainingFullSubs > 0)
                     {
-                        if (slot.FullSubEnabled)
+                        if (slot.Team.AutoFullSub || slot.FullSubEnabled)
                         {
                             isFullSub = true;
                             usePriorShip = false;
@@ -3784,13 +3784,17 @@ namespace SS.Matchmaking.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
-            Args = "<none> | <slot #>",
+            Args = "<none> | #<slot> | <player name> | [--auto | -a ]",
             Description = """
-                For league captains to toggle whether a slot is enabled for a full sub.
-                This can be private messaged to a player that is currently assigned to a slot.
+                Use --auto (-a) to toggle automatic full subs (enabled by default). When enabled a sub 
+                will automatically be a full sub if the team has at least one remaining full sub.
+                When automatic full subs are disabled, the slot must enabled for a full sub.
+                To toggle an individual slot:
+                Private message the command to a player that is currently assigned to a slot.
                 For example: /?fullsub
                 Alternatively, the slot # can specified as a parameter (slot numbers begin with 1):
-                For example: ?fullsub 2
+                For example: ?fullsub #2
+                Alternatively, the slot can be specified by typing the name of the player currently assigned to the slot.
                 """)]
         private void Command_fullsub(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -3810,6 +3814,14 @@ namespace SS.Matchmaking.Modules
             if (team is null)
             {
                 _chat.SendMessage(player, "You are not a captain.");
+                return;
+            }
+
+            if (parameters.Equals("--auto", StringComparison.OrdinalIgnoreCase) || parameters.Equals("-a", StringComparison.OrdinalIgnoreCase))
+            {
+                // Toggle automatic full sub.
+                team.AutoFullSub = !team.AutoFullSub;
+                _chat.SendMessage(player, $"Automatic Full Sub = {(team.AutoFullSub ? "ENABLED" : "DISABLED")}");
                 return;
             }
 
@@ -3836,15 +3848,29 @@ namespace SS.Matchmaking.Modules
 
             if (slot is null && !parameters.IsEmpty)
             {
-                if (int.TryParse(parameters, out int slotNumber))
+                if (parameters.StartsWith('#'))
                 {
-                    if (slotNumber < 1 || slotNumber > team.Slots.Length)
+                    if (int.TryParse(parameters[1..], out int slotNumber))
                     {
-                        _chat.SendMessage(player, "Invalid slot.");
-                        return;
-                    }
+                        if (slotNumber < 1 || slotNumber > team.Slots.Length)
+                        {
+                            _chat.SendMessage(player, "Invalid slot.");
+                            return;
+                        }
 
-                    slot = team.Slots[slotNumber - 1];
+                        slot = team.Slots[slotNumber - 1];
+                    }
+                }
+                else
+                {
+                    foreach (PlayerSlot otherSlot in team.Slots)
+                    {
+                        if (parameters.Equals(otherSlot.PlayerName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            slot = otherSlot;
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -7283,6 +7309,12 @@ namespace SS.Matchmaking.Modules
             public int RemainingFullSubs { get; set; }
 
             /// <summary>
+            /// Whether a sub will automatically be a full sub if <see cref="RemainingFullSubs"/> > 0.
+            /// If <see langword="false"/>, a slot must be marked as <see cref="PlayerSlot.FullSubEnabled"/> to be a full sub.
+            /// </summary>
+            public bool AutoFullSub { get; set; } = true;
+
+            /// <summary>
             /// Members on the roster that have been flagged as not being allowed to play as a starter, using ?allowplay
             /// </summary>
             /// <remarks>Key: player name</remarks>
@@ -7305,6 +7337,7 @@ namespace SS.Matchmaking.Modules
                 Captain = null;
                 IsReady = false;
                 RemainingFullSubs = MatchData.Configuration.InitialFullSubs;
+                AutoFullSub = true;
                 NonStarter.Clear();
                 AllowedToSub.Clear();
 
