@@ -2467,7 +2467,7 @@ namespace SS.Matchmaking.Modules
                 if (matchData.Configuration.DeathSubDuration > TimeSpan.Zero // DeathSubs are enabled
                     && slot.LastDeathForDeathSub is not null)
                 {
-                    if (DateTime.UtcNow > (slot.LastDeathForDeathSub + matchData.Configuration.DeathSubDuration))
+                    if (DateTime.UtcNow <= (slot.LastDeathForDeathSub + matchData.Configuration.DeathSubDuration))
                     {
                         isDeathSub = true;
                         usePriorShip = false;
