@@ -7,6 +7,7 @@ using SS.Core.ComponentInterfaces;
 using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
+using SS.Matchmaking.League;
 using SS.Utilities;
 using SS.Utilities.ObjectPool;
 using System.Buffers;
@@ -157,6 +158,7 @@ namespace SS.Matchmaking.Modules
             PlayerGroupMemberAddedCallback.Register(broker, Callback_PlayerGroupMemberAdded);
             PlayerGroupMemberRemovedCallback.Register(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Register(broker, Callback_PlayerGroupDisbanded);
+            LeagueMatchJoinedCallback.Register(broker, Callback_LeagueMatchJoined);
 
             _commandManager.AddCommand(CommandNames.Next, Command_next);
             _commandManager.AddCommand(CommandNames.CancelNext, Command_cancelnext);
@@ -191,6 +193,7 @@ namespace SS.Matchmaking.Modules
             PlayerGroupMemberAddedCallback.Unregister(broker, Callback_PlayerGroupMemberAdded);
             PlayerGroupMemberRemovedCallback.Unregister(broker, Callback_PlayerGroupMemberRemoved);
             PlayerGroupDisbandedCallback.Unregister(broker, Callback_PlayerGroupDisbanded);
+            LeagueMatchJoinedCallback.Unregister(broker, Callback_LeagueMatchJoined);
 
             if (_persist is not null && _persistRegistration is not null)
                 await _persist.UnregisterPersistentDataAsync(_persistRegistration);
@@ -1011,6 +1014,11 @@ namespace SS.Matchmaking.Modules
 
                 _usageDataPool.Return(usageData);
             }
+        }
+
+        private void Callback_LeagueMatchJoined(Arena arena, Player player, ILeagueMatch match)
+        {
+            RemoveFromAllQueues(player);
         }
 
         #endregion
@@ -2216,6 +2224,9 @@ namespace SS.Matchmaking.Modules
 
             if (usageData is null)
                 return;
+
+            // Clear the previous queued so that the player or group cannot get automatically requeued.
+            usageData.ClearPreviousQueued();
 
             if (usageData.Queued.Count == 0)
                 return; // not searching

@@ -697,6 +697,11 @@ namespace SS.Matchmaking.Modules
                     {
                         _game.SetShip(player, ShipType.Spec);
                     }
+
+                    if (team is not null)
+                    {
+                        LeagueMatchJoinedCallback.Fire(arena, arena, player, matchData);
+                    }
                 }
             }
 
@@ -963,6 +968,7 @@ namespace SS.Matchmaking.Modules
                     if (leagueMatch.TryGetLeagueTeam(player.Name, out Team? team))
                     {
                         _game.SetFreq(player, team.Freq);
+                        LeagueMatchJoinedCallback.Fire(arena, arena, player, leagueMatch);
                     }
                 }
             }
