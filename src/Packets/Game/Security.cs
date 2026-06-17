@@ -236,4 +236,189 @@ namespace SS.Packets.Game
 
         #endregion
     }
+
+    /// <summary>
+    /// Sent by the client when it detects a possible security violation.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct C2S_SecurityViolation
+    {
+        #region Static members
+
+        public static readonly int Length = Marshal.SizeOf<C2S_SecurityViolation>();
+
+        #endregion
+
+        /// <summary>
+        /// 0x1B - <see cref="C2SPacketType.SecurityViolation"/>
+        /// </summary>
+        public byte Type;
+        private byte violation;
+        // There is possibly another unknown byte after violation?
+
+        #region Helper Properties
+
+        public readonly ClientViolation Violation => (ClientViolation)violation;
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Represents violations that the client may report.
+    /// </summary>
+    public enum ClientViolation : byte
+    {
+        None = 0,
+
+        #region May only be sent in response to a security checksum request
+
+        SlowFramerate = 0x01,
+
+        /// <summary>
+        /// Current energy is higher than top energy
+        /// </summary>
+        CurrentEnergyGreaterThanTop = 0x02,
+
+        /// <summary>
+        /// Top energy higher than max energy
+        /// </summary>
+        TopEnergyGreaterThanMax = 0x03,
+
+        /// <summary>
+        /// Max energy without getting prizes
+        /// </summary>
+        MaxEnergyWithoutPrizes = 0x04,
+
+        /// <summary>
+        /// Recharge rate higher than max recharge rate
+        /// </summary>
+        RechargeRateGreaterThanMax = 0x05,
+
+        /// <summary>
+        /// Max recharge rate without getting prizes 
+        /// </summary>
+        MaxRechargeRateWithoutPrizes = 0x06,
+
+        /// <summary>
+        /// Too many burst used (More than you have)
+        /// </summary>
+        BurstUseExceeded = 0x07,
+
+        /// <summary>
+        /// Too many repel used
+        /// </summary>
+        RepelUseExceeded = 0x08,
+
+        /// <summary>
+        /// Too many decoy used (More than you have)
+        /// </summary>
+        DecoyUseExceeded = 0x09,
+
+        /// <summary>
+        /// Too many thor used (More than you have)
+        /// </summary>
+        ThorUseExceeded = 0x0A,
+
+        /// <summary>
+        /// Too many wall blocks used (More than you have)
+        /// </summary>
+        BrickUseExceeded = 0x0B,
+
+        /// <summary>
+        /// Stealth on but never greened it
+        /// </summary>
+        StealthOnWithoutObtaining = 0x0C,
+
+        /// <summary>
+        /// Cloak on but never greened it
+        /// </summary>
+        CloakOnWithoutObtaining = 0x0D,
+
+        /// <summary>
+        /// XRadar on but never greened it
+        /// </summary>
+        XRadarOnWithoutObtaining = 0x0E,
+
+        /// <summary>
+        /// AntiWarp on but never greened it
+        /// </summary>
+        AntiWarpOnWithoutObtaining = 0x0F,
+
+        /// <summary>
+        /// Proximity bombs but never greened it
+        /// </summary>
+        ProxBombsWithoutObtaining = 0x10,
+
+        /// <summary>
+        /// Bouncing bullets but never greened it
+        /// </summary>
+        BouncingBulletsWithoutObtaining = 0x11,
+
+        /// <summary>
+        /// Max guns without greening
+        /// </summary>
+        MaxGunsWithoutObtaining = 0x12,
+
+        /// <summary>
+        /// Max bombs without greening
+        /// </summary>
+        MaxBombsWithoutObtaining = 0x13,
+
+        /// <summary>
+        /// Shields or Super on longer than possible
+        /// </summary>
+        ShieldsOrSuperDurationExceeded = 0x14,
+
+        #endregion
+
+        #region Can be sent at any time
+
+        /// <summary>
+        /// Saved ship weapon limits too high (burst/repel/etc)
+        /// </summary>
+        ShipWeaponLimitExceeded = 0x15,
+
+        /// <summary>
+        /// Saved ship weapon level too high (guns/bombs)
+        /// </summary>
+        ShipWeaponLevelExceeded = 0x16,
+
+        /// <summary>
+        /// Login checksum mismatch (program exited)
+        /// </summary>
+        LoginChecksumMismatch = 0x17,
+
+        Unknown = 0x18,
+
+        /// <summary>
+        /// Saved ship checksum mismatch
+        /// </summary>
+        ShipChecksumMismatch = 0x19,
+
+        #endregion
+
+        #region May only be sent in response to a security checksum request
+
+        /// <summary>
+        /// Softice Debugger Running
+        /// </summary>
+        SoftIceDebuggerDetected = 0x1A,
+
+        /// <summary>
+        /// Data checksum mismatch
+        /// </summary>
+        DataChecksumMismatch = 0x1B,
+
+        /// <summary>
+        /// Parameter mismatch
+        /// </summary>
+        ParameterMismatch = 0x1C,
+
+        /// <summary>
+        /// Unknown integrity violation (High latency in Continuum)
+        /// </summary>
+        HighLatency = 0x3C,
+
+        #endregion
+    }
 }

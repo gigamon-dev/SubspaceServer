@@ -119,10 +119,13 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly Lock _lock = new();
 
-        [ConfigHelp<bool>("Security", "SecurityKickoff", ConfigScope.Global, Default = false,
-            Description = "Whether to kick players off of the server for violating security checks.")]
+        /// <summary>
+        /// Whether to kick players off of the server for violating security checks.
+        /// </summary>
         private bool _securityKickoff;
 
+        [ConfigHelp<bool>("Security", "SecurityKickoff", ConfigScope.Global, Default = false,
+            Description = "Whether to kick players off of the server for violating security checks.")]
         async Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _securityKickoff = _configManager.GetBool(_configManager.Global, "Security", "SecurityKickoff", ConfigHelp.Constants.Global.Security.SecurityKickoff.Default);
@@ -136,6 +139,7 @@ namespace SS.Core.Modules
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             _mainloopTimer.SetTimer(MainloopTimer_Send, 25000, 60000, null);
             _network.AddPacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
+            _network.AddPacket(C2SPacketType.SecurityViolation, Packet_SecurityViolation);
             _iSecuritySeedSyncRegistrationToken = broker.RegisterInterface<ISecuritySeedSync>(this);
             return true;
         }
@@ -146,6 +150,7 @@ namespace SS.Core.Modules
                 return Task.FromResult(false);
 
             _network.RemovePacket(C2SPacketType.SecurityResponse, Packet_SecurityResponse);
+            _network.RemovePacket(C2SPacketType.SecurityViolation, Packet_SecurityViolation);
             _mainloopTimer.ClearTimer(MainloopTimer_Send, null);
             _mainloopTimer.ClearTimer(MainloopTimer_Check, null);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
@@ -719,6 +724,27 @@ namespace SS.Core.Modules
             };
 
             _lagCollect.ClientLatency(player, in cld);
+        }
+
+        private void Packet_SecurityViolation(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
+        {
+            if (data.Length < C2S_SecurityViolation.Length)
+            {
+                if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
+                {
+                    _logManager.LogP(LogLevel.Malicious, nameof(Security), player, $"Invalid {C2SPacketType.SecurityViolation} packet (length = {data.Length})");
+                }
+
+                return;
+            }
+
+            ref readonly C2S_SecurityViolation packet = ref MemoryMarshal.AsRef<C2S_SecurityViolation>(data);
+            if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
+            {
+                _logManager.LogP(LogLevel.Malicious, nameof(Security), player, $"Client reported security violation: {packet.Violation}");
+            }
+
+            KickPlayer(player);
         }
 
         /// <summary>

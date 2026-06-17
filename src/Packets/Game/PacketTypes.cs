@@ -162,7 +162,7 @@ namespace SS.Packets.Game
         /// </summary>
         Banner = 0x19,
         SecurityResponse = 0x1A,
-        ChecksumIsMatch = 0x1B,
+        SecurityViolation = 0x1B,
         Brick = 0x1C,
         SettingChange = 0x1D,
         CrownExpired = 0x1E,
