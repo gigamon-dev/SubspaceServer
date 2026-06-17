@@ -728,20 +728,33 @@ namespace SS.Core.Modules
 
         private void Packet_SecurityViolation(Player player, ReadOnlySpan<byte> data, NetReceiveFlags flags)
         {
-            if (data.Length < C2S_SecurityViolation.Length)
+            if (data.Length < C2S_SecurityViolationHeader.Length)
             {
                 if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
                 {
-                    _logManager.LogP(LogLevel.Malicious, nameof(Security), player, $"Invalid {C2SPacketType.SecurityViolation} packet (length = {data.Length})");
+                    _logManager.LogP(LogLevel.Malicious, nameof(Security), player, $"Invalid {C2SPacketType.SecurityViolation} packet (length = {data.Length}).");
                 }
 
                 return;
             }
 
-            ref readonly C2S_SecurityViolation packet = ref MemoryMarshal.AsRef<C2S_SecurityViolation>(data);
+            ref readonly C2S_SecurityViolationHeader packet = ref MemoryMarshal.AsRef<C2S_SecurityViolationHeader>(data);
+            ReadOnlySpan<byte> messageBytes = data[C2S_SecurityViolationHeader.Length..];
+            messageBytes = StringUtils.SliceNullTerminated(messageBytes);
+            Span<char> message = stackalloc char[StringUtils.DefaultEncoding.GetMaxCharCount(messageBytes.Length)];
+            int decodedCharCount = StringUtils.DefaultEncoding.GetChars(messageBytes, message);
+            message = message[..decodedCharCount];
+
             if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
             {
-                _logManager.LogP(LogLevel.Malicious, nameof(Security), player, $"Client reported security violation: {packet.Violation}");
+                if (message.Length > 0)
+                {
+                    _logManager.LogP(LogLevel.Malicious, nameof(Security), player, $"Client reported security violation: {packet.Violation} - {message}");
+                }
+                else
+                {
+                    _logManager.LogP(LogLevel.Malicious, nameof(Security), player, $"Client reported security violation: {packet.Violation}.");
+                }
             }
 
             KickPlayer(player);

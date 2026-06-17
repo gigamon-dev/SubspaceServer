@@ -241,11 +241,11 @@ namespace SS.Packets.Game
     /// Sent by the client when it detects a possible security violation.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct C2S_SecurityViolation
+    public struct C2S_SecurityViolationHeader
     {
         #region Static members
 
-        public static readonly int Length = Marshal.SizeOf<C2S_SecurityViolation>();
+        public static readonly int Length = Marshal.SizeOf<C2S_SecurityViolationHeader>();
 
         #endregion
 
@@ -254,7 +254,7 @@ namespace SS.Packets.Game
         /// </summary>
         public byte Type;
         private byte violation;
-        // There is possibly another unknown byte after violation?
+        // The header is optionally followed by a custom message (likely for violation type 0x3D). This might have been used for debugging purposes.
 
         #region Helper Properties
 
@@ -415,9 +415,22 @@ namespace SS.Packets.Game
         ParameterMismatch = 0x1C,
 
         /// <summary>
-        /// Unknown integrity violation (High latency in Continuum)
+        /// High latency in Continuum
         /// </summary>
         HighLatency = 0x3C,
+
+        /// <summary>
+        /// Custom violation.
+        /// </summary>
+        /// <remarks>
+        /// The 0x1B (Security Violation) packet may be followed by additional bytes containing a custom message.
+        /// </remarks>
+        Custom = 0x3D,
+
+        /// <summary>
+        /// Memory Altered Checksum error
+        /// </summary>
+        MemoryAltered = 0x3E,
 
         #endregion
     }
