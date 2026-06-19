@@ -23,6 +23,7 @@ namespace SS.Core.Modules
         private readonly ILagQuery _lagQuery;
         private readonly ILogManager _logManager;
         private readonly INetwork _network;
+        private readonly INetworkTimerMode _networkTimerMode;
         private readonly IObjectPoolManager _objectPoolManager;
         private readonly IPlayerData _playerData;
         private readonly IScoreStats _scoreStats;
@@ -62,11 +63,12 @@ namespace SS.Core.Modules
             {"*setship",    "setship -f"},
             {"*setfreq",    "setfreq -f"},
             {"*scorereset", "sg_scorereset"},
+            {"*tmode",      "sg_tmode" },
         };
 
         private readonly Dictionary<string, string>.AlternateLookup<ReadOnlySpan<char>> _aliasesLookup;
 
-        public SubgameCompatibility(
+        internal SubgameCompatibility(
             IChat chat,
             ICommandManager commandManager,
             IConfigManager configManager,
@@ -75,6 +77,7 @@ namespace SS.Core.Modules
             ILagQuery lagQuery,
             ILogManager logManager,
             INetwork network,
+            INetworkTimerMode networkTimerMode,
             IObjectPoolManager objectPoolManager,
             IPlayerData playerData,
             IScoreStats scoreStats)
@@ -87,6 +90,7 @@ namespace SS.Core.Modules
             _lagQuery = lagQuery ?? throw new ArgumentNullException(nameof(lagQuery));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _network = network ?? throw new ArgumentNullException(nameof(network));
+            _networkTimerMode = networkTimerMode ?? throw new ArgumentNullException(nameof(networkTimerMode));
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _scoreStats = scoreStats ?? throw new ArgumentNullException(nameof(scoreStats));
@@ -112,6 +116,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("sg_spec", Command_sg_spec);
             _commandManager.AddCommand("sg_lock", Command_sg_lock);
             _commandManager.AddCommand("sg_scorereset", Command_sg_scorereset);
+            _commandManager.AddCommand("sg_tmode", Command_sg_tmode);
 
             GlobalConfigChangedCallback.Register(broker, ReadConfig);
 
@@ -134,6 +139,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("sg_spec", Command_sg_spec);
             _commandManager.RemoveCommand("sg_lock", Command_sg_lock);
             _commandManager.RemoveCommand("sg_scorereset", Command_sg_scorereset);
+            _commandManager.RemoveCommand("sg_tmode", Command_sg_tmode);
 
             if (_billing is not null)
             {
@@ -446,6 +452,40 @@ namespace SS.Core.Modules
                 {
                     _objectPoolManager.PlayerSetPool.Return(players);
                 }
+            }
+        }
+
+        private void Command_sg_tmode(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            bool? useAlternate = null;
+            if (int.TryParse(parameters, out int inputValue))
+            {
+                useAlternate = (inputValue != 0);
+            }
+
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
+            {
+                if (targetPlayer.Type != ClientType.Continuum)
+                {
+                    _chat.SendMessage(player, $"{targetPlayer.Name}: Unsupported client type for tmode (requires Continuum).");
+                    return;
+                }
+
+                if (useAlternate is not null)
+                {
+                    _networkTimerMode.SetTimerMode(targetPlayer, useAlternate.Value);
+                }
+
+                _chat.SendMessage(player, $"{targetPlayer.Name}: tmode = {(_networkTimerMode.GetTimerMode(targetPlayer) ? 1 : 0)}");
+            }
+            else
+            {
+                if (useAlternate is not null)
+                {
+                    _networkTimerMode.SetTimerMode(useAlternate.Value);
+                }
+
+                _chat.SendMessage(player, $"tmode = {(_networkTimerMode.GetTimerMode() ? 1 : 0)}");
             }
         }
 

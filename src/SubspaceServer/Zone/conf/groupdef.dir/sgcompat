@@ -13,3 +13,5 @@ privcmd_sg_spec
 cmd_sg_lock
 cmd_sg_scorereset
 privcmd_sg_scorereset
+cmd_sg_tmode
+privcmd_sg_tmode

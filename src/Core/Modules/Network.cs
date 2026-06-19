@@ -1,4 +1,5 @@
 using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets;
 using SS.Packets.Game;
@@ -42,7 +43,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public sealed class Network : IModule, IModuleLoaderAware, INetwork, INetworkClient, IRawNetwork, IDisposable
+    public sealed class Network : IModule, IModuleLoaderAware, INetwork, INetworkClient, INetworkTimerMode, IRawNetwork, IDisposable
     {
         private readonly IComponentBroker _broker;
         private readonly IBandwidthLimiterProvider _bandwidthLimiterProvider;
@@ -55,6 +56,7 @@ namespace SS.Core.Modules
         private readonly IPrng _prng;
         private InterfaceRegistrationToken<INetwork>? _iNetworkToken;
         private InterfaceRegistrationToken<INetworkClient>? _iNetworkClientToken;
+        private InterfaceRegistrationToken<INetworkTimerMode>? _iNetworkTimerModeToken;
         private InterfaceRegistrationToken<IRawNetwork>? _iRawNetworkToken;
 
         private readonly Pool<SubspaceBuffer> _bufferPool;
@@ -221,6 +223,14 @@ namespace SS.Core.Modules
         //private readonly byte[] _receiveBuffer = GC.AllocateArray<byte>(length: 512*(2+reliableThreadCount), pinned: true);
         //private readonly ConcurrentBag<Memory<byte>> _sendBufferPool = 
 
+        /// <summary>
+        /// Whether Continuum players that connect should be told to use the alternate timer mode.
+        /// </summary>
+        /// <remarks>
+        /// Only accessed on the mainloop thread.
+        /// </remarks>
+        private bool _playersUseAlternateTimerMode = false;
+
         // Cached delegates
         private readonly Action<BigPacketWork> _mainloopWork_CallBigPacketHandlers;
         private readonly Action<SubspaceBuffer> _mainloopWork_CallPacketHandlers;
@@ -250,6 +260,7 @@ namespace SS.Core.Modules
             _prng = prng ?? throw new ArgumentNullException(nameof(prng));
 
             _config.Load(_configManager);
+            _playersUseAlternateTimerMode = _config.UseAlternateTimerMode;
 
             _bufferPool = _objectPoolManager.GetPool<SubspaceBuffer>();
             _bigReceivePool = _objectPoolManager.GetPool<BigReceive>();
@@ -298,6 +309,8 @@ namespace SS.Core.Modules
         {
             _connKey = _playerData.AllocatePlayerData(new PlayerConnectionPooledObjectPolicy(_config.PlayerReliableReceiveWindowSize));
 
+            PlayerActionCallback.Register(broker, Callback_PlayerAction);
+
             if (!InitializeSockets())
                 return false;
 
@@ -332,6 +345,7 @@ namespace SS.Core.Modules
 
             _iNetworkToken = broker.RegisterInterface<INetwork>(this);
             _iNetworkClientToken = broker.RegisterInterface<INetworkClient>(this);
+            _iNetworkTimerModeToken = broker.RegisterInterface<INetworkTimerMode>(this);
             _iRawNetworkToken = broker.RegisterInterface<IRawNetwork>(this);
             return true;
 
@@ -526,6 +540,9 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iNetworkClientToken) != 0)
                 return false;
 
+            if (broker.UnregisterInterface(ref _iNetworkTimerModeToken) != 0)
+                return false;
+
             if (broker.UnregisterInterface(ref _iRawNetworkToken) != 0)
                 return false;
 
@@ -556,6 +573,8 @@ namespace SS.Core.Modules
                 _clientSocket.Dispose();
                 _clientSocket = null;
             }
+
+            PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
 
             _playerData.FreePlayerData(ref _connKey);
 
@@ -1330,6 +1349,67 @@ namespace SS.Core.Modules
                 throw new ArgumentException("Unsupported client connection. It must be created by this module.", nameof(connection));
 
             GetConnectionStats(clientConnection, ref stats);
+        }
+
+        #endregion
+
+        #region INetworkTimerMode
+
+        bool INetworkTimerMode.GetTimerMode()
+        {
+            return _playersUseAlternateTimerMode;
+        }
+
+        void INetworkTimerMode.SetTimerMode(bool useAlternate)
+        {
+            _playersUseAlternateTimerMode = useAlternate;
+
+            // Update all players accordingly.
+            _playerData.Lock();
+            try
+            {
+                foreach (Player player in _playerData.Players)
+                {
+                    if (player.Type != ClientType.Continuum)
+                        continue;
+
+                    ((INetworkTimerMode)this).SetTimerMode(player, useAlternate);
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+        }
+
+        bool INetworkTimerMode.GetTimerMode(Player player)
+        {
+            ArgumentNullException.ThrowIfNull(player);
+
+            if (player.Type != ClientType.Continuum)
+                return false; // only Continuum supports the alternate timer mode
+
+            if (!player.TryGetExtraData(_connKey, out PlayerConnection? conn))
+                return false;
+
+            return conn.AlternateTimerModeEnabled;
+        }
+
+        void INetworkTimerMode.SetTimerMode(Player player, bool useAlternate)
+        {
+            ArgumentNullException.ThrowIfNull(player);
+
+            if (player.Type != ClientType.Continuum)
+                return; // only supported by Continuum
+
+            if (!player.TryGetExtraData(_connKey, out PlayerConnection? conn))
+                return;
+
+            if (conn.AlternateTimerModeEnabled == useAlternate)
+                return; // no change
+
+            SendToOne(player, [0x00, 0x14, 0x41, useAlternate ? (byte)0x01 : (byte)0x00], NetSendFlags.Reliable);
+            conn.AlternateTimerModeEnabled = useAlternate;
         }
 
         #endregion
@@ -3923,6 +4003,14 @@ namespace SS.Core.Modules
 
         #endregion
 
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
+        {
+            if (action == PlayerAction.Connect)
+            {
+                ((INetworkTimerMode)this).SetTimerMode(player, _playersUseAlternateTimerMode);
+            }
+        }
+
         /// <summary>
         /// Processes a data received from a known connection.
         /// </summary>
@@ -5304,6 +5392,14 @@ namespace SS.Core.Modules
             /// </summary>
             public IEncrypt? Encryptor;
 
+            /// <summary>
+            /// Whether the connection has been told to use the alternate timer mode.
+            /// </summary>
+            /// <remarks>
+            /// Only accessed on the mainloop thread.
+            /// </remarks>
+            public bool AlternateTimerModeEnabled;
+
             public void Initialize(IEncrypt? encryptor, string? encryptorName, IBandwidthLimiter bandwidthLimiter)
             {
                 Initialize();
@@ -5317,6 +5413,7 @@ namespace SS.Core.Modules
             {
                 Player = null;
                 Encryptor = null;
+                AlternateTimerModeEnabled = false;
 
                 return base.TryReset();
             }
@@ -6173,6 +6270,15 @@ namespace SS.Core.Modules
                     """)]
             public PingPopulationMode SimplePingPopulationMode { get; private set; }
 
+            /// <summary>
+            /// Whether to tell the client (Continuum only) to use alternate timer mode logic which can handle timer value wraps.
+            /// </summary>
+            /// <remarks>
+            /// <see langword="false"/> (default) to use the regular timer mode logic which doesn't calculate server time properly when it wraps.
+            /// <see langword="true"/> to use the alternate (experimental?) timer logic which changes the wrapping to something in 64-bit, so it preserves the average across a wrap.
+            /// </remarks>
+            public bool UseAlternateTimerMode { get; private set; }
+
             public void Load(IConfigManager configManager)
             {
                 ArgumentNullException.ThrowIfNull(configManager);
@@ -6193,6 +6299,7 @@ namespace SS.Core.Modules
                 PerPacketOverhead = configManager.GetInt(configManager.Global, "Net", "PerPacketOverhead", 28);
                 PingRefreshThreshold = TimeSpan.FromMilliseconds(10 * configManager.GetInt(configManager.Global, "Net", "PingDataRefreshTime", 200));
                 SendThreadWaitOption = configManager.GetEnum(configManager.Global, "Net", "SendThreadWaitOption", SendThreadWaitOption.Sleep);
+                UseAlternateTimerMode = configManager.GetBool(configManager.Global, "Net", "UseAlternateTimerMode", false);
             }
         }
 
