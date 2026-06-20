@@ -2261,10 +2261,12 @@ namespace SS.Core.Modules
             short count = 1;
             ParsePrizeLast last = ParsePrizeLast.None;
 
-            ReadOnlySpan<char> remaining = parameters;
-            ReadOnlySpan<char> token;
-            while ((token = remaining.GetToken(", ", out remaining)) != ReadOnlySpan<char>.Empty)
+            foreach (Range range in parameters.Split(' '))
             {
+                ReadOnlySpan<char> token = parameters[range];
+                if (token.IsEmpty)
+                    continue;
+
                 if (short.TryParse(token, out short t))
                 {
                     // This is a count.
@@ -2275,11 +2277,15 @@ namespace SS.Core.Modules
                 {
                     // Try a word.
 
-                    // Negative prizes are marked with negative counts.
-                    if (token[0] == '-' && count > 0)
+                    // Negative prizes are marked with negative counts, for now.
+                    if (token[0] == '-')
                     {
-                        count = (short)-count;
+                        if (count > 0)
+                            count = (short)-count;
+
                         token = token[1..];
+                        if (token.IsEmpty)
+                            continue;
                     }
 
                     // Now try to find the word.
@@ -2313,7 +2319,7 @@ namespace SS.Core.Modules
                             count = (short)-count;
                         }
 
-                        _game!.GivePrize(target, (Prize)type, count);
+                        _game?.GivePrize(target, (Prize)type, count);
 
                         // Reset count to 1 once we hit a successful word.
                         count = 1;
@@ -2329,7 +2335,7 @@ namespace SS.Core.Modules
                     count = (short)-count;
 
                 // If the line ends in a count, give that many random prizes.
-                _game!.GivePrize(target, 0, count); // TODO: investigate why this doesn't work
+                _game?.GivePrize(target, 0, count);
             }
         }
 
