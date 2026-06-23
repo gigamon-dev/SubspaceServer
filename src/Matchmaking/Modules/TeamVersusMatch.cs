@@ -813,6 +813,7 @@ namespace SS.Matchmaking.Modules
 
                 // Register callbacks.
                 KillCallback.Register(arena, Callback_Kill);
+                BeforeShipFreqChangeCallback.Register(arena, Callback_BeforeShipFreqChange);
                 PreShipFreqChangeCallback.Register(arena, Callback_PreShipFreqChange);
                 ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
                 PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
@@ -884,6 +885,7 @@ namespace SS.Matchmaking.Modules
 
                     // Unregister callbacks.
                     KillCallback.Unregister(arena, Callback_Kill);
+                    BeforeShipFreqChangeCallback.Unregister(arena, Callback_BeforeShipFreqChange);
                     PreShipFreqChangeCallback.Unregister(arena, Callback_PreShipFreqChange);
                     ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
                     PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
@@ -1378,6 +1380,84 @@ namespace SS.Matchmaking.Modules
             }
         }
 
+        // This is called synchronously when the Game module sets a player's ship/freq, before the ship/freq change packet is sent.
+        // This allows sending client setting overrides right before the player is placed into a ship.
+        private void Callback_BeforeShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            if (oldShip == ShipType.Spec && newShip != ShipType.Spec)
+            {
+                // The player is about to change from spectator mode into a ship.
+                // Override spawn settings if needed.
+                // This way, the player can spawn in the proper location for their match.
+
+                // Try to get the match.
+                // First, try by slot.
+                MatchData? matchData = playerData.AssignedSlot?.MatchData;
+                
+                // Otherwise, try by league match.
+                if (matchData is null && arenaData.LeagueMatch is not null)
+                {
+                    // The arena is hosting a league match.
+                    // In league matches, player slots are not assigned until the match actually starts.
+                    // So, if the match hasn't started yet, the player will not have slot yet.
+
+                    // Check if the freq is for one of the teams.
+                    foreach (Team team in arenaData.LeagueMatch.Teams)
+                    {
+                        if (team.Freq == newFreq)
+                        {
+                            matchData = arenaData.LeagueMatch;
+                            break;
+                        }
+                    }
+                }
+
+                if (matchData is not null)
+                {
+                    SendSpawnOverrides(player, playerData, matchData);
+                }
+            }
+
+            void SendSpawnOverrides(Player player, PlayerData playerData, MatchData matchData)
+            {
+                Arena? arena = player.Arena;
+                if (arena is null || arena != matchData.Arena)
+                    return;
+
+                // Remove any existing overrides.
+                bool changed = UnoverrideSpawnSettings(player, playerData);
+
+                MatchBoxConfiguration boxConfiguration = matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx];
+
+                // Add overrides if there are any configured.
+                for (int i = 0; i < 4; i++)
+                {
+                    ref SpawnPosition? spawnPosition = ref boxConfiguration.SpawnPositions[i];
+                    if (spawnPosition is null)
+                        break;
+
+                    _clientSettings.OverrideSetting(player, _spawnXClientSettingIds[i], spawnPosition.Value.X);
+                    _clientSettings.OverrideSetting(player, _spawnYClientSettingIds[i], spawnPosition.Value.Y);
+                    _clientSettings.OverrideSetting(player, _spawnRadiusClientSettingIds[i], spawnPosition.Value.Radius);
+
+                    playerData.IsSpawnOverriden = true;
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    _clientSettings.SendClientSettings(player);
+                }
+            }
+        }
+
         // This is called synchronously when the Game module sets a player's ship/freq.
         private void Callback_PreShipFreqChange(Player player, ShipType newShip, ShipType oldShip, short newFreq, short oldFreq)
         {
@@ -1385,8 +1465,19 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
                 return;
 
-            if (arenaData.LeagueMatch is not null && newFreq != arena.SpecFreq)
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            if (oldShip != newShip && newShip != ShipType.Spec)
             {
+                // The player changed ships. Remember what their choice is.
+                // This is done even if the player is currently not assigned a match.
+                SetNextShip(player, playerData, newShip, false);
+            }
+
+            if (arenaData.LeagueMatch is not null)
+            {
+                // The arena is hosting a league match.
                 foreach (Team team in arenaData.LeagueMatch.Teams)
                 {
                     if (team.LeagueTeam is null)
@@ -1394,14 +1485,16 @@ namespace SS.Matchmaking.Modules
 
                     if (team.Freq == newFreq)
                     {
-                        _chat.SendMessage(player, $"Welcome to team freq {team.Freq} ({team.LeagueTeam.TeamName})");
+                        // Player is on a team freq.
+                        if (oldFreq != newFreq)
+                        {
+                            _chat.SendMessage(player, $"Welcome to team freq {team.Freq} ({team.LeagueTeam.TeamName})");
+                        }
+
                         break;
                     }
                 }
             }
-
-            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
-                return;
 
             PlayerSlot? slot = playerData.AssignedSlot;
             if (slot is null)
@@ -6135,6 +6228,19 @@ namespace SS.Matchmaking.Modules
                             AssignSlot(slot, player);
                             slot.Status = PlayerSlotStatus.Playing;
 
+                            // In a matchmaking match, the slot's ship is set after a player is assigned a slot and changes into a ship.
+                            // However, in league matches, players are assigned a slot here (when a match starts).
+                            // So, the slot's ship needs to be set here.
+                            slot.Ship = player.Ship;
+
+                            // Also, because slots are assigned here (when a match starts),
+                            // there's no chance for a player's position packet to set the slot's flag for being in the play area.
+                            // A check for match completion is immediately done when a match is started (see below),
+                            // but all the slots would be considered not in the play area.
+                            // Set the slot to be considered to be in the play area, so that the initial match completion check
+                            // will not fail due to the slot not being considered in the play area.
+                            slot.IsInPlayArea = true;
+
                             matchData.ParticipationList.Add(new PlayerParticipationRecord(player.Name!, false, false));
                         }
                     }
@@ -6333,9 +6439,6 @@ namespace SS.Matchmaking.Modules
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            // Override spawn settings if needed.
-            SendSpawnOverrides(player, playerData, slot);
-
             ShipType ship;
             if (isRefill)
             {
@@ -6344,7 +6447,10 @@ namespace SS.Matchmaking.Modules
                 if (ship == ShipType.Spec)
                 {
                     // The ship should not be spectator mode when the slot is being refilled, but handle it just to be safe.
-                    ship = ShipType.Warbird;
+                    if (playerData.NextShip is not null)
+                        ship = playerData.NextShip.Value;
+                    else
+                        ship = ShipType.Warbird;
                 }
 
                 playerData.NextShip ??= ship;
@@ -6375,41 +6481,6 @@ namespace SS.Matchmaking.Modules
 
             // Remove any existing timers for the slot.
             _mainloopTimer.ClearTimer<PlayerSlot>(MainloopTimer_ProcessInactiveSlot, slot);
-
-            void SendSpawnOverrides(Player player, PlayerData playerData, PlayerSlot slot)
-            {
-                Arena? arena = player.Arena;
-                if (arena is null)
-                    return;
-
-                MatchData matchData = slot.MatchData;
-                bool changed = false;
-
-                // Remove any existing overrides.
-                changed = UnoverrideSpawnSettings(player, playerData);
-
-                MatchBoxConfiguration boxConfiguration = matchData.Configuration.Boxes[matchData.MatchIdentifier.BoxIdx];
-
-                // Add overrides if there are any configured.
-                for (int i = 0; i < 4; i++)
-                {
-                    ref SpawnPosition? spawnPosition = ref boxConfiguration.SpawnPositions[i];
-                    if (spawnPosition is null)
-                        break;
-
-                    _clientSettings.OverrideSetting(player, _spawnXClientSettingIds[i], spawnPosition.Value.X);
-                    _clientSettings.OverrideSetting(player, _spawnYClientSettingIds[i], spawnPosition.Value.Y);
-                    _clientSettings.OverrideSetting(player, _spawnRadiusClientSettingIds[i], spawnPosition.Value.Radius);
-
-                    playerData.IsSpawnOverriden = true;
-                    changed = true;
-                }
-
-                if (changed)
-                {
-                    _clientSettings.SendClientSettings(player);
-                }
-            }
         }
 
         private void PlayerWarpCompleted(Player player, bool success)
