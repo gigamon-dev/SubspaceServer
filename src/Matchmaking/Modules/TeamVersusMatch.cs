@@ -1081,8 +1081,17 @@ namespace SS.Matchmaking.Modules
                     {
                         if (team.Captain == player)
                         {
+                            // The player leaving is a team captain, remove as being a captain.
                             team.Captain = null;
+                            playerData.CaptainOfTeam = null;
+
                             _chat.SendArenaMessage(arena, $"{player.Name} is no longer the captain of freq {team.Freq} ({team.LeagueTeam?.TeamName})");
+
+                            if (IsMatchInTeamReadyUpStage(arenaData.LeagueMatch))
+                            {
+                                // If the team was ready, it no longer is.
+                                SetTeamReadiness(team, false);
+                            }
                         }
                     }
                 }
@@ -3533,6 +3542,11 @@ namespace SS.Matchmaking.Modules
             if (matchData is null)
                 return;
 
+            if (!IsMatchInTeamReadyUpStage(matchData))
+            {
+                return;
+            }
+
             if (matchData.IsForcedStart)
             {
                 // The ?ready command is disabled when a match is forced to start.
@@ -3551,7 +3565,7 @@ namespace SS.Matchmaking.Modules
 
             if (team.IsReady)
             {
-                team.IsReady = false;
+                SetTeamReadiness(team, false);
             }
             else
             {
@@ -3577,11 +3591,53 @@ namespace SS.Matchmaking.Modules
                     return;
                 }
 
-                team.IsReady = true;
+                SetTeamReadiness(team, true);
+            }            
+        }
+
+        /// <summary>
+        /// Whether the match is in a startup state that teams can be toggle being ready or not ready by their captains.
+        /// </summary>
+        /// <param name="matchData">The match to check the state of.</param>
+        /// <returns><see langword="true"/> if the match is in a state where team readiness can be toggled.</returns>
+        private static bool IsMatchInTeamReadyUpStage(MatchData matchData)
+        {
+            if (matchData.LeagueGame is null)
+                return false; // only league matches are supported
+
+            return matchData.Status is >= MatchStatus.Initializing and < MatchStatus.Starting;
+        }
+
+        private void SetTeamReadiness(Team team, bool isReady)
+        {
+            MatchData matchData = team.MatchData;
+            if (matchData.LeagueGame is null)
+                return; // only league matches are supported
+
+            if (team.IsReady == isReady)
+                return; // no change
+
+            // Change the team's readiness.
+            team.IsReady = isReady;
+
+            // Notify the arena about the change.
+            Arena? arena = matchData.Arena;
+            if (arena is not null)
+            {
+                _chat.SendArenaMessage(arena, $"Freq {team.Freq} ({team.LeagueTeam?.TeamName}) is {(team.IsReady ? "READY" : "NOT READY")}.");
             }
 
-            _chat.SendArenaMessage(arena, $"Freq {team.Freq} ({team.LeagueTeam?.TeamName}) is {(team.IsReady ? "READY" : "NOT READY")}.");
+            if (matchData.IsForcedStart)
+            {
+                // The match is being forced to start. Whether a team is ready has no impact.
+                return;
+            }
 
+            UpdateMatchStateForReadiness(matchData);
+        }
+
+        private void UpdateMatchStateForReadiness(MatchData matchData)
+        {
             // Check if all teams are ready.
             bool allReady = true;
             foreach (Team t in matchData.Teams)
@@ -3618,15 +3674,22 @@ namespace SS.Matchmaking.Modules
             if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
                 return;
 
+            // Only for league matches.
             MatchData? matchData = arenaData.LeagueMatch;
             if (matchData is null)
                 return;
 
-            if (matchData.Status != MatchStatus.Initializing)
-                return;
-
-            matchData.IsForcedStart = true;
-            BeginLeagueMatchStartupSequence(matchData);
+            if (matchData.Status == MatchStatus.Initializing && !matchData.IsForcedStart)
+            {
+                matchData.IsForcedStart = true;
+                BeginLeagueMatchStartupSequence(matchData);
+            }
+            else if (matchData.Status == MatchStatus.StartingCountdown && matchData.IsForcedStart)
+            {
+                CancelLeagueStartupSequence(matchData);
+                matchData.IsForcedStart = false;
+                _chat.SendArenaMessage(arena, "Force start cancelled.");
+            }
         }
 
         [CommandHelp(
@@ -6871,6 +6934,16 @@ namespace SS.Matchmaking.Modules
             // Cleanup slots
             foreach (Team team in matchData.Teams)
             {
+                if (team.Captain is not null)
+                {
+                    if (team.Captain.TryGetExtraData(_pdKey, out PlayerData? capPlayerData))
+                    {
+                        capPlayerData.CaptainOfTeam = null;
+                    }
+
+                    team.Captain = null;
+                }
+
                 foreach (PlayerSlot slot in team.Slots)
                 {
                     if (slot.SubPlayer is not null)
