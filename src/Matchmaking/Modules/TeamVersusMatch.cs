@@ -1400,16 +1400,22 @@ namespace SS.Matchmaking.Modules
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            if (oldShip == ShipType.Spec && newShip != ShipType.Spec)
+            if (newShip != ShipType.Spec)
             {
-                // The player is about to change from spectator mode into a ship.
                 // Override spawn settings if needed.
                 // This way, the player can spawn in the proper location for their match.
 
                 // Try to get the match.
+                MatchData? matchData = null;
+
                 // First, try by slot.
-                MatchData? matchData = playerData.AssignedSlot?.MatchData;
-                
+                if (playerData.AssignedSlot is not null 
+                    && playerData.AssignedSlot.MatchData.Arena == arena // in the proper arena
+                    && playerData.AssignedSlot.Team.Freq == newFreq) // on the team's freq
+                {
+                    matchData = playerData.AssignedSlot.MatchData;
+                }
+
                 // Otherwise, try by league match.
                 if (matchData is null && arenaData.LeagueMatch is not null)
                 {
@@ -1430,15 +1436,19 @@ namespace SS.Matchmaking.Modules
 
                 if (matchData is not null)
                 {
+                    // In a match and the proper arena and freq for it.
                     SendSpawnOverrides(player, playerData, matchData);
+                }
+                else
+                {
+                    UnoverrideSpawnSettings(player, playerData);
                 }
             }
 
             void SendSpawnOverrides(Player player, PlayerData playerData, MatchData matchData)
             {
-                Arena? arena = player.Arena;
-                if (arena is null || arena != matchData.Arena)
-                    return;
+                if (playerData.SpawnOverridenForMatch == matchData)
+                    return; // already overridden for the proper match
 
                 // Remove any existing overrides.
                 bool changed = UnoverrideSpawnSettings(player, playerData);
@@ -1456,7 +1466,7 @@ namespace SS.Matchmaking.Modules
                     _clientSettings.OverrideSetting(player, _spawnYClientSettingIds[i], spawnPosition.Value.Y);
                     _clientSettings.OverrideSetting(player, _spawnRadiusClientSettingIds[i], spawnPosition.Value.Radius);
 
-                    playerData.IsSpawnOverriden = true;
+                    playerData.SpawnOverridenForMatch = matchData;
                     changed = true;
                 }
 
@@ -1615,10 +1625,9 @@ namespace SS.Matchmaking.Modules
                 return;
 
             // Spawn position overrides
-            if (newShip == ShipType.Spec && playerData.IsSpawnOverriden)
+            if (newShip == ShipType.Spec && UnoverrideSpawnSettings(player, playerData))
             {
-                if (UnoverrideSpawnSettings(player, playerData))
-                    _clientSettings.SendClientSettings(player);
+                _clientSettings.SendClientSettings(player);
             }
 
             // Extra position data (for tracking items)
@@ -6659,7 +6668,7 @@ namespace SS.Matchmaking.Modules
         /// <returns><see langword="true"/> if an settings override change was made; otherwise, <see langword="false"/>.</returns>
         private bool UnoverrideSpawnSettings(Player player, PlayerData playerData)
         {
-            if (!playerData.IsSpawnOverriden)
+            if (playerData.SpawnOverridenForMatch is null)
                 return false;
 
             for (int i = 0; i < 4; i++)
@@ -6669,7 +6678,7 @@ namespace SS.Matchmaking.Modules
                 _clientSettings.UnoverrideSetting(player, _spawnRadiusClientSettingIds[i]);
             }
 
-            playerData.IsSpawnOverriden = false;
+            playerData.SpawnOverridenForMatch = null;
             return true;
         }
 
@@ -7812,9 +7821,12 @@ namespace SS.Matchmaking.Modules
             public bool IsWatchingExtraPositionData = false;
 
             /// <summary>
-            /// Whether the player has overriden spawn position settings.
+            /// The match that the player's client settings have been overridden for overrides for spawn positions.
             /// </summary>
-            public bool IsSpawnOverriden = false;
+            /// <remarks>
+            /// <see langword="null"/> means no override.
+            /// </remarks>
+            public MatchData? SpawnOverridenForMatch = null;
 
             #region Match startup
 
@@ -7845,7 +7857,7 @@ namespace SS.Matchmaking.Modules
                 IsReturning = false;
                 IsInitialConnect = false;
                 IsWatchingExtraPositionData = false;
-                IsSpawnOverriden = false;
+                SpawnOverridenForMatch = null;
                 ReadyToStartState = ReadyToStartState.None;
                 LastRotation = null;
                 return true;
