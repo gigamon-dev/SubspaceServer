@@ -65,7 +65,7 @@ namespace SS.Core.Modules
         private PlayerDataKey<PlayerData> _pdKey;
         private ArenaDataKey<ArenaData> _adKey;
 
-        private readonly ClientSettingIdentifier[] _shipBombFireDelayIds = new ClientSettingIdentifier[8];
+        private readonly ShipClientSettingIdentifiers[] _shipClientSettingIds = new ShipClientSettingIdentifiers[8];
         private ClientSettingIdentifier _flaggerBombFireDelayId;
         private ClientSettingIdentifier _soccerUseFlaggerId;
 
@@ -87,15 +87,27 @@ namespace SS.Core.Modules
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             string[] shipNames = System.Enum.GetNames<ShipType>();
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < _shipClientSettingIds.Length; i++)
             {
-                if (!_clientSettings.TryGetSettingsIdentifier(shipNames[i], "BombFireDelay", out ClientSettingIdentifier id))
+                if (!_clientSettings.TryGetSettingsIdentifier(shipNames[i], "BombFireDelay", out ClientSettingIdentifier bombFireDelayId))
                 {
                     _logManager.LogM(LogLevel.Error, nameof(Game), $"Error getting ClientSettingIdentifier {shipNames[i]}:BombFireDelay");
                     return false;
                 }
 
-                _shipBombFireDelayIds[i] = id;
+                if (!_clientSettings.TryGetSettingsIdentifier(shipNames[i], "LandmineFireDelay", out ClientSettingIdentifier mineFireDelayId))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Game), $"Error getting ClientSettingIdentifier {shipNames[i]}:LandmineFireDelay");
+                    return false;
+                }
+
+                if (!_clientSettings.TryGetSettingsIdentifier(shipNames[i], "EmpBomb", out ClientSettingIdentifier empBombId))
+                {
+                    _logManager.LogM(LogLevel.Error, nameof(Game), $"Error getting ClientSettingIdentifier {shipNames[i]}:EmpBomb");
+                    return false;
+                }
+
+                _shipClientSettingIds[i] = new ShipClientSettingIdentifiers(bombFireDelayId, mineFireDelayId, empBombId);
             }
 
             if (!_clientSettings.TryGetSettingsIdentifier("Flag", "FlaggerBombFireDelay", out _flaggerBombFireDelayId))
@@ -1246,44 +1258,26 @@ namespace SS.Core.Modules
                 }
 
                 // Fast bombing check
-                if (pos.Weapon.Type == WeaponCodes.Bomb || pos.Weapon.Type == WeaponCodes.ProxBomb || pos.Weapon.Type == WeaponCodes.Thor) // fired a bomb, mine, or thor
+                if (arenaData.CheckFastBombing != CheckFastBombing.None
+                    && (pos.Weapon.Type == WeaponCodes.Bomb || pos.Weapon.Type == WeaponCodes.ProxBomb || pos.Weapon.Type == WeaponCodes.Thor)) // fired a bomb, mine, or thor
                 {
-                    if (arenaData.CheckFastBombing != CheckFastBombing.None
-                        && playerData.LastBomb is not null)
-                    { 
-                        int bombDiff = Math.Abs(pos.Time - playerData.LastBomb.Value);
-                        int minDiff = Math.Max(0, _clientSettings.GetSetting(player, _shipBombFireDelayIds[(int)player.Ship]) - arenaData.FastBombingThreshold);
+                    if (playerData.LastWeaponTick is not null)
+                    {
+                        int diff = Math.Abs(pos.Time - playerData.LastWeaponTick.Value);
+                        int minDiff = Math.Max(0, playerData.LastWeaponFireDelay - arenaData.FastBombingThreshold);                        
 
-                        if (minDiff > 0)
-                        {
-                            // Carrying a flag or a ball can modify bomb fire delay.
-                            int flaggerBombFireDelay = _clientSettings.GetSetting(player, _flaggerBombFireDelayId);
-                            if (flaggerBombFireDelay > 0)
-                            {
-                                int flaggerMinDiff = Math.Max(0, flaggerBombFireDelay - arenaData.FastBombingThreshold);
-                                if (flaggerMinDiff > 0)
-                                {
-                                    if (player.Packet.FlagsCarried > 0
-                                        || (_clientSettings.GetSetting(player, _soccerUseFlaggerId) != 0 && IsCarryingBall(player, arena)))
-                                    {
-                                        minDiff = Math.Min(minDiff, flaggerMinDiff);
-                                    }
-                                }
-                            }
-                        }
-
-                        if (bombDiff < minDiff)
+                        if (diff < minDiff)
                         {
                             // Detected a fast bomb
                             bool alert = (arenaData.CheckFastBombing & CheckFastBombing.Alert) != 0;
                             bool filter = (arenaData.CheckFastBombing & CheckFastBombing.Filter) != 0;
                             bool kick = (arenaData.CheckFastBombing & CheckFastBombing.Kick) != 0;
 
-                            _logManager.LogP(LogLevel.Info, nameof(Game), player, $"Detected fast bombing (diff:{bombDiff}, min:{minDiff}, alert:{alert}, filter:{filter}, kick:{kick}).");
+                            _logManager.LogP(LogLevel.Info, nameof(Game), player, $"Detected fast bombing (diff:{diff}, min:{minDiff}, alert:{alert}, filter:{filter}, kick:{kick}).");
 
                             if (alert)
                             {
-                                _chat.SendModMessage($"Detected fast bombing by {player.Name} (diff:{bombDiff}, min:{minDiff}, filter:{filter}, kick:{kick}).");
+                                _chat.SendModMessage($"Detected fast bombing by {player.Name} (diff:{diff}, min:{minDiff}, filter:{filter}, kick:{kick}).");
                             }
 
                             if (filter)
@@ -1298,9 +1292,46 @@ namespace SS.Core.Modules
                         }
                     }
 
-                    if (playerData.LastBomb is null || pos.Time > playerData.LastBomb)
+                    if (playerData.LastWeaponTick is null || pos.Time > playerData.LastWeaponTick.Value)
                     {
-                        playerData.LastBomb = pos.Time;
+                        int fireDelay;
+                        if ((pos.Weapon.Type == WeaponCodes.Bomb || pos.Weapon.Type == WeaponCodes.ProxBomb)
+                            && pos.Weapon.Alternate) // is a mine
+                        {
+                            // Use mine fire delay
+                            fireDelay = _clientSettings.GetSetting(player, _shipClientSettingIds[(int)player.Ship].MineFireDelayId);
+
+                            if (_clientSettings.GetSetting(player, _shipClientSettingIds[(int)player.Ship].EmpBombId) != 0)
+                            {
+                                // For EMP mines, Continuum has strange behavior.
+                                // Take the larger of LandmineFireDelay and BombFireDelay.
+                                // TODO: Still need verification that this is correct, but from testing this is my guess on what Continuum is doing.
+                                int bombFireDelay = _clientSettings.GetSetting(player, _shipClientSettingIds[(int)player.Ship].BombFireDelayId);
+                                if (bombFireDelay > fireDelay)
+                                {
+                                    fireDelay = bombFireDelay;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Use bomb fire delay
+                            fireDelay = _clientSettings.GetSetting(player, _shipClientSettingIds[(int)player.Ship].BombFireDelayId);
+
+                            // Carrying a flag or a ball can modify bomb fire delay.
+                            int flaggerBombFireDelay = _clientSettings.GetSetting(player, _flaggerBombFireDelayId);
+                            if (flaggerBombFireDelay > 0)
+                            {
+                                if (player.Packet.FlagsCarried > 0 
+                                    || (_clientSettings.GetSetting(player, _soccerUseFlaggerId) != 0 && IsCarryingBall(player, arena)))
+                                {
+                                    fireDelay = flaggerBombFireDelay;
+                                }
+                            }
+                        }
+
+                        playerData.LastWeaponTick = pos.Time;
+                        playerData.LastWeaponFireDelay = fireDelay;
                     }
                 }
 
@@ -2727,6 +2758,11 @@ namespace SS.Core.Modules
 
         #region Helper types
 
+        private readonly record struct ShipClientSettingIdentifiers(
+            ClientSettingIdentifier BombFireDelayId,
+            ClientSettingIdentifier MineFireDelayId,
+            ClientSettingIdentifier EmpBombId);
+
         private struct AttachDTO
         {
             public required Arena Arena;
@@ -2880,10 +2916,15 @@ namespace SS.Core.Modules
             public ShipType? LastPositionPacketShip;
 
             /// <summary>
-            /// When the player last shot a bomb, mine, or thor.
+            /// When the player last fired a bomb, mine, or thor.
             /// Used to check for fast bombing.
             /// </summary>
-            public ServerTick? LastBomb;
+            public ServerTick? LastWeaponTick;
+
+            /// <summary>
+            /// How long the player must wait after <see cref="LastWeaponTick"/> to fire another weapon.
+            /// </summary>
+            public int LastWeaponFireDelay;
 
             /// <summary>
             /// When the a position packet was last sent containing the player's bounty.
@@ -2908,7 +2949,8 @@ namespace SS.Core.Modules
                 LastRegionCheck = default;
                 LastRegionSet = [];
                 LastPositionPacketShip = null;
-                LastBomb = null;
+                LastWeaponTick = null;
+                LastWeaponFireDelay = 0;
                 BountyLastSent = null;
                 return true;
             }
