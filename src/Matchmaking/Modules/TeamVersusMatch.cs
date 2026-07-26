@@ -2290,6 +2290,9 @@ namespace SS.Matchmaking.Modules
                     AssignSlot(slot, player);
                     slot.Status = PlayerSlotStatus.Playing;
 
+                    // Track the player's participation so the slot dictionary entry gets cleaned up when the match ends.
+                    leagueMatch.ParticipationList.Add(new PlayerParticipationRecord(player.Name!, false, false));
+
                     // Put the player in with a full ship of their choice.
                     SetShipAndFreq(slot, false, null, ItemsAction.Full);
 
