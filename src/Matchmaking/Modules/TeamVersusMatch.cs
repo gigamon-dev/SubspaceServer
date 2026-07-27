@@ -1376,17 +1376,16 @@ namespace SS.Matchmaking.Modules
                     _objectPoolManager.StringBuilderPool.Return(sb);
                 }
             }
+        }
 
-
-            bool MainloopTimer_ProcessKnockOut(PlayerSlot slot)
+        private bool MainloopTimer_ProcessKnockOut(PlayerSlot slot)
+        {
+            if (slot.Player is not null && slot.Player.Ship != ShipType.Spec && slot.Player.Freq == slot.Team.Freq)
             {
-                if (slot.Player is not null && slot.Player.Ship != ShipType.Spec && slot.Player.Freq == slot.Team.Freq)
-                {
-                    _game.SetShip(slot.Player, ShipType.Spec);
-                }
-
-                return false;
+                _game.SetShip(slot.Player, ShipType.Spec);
             }
+
+            return false;
         }
 
         // This is called synchronously when the Game module sets a player's ship/freq, before the ship/freq change packet is sent.
@@ -6812,6 +6811,10 @@ namespace SS.Matchmaking.Modules
 
             // Change the status to stop any additional attempts to end the match while we're ending it.
             matchData.Status = MatchStatus.Complete;
+
+            // Cancel any pending knockout-processing timers so that they can't later fire
+            // against a slot after it's been reassigned to a different player in a future match.
+            _mainloopTimer.ClearTimer<PlayerSlot>(MainloopTimer_ProcessKnockOut, matchData);
 
             MatchEndingCallback.Fire(_broker, matchData);
 
