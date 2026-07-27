@@ -6969,6 +6969,10 @@ namespace SS.Matchmaking.Modules
                         _game.SetShipAndFreq(slot.Player, ShipType.Spec, arena.SpecFreq);
                     }
 
+                    // Cancel any pending inactive slot timer so that it can't later fire against
+                    // this slot after it's been reassigned to a different player in a future match.
+                    _mainloopTimer.ClearTimer<PlayerSlot>(MainloopTimer_ProcessInactiveSlot, slot);
+
                     UnassignSlot(slot, false);
                 }
             }
