@@ -6969,6 +6969,14 @@ namespace SS.Matchmaking.Modules
                         _game.SetShipAndFreq(slot.Player, ShipType.Spec, arena.SpecFreq);
                     }
 
+                    // Remove the slot from the available-to-sub list, if it's in it.
+                    // This is normally done by PlayerSlot.Reset(), but league matches don't reset/reuse
+                    // their MatchData (a new one is created for the next match), so without this the
+                    // node would remain linked into _availableSubSlots indefinitely, keeping this now-ended
+                    // match's Team/PlayerSlot/MatchData objects alive and reachable via ?sub.
+                    slot.AvailableSubSlotNode.List?.Remove(slot.AvailableSubSlotNode);
+                    slot.IsSubRequested = false;
+
                     UnassignSlot(slot, false);
                 }
             }
