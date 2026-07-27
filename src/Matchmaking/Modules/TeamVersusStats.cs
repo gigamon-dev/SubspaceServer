@@ -1352,7 +1352,7 @@ namespace SS.Matchmaking.Modules
                             continue;
 
                         attackerMemberStats.RatingChange += ratingChangeDictionary[attacker.PlayerName] =
-                            assistPoints * ((float)killedMemberStats.TeamStats.RemainingSlots / Math.Min(1, attackerTeamStats.RemainingSlots));
+                            assistPoints * ((float)killedMemberStats.TeamStats.RemainingSlots / Math.Max(1, attackerTeamStats.RemainingSlots));
                     }
                 }
 
