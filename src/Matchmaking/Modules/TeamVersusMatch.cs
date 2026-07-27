@@ -981,15 +981,14 @@ namespace SS.Matchmaking.Modules
                     // The player connected and entered an arena.
                     playerData.IsInitialConnect = false;
 
-                    if (_playerSlotDictionary.TryGetValue(player.Name!, out PlayerSlot? playerSlot))
+                    if (_playerSlotDictionary.TryGetValue(player.Name!, out PlayerSlot? playerSlot)
+                        && string.Equals(playerSlot.PlayerName, player.Name, StringComparison.OrdinalIgnoreCase))
                     {
-                        // The player is associated with an ongoing match.
-                        if (string.Equals(playerSlot.PlayerName, player.Name, StringComparison.OrdinalIgnoreCase))
-                        {
-                            // The player is still assigned to the slot.
-                            playerData.AssignedSlot = playerSlot;
-                            playerSlot.Player = player;
-                        }
+                        // The player is still assigned to the slot of an ongoing match.
+                        // Note: the dictionary entry can be stale (e.g. the player was subbed out) until the match ends,
+                        // so it's important to check that the slot is still assigned to this player before acting on it.
+                        playerData.AssignedSlot = playerSlot;
+                        playerSlot.Player = player;
 
                         if (!string.Equals(arena!.Name, playerSlot.MatchData.ArenaName, StringComparison.OrdinalIgnoreCase))
                         {
