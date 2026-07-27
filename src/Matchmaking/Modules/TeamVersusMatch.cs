@@ -924,13 +924,31 @@ namespace SS.Matchmaking.Modules
                     _arenaDataPool.Return(arenaData);
                 }
 
-                // Clear arena for associated matches.
+                // Clear arena for associated matches, ending any that were still active.
+                // Snapshot into a separate list first since EndMatch can remove entries from
+                // _matchDataDictionary (e.g. for league matches), which would otherwise invalidate
+                // this enumeration.
+                List<MatchData> affectedMatches = new();
                 foreach (MatchData matchData in _matchDataDictionary.Values)
                 {
                     if (matchData.Arena == arena)
                     {
-                        matchData.Arena = null;
+                        affectedMatches.Add(matchData);
                     }
+                }
+
+                foreach (MatchData matchData in affectedMatches)
+                {
+                    if (matchData.Status != MatchStatus.None)
+                    {
+                        // The match was still active (or pending reset) when its arena was destroyed.
+                        // End it so that its slots, participation list, and player-slot dictionary
+                        // entries get cleaned up, rather than leaving the match permanently stuck
+                        // and the box permanently unavailable for a new match.
+                        EndMatch(matchData, MatchEndReason.Cancelled, null);
+                    }
+
+                    matchData.Arena = null;
                 }
             }
         }
