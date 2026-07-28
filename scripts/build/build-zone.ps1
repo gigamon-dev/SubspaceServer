@@ -155,6 +155,9 @@ $PrebuiltDir = Join-Path $PSScriptRoot 'prebuilt'
 
 $OutputExplicit = [bool]$Output
 if (-not $Output) { $Output = Join-Path $RepoRoot 'zone' }
+# Drop trailing slashes so derived paths stay clean (and Split-Path is predictable).
+$Output = $Output.TrimEnd('/', '\')
+if ($Output -match '^[A-Za-z]:$') { $Output = "$Output\" }  # keep a bare drive root
 
 # Resolve the requested RID list. Normalize first so comma-separated values work
 # both as a native array (-Runtime a,b) and as one string (e.g. via powershell.exe -File).

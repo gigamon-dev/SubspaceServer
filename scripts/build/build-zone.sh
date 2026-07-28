@@ -102,6 +102,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -n "$OUTPUT" ]]; then OUTPUT_EXPLICIT=1; else OUTPUT_EXPLICIT=0; OUTPUT="$REPO_ROOT/zone"; fi
+# Drop trailing slashes so derived paths aren't doubled (e.g. zone//_stage).
+while [[ "$OUTPUT" == */ && ${#OUTPUT} -gt 1 ]]; do OUTPUT="${OUTPUT%/}"; done
 
 if [[ ${#RUNTIMES[@]} -eq 0 || ( ${#RUNTIMES[@]} -eq 1 && "${RUNTIMES[0]}" == "all" ) ]]; then
   RIDS=("${ALL_RIDS[@]}")
