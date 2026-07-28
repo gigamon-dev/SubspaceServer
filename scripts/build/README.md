@@ -56,7 +56,7 @@ Supported RIDs: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`, `
 | `-Runtime <rid\|all>` | `-r, --runtime` | `all` | RID(s) to build. |
 | `-Configuration` | `-c, --configuration` | `Release` | Build configuration. |
 | `-SelfContained` | `--self-contained` | off | Bundle the .NET runtime (no prerequisite on target; larger). |
-| `-Output <dir>` | `-o, --output` | `./zone` | Output root (one subfolder per RID). |
+| `-Output <dir>` | `-o, --output` | `./zone` | Output root (one `<rid>` subfolder per RID; see in-place note below). |
 | `-Archive` | `--archive` | off | Also emit a `.tar.gz` per RID (preserves the executable bit). |
 | `-IncludeContinuum` | `--include-continuum` | off | Include `clients/Continuum.exe`. |
 | `-Clean` | `--clean` | off | Wipe each per-RID folder first (with `-Full`). |
@@ -95,6 +95,13 @@ Supported RIDs: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`, `
   at an existing deployment (via `-Output`) to refresh just its code. `-Full` assembles the
   complete package and **does** overwrite Zone content with the template — use it to create a
   package or rebuild one from scratch. (Code-only skips a per-RID folder that has no `conf/`.)
+- **In-place vs. `<rid>` subfolder is auto-detected.** With a **single** runtime and an
+  **explicit** `-Output`, the script checks whether `-Output` already contains that RID's
+  subfolder. If it does (a build root like `./zone/linux-x64`), it keeps using the subfolder.
+  If not, `-Output` is treated as the zone itself and updated **in place** — so
+  `-r linux-x64 -o /srv/myzone` updates `/srv/myzone` directly, no manual copy needed. With
+  multiple runtimes, or no explicit `-Output`, a `<rid>` subfolder is always used. (When
+  in-place, `-Archive`/`-Source` outputs are written to `-Output`'s parent, not inside the zone.)
 - **Prebuilt / native modules go in [`prebuilt/<rid>/`](prebuilt/README.md).** Modules
   with per-platform native binaries and no source here (chiefly `EncryptionCont`) are
   dropped into `scripts/build/prebuilt/<rid>/<ModuleName>/`; the build copies the

@@ -29,6 +29,11 @@ OPTIONS
       --full                 Assemble the COMPLETE package (Zone content + launchers +
                              LICENSE + code). Default builds only bin/ (code + modules),
                              keeping an existing deployment's conf/maps/etc. untouched.
+
+  With a single -r runtime and an explicit -o that is NOT already a build root (has no
+  <rid> subfolder), -o is treated as the zone itself and updated in place - so
+  '-r linux-x64 -o /srv/myzone' updates /srv/myzone directly. Otherwise a <rid> subfolder
+  is used (e.g. ./zone/linux-x64).
       --source               Also produce the GitHub-style source tarball (git archive)
       --source-ref <ref>     Git ref for --source. Default: HEAD
   -h, --help                 Show this help and exit
@@ -73,6 +78,7 @@ ARCHIVE=0
 INCLUDE_CONTINUUM=0
 CLEAN=0
 FULL=0
+IN_PLACE=0
 SOURCE=0
 SOURCE_REF="HEAD"
 
@@ -95,7 +101,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -z "$OUTPUT" ]] && OUTPUT="$REPO_ROOT/zone"
+if [[ -n "$OUTPUT" ]]; then OUTPUT_EXPLICIT=1; else OUTPUT_EXPLICIT=0; OUTPUT="$REPO_ROOT/zone"; fi
 
 if [[ ${#RUNTIMES[@]} -eq 0 || ( ${#RUNTIMES[@]} -eq 1 && "${RUNTIMES[0]}" == "all" ) ]]; then
   RIDS=("${ALL_RIDS[@]}")
@@ -113,6 +119,15 @@ if [[ $SELF_CONTAINED -eq 1 ]]; then SC="true"; else SC="false"; fi
 
 # Default is code-only; --full assembles the complete package.
 if [[ $FULL -eq 1 ]]; then CODE_ONLY=0; else CODE_ONLY=1; fi
+
+# Auto in-place: with an explicit -o and exactly one runtime, update -o directly when it
+# is NOT already a build root (i.e. has no <rid> subfolder). Otherwise use a <rid> subfolder.
+IN_PLACE=0
+ARCHIVE_DIR="$OUTPUT"
+if [[ $OUTPUT_EXPLICIT -eq 1 && ${#RIDS[@]} -eq 1 && ! -d "$OUTPUT/${RIDS[0]}" ]]; then
+  IN_PLACE=1
+  ARCHIVE_DIR="$(dirname "$OUTPUT")"
+fi
 
 # --- Helpers ---------------------------------------------------------------
 
@@ -255,16 +270,17 @@ fi
 
 for rid in "${RIDS[@]}"; do
   echo ""
-  zone_dir="$OUTPUT/$rid"
+  if [[ $IN_PLACE -eq 1 ]]; then zone_dir="$OUTPUT"; else zone_dir="$OUTPUT/$rid"; fi
+  loc="$rid"; [[ $IN_PLACE -eq 1 ]] && loc="$rid (in place: $zone_dir)"
 
   if [[ $CODE_ONLY -eq 1 ]]; then
-    echo "==> Updating code for $rid"
+    echo "==> Updating code for $loc"
     if [[ ! -d "$zone_dir/conf" ]]; then
       echo "    (warning) '$zone_dir' has no conf/ - not an existing zone. Use --full to build a complete package. Skipping." >&2
       continue
     fi
   else
-    echo "==> Packaging zone for $rid"
+    echo "==> Packaging zone for $loc"
     if [[ $CLEAN -eq 1 && -d "$zone_dir" ]]; then rm -rf "$zone_dir"; fi
     # 1) Zone template.
     copy_zone_template "$zone_dir"
@@ -307,7 +323,7 @@ for rid in "${RIDS[@]}"; do
   #    the executable bit on the apphost / run-server.sh).
   if [[ $ARCHIVE -eq 1 ]]; then
     version="4.0.0"
-    out="$OUTPUT/SubspaceServer-$version-$rid.tar.gz"
+    out="$ARCHIVE_DIR/SubspaceServer-$version-$rid.tar.gz"
     rm -f "$out"
     tar -czf "$out" -C "$zone_dir" .
     echo "    archive: $out"
@@ -324,7 +340,7 @@ if [[ $SOURCE -eq 1 ]]; then
     echo "    (warning) git not found; skipping source archive." >&2
   else
     version="4.0.0"
-    src_out="$OUTPUT/SubspaceServer-$version.tar.gz"
+    src_out="$ARCHIVE_DIR/SubspaceServer-$version.tar.gz"
     case "$src_out" in /*) ;; *) src_out="$PWD/$src_out" ;; esac
     rm -f "$src_out"
     # Reproduces GitHub's source archive: tracked files at $SOURCE_REF only, under a

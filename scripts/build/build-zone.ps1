@@ -34,7 +34,10 @@
     target). Larger output. Default: off (framework-dependent).
 
 .PARAMETER Output
-    Root output directory. Default: <repo>/zone (one subfolder per RID).
+    Root output directory. Default: <repo>/zone (one <rid> subfolder per RID).
+    With a single -Runtime and an explicit -Output that is NOT already a build root
+    (has no <rid> subfolder), -Output is treated as the zone itself and updated in
+    place - so '-Runtime linux-x64 -Output C:\srv\myzone' updates C:\srv\myzone directly.
 
 .PARAMETER Archive
     Also produce a .tar.gz archive per RID (no extra tools; preserves the executable bit).
@@ -123,6 +126,8 @@ EXAMPLES
   .\scripts\build\build-zone.ps1 -Runtime win-x64,osx-arm64 -Full
 
 Default updates only the code (bin/); pass -Full to assemble a complete package.
+With one runtime + an explicit -Output that has no <rid> subfolder, -Output is updated
+in place (no <rid> subfolder) - e.g. -Runtime linux-x64 -Output C:\srv\myzone.
 Framework-dependent by default: targets need the .NET 10 runtime installed.
 clients\Continuum.exe is excluded by default (copyrighted client binary).
 '@
@@ -148,6 +153,7 @@ $StartupPwshSC = Join-Path $RepoRoot 'scripts/startup/powershell/run-server-self
 $ExcludeFile = Join-Path $PSScriptRoot 'package-exclude.txt'
 $PrebuiltDir = Join-Path $PSScriptRoot 'prebuilt'
 
+$OutputExplicit = [bool]$Output
 if (-not $Output) { $Output = Join-Path $RepoRoot 'zone' }
 
 # Resolve the requested RID list. Normalize first so comma-separated values work
@@ -162,6 +168,16 @@ else {
     if ($unknown) {
         throw "Unknown runtime identifier(s): $($unknown -join ', '). Supported: $($AllRids -join ', ')."
     }
+}
+
+# Auto in-place: with an explicit -Output and exactly one runtime, update -Output directly
+# when it is NOT already a build root (has no <rid> subfolder). Otherwise use a <rid> subfolder.
+$InPlace = $false
+$ArchiveDir = $Output
+if ($OutputExplicit -and $Rids.Count -eq 1 -and
+    -not (Test-Path -LiteralPath (Join-Path $Output $Rids[0]) -PathType Container)) {
+    $InPlace = $true
+    $ArchiveDir = Split-Path -Parent $Output
 }
 
 # --- Helpers ---------------------------------------------------------------
@@ -427,10 +443,10 @@ $CodeOnly = -not $Full
 
 foreach ($rid in $Rids) {
     Write-Host ""
+    $zoneDir = if ($InPlace) { $Output } else { Join-Path $Output $rid }
     $label = if ($CodeOnly) { "Updating code for" } else { "Packaging zone for" }
-    Write-Host "==> $label $rid" -ForegroundColor Green
-
-    $zoneDir = Join-Path $Output $rid
+    $loc = if ($InPlace) { "$rid (in place: $zoneDir)" } else { $rid }
+    Write-Host "==> $label $loc" -ForegroundColor Green
 
     if ($CodeOnly) {
         if (-not (Test-Path -LiteralPath (Join-Path $zoneDir 'conf'))) {
@@ -489,7 +505,7 @@ foreach ($rid in $Rids) {
     # 6) Optional archive (.tar.gz per RID).
     if ($Archive) {
         $version = '4.0.0'
-        $tar = Join-Path $Output "SubspaceServer-$version-$rid.tar.gz"
+        $tar = Join-Path $ArchiveDir "SubspaceServer-$version-$rid.tar.gz"
         if (Test-Path -LiteralPath $tar) { Remove-Item -LiteralPath $tar -Force }
         # Use Windows' own tar.exe (bsdtar, ships with Win10 1803+) rather than whatever
         # 'tar' is first on PATH - a GNU tar (e.g. from Git Bash) misreads the drive-letter
@@ -531,7 +547,7 @@ if ($Source) {
     }
     else {
         $version = '4.0.0'
-        $srcOut = [System.IO.Path]::GetFullPath((Join-Path $Output "SubspaceServer-$version.tar.gz"))
+        $srcOut = [System.IO.Path]::GetFullPath((Join-Path $ArchiveDir "SubspaceServer-$version.tar.gz"))
         if (Test-Path -LiteralPath $srcOut) { Remove-Item -LiteralPath $srcOut -Force }
         # 'git archive' reproduces GitHub's source archive exactly: tracked files at
         # $SourceRef only, under a SubspaceServer-<version>/ top folder, honoring any
