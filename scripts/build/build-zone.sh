@@ -24,8 +24,11 @@ OPTIONS
   -o, --output <dir>         Output root; one <rid> subfolder each. Default: <repo>/zone
       --self-contained       Bundle the .NET runtime (no prerequisite on target)
       --archive              Also produce a .tar.gz per runtime
-      --include-continuum    Include clients/Continuum.exe (excluded by default)
-      --clean                Remove each per-RID folder before building
+      --include-continuum    Include clients/Continuum.exe (excluded by default; with --full)
+      --clean                Remove each per-RID folder before building (with --full)
+      --full                 Assemble the COMPLETE package (Zone content + launchers +
+                             LICENSE + code). Default builds only bin/ (code + modules),
+                             keeping an existing deployment's conf/maps/etc. untouched.
       --source               Also produce the GitHub-style source tarball (git archive)
       --source-ref <ref>     Git ref for --source. Default: HEAD
   -h, --help                 Show this help and exit
@@ -34,10 +37,11 @@ RUNTIMES
   win-x64  win-arm64  linux-x64  linux-arm64  osx-x64  osx-arm64
 
 EXAMPLES
-  scripts/build/build-zone.sh                          # all runtimes -> ./zone
-  scripts/build/build-zone.sh -r linux-x64 --archive   # one runtime + archive
-  scripts/build/build-zone.sh -r win-x64 -r osx-arm64  # a specific pair
+  scripts/build/build-zone.sh --full                   # complete packages -> ./zone/<rid>
+  scripts/build/build-zone.sh -r linux-x64             # update only code in ./zone/linux-x64
+  scripts/build/build-zone.sh -r linux-x64 --full --archive
 
+Default updates only the code (bin/); pass --full to assemble a complete package.
 Framework-dependent by default: targets need the .NET 10 runtime installed.
 clients/Continuum.exe is excluded by default (copyrighted client binary).
 EOF
@@ -56,6 +60,8 @@ LICENSE_FILE="$REPO_ROOT/LICENSE"
 STARTUP_BASH="$REPO_ROOT/scripts/startup/bash/run-server.sh"
 STARTUP_CMD="$REPO_ROOT/scripts/startup/cmd/run-server.cmd"
 STARTUP_PWSH="$REPO_ROOT/scripts/startup/powershell/run-server.ps1"
+STARTUP_BASH_SC="$REPO_ROOT/scripts/startup/bash/run-server-selfcontained.sh"
+STARTUP_PWSH_SC="$REPO_ROOT/scripts/startup/powershell/run-server-selfcontained.ps1"
 EXCLUDE_FILE="$SCRIPT_DIR/package-exclude.txt"
 PREBUILT_DIR="$SCRIPT_DIR/prebuilt"
 
@@ -66,6 +72,7 @@ OUTPUT=""
 ARCHIVE=0
 INCLUDE_CONTINUUM=0
 CLEAN=0
+FULL=0
 SOURCE=0
 SOURCE_REF="HEAD"
 
@@ -80,6 +87,7 @@ while [[ $# -gt 0 ]]; do
     --archive)             ARCHIVE=1; shift ;;
     --include-continuum)   INCLUDE_CONTINUUM=1; shift ;;
     --clean)               CLEAN=1; shift ;;
+    --full)                FULL=1; shift ;;
     --source)              SOURCE=1; shift ;;
     --source-ref)          SOURCE_REF="$2"; shift 2 ;;
     -h|--help)             usage; exit 0 ;;
@@ -103,6 +111,9 @@ fi
 
 if [[ $SELF_CONTAINED -eq 1 ]]; then SC="true"; else SC="false"; fi
 
+# Default is code-only; --full assembles the complete package.
+if [[ $FULL -eq 1 ]]; then CODE_ONLY=0; else CODE_ONLY=1; fi
+
 # --- Helpers ---------------------------------------------------------------
 
 run_dotnet() {
@@ -111,7 +122,7 @@ run_dotnet() {
 }
 
 # Discover plug-in module projects: any csproj under src/ that opts into dynamic
-# loading - the marker every module carries (see the plug-in guide in CLAUDE.md).
+# loading - the marker every module carries (see doc/developer-guide.md).
 # Auto-includes custom modules without editing this script. Prints one path per line.
 discover_plugins() {
   while IFS= read -r -d '' proj; do
@@ -138,51 +149,26 @@ copy_zone_template() {
 }
 
 write_launcher() {
+  # Copy the maintained startup scripts from scripts/startup into the package.
+  # run-server.ps1 ships in EVERY build; Windows also gets run-server.cmd, other
+  # platforms get run-server.sh. Self-contained builds use the native-apphost variants.
   local dest="$1" rid="$2"
   local is_win=0
   [[ "$rid" == win-* ]] && is_win=1
 
+  local pwsh_src="$STARTUP_PWSH" bash_src="$STARTUP_BASH"
   if [[ $SELF_CONTAINED -eq 1 ]]; then
-    if [[ $is_win -eq 1 ]]; then
-      cat > "$dest/run-server.cmd" <<'EOF'
-@echo off
-REM Startup script for a self-contained Subspace Server .NET zone package.
-:START
-ECHO %DATE% %TIME%: Starting Subspace Server .NET...
-bin\SubspaceServer.exe
-IF %ERRORLEVEL% EQU 1 GOTO START
-IF %ERRORLEVEL% EQU 3 GOTO START
-ECHO %DATE% %TIME%: Subspace Server .NET exited (code %ERRORLEVEL%).
-EOF
-    else
-      cat > "$dest/run-server.sh" <<'EOF'
-#!/bin/bash
-# Startup script for a self-contained Subspace Server .NET zone package.
-cd "$(dirname "$0")" || exit 2
-chmod +x ./bin/SubspaceServer 2>/dev/null
-while true; do
-  echo "$(date '+%Y-%m-%d %H:%M:%S'): Starting Subspace Server .NET"
-  ./bin/SubspaceServer
-  EXIT=$?
-  if [ $EXIT -ne 1 ] && [ $EXIT -ne 3 ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Subspace Server .NET exited (code $EXIT)."
-    break
-  fi
-done
-EOF
-      chmod +x "$dest/run-server.sh"
-    fi
-    return
+    pwsh_src="$STARTUP_PWSH_SC"
+    bash_src="$STARTUP_BASH_SC"
   fi
 
-  # Framework-dependent: reuse the maintained startup scripts. Windows packages get
-  # run-server.cmd + run-server.ps1; unix packages get run-server.sh (PowerShell isn't
-  # standard on Linux/macOS).
+  cp "$pwsh_src" "$dest/run-server.ps1"
+  chmod +x "$dest/run-server.ps1"
   if [[ $is_win -eq 1 ]]; then
+    # The .cmd apphost invocation (bin\SubspaceServer.exe) is identical for both modes.
     cp "$STARTUP_CMD" "$dest/run-server.cmd"
-    cp "$STARTUP_PWSH" "$dest/run-server.ps1"
   else
-    cp "$STARTUP_BASH" "$dest/run-server.sh"
+    cp "$bash_src" "$dest/run-server.sh"
     chmod +x "$dest/run-server.sh"
   fi
 }
@@ -202,14 +188,17 @@ copy_prebuilt() {
 }
 
 # Prune an assembled package per package-exclude.txt. See that file for the grammar.
+# Second arg "bin" restricts pruning to bin/ rules (used by code-only mode so it
+# never touches the deployment's conf/arenas/maps/etc.).
 prune_package() {
-  local root="$1"
+  local root="$1" scope="${2:-all}"
   [[ -f "$EXCLUDE_FILE" ]] || return 0
   local raw line name d
   while IFS= read -r raw || [[ -n "$raw" ]]; do
     line="${raw%%#*}"                                        # strip trailing comment
     line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"  # trim
     [[ -z "$line" ]] && continue
+    [[ "$scope" == "bin" && "$line" != bin/* ]] && continue
     if [[ "$line" == '**/'* ]]; then                         # basename at any depth
       name="${line#**/}"
       find "$root" -name "$name" -exec rm -rf {} + 2>/dev/null || true
@@ -266,16 +255,24 @@ fi
 
 for rid in "${RIDS[@]}"; do
   echo ""
-  echo "==> Packaging zone for $rid"
   zone_dir="$OUTPUT/$rid"
 
-  if [[ $CLEAN -eq 1 && -d "$zone_dir" ]]; then rm -rf "$zone_dir"; fi
+  if [[ $CODE_ONLY -eq 1 ]]; then
+    echo "==> Updating code for $rid"
+    if [[ ! -d "$zone_dir/conf" ]]; then
+      echo "    (warning) '$zone_dir' has no conf/ - not an existing zone. Use --full to build a complete package. Skipping." >&2
+      continue
+    fi
+  else
+    echo "==> Packaging zone for $rid"
+    if [[ $CLEAN -eq 1 && -d "$zone_dir" ]]; then rm -rf "$zone_dir"; fi
+    # 1) Zone template.
+    copy_zone_template "$zone_dir"
+  fi
 
-  # 1) Zone template.
-  copy_zone_template "$zone_dir"
-
-  # 2) Publish host into bin/.
+  # 2) Publish host into a fresh bin/.
   bin_dir="$zone_dir/bin"
+  rm -rf "$bin_dir"
   run_dotnet publish "$HOST_PROJECT" -c "$CONFIGURATION" -r "$rid" \
     --self-contained "$SC" -o "$bin_dir" --nologo
   find "$bin_dir" -maxdepth 1 -name '*.pdb' -delete 2>/dev/null || true
@@ -294,12 +291,17 @@ for rid in "${RIDS[@]}"; do
   # 3b) Overlay per-RID prebuilt modules (native EncryptionCont, etc.).
   copy_prebuilt "$modules_dir" "$rid"
 
-  # 4) Launchers + LICENSE.
-  write_launcher "$zone_dir" "$rid"
-  [[ -f "$LICENSE_FILE" ]] && cp "$LICENSE_FILE" "$zone_dir/LICENSE"
+  if [[ $CODE_ONLY -eq 1 ]]; then
+    # Prune only the code tree; never touch the deployment's conf/maps/etc.
+    prune_package "$zone_dir" bin
+  else
+    # 4) Launchers + LICENSE.
+    write_launcher "$zone_dir" "$rid"
+    [[ -f "$LICENSE_FILE" ]] && cp "$LICENSE_FILE" "$zone_dir/LICENSE"
 
-  # 5) Prune the assembled package per package-exclude.txt.
-  prune_package "$zone_dir"
+    # 5) Prune the assembled package per package-exclude.txt.
+    prune_package "$zone_dir"
+  fi
 
   # 6) Optional archive (.tar.gz for every RID: no extra tools, and it preserves
   #    the executable bit on the apphost / run-server.sh).

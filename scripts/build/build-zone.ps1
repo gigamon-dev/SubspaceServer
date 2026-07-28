@@ -44,7 +44,13 @@
     copyrighted client binary that should not be redistributed).
 
 .PARAMETER Clean
-    Delete the per-RID output folder before building.
+    Delete the per-RID output folder before building (only meaningful with -Full).
+
+.PARAMETER Full
+    Assemble the COMPLETE package: Zone content (conf, arenas, maps, ...), launchers,
+    LICENSE, plus the compiled code. Use this to create a package or refresh one from
+    scratch. WITHOUT -Full (the default), only the compiled code (bin/ + bin/modules/)
+    is (re)built in place, leaving an existing deployment's conf/maps/data untouched.
 
 .PARAMETER Source
     Also produce the GitHub-style source tarball via 'git archive':
@@ -55,12 +61,16 @@
     Git ref (tag/branch/commit) archived by -Source. Default: HEAD.
 
 .EXAMPLE
-    pwsh scripts/build/build-zone.ps1
-    Builds every supported RID into ./zone/<rid>.
+    pwsh scripts/build/build-zone.ps1 -Full
+    Assembles a complete package for every supported RID into ./zone/<rid>.
 
 .EXAMPLE
-    pwsh scripts/build/build-zone.ps1 -Runtime win-x64 -Archive
-    Builds only win-x64 and produces zone/win-x64 plus a .tar.gz.
+    pwsh scripts/build/build-zone.ps1 -Runtime win-x64
+    Updates only the code (bin/) of an existing ./zone/win-x64 deployment.
+
+.EXAMPLE
+    pwsh scripts/build/build-zone.ps1 -Runtime win-x64 -Full -Archive
+    Builds the complete win-x64 package and produces zone/win-x64 plus a .tar.gz.
 #>
 [CmdletBinding()]
 param(
@@ -71,6 +81,7 @@ param(
     [switch]   $Archive,
     [switch]   $IncludeContinuum,
     [switch]   $Clean,
+    [switch]   $Full,
     [switch]   $Source,
     [string]   $SourceRef = 'HEAD',
     [Alias('h')]
@@ -94,8 +105,11 @@ OPTIONS
   -Output <dir>              Output root; one <rid> subfolder each. Default: <repo>\zone
   -SelfContained             Bundle the .NET runtime (no prerequisite on target)
   -Archive                   Also produce a .tar.gz per runtime
-  -IncludeContinuum          Include clients\Continuum.exe (excluded by default)
-  -Clean                     Remove each per-RID folder before building
+  -IncludeContinuum          Include clients\Continuum.exe (excluded by default; -Full)
+  -Clean                     Remove each per-RID folder before building (with -Full)
+  -Full                      Assemble the COMPLETE package (Zone content + launchers +
+                             LICENSE + code). Default builds only bin/ (code + modules),
+                             keeping an existing deployment's conf/maps/etc. untouched.
   -Source                    Also produce the GitHub-style source tarball (git archive)
   -SourceRef <ref>           Git ref for -Source. Default: HEAD
   -Help                      Show this help and exit
@@ -104,10 +118,11 @@ RUNTIMES
   win-x64  win-arm64  linux-x64  linux-arm64  osx-x64  osx-arm64
 
 EXAMPLES
-  .\scripts\build\build-zone.ps1                          # all runtimes -> .\zone
-  .\scripts\build\build-zone.ps1 -Runtime win-x64 -Archive
-  .\scripts\build\build-zone.ps1 -Runtime win-x64,osx-arm64
+  .\scripts\build\build-zone.ps1 -Full                    # complete packages -> .\zone\<rid>
+  .\scripts\build\build-zone.ps1 -Runtime win-x64         # update only code in .\zone\win-x64
+  .\scripts\build\build-zone.ps1 -Runtime win-x64,osx-arm64 -Full
 
+Default updates only the code (bin/); pass -Full to assemble a complete package.
 Framework-dependent by default: targets need the .NET 10 runtime installed.
 clients\Continuum.exe is excluded by default (copyrighted client binary).
 '@
@@ -128,6 +143,8 @@ $LicenseFile = Join-Path $RepoRoot 'LICENSE'
 $StartupBash = Join-Path $RepoRoot 'scripts/startup/bash/run-server.sh'
 $StartupCmd = Join-Path $RepoRoot 'scripts/startup/cmd/run-server.cmd'
 $StartupPwsh = Join-Path $RepoRoot 'scripts/startup/powershell/run-server.ps1'
+$StartupBashSC = Join-Path $RepoRoot 'scripts/startup/bash/run-server-selfcontained.sh'
+$StartupPwshSC = Join-Path $RepoRoot 'scripts/startup/powershell/run-server-selfcontained.ps1'
 $ExcludeFile = Join-Path $PSScriptRoot 'package-exclude.txt'
 $PrebuiltDir = Join-Path $PSScriptRoot 'prebuilt'
 
@@ -160,7 +177,7 @@ function Invoke-Dotnet {
 
 function Get-PluginProject {
     # A plug-in module is any csproj under src/ that opts into dynamic loading -
-    # the marker every module carries (see the plug-in guide in CLAUDE.md).
+    # the marker every module carries (see doc/developer-guide.md).
     # This auto-includes custom modules without editing this script.
     $srcDir = Join-Path $RepoRoot 'src'
     Get-ChildItem -LiteralPath $srcDir -Recurse -Filter '*.csproj' -File |
@@ -212,12 +229,15 @@ function Copy-Prebuilt {
 
 function Remove-Excluded {
     # Prune the assembled package per package-exclude.txt. See that file for grammar.
-    param([string] $Root)
+    # -BinOnly restricts pruning to bin/ rules (used by code-only mode so it never
+    # touches the deployment's conf/arenas/maps/etc.).
+    param([string] $Root, [switch] $BinOnly)
 
     if (-not (Test-Path -LiteralPath $ExcludeFile)) { return }
     foreach ($raw in Get-Content -LiteralPath $ExcludeFile) {
         $line = ($raw -replace '#.*$', '').Trim()
         if (-not $line) { continue }
+        if ($BinOnly -and -not $line.StartsWith('bin/')) { continue }
 
         if ($line.StartsWith('**/')) {
             $name = $line.Substring(3)
@@ -241,63 +261,117 @@ function Remove-Excluded {
     }
 }
 
+function Get-TarString {
+    param([byte[]] $Bytes, [int] $Offset, [int] $Size)
+    $sb = New-Object System.Text.StringBuilder
+    for ($i = 0; $i -lt $Size; $i++) {
+        $c = $Bytes[$Offset + $i]
+        if ($c -eq 0) { break }
+        [void]$sb.Append([char]$c)
+    }
+    $sb.ToString()
+}
+
+function Get-TarOctal {
+    param([byte[]] $Bytes, [int] $Offset, [int] $Size)
+    $s = (Get-TarString $Bytes $Offset $Size).Trim()
+    if (-not $s) { return [int64]0 }
+    [Convert]::ToInt64($s, 8)
+}
+
+function Test-TarEntryExec {
+    # Which package files should be executable (0755) in a unix tar.
+    param([string] $Path)
+    $bn = [System.IO.Path]::GetFileName($Path)
+    if ($bn -eq 'run-server.sh' -or $bn -eq 'run-server.ps1') { return $true }
+    if ($bn -eq 'SubspaceServer' -or $bn -eq 'createdump') { return $true }  # apphost + diagnostics
+    if ($bn -like '*.so' -or $bn -like '*.so.*' -or $bn -like '*.dylib') { return $true }  # native libs
+    return $false
+}
+
+function Set-TarChecksum {
+    param([byte[]] $Bytes, [int] $HeaderOffset)
+    # Checksum is computed with the 8-byte checksum field (148..155) taken as spaces.
+    for ($i = 148; $i -lt 156; $i++) { $Bytes[$HeaderOffset + $i] = 0x20 }
+    $sum = 0
+    for ($i = 0; $i -lt 512; $i++) { $sum += $Bytes[$HeaderOffset + $i] }
+    $oct = [Convert]::ToString($sum, 8).PadLeft(6, '0')
+    for ($j = 0; $j -lt 6; $j++) { $Bytes[$HeaderOffset + 148 + $j] = [byte][char]$oct[$j] }
+    $Bytes[$HeaderOffset + 148 + 6] = 0      # NUL
+    $Bytes[$HeaderOffset + 148 + 7] = 0x20   # space
+}
+
+function Set-TarExecBits {
+    # Rewrite the mode field to 0755 for executable entries in an (uncompressed) tar,
+    # recomputing each patched header's checksum. Needed because a tar created on
+    # Windows can't carry a Unix execute bit (NTFS has none).
+    param([string] $TarPath)
+    $bytes = [System.IO.File]::ReadAllBytes($TarPath)
+    $pos = 0
+    while ($pos + 512 -le $bytes.Length) {
+        # End-of-archive marker is an all-zero block.
+        $allZero = $true
+        for ($i = 0; $i -lt 512; $i++) { if ($bytes[$pos + $i] -ne 0) { $allZero = $false; break } }
+        if ($allZero) { break }
+
+        $name = Get-TarString $bytes $pos 100
+        $prefix = Get-TarString $bytes ($pos + 345) 155
+        $full = if ($prefix) { "$prefix/$name" } else { $name }
+        $typeflag = $bytes[$pos + 156]
+        $size = Get-TarOctal $bytes ($pos + 124) 12
+
+        # Only regular files ('0' or NUL typeflag).
+        if (($typeflag -eq 0x30 -or $typeflag -eq 0) -and (Test-TarEntryExec $full)) {
+            $mode = [byte[]](0x30, 0x30, 0x30, 0x30, 0x37, 0x35, 0x35, 0x00)  # "0000755\0"
+            [Array]::Copy($mode, 0, $bytes, $pos + 100, 8)
+            Set-TarChecksum $bytes $pos
+        }
+
+        $dataBlocks = [math]::Ceiling($size / 512.0)
+        $pos += 512 + ([int]$dataBlocks * 512)
+    }
+    [System.IO.File]::WriteAllBytes($TarPath, $bytes)
+}
+
+function Compress-GZipFile {
+    param([string] $InPath, [string] $OutPath)
+    $in = [System.IO.File]::OpenRead($InPath)
+    try {
+        $out = [System.IO.File]::Create($OutPath)
+        try {
+            $gz = New-Object System.IO.Compression.GZipStream($out, [System.IO.Compression.CompressionLevel]::Optimal)
+            try { $in.CopyTo($gz) } finally { $gz.Dispose() }
+        }
+        finally { $out.Dispose() }
+    }
+    finally { $in.Dispose() }
+}
+
+function Copy-LauncherLF {
+    # Copy a startup script to the package as $Name, normalizing to LF (no BOM).
+    param([string] $Source, [string] $Destination, [string] $Name)
+    $content = Get-Content -LiteralPath $Source -Raw
+    [System.IO.File]::WriteAllText((Join-Path $Destination $Name), ($content -replace "`r`n", "`n"))
+}
+
 function Write-Launcher {
+    # Copies the maintained startup scripts from scripts/startup into the package.
+    # run-server.ps1 ships in EVERY build; Windows also gets run-server.cmd, other
+    # platforms get run-server.sh. The self-contained variants (native apphost) are
+    # used when -SelfContained is set; otherwise the framework-dependent ones.
     param([string] $Destination, [string] $Rid)
 
     $isWindows = $Rid.StartsWith('win-')
+    $pwshSrc = if ($SelfContained) { $StartupPwshSC } else { $StartupPwsh }
+    $bashSrc = if ($SelfContained) { $StartupBashSC } else { $StartupBash }
 
-    if ($SelfContained) {
-        # Self-contained: invoke the native apphost directly.
-        if ($isWindows) {
-            $cmd = @'
-@echo off
-REM Startup script for a self-contained Subspace Server .NET zone package.
-REM Restarts the server on recycle (exit code 1) / OOM (3).
-:START
-ECHO %DATE% %TIME%: Starting Subspace Server .NET...
-bin\SubspaceServer.exe
-IF %ERRORLEVEL% EQU 1 GOTO START
-IF %ERRORLEVEL% EQU 3 GOTO START
-ECHO %DATE% %TIME%: Subspace Server .NET exited (code %ERRORLEVEL%).
-'@
-            Set-Content -LiteralPath (Join-Path $Destination 'run-server.cmd') -Value $cmd -Encoding ascii
-        }
-        else {
-            $sh = @'
-#!/bin/bash
-# Startup script for a self-contained Subspace Server .NET zone package.
-# Restarts the server on recycle (exit code 1) / OOM (3).
-cd "$(dirname "$0")" || exit 2
-chmod +x ./bin/SubspaceServer 2>/dev/null
-while true; do
-  echo "$(date '+%Y-%m-%d %H:%M:%S'): Starting Subspace Server .NET"
-  ./bin/SubspaceServer
-  EXIT=$?
-  if [ $EXIT -ne 1 ] && [ $EXIT -ne 3 ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Subspace Server .NET exited (code $EXIT)."
-    break
-  fi
-done
-'@
-            $target = Join-Path $Destination 'run-server.sh'
-            # Write with LF line endings and no BOM.
-            [System.IO.File]::WriteAllText($target, ($sh -replace "`r`n", "`n"))
-        }
-        return
-    }
-
-    # Framework-dependent: reuse the maintained startup scripts (they invoke
-    # 'dotnet ./bin/SubspaceServer.dll' / 'bin\SubspaceServer.exe'). Windows packages
-    # get run-server.cmd + run-server.ps1; unix packages get run-server.sh (PowerShell
-    # isn't standard on Linux/macOS).
+    Copy-LauncherLF -Source $pwshSrc -Destination $Destination -Name 'run-server.ps1'
     if ($isWindows) {
+        # The .cmd apphost invocation (bin\SubspaceServer.exe) is identical for both modes.
         Copy-Item -LiteralPath $StartupCmd -Destination (Join-Path $Destination 'run-server.cmd') -Force
-        Copy-Item -LiteralPath $StartupPwsh -Destination (Join-Path $Destination 'run-server.ps1') -Force
     }
     else {
-        $target = Join-Path $Destination 'run-server.sh'
-        $content = Get-Content -LiteralPath $StartupBash -Raw
-        [System.IO.File]::WriteAllText($target, ($content -replace "`r`n", "`n"))
+        Copy-LauncherLF -Source $bashSrc -Destination $Destination -Name 'run-server.sh'
     }
 }
 
@@ -348,20 +422,33 @@ if ($PluginProjects.Count -gt $ModuleFolders.Count) {
 
 # --- Build one zone package per RID ----------------------------------------
 
+# Default is code-only; -Full assembles the complete package.
+$CodeOnly = -not $Full
+
 foreach ($rid in $Rids) {
     Write-Host ""
-    Write-Host "==> Packaging zone for $rid" -ForegroundColor Green
+    $label = if ($CodeOnly) { "Updating code for" } else { "Packaging zone for" }
+    Write-Host "==> $label $rid" -ForegroundColor Green
 
     $zoneDir = Join-Path $Output $rid
-    if ($Clean -and (Test-Path -LiteralPath $zoneDir)) {
-        Remove-Item -LiteralPath $zoneDir -Recurse -Force
+
+    if ($CodeOnly) {
+        if (-not (Test-Path -LiteralPath (Join-Path $zoneDir 'conf'))) {
+            Write-Warning "'$zoneDir' has no conf/ - not an existing zone. Use -Full to build a complete package. Skipping."
+            continue
+        }
+    }
+    else {
+        if ($Clean -and (Test-Path -LiteralPath $zoneDir)) {
+            Remove-Item -LiteralPath $zoneDir -Recurse -Force
+        }
+        # 1) Zone template (conf, arenas, maps, data, ...).
+        Copy-ZoneTemplate -Destination $zoneDir
     }
 
-    # 1) Zone template (conf, arenas, maps, data, ...).
-    Copy-ZoneTemplate -Destination $zoneDir
-
-    # 2) Publish the host into bin/ for this RID.
+    # 2) Publish the host into a fresh bin/ for this RID.
     $binDir = Join-Path $zoneDir 'bin'
+    if (Test-Path -LiteralPath $binDir) { Remove-Item -LiteralPath $binDir -Recurse -Force }
     $scValue = if ($SelfContained) { 'true' } else { 'false' }
     Invoke-Dotnet @(
         'publish', $HostProject,
@@ -384,17 +471,22 @@ foreach ($rid in $Rids) {
     # 3b) Overlay per-RID prebuilt modules (native EncryptionCont, etc.).
     Copy-Prebuilt -ModulesDir $modulesDir -Rid $rid
 
-    # 4) Launchers + LICENSE.
-    Write-Launcher -Destination $zoneDir -Rid $rid
-    if (Test-Path -LiteralPath $LicenseFile) {
-        Copy-Item -LiteralPath $LicenseFile -Destination (Join-Path $zoneDir 'LICENSE') -Force
+    if ($CodeOnly) {
+        # Prune only the code tree; never touch the deployment's conf/maps/etc.
+        Remove-Excluded -Root $zoneDir -BinOnly
+    }
+    else {
+        # 4) Launchers + LICENSE.
+        Write-Launcher -Destination $zoneDir -Rid $rid
+        if (Test-Path -LiteralPath $LicenseFile) {
+            Copy-Item -LiteralPath $LicenseFile -Destination (Join-Path $zoneDir 'LICENSE') -Force
+        }
+
+        # 5) Prune the assembled package per package-exclude.txt.
+        Remove-Excluded -Root $zoneDir
     }
 
-    # 5) Prune the assembled package per package-exclude.txt.
-    Remove-Excluded -Root $zoneDir
-
-    # 6) Optional archive (.tar.gz for every RID: no extra tools, and it preserves
-    #    the executable bit on the apphost / run-server.sh).
+    # 6) Optional archive (.tar.gz per RID).
     if ($Archive) {
         $version = '4.0.0'
         $tar = Join-Path $Output "SubspaceServer-$version-$rid.tar.gz"
@@ -407,8 +499,22 @@ foreach ($rid in $Rids) {
             $sysTar = Join-Path $env:SystemRoot 'System32\tar.exe'
             if (Test-Path -LiteralPath $sysTar) { $tarExe = $sysTar }
         }
-        & $tarExe -czf $tar -C $zoneDir '.'
-        if ($LASTEXITCODE -ne 0) { throw "tar exited with code $LASTEXITCODE." }
+        if ($rid.StartsWith('win-')) {
+            & $tarExe -czf $tar -C $zoneDir '.'
+            if ($LASTEXITCODE -ne 0) { throw "tar exited with code $LASTEXITCODE." }
+        }
+        else {
+            # Unix package: create an uncompressed tar, stamp Unix exec bits on the
+            # apphost / launchers / native libs (a Windows-created tar can't carry them),
+            # then gzip. This makes the .tar.gz extract ready-to-run on Linux/macOS.
+            $tmpTar = "$tar.tmp"
+            if (Test-Path -LiteralPath $tmpTar) { Remove-Item -LiteralPath $tmpTar -Force }
+            & $tarExe -cf $tmpTar -C $zoneDir '.'
+            if ($LASTEXITCODE -ne 0) { throw "tar exited with code $LASTEXITCODE." }
+            Set-TarExecBits -TarPath $tmpTar
+            Compress-GZipFile -InPath $tmpTar -OutPath $tar
+            Remove-Item -LiteralPath $tmpTar -Force
+        }
         Write-Host "    archive: $tar" -ForegroundColor DarkGray
     }
 

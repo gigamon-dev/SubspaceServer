@@ -27,3 +27,8 @@ bin/modules/Example/
 # Arenas not shipped in releases
 arenas/scf/
 arenas/tce/
+
+# Lvl not shipped in the releases
+maps/bdhadar.lvl
+maps/offset.lvl
+maps/smallmap.lvl

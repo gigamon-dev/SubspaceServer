@@ -8,6 +8,10 @@ source in this repo — chiefly `EncryptionCont` (the native encryption module, 
 `EncryptionContNative.*` differs per OS/arch). Get the per-platform binaries from the
 official releases: https://github.com/gigamon-dev/SubspaceServer/releases
 
+> **Not committed.** Binaries you place here are **git-ignored** (see `.gitignore`) —
+> they are populated locally per build and are not checked into the repo. Only the
+> folder structure (`.gitkeep`) and this README are tracked.
+
 ## Layout
 
 ```
