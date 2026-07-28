@@ -1,0 +1,34 @@
+# Files omitted from each assembled zone package (build-zone.ps1 / build-zone.sh).
+#
+# Paths are relative to the package root. New Zone content (arenas, confs, maps,
+# modules) is included AUTOMATICALLY - only list things here that should NOT ship.
+#
+# Line grammar:
+#   **/NAME        remove every file/dir named NAME at any depth (NAME may glob, e.g. **/*.bak)
+#   dir/           remove this directory entirely
+#   dir/*          empty this directory but keep it (for runtime dirs shipped empty)
+#   path           remove this specific file or directory
+#   # comment      ignored; blank lines ignored
+#
+# Note: .pdb symbols are already stripped during build/publish, so they aren't listed here.
+
+# Git repository artifacts
+**/.gitignore
+
+# Runtime working directories - shipped empty (state is created at runtime)
+data/*
+log/*
+tmp/*
+recordings/*
+
+# Reference/learning module - not shipped in releases (see src/Example)
+bin/modules/Example/
+
+# Arenas not shipped in releases
+arenas/scf/
+arenas/tce/
+
+# Lvl not shipped in the releases
+maps/bdhadar.lvl
+maps/offset.lvl
+maps/smallmap.lvl

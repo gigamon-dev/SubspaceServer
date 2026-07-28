@@ -1,0 +1,7 @@
+# Prebuilt native module binaries are populated locally per build and are NOT
+# committed to the repo. Keep only the folder structure (.gitkeep) and docs.
+*
+!.gitignore
+!README.md
+!*/
+!*/.gitkeep
