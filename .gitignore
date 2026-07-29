@@ -420,5 +420,5 @@ FodyWeavers.xsd
 .DS_Store
 
 # Ignore SubspaceServer packaging folders
-zone/
-dist/
+/zone/
+/dist/
