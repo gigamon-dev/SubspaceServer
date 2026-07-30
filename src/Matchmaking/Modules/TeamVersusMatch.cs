@@ -6816,6 +6816,11 @@ namespace SS.Matchmaking.Modules
             // Change the status to stop any additional attempts to end the match while we're ending it.
             matchData.Status = MatchStatus.Complete;
 
+            // Cancel any pending match completion check timers so that they can't later fire
+            // against this MatchData after it's been reset/reused for a future match.
+            _mainloopTimer.ClearTimer<MatchData>(MainloopTimer_WinConditionCheckForMatchCompletion, matchData);
+            _mainloopTimer.ClearTimer<MatchData>(MainlooopTimer_CheckForMatchCompletion, matchData);
+
             MatchEndingCallback.Fire(_broker, matchData);
 
             bool isNotificationHandled = false;
