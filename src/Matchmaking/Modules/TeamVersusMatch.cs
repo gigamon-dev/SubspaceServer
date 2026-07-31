@@ -5423,7 +5423,7 @@ namespace SS.Matchmaking.Modules
             UnassignSlot(slot, true);
 
             // Assign the slot.
-            _playerSlotDictionary.Add(player.Name!, slot);
+            _playerSlotDictionary[player.Name!] = slot;
             slot.PlayerName = player.Name;
             slot.Player = player;
             playerData.AssignedSlot = slot;
