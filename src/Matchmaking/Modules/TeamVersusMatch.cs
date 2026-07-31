@@ -6962,11 +6962,21 @@ namespace SS.Matchmaking.Modules
 
                 foreach (PlayerSlot slot in team.Slots)
                 {
+                    // Cancel any pending inactive slot timer so that it can't later fire against
+                    // this slot after it's been reassigned to a different player in a future match.
+                    _mainloopTimer.ClearTimer<PlayerSlot>(MainloopTimer_ProcessInactiveSlot, slot);
+
+                    // Cleanup slot sub info
+                    // Remove the slot from the available-to-sub list, if it's in the list.
+                    slot.AvailableSubSlotNode.List?.Remove(slot.AvailableSubSlotNode);
+                    slot.IsSubRequested = false;
+
                     if (slot.SubPlayer is not null)
                     {
                         CancelSubInProgress(slot, true);
                     }
 
+                    // Cleanup slot assignment
                     if (slot.Player is not null
                         && arena is not null
                         && slot.Player.Arena == arena
@@ -6975,10 +6985,6 @@ namespace SS.Matchmaking.Modules
                         // Move any remaining players to spec
                         _game.SetShipAndFreq(slot.Player, ShipType.Spec, arena.SpecFreq);
                     }
-
-                    // Cancel any pending inactive slot timer so that it can't later fire against
-                    // this slot after it's been reassigned to a different player in a future match.
-                    _mainloopTimer.ClearTimer<PlayerSlot>(MainloopTimer_ProcessInactiveSlot, slot);
 
                     UnassignSlot(slot, false);
                 }
@@ -6995,16 +7001,16 @@ namespace SS.Matchmaking.Modules
 
             matchData.ParticipationList.Clear();
 
+            // Reset the entire match, including all the teams and slots.
+            // Note: This also sets the status to None, which for matchmaking matches, makes it available to host another match.
+            matchData.Reset();
+
             if (matchData.LeagueGame is not null)
             {
                 // Do not reuse MatchData for league games.
                 _matchDataDictionary.Remove(matchData.MatchIdentifier);
                 return;
             }
-
-            // Reset the entire match, including all the teams slots.
-            // This also sets the status to None, which makes it available to host another match.
-            matchData.Reset();
 
             if (!_matchConfigurationDictionary.TryGetValue(matchData.MatchIdentifier.MatchType, out MatchConfiguration? configuration)
                 || configuration != matchData.Configuration)
