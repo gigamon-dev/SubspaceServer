@@ -7047,7 +7047,7 @@ namespace SS.Matchmaking.Modules
 
             builder.Append($"{leagueGame.LeagueName} - {leagueGame.SeasonName}");
 
-            if (string.IsNullOrWhiteSpace(leagueGame.RoundName))
+            if (!string.IsNullOrWhiteSpace(leagueGame.RoundName))
                 builder.Append($" - {leagueGame.RoundName}");
             else if (leagueGame.RoundNumber is not null)
                 builder.Append($" - Round #{leagueGame.RoundNumber}");
