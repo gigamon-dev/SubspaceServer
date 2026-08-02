@@ -3384,7 +3384,20 @@ namespace SS.Matchmaking.Modules
                         }
 
                         // Calculations
-                        int? wastedEnergy = memberStats.PlayTime == TimeSpan.Zero ? null : (int)(memberStats.WastedEnergy / memberStats.PlayTime.TotalMinutes);
+
+                        // Play time, including the in-progress session (if currently playing), so that it's up to date
+                        // for a player who disconnected and has since reconnected and resumed playing.
+                        TimeSpan playTime = memberStats.PlayTime;
+                        if (memberStats.StartTime is not null)
+                        {
+                            TimeSpan liveDuration = (matchStats.EndTimestamp ?? now) - memberStats.StartTime.Value;
+                            if (liveDuration > TimeSpan.Zero)
+                            {
+                                playTime += liveDuration;
+                            }
+                        }
+
+                        int? wastedEnergy = playTime == TimeSpan.Zero ? null : (int)(memberStats.WastedEnergy / playTime.TotalMinutes);
                         int? aveEnemyDistance = memberStats.DistanceToEnemySum is null || memberStats.DistanceToEnemySamples is null || memberStats.DistanceToEnemySamples < 0 ? null : (int)(memberStats.DistanceToEnemySum / memberStats.DistanceToEnemySamples / 16);
                         int damageDealt = memberStats.DamageDealtBombs + memberStats.DamageDealtBullets;
                         int damageTaken = memberStats.DamageTakenBombs + memberStats.DamageTakenBullets + memberStats.DamageTakenTeam + memberStats.DamageSelf;
@@ -3433,16 +3446,6 @@ namespace SS.Matchmaking.Modules
                                 aveEloRating += eloRating;
 
                             eloRatingCount++;
-                        }
-
-                        TimeSpan playTime = memberStats.PlayTime;
-                        if (memberStats.StartTime is not null)
-                        {
-                            TimeSpan duration = (matchStats.EndTimestamp ?? now) - memberStats.StartTime.Value;
-                            if (duration > TimeSpan.Zero)
-                            {
-                                playTime += duration;
-                            }
                         }
 
                         _chat.SendSetMessage(
