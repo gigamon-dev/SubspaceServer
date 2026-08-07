@@ -2324,7 +2324,7 @@ namespace SS.Replay
                             ref TurretKickoff turretKickoff = ref MemoryMarshal.AsRef<TurretKickoff>(buffer);
                             if (ad.PlayerIdMap.TryGetValue(turretKickoff.PlayerId, out player))
                             {
-                                //_game.turr
+                                _game.TurretKickoff(player);
                             }
                             else
                             {
