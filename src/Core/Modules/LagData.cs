@@ -13,17 +13,24 @@ namespace SS.Core.Modules
     /// Module that tracks lag statistics of players.
     /// </summary>
     [CoreModuleInfo]
-    public sealed class LagData : IModule, ILagCollect, ILagQuery
+    public sealed class LagData : IModule, IModuleLoaderAware, ILagCollect, ILagQuery
     {
         // TODO: maybe some of these could be config settings?
         private const int MaxPing = 10000;
         private const int PacketlossMinPackets = 200;
         private const int MaxBucket = 25;
         private const int BucketWidth = 20;
-        private const int TimeSyncSamples = 10;
+        private const int TimeSyncSamples = 24; // timesyncs are usually 5 seconds apart, so this is 2 minutes worth (assuming no packet loss)
 
+        // Required dependencies
         private readonly IComponentBroker _broker;
+        private readonly ILogManager _logManager;
         private readonly IPlayerData _playerData;
+
+        // Optional dependencies
+        private IClientSettings? _clientSettings;
+
+        // Registrations
         private InterfaceRegistrationToken<ILagCollect>? _iLagCollectToken;
         private InterfaceRegistrationToken<ILagQuery>? _iLagQueryToken;
 
@@ -32,9 +39,12 @@ namespace SS.Core.Modules
         /// </summary>
         private PlayerDataKey<PlayerLagStats> _lagkey;
 
-        public LagData(IComponentBroker broker, IPlayerData playerData)
+        private ClientSettingIdentifier _sendRoutePercentClientSettingIdentifier; // Latency:SendRoutePercent
+
+        public LagData(IComponentBroker broker, ILogManager logManager, IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
         }
 
@@ -42,6 +52,7 @@ namespace SS.Core.Modules
 
         bool IModule.Load(IComponentBroker broker)
         {
+            
             _lagkey = _playerData.AllocatePlayerData<PlayerLagStats>();
 
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
@@ -50,6 +61,20 @@ namespace SS.Core.Modules
             _iLagQueryToken = _broker.RegisterInterface<ILagQuery>(this);
 
             return true;
+        }
+
+        void IModuleLoaderAware.PostLoad(IComponentBroker broker)
+        {
+            _clientSettings = broker.GetInterface<IClientSettings>();
+            _clientSettings?.TryGetSettingsIdentifier("Latency", "SendRoutePercent", out _sendRoutePercentClientSettingIdentifier);
+        }
+
+        void IModuleLoaderAware.PreUnload(IComponentBroker broker)
+        {
+            if (_clientSettings is not null)
+            {
+                broker.ReleaseInterface(ref _clientSettings);
+            }
         }
 
         bool IModule.Unload(IComponentBroker broker)
@@ -74,7 +99,18 @@ namespace SS.Core.Modules
             if (action == PlayerAction.EnterArena)
             {
                 if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+                {
                     lagStats.ResetWeaponSentCount();
+
+                    // Changing arenas means the Latency:SendRoutePercent setting could have changed.
+                    // Refresh the C2S latency estimate.
+                    uint? updatedC2SLatencyEstimate = lagStats.RefreshC2SLatencyEstimate(GetSendRoutePercent(player));
+                    if (updatedC2SLatencyEstimate is not null)
+                    {
+                        _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Estimated C2S min latency updated to {updatedC2SLatencyEstimate.Value}.");
+                        C2SLatencyEstimateChangedCallback.Fire(_broker, player, updatedC2SLatencyEstimate.Value);
+                    }
+                }
             }
         }
 
@@ -120,10 +156,40 @@ namespace SS.Core.Modules
             }
         }
 
-        void ILagCollect.TimeSync(Player player, ref readonly TimeSyncData data)
+        void ILagCollect.TimeSyncC2SRequestAndS2CRequest(Player player, ref readonly TimeSyncRequestData data, bool requestSent)
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
-                lagStats.UpdateTimeSyncStats(in data);
+                lagStats.UpdateTimeSyncRequestReceivedStats(in data, requestSent);
+        }
+
+        void ILagCollect.TimeSyncS2CRequest(Player player, uint serverRequestTime, uint? clientResponseTime)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+                lagStats.UpdateTimeSyncRequestSentStats(serverRequestTime, clientResponseTime);
+        }
+
+        void ILagCollect.TimeSyncC2SResponse(Player player, uint serverRequestTime, uint serverResponseTime, uint clientResponseTime)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+            {
+                uint? updatedC2SLatencyEstimate = lagStats.UpdateTimeSyncResponseStats(serverRequestTime, serverResponseTime, clientResponseTime, GetSendRoutePercent(player));
+                if (updatedC2SLatencyEstimate is not null)
+                {
+                    _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Estimated C2S min latency updated to {updatedC2SLatencyEstimate.Value}.");
+                    C2SLatencyEstimateChangedCallback.Fire(player.Arena ?? _broker, player, updatedC2SLatencyEstimate.Value);
+                }
+            }
+        }
+
+        void ILagCollect.SetFakeC2SMinLatencyEstimate(Player player, uint estimate)
+        {
+            if (player.Type != ClientType.Fake)
+                return;
+
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+            {
+                lagStats.SetFakeC2SMinLatencyEstimate(estimate);
+            }
         }
 
         void ILagCollect.RelStats(Player player, ref readonly ReliableLagData data)
@@ -166,6 +232,19 @@ namespace SS.Core.Modules
                 ping = default;
         }
 
+        void ILagQuery.QueryTimeSyncPing(Player player, out PingSummary clientPing, out PingSummary serverPing)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+            {
+                lagStats.QueryTimeSyncPing(out clientPing, out serverPing);
+            }
+            else
+            {
+                clientPing = default;
+                serverPing = default;
+            }
+        }
+
         void ILagQuery.QueryPacketloss(Player player, out PacketlossSummary packetloss)
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
@@ -193,6 +272,22 @@ namespace SS.Core.Modules
                 lagStats.QueryReliableLag(out data);
             else
                 data = default;
+        }
+
+        bool ILagQuery.TryGetC2SMinLatencyEstimate(Player player, out uint estimate)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+            {
+                uint? c2s = lagStats.GetC2SMinLatencyEstimate();
+                if (c2s is not null)
+                {
+                    estimate = c2s.Value;
+                    return true;
+                }
+            }
+
+            estimate = default;
+            return false;
         }
 
         void ILagQuery.QueryTimeSyncHistory(Player player, ICollection<TimeSyncRecord> records)
@@ -248,7 +343,31 @@ namespace SS.Core.Modules
                 return false;
         }
 
+        bool ILagQuery.GetTimeSyncClientPingHistogram(Player player, ICollection<PingHistogramBucket> data)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+                return lagStats.GetTimeSyncClientPingHistogram(data);
+            else
+                return false;
+        }
+
+        bool ILagQuery.GetTimeSyncServerPingHistogram(Player player, ICollection<PingHistogramBucket> data)
+        {
+            if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+                return lagStats.GetTimeSyncServerPingHistogram(data);
+            else
+                return false;
+        }
+
+
         #endregion
+
+        private uint GetSendRoutePercent(Player player)
+        {
+            return player.Arena is not null && _clientSettings is not null
+                ? (uint)int.Clamp(_clientSettings.GetSetting(player, _sendRoutePercentClientSettingIdentifier), 100, 900)
+                : 500;
+        }
 
         #region Helper classes
 
@@ -301,6 +420,14 @@ namespace SS.Core.Modules
                     Max = ms;
             }
 
+            public void GetSummary(out PingSummary summary)
+            {
+                summary.Current = Current;
+                summary.Average = Average;
+                summary.Min = Min;
+                summary.Max = Max;
+            }
+
             public void Reset()
             {
                 Array.Clear(Buckets);
@@ -316,8 +443,60 @@ namespace SS.Core.Modules
             }
         }
 
-        private class TimeSyncHistory
+        /// <summary>
+        /// A single S2C time sync sample.
+        /// </summary>
+        private readonly struct TimeSyncSample
+        { 
+            /// <summary>
+            /// The server time that the S2C request was sent.
+            /// </summary>
+            public readonly ServerTick ServerRequestTime;
+
+            /// <summary>
+            /// The server time that the C2S response was received.
+            /// </summary>
+            public readonly ServerTick ServerResponseTime;
+
+            /// <summary>
+            /// The client time received when the S2C request was sent.
+            /// Only if the server initiated the S2C request when it received an incoming C2S request, otherwise <see langword="null"/>.
+            /// The client's time when it sent the C2S request.
+            /// </summary>
+            public readonly ServerTick? ClientRequestTime;
+
+            /// <summary>
+            /// The client time from the C2S response. The client's time when it received the S2C request.
+            /// </summary>
+            public readonly ServerTick ClientResponseTime;
+
+            public readonly uint ServerRTT;
+            public readonly uint? ClientRTT;
+
+            public TimeSyncSample(
+                ServerTick serverRequestTime,
+                ServerTick serverResponseTime,
+                ServerTick? clientRequestTime,
+                ServerTick clientResponseTime)
+            {
+                ServerRequestTime = serverRequestTime;
+                ServerResponseTime = serverResponseTime;
+                ClientRequestTime = clientRequestTime;
+                ClientResponseTime = clientResponseTime;
+
+                ServerRTT = (uint)(serverResponseTime - serverRequestTime);
+                ClientRTT = (clientRequestTime is not null)
+                    ? (uint)(clientResponseTime - clientRequestTime)
+                    : null;
+            }
+        }
+
+        private class TimeSyncStats
         {
+            //
+            // Data of incoming requests (client initiated, C2S requests received)
+            //
+
             private readonly TimeSyncRecord[] _records = new TimeSyncRecord[TimeSyncSamples];
             private int _next = 0;
             private int _count = 0;
@@ -325,7 +504,44 @@ namespace SS.Core.Modules
             private double? _driftStdDev = null;
             private bool _driftIsDirty = false;
 
-            public void Update(uint serverTime, uint clientTime)
+            //
+            // Data of outgoing requests (server initiated, S2C requests sent with C2S responses received)
+            //
+
+            /// <summary>
+            /// The # of timesync requests sent by the server.
+            /// </summary>
+            public uint S2CRequestCount { get; private set; }
+
+            /// <summary>
+            /// The # of timesync responses received from the client.
+            /// </summary>
+            public uint C2SResponseCount { get; private set; }
+
+            /// <summary>
+            /// The server time that a time sync request was last sent. When we get a response, it should match.
+            /// </summary>
+            private uint? _requestSentServerTime;
+
+            /// <summary>
+            /// The client time that was received right before a time sync request was last sent.
+            /// This can be <see langword="null"/> if the outgoing time sync request was sent without first receiving a client time.
+            /// This value allows us to calculate an additional RTT when the response is received.
+            /// </summary>
+            private uint? _requestSentClientTime;
+
+            private readonly TimeSyncSample[] _samples = new TimeSyncSample[TimeSyncSamples];
+            private int _samplesHead = 0;
+            private int _samplesNext = 0;
+            private int _samplesCount = 0;
+
+            private int? _minRoundtripResultIndex;
+            public uint? C2SLatencyEstimate { get; private set; }
+
+            public readonly PingStats ClientPing = new();
+            public readonly PingStats ServerPing = new();
+
+            public void UpdateForRequestReceived(uint serverTime, uint clientTime, bool requestSent)
             {
                 int sampleIndex = _next;
                 _records[sampleIndex].ServerTime = serverTime;
@@ -335,16 +551,117 @@ namespace SS.Core.Modules
 
                 if (_count < _records.Length)
                     _count++;
+
+                if (requestSent)
+                {
+                    UpdateForRequestSent(serverTime, clientTime);
+                }
             }
 
-            public void Reset()
+            public void UpdateForRequestSent(uint serverTime, uint? clientTime)
             {
-                Array.Clear(_records);
-                _next = 0;
-                _count = 0;
-                _driftAvg = null;
-                _driftStdDev = null;
-                _driftIsDirty = false;
+                _requestSentServerTime = serverTime;
+                _requestSentClientTime = clientTime;
+                S2CRequestCount++;
+            }
+
+            public void UpdateForResponseReceived(
+                uint serverRequestTime,
+                uint serverResponseTime,
+                uint clientResponseTime,
+                uint sendRoutePercent,
+                out bool c2sLatencyEstimateUpdated)
+            {
+                c2sLatencyEstimateUpdated = false;
+
+                if (_requestSentServerTime != serverRequestTime)
+                    return;
+
+                C2SResponseCount++;
+
+                // Save the sample
+                int sampleIndex = _samplesNext;
+                _samples[sampleIndex] = new TimeSyncSample(serverRequestTime, serverResponseTime, _requestSentClientTime, clientResponseTime);
+                _samplesNext = (sampleIndex + 1) % _samples.Length;
+
+                if (_samplesCount < _samples.Length)
+                    _samplesCount++;
+                else
+                    _samplesHead = (_samplesHead + 1) % _samples.Length;
+
+                ref readonly TimeSyncSample newSample = ref _samples[sampleIndex];
+
+                // Collect ping data for the lag histogram of time sync data.
+                ServerPing.Add((int)newSample.ServerRTT * 10);
+                if (newSample.ClientRTT is not null)
+                    ClientPing.Add((int)newSample.ClientRTT.Value * 10);
+
+                // Track min C2S RTT over a set of the most recent samples.
+                bool changed = false;
+                if (_minRoundtripResultIndex is not null)
+                {
+                    if (_minRoundtripResultIndex.Value == sampleIndex)
+                    {
+                        // The minimum RTT record has been overwritten.
+                        // Recalculate it by going through all of the data.
+                        // Start with the most recent and look for a shorter roundtrip time.
+                        _minRoundtripResultIndex = null;
+                        for (int i = _samplesCount - 1; i >= 0; i--)
+                        {
+                            int checkIndex = (_samplesHead + i) % _samples.Length;
+                            if (_minRoundtripResultIndex is null || _samples[checkIndex].ServerRTT < _samples[_minRoundtripResultIndex.Value].ServerRTT)
+                            {
+                                _minRoundtripResultIndex = checkIndex;
+                                changed = true;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Compare the new sample with the current known minimum.
+                        ref readonly TimeSyncSample currentSample = ref _samples[_minRoundtripResultIndex.Value];
+
+                        if (newSample.ServerRTT <= currentSample.ServerRTT)
+                        {
+                            changed = newSample.ServerRTT < currentSample.ServerRTT;
+                            _minRoundtripResultIndex = sampleIndex;
+                        }
+                    }
+                }
+                else
+                {
+                    _minRoundtripResultIndex = sampleIndex;
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    // The RTT changed. Calculate a new C2S latency estimate.
+                    // Try to refresh the active C2S latency estimate.
+                    c2sLatencyEstimateUpdated = RefreshC2SLatencyEstimate(sendRoutePercent);
+                }
+            }
+
+            public bool RefreshC2SLatencyEstimate(uint sendRoutePercent)
+            {
+                if (_minRoundtripResultIndex is null)
+                    return false;
+
+                uint newEstimate = _samples[_minRoundtripResultIndex!.Value].ServerRTT * sendRoutePercent / 1000;
+                
+                if (C2SLatencyEstimate is null // no active estimate yet
+                    || C2SLatencyEstimate.Value != newEstimate) // estimate is dirty
+                {
+                    C2SLatencyEstimate = newEstimate;
+                    return true;
+                }
+
+                return false;
+            }
+
+            public void OverrideC2SLatencyEstimate(uint estimate)
+            {
+                C2SLatencyEstimate = estimate;
             }
 
             /// <summary>
@@ -371,7 +688,7 @@ namespace SS.Core.Modules
                 }
             }
 
-            void RefreshDrift()
+            private void RefreshDrift()
             {
                 if (!_driftIsDirty)
                 {
@@ -440,6 +757,31 @@ namespace SS.Core.Modules
                     records.Add(_records[(_next + _records.Length - i) % _records.Length]);
                 }
             }
+
+            public void Reset()
+            {
+                // client initiated data
+                Array.Clear(_records);
+                _next = 0;
+                _count = 0;
+                _driftAvg = null;
+                _driftStdDev = null;
+                _driftIsDirty = false;
+
+                // server initiated data
+                S2CRequestCount = 0;
+                C2SResponseCount = 0;
+                _requestSentServerTime = null;
+                _requestSentClientTime = null;
+                Array.Clear(_samples);
+                _samplesHead = 0;
+                _samplesNext = 0;
+                _samplesCount = 0;
+                _minRoundtripResultIndex = null;
+                C2SLatencyEstimate = null;
+                ClientPing.Reset();
+                ServerPing.Reset();
+            }
         }
 
         private class PlayerLagStats : IResettable
@@ -447,8 +789,8 @@ namespace SS.Core.Modules
             private readonly PingStats PositionPacketPing = new();
             private readonly PingStats ReliablePing = new();
             private ClientLatencyData ClientReportedData;
-            private TimeSyncData Packetloss;
-            private readonly TimeSyncHistory TimeSync = new();
+            private TimeSyncRequestData Packetloss;
+            private readonly TimeSyncStats TimeSync = new();
             private ReliableLagData ReliableLagData;
 
             /// <summary>
@@ -546,12 +888,53 @@ namespace SS.Core.Modules
                 }
             }
 
-            public void UpdateTimeSyncStats(ref readonly TimeSyncData data)
+            public void UpdateTimeSyncRequestReceivedStats(ref readonly TimeSyncRequestData data, bool requestSent)
             {
                 lock (_lock)
                 {
                     Packetloss = data;
-                    TimeSync.Update(data.ServerTime, data.ClientTime);
+                    TimeSync.UpdateForRequestReceived(data.ServerTime, data.ClientTime, requestSent);
+                }
+            }
+
+            public void UpdateTimeSyncRequestSentStats(uint serverTime, uint? clientTime)
+            {
+                lock (_lock)
+                {
+                    TimeSync.UpdateForRequestSent(serverTime, clientTime);
+                }
+            }
+
+            public uint? UpdateTimeSyncResponseStats(uint serverRequestTime, uint serverResponseTime, uint clientResponseTime, uint sendRoutePercent)
+            {
+                lock (_lock)
+                {
+                    TimeSync.UpdateForResponseReceived(serverRequestTime, serverResponseTime, clientResponseTime, sendRoutePercent, out bool c2sLatencyEstimateUpdated);
+                    return c2sLatencyEstimateUpdated ? TimeSync.C2SLatencyEstimate!.Value : null;
+                }
+            }
+
+            public uint? RefreshC2SLatencyEstimate(uint sendRoutePercent)
+            {
+                lock (_lock)
+                {
+                    return TimeSync.RefreshC2SLatencyEstimate(sendRoutePercent) ? TimeSync.C2SLatencyEstimate!.Value : null;
+                }
+            }
+
+            public void SetFakeC2SMinLatencyEstimate(uint estimate)
+            {
+                lock (_lock)
+                {
+                    TimeSync.OverrideC2SLatencyEstimate(estimate);
+                }
+            }
+
+            public uint? GetC2SMinLatencyEstimate()
+            {
+                lock(_lock)
+                {
+                    return TimeSync.C2SLatencyEstimate;
                 }
             }
 
@@ -567,10 +950,7 @@ namespace SS.Core.Modules
             {
                 lock (_lock)
                 {
-                    ping.Current = PositionPacketPing.Current;
-                    ping.Average = PositionPacketPing.Average;
-                    ping.Min = PositionPacketPing.Min;
-                    ping.Max = PositionPacketPing.Max;
+                    PositionPacketPing.GetSummary(out ping);
                 }
             }
 
@@ -595,10 +975,16 @@ namespace SS.Core.Modules
             {
                 lock (_lock)
                 {
-                    ping.Current = ReliablePing.Current;
-                    ping.Average = ReliablePing.Average;
-                    ping.Min = ReliablePing.Min;
-                    ping.Max = ReliablePing.Max;
+                    ReliablePing.GetSummary(out ping);
+                }
+            }
+
+            public void QueryTimeSyncPing(out PingSummary clientPing, out PingSummary serverPing)
+            {
+                lock (_lock)
+                {
+                    TimeSync.ClientPing.GetSummary(out clientPing);
+                    TimeSync.ServerPing.GetSummary(out serverPing);
                 }
             }
 
@@ -609,6 +995,7 @@ namespace SS.Core.Modules
                     summary.S2C = CalculatePacketloss(Packetloss.ServerPacketsSent, Packetloss.ClientPacketsReceived);
                     summary.C2S = CalculatePacketloss(Packetloss.ClientPacketsSent, Packetloss.ServerPacketsReceived);
                     summary.S2CWeapon = CalculatePacketloss(WeaponSentCount, WeaponReceiveCount);
+                    summary.TimeSync = CalculatePacketloss(TimeSync.S2CRequestCount, TimeSync.C2SResponseCount);
                 }
 
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -690,6 +1077,22 @@ namespace SS.Core.Modules
                 lock (_lock)
                 {
                     return GetPingHistogram(ReliablePing, data);
+                }
+            }
+
+            public bool GetTimeSyncClientPingHistogram(ICollection<PingHistogramBucket> data)
+            {
+                lock (_lock)
+                {
+                    return GetPingHistogram(TimeSync.ClientPing, data);
+                }
+            }
+
+            public bool GetTimeSyncServerPingHistogram(ICollection<PingHistogramBucket> data)
+            {
+                lock (_lock)
+                {
+                    return GetPingHistogram(TimeSync.ServerPing, data);
                 }
             }
 

@@ -31,6 +31,7 @@ namespace SS.Core.Modules
         IClientSettings clientSettings,
         IConfigManager configManager,
         ILagCollect lagCollect,
+        ILagQuery lagQuery,
         ILogManager logManager,
         IMainloop mainloop,
         IMapData mapData,
@@ -46,6 +47,7 @@ namespace SS.Core.Modules
         private readonly IClientSettings _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
         private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
         private readonly ILagCollect _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
+        private readonly ILagQuery _lagQuery = lagQuery ?? throw new ArgumentNullException(nameof(lagQuery));
         private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
         private readonly IMapData _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
@@ -1227,11 +1229,15 @@ namespace SS.Core.Modules
                 PlayerActionCallback.Fire(arena, player, PlayerAction.EnterGame, arena);
             }
 
-            int latency = gtc - pos.Time;
-            if (latency < 0)
-                latency = 0;
-            else if (latency > 255)
-                latency = 255;
+            if (!_lagQuery.TryGetC2SMinLatencyEstimate(player, out uint c2sLatency))
+                c2sLatency = 0;
+
+            // Based on the C2S latency estimate, calculate the latest time that the client
+            // should have been able to send the packet if C2S latency were at its minimum.
+            ServerTick posTick = gtc - c2sLatency;
+
+            // TODO: maybe skip if latency > a certain configured amount? 2.55 seconds is obviously way too long for data to be meaningful
+            uint latency = (uint)int.Clamp(posTick - pos.Time, 0, 255);
 
             int randnum = _prng.Rand();
 
@@ -1557,7 +1563,7 @@ namespace SS.Core.Modules
                                             ref SmallPosition small = ref smallSingle.Position;
                                             small.PlayerId = (byte)player.Id;
                                             small.Rotation = posCopy.Rotation;
-                                            small.Time = (ushort)(gtc - (uint)latency);
+                                            small.Time = (ushort)(posTick - latency);
                                             small.X = posCopy.X;
                                             small.Y = posCopy.Y;
                                             small.XSpeed = posCopy.XSpeed;
@@ -1586,7 +1592,7 @@ namespace SS.Core.Modules
                                             large.Status = posCopy.Status;
                                             large.PlayerId = (ushort)player.Id;
                                             large.Rotation = posCopy.Rotation;
-                                            large.Time = (ushort)(gtc - (uint)latency);
+                                            large.Time = (ushort)(posTick - latency);
                                             large.X = posCopy.X;
                                             large.Y = posCopy.Y;
                                             large.XSpeed = posCopy.XSpeed;
@@ -1606,7 +1612,7 @@ namespace SS.Core.Modules
                                         {
                                             wpn.Type = (byte)S2CPacketType.Weapon;
                                             wpn.Rotation = posCopy.Rotation;
-                                            wpn.Time = (ushort)(gtc & 0xFFFF);
+                                            wpn.Time = (ushort)(posTick & 0xFFFF);
                                             wpn.X = posCopy.X;
                                             wpn.YSpeed = posCopy.YSpeed;
                                             wpn.PlayerId = (ushort)player.Id;
@@ -1646,7 +1652,7 @@ namespace SS.Core.Modules
                                         {
                                             sendPos.Type = (byte)S2CPacketType.Position;
                                             sendPos.Rotation = posCopy.Rotation;
-                                            sendPos.Time = (ushort)(gtc & 0xFFFF);
+                                            sendPos.Time = (ushort)(posTick & 0xFFFF);
                                             sendPos.X = posCopy.X;
                                             sendPos.C2SLatency = (byte)latency;
                                             sendPos.Bounty = (byte)posCopy.Bounty;

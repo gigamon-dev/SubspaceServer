@@ -300,13 +300,14 @@ namespace SS.Core.Modules
         private void CheckLag(Player player, ArenaLagLimits lagLimits)
         {
             // gather data
-            _lagQuery.QueryPositionPing(player, out PingSummary positionPing);
             _lagQuery.QueryClientPing(player, out ClientPingSummary clientPing);
+            _lagQuery.QueryPositionPing(player, out PingSummary positionPing);
             _lagQuery.QueryReliablePing(player, out PingSummary reliablePing);
+            _lagQuery.QueryTimeSyncPing(player, out PingSummary clientTimeSyncPing, out PingSummary serverTimeSyncPing);
             _lagQuery.QueryPacketloss(player, out PacketlossSummary packetloss);
 
-            // average all pings together with reliable ping counted twice
-            int averagePing = (positionPing.Average + clientPing.Average + (2 * reliablePing.Average)) / 4;
+            // average all pings together with reliable ping and time sync pings having twice the weight since they're far more accurate
+            int averagePing = (positionPing.Average + clientPing.Average + (2 * reliablePing.Average) + (2 * clientTimeSyncPing.Average) + (2 * serverTimeSyncPing.Average)) / 8;
 
             // check conditions that force spec
             if (averagePing > lagLimits.Ping.ForceSpec)

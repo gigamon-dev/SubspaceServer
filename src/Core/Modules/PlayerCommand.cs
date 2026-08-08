@@ -549,6 +549,9 @@ namespace SS.Core.Modules
                 """)]
         private void Command_lag(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
+            if (_lagQuery is null)
+                return;
+
             if (!target.TryGetPlayerTarget(out Player? targetPlayer))
                 targetPlayer = player;
 
@@ -558,14 +561,15 @@ namespace SS.Core.Modules
                 return;
             }
 
-            _lagQuery!.QueryPositionPing(targetPlayer, out PingSummary positionPing);
             _lagQuery.QueryClientPing(targetPlayer, out ClientPingSummary clientPing);
+            _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing);
             _lagQuery.QueryReliablePing(targetPlayer, out PingSummary reliablePing);
+            _lagQuery.QueryTimeSyncPing(targetPlayer, out PingSummary clientTimeSyncPing, out PingSummary serverTimeSyncPing);
             _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetloss);
             _lagQuery.QueryTimeSyncDriftMs(targetPlayer, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev);
 
-            // weight reliable ping twice the S2C and C2S
-            int average = (positionPing.Average + clientPing.Average + 2 * reliablePing.Average) / 4;
+            // average all pings together with reliable ping and time sync pings having twice the weight since they're far more accurate
+            int average = (positionPing.Average + clientPing.Average + (2 * reliablePing.Average) + (2 * clientTimeSyncPing.Average) + (2 * serverTimeSyncPing.Average)) / 8;
 
             string prefix = targetPlayer == player ? "lag" : targetPlayer.Name!;
 
@@ -580,10 +584,13 @@ namespace SS.Core.Modules
                 _chat.SendMessage(player, $"{prefix}: s2c ping: {clientPing.Current} {clientPing.Average} ({clientPing.Min}-{clientPing.Max}) (reported by client)");
                 _chat.SendMessage(player, $"{prefix}: c2s ping: {positionPing.Current} {positionPing.Average} ({positionPing.Min}-{positionPing.Max}) (from position pkt times)");
                 _chat.SendMessage(player, $"{prefix}: rel ping: {reliablePing.Current} {reliablePing.Average} ({reliablePing.Min}-{reliablePing.Max}) (reliable ping)");
+                _chat.SendMessage(player, $"{prefix}: sts ping: {serverTimeSyncPing.Current} {serverTimeSyncPing.Average} ({serverTimeSyncPing.Min}-{serverTimeSyncPing.Max}) (server time sync)");
+                _chat.SendMessage(player, $"{prefix}: cts ping: {clientTimeSyncPing.Current} {clientTimeSyncPing.Average} ({clientTimeSyncPing.Min}-{clientTimeSyncPing.Max}) (client time sync)");
+
                 _chat.SendMessage(player, $"{prefix}: effective ping: {average} (average of above)");
 
                 double s2cRelLoss = (reliableLag.Retries == 0) ? 0d : ((reliableLag.Retries - reliableLag.AckDups) * 100d / reliableLag.ReliablePacketsSent);
-                _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.S2C * 100d:F2}  c2s: {packetloss.C2S * 100d:F2}  s2cwpn: {packetloss.S2CWeapon * 100d:F2}  s2crel: {s2cRelLoss:F2}");
+                _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.S2C * 100d:F2}  c2s: {packetloss.C2S * 100d:F2}  s2cwpn: {packetloss.S2CWeapon * 100d:F2}  s2crel: {s2cRelLoss:F2}  ts: {packetloss.TimeSync * 100d:F2}");
                 _chat.SendMessage(player, $"{prefix}: reliable: dups: {reliableLag.RelDups * 100d / reliableLag.ReliablePacketsReceived:F2}%  resends: {reliableLag.Retries * 100d / reliableLag.ReliablePacketsSent:F2}%");
 
                 StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
@@ -678,10 +685,13 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
-            Args = "[-r]",
+            Args = "[-r | -c | -s]",
             Description = """
                 Displays a histogram containing lag information about you or a target player.
-                By default, c2s position ping data is returned. Use -r to get reliable ping data.
+                By default, c2s position ping data is returned. 
+                Use -r for reliable ping data.
+                Use -c for time sync data (client times).
+                Use -s for time sync data (server times).
                 """)]
         private void Command_laghist(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -692,10 +702,17 @@ namespace SS.Core.Modules
 
             try
             {
-
-                if (parameters.Contains("-r", StringComparison.OrdinalIgnoreCase)
-                    ? _lagQuery!.GetReliablePingHistogram(targetPlayer, histogramData)
-                    : _lagQuery!.GetPositionPingHistogram(targetPlayer, histogramData))
+                bool hasData;
+                if (parameters.Contains("-r", StringComparison.OrdinalIgnoreCase))
+                    hasData = _lagQuery!.GetReliablePingHistogram(targetPlayer, histogramData);
+                else if (parameters.Contains("-c", StringComparison.OrdinalIgnoreCase))
+                    hasData = _lagQuery!.GetTimeSyncClientPingHistogram(targetPlayer, histogramData);
+                else if (parameters.Contains("-s", StringComparison.OrdinalIgnoreCase))
+                    hasData = _lagQuery!.GetTimeSyncServerPingHistogram(targetPlayer, histogramData);
+                else
+                    hasData = _lagQuery!.GetPositionPingHistogram(targetPlayer, histogramData);
+                    
+                if (hasData)
                 {
                     int max = 0;
                     int sum = 0;

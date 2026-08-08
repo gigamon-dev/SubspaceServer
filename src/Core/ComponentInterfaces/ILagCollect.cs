@@ -26,7 +26,7 @@
     /// <summary>
     /// Lag data from a time sync request (0x00 0x05).
     /// </summary>
-    public readonly struct TimeSyncData
+    public readonly struct TimeSyncRequestData
     {
         /* what the server thinks */
         public readonly uint ServerPacketsReceived { get; init; }
@@ -108,11 +108,46 @@
         void ClientLatency(Player player, ref readonly ClientLatencyData data);
 
         /// <summary>
-        /// For collecting information when a time sync request arrives (0x00 0x05 core packet).
+        /// Collects information for when a C2S timesync request was received
+        /// and if an optional follow-up S2C timesync request was sent along with the S2C timesync response.
         /// </summary>
         /// <param name="player">The player the data is for.</param>
         /// <param name="data">Data for the sync.</param>
-        void TimeSync(Player player, ref readonly TimeSyncData data);
+        /// <param name="requestSent">Whether a S2C timesync request was sent at the same time as sending the response to the C2S timesync request.</param>
+        void TimeSyncC2SRequestAndS2CRequest(Player player, ref readonly TimeSyncRequestData data, bool requestSent);
+
+        /// <summary>
+        /// Collects information for when a S2C timesync request was sent.
+        /// </summary>
+        /// <param name="player">The player the data is for.</param>
+        /// <param name="serverRequestTime">The server time that the request was sent.</param>
+        /// <param name="clientResponseTime">Optional, the client time if known (e.g. the S2C request is being sent in response to a C2S request which provided a client time).</param>
+        void TimeSyncS2CRequest(Player player, uint serverRequestTime, uint? clientResponseTime);
+
+        /// <summary>
+        /// Collects information for when a time sync response was received.
+        /// </summary>
+        /// <param name="player"></param>
+        /// <param name="serverRequestTime">The server time when the request was made.</param>
+        /// <param name="serverResponseTime">The server time when the response was received.</param>
+        /// <param name="clientResponseTime">The client time when the client responded to the request.</param>
+        void TimeSyncC2SResponse(Player player, uint serverRequestTime, uint serverResponseTime, uint clientResponseTime);
+
+        /// <summary>
+        /// Sets the C2S minimum latency estimate for fake players.
+        /// </summary>
+        /// <remarks>
+        /// The C2S minimum latency estimate affects the time fields of outgoing position packets.
+        /// <para>
+        /// This is useful for replays. A replay can store what the player's estimate was, so that when played back, the equivalent position packet time can be sent.
+        /// </para>
+        /// <para>
+        /// This could also potentially be useful for remotely controlled AI players that use their own custom communication channel rather than emulate being a client.
+        /// </para>
+        /// </remarks>
+        /// <param name="player">The player to set. This must be a <see cref="ClientType.Fake"/> player.</param>
+        /// <param name="estimate">The C2S latency estimate (ticks).</param>
+        void SetFakeC2SMinLatencyEstimate(Player player, uint estimate);
 
         /// <summary>
         /// For collecting information after processing the outgoing network queues.
