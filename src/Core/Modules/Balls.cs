@@ -178,8 +178,11 @@ namespace SS.Core.Modules
             if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
+            bool alreadyEnded;
             lock (ad.Lock)
             {
+                alreadyEnded = ad.GameEnded;
+
                 for (int i = 0; i < ad.BallCount; i++)
                 {
                     PhaseBall(arena, i);
@@ -198,8 +201,11 @@ namespace SS.Core.Modules
             }
 
             // The ball game is over — notify subscribers. Fired outside the lock so handlers may call back into IBalls.
+            // Only fire on the active->ended transition, so a second EndGame in the same goal (e.g. a golden goal
+            // that also satisfies the win condition) doesn't fire BallGameOver twice.
             // ASSS's CB_BALLGAMEOVER carries no winner; -1 means "ended with no specific winner reported here".
-            BallGameOverCallback.Fire(arena, arena, -1);
+            if (!alreadyEnded)
+                BallGameOverCallback.Fire(arena, arena, -1);
 
             IPersistExecutor? persistExecutor = _broker.GetInterface<IPersistExecutor>();
             if (persistExecutor != null)
