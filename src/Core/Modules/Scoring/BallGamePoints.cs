@@ -89,7 +89,6 @@ namespace SS.Core.Modules.Scoring
 
             ArenaActionCallback.Register(arena, Callback_ArenaAction);
             BallGoalCallback.Register(arena, Callback_BallGoal);
-            BallPickupCallback.Register(arena, Callback_BallPickup);
 
             _commandManager.AddCommand("setscore", Command_setscore, arena);
             _commandManager.AddCommand("score", Command_score, arena);
@@ -117,7 +116,6 @@ namespace SS.Core.Modules.Scoring
 
             ArenaActionCallback.Unregister(arena, Callback_ArenaAction);
             BallGoalCallback.Unregister(arena, Callback_BallGoal);
-            BallPickupCallback.Unregister(arena, Callback_BallPickup);
 
             return true;
         }
@@ -215,24 +213,10 @@ namespace SS.Core.Modules.Scoring
                 ad.IsFrequencyShipTypes = _configManager.GetInt(ch, "Misc", "FrequencyShipTypes", 0) != 0;
                 ad.CustomGameMask = _configManager.GetInt(ch, "Soccer", "CustomGame", 0);
 
-                ad.IsStealPoints = ad.CapturePoints >= 0;
+                // Steal scoring only applies when CapturePoints is positive. CapturePoints <= 0 means absolute scoring
+                // (0 would otherwise start every team with an empty pool, making it impossible to ever score).
+                ad.IsStealPoints = ad.CapturePoints > 0;
                 ResetTeamScores(ad);
-            }
-        }
-
-        private void Callback_BallPickup(Arena arena, Player player, byte ballId)
-        {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
-                return;
-
-            // A ball whose CustomGame bit is set is scored by another module; it doesn't start this game.
-            if ((ad.CustomGameMask & (1 << ballId)) != 0)
-                return;
-
-            if (!ad.IsGameActive)
-            {
-                ad.IsGameActive = true;
-                BallGameStartCallback.Fire(arena, arena);
             }
         }
 
@@ -437,7 +421,11 @@ namespace SS.Core.Modules.Scoring
             if (ad.IsStealPoints
                 && (ad.Mode == SoccerMode.LeftRight || ad.Mode == SoccerMode.TopBottom))
             {
-                if (ad.TeamScores[(~freq) + 2] == 0)
+                // In a 2-team game the other team is (~freq)+2 (i.e. 1-freq). Guard the index in case a goal was
+                // scored on a freq >= 2 (which shouldn't happen in these modes but must not throw if it does).
+                int opponentFreq = (~freq) + 2;
+                if (opponentFreq >= 0 && opponentFreq < ad.TeamScores.Length
+                    && ad.TeamScores[opponentFreq] == 0)
                 {
                     // The opposing team doesn't have any points left.
                     EndGame(arena, ad, freq);
@@ -487,10 +475,8 @@ namespace SS.Core.Modules.Scoring
             {
                 _chat.SendArenaMessage(arena, ChatSound.Ding, $"Soccer game over.");
                 int points = RewardPoints(arena, freq);
-                _balls.EndGame(arena);
+                _balls.EndGame(arena); // fires BallGameOver
                 ResetTeamScores(ad);
-                ad.IsGameActive = false;
-                BallGameOverCallback.Fire(arena, arena, freq);
 
                 // Note: ASSS doesn't send score stats updates here because it relies on the IBalls.EndGame to end the 'game' interval,
                 // which triggers the score updates. However, in this server, it only triggers an update if it's on the 'reset' interval.
@@ -519,7 +505,7 @@ namespace SS.Core.Modules.Scoring
                         }
                         else
                         {
-                            sb.Append($"SCORE: Even:{ad.TeamScores[0]} Odds:{ad.TeamScores[1]}");
+                            sb.Append($"SCORE: Evens:{ad.TeamScores[0]} Odds:{ad.TeamScores[1]}");
                         }
 
                         break;
@@ -668,10 +654,8 @@ namespace SS.Core.Modules.Scoring
 
                 _chat.SendArenaMessage(arena, ChatSound.Ding, $"Soccer game over.");
 
-                _balls.EndGame(arena);
+                _balls.EndGame(arena); // fires BallGameOver
                 ResetTeamScores(ad);
-                ad.IsGameActive = false;
-                BallGameOverCallback.Fire(arena, arena, -1);
             }
         }
 
@@ -715,9 +699,6 @@ namespace SS.Core.Modules.Scoring
             // state
             public readonly int[] TeamScores = new int[MaxTeams];
 
-            /// <summary>Whether a game is currently in progress (set on the first scoring-ball pickup, cleared on game over).</summary>
-            public bool IsGameActive;
-
             public bool TryReset()
             {
                 BallsAdvisorToken = null;
@@ -732,7 +713,6 @@ namespace SS.Core.Modules.Scoring
                 IsFrequencyShipTypes = false;
                 CustomGameMask = 0;
                 Array.Clear(TeamScores);
-                IsGameActive = false;
                 return true;
             }
         }

@@ -187,6 +187,8 @@ namespace SS.Core.Modules
                     ad.Balls[i].Carrier = null;
                 }
 
+                ad.GameEnded = true;
+
                 int newGameDelay = _configManager.GetInt(arena.Cfg!, "Soccer", "NewGameDelay", SoccerSettings.NewGameDelay.Default);
                 if (newGameDelay < 0)
                     newGameDelay = _prng.Number(0, -newGameDelay);
@@ -194,6 +196,10 @@ namespace SS.Core.Modules
                 for (int i = 0; i < ad.BallCount; i++)
                     ad.Balls[i].Time = ServerTick.Now + (uint)newGameDelay;
             }
+
+            // The ball game is over — notify subscribers. Fired outside the lock so handlers may call back into IBalls.
+            // ASSS's CB_BALLGAMEOVER carries no winner; -1 means "ended with no specific winner reported here".
+            BallGameOverCallback.Fire(arena, arena, -1);
 
             IPersistExecutor? persistExecutor = _broker.GetInterface<IPersistExecutor>();
             if (persistExecutor != null)
@@ -949,6 +955,10 @@ namespace SS.Core.Modules
 
                 ad.BallCount = newBallCount;
 
+                // Dropping to zero balls stops the game (mirrors ASSS StopGame); the next spawn will fire BallGameStart.
+                if (newBallCount == 0)
+                    ad.GameEnded = true;
+
                 if (newBallCount > oldBallCount)
                 {
                     for (int i = oldBallCount; i < newBallCount; i++)
@@ -1067,6 +1077,13 @@ namespace SS.Core.Modules
                 d.Y = sy;
 
                 TryPlaceBall(arena, ballId, ref d);
+
+                // The first ball to spawn after a game-over (or stop) starts a new ball game. Mirrors ASSS SpawnBall.
+                if (ad.GameEnded)
+                {
+                    ad.GameEnded = false;
+                    BallGameStartCallback.Fire(arena, arena);
+                }
             }
 
             return true;
@@ -1398,6 +1415,13 @@ namespace SS.Core.Modules
             /// </summary>
             public bool BallCountOverridden;
 
+            /// <summary>
+            /// Whether the ball game has ended (or has not started yet). Set by <see cref="IBalls.EndGame"/> and whenever
+            /// the ball count drops to 0 (a game stop); cleared when a ball next spawns, which is the moment
+            /// <see cref="BallGameStartCallback"/> fires. Mirrors ASSS <c>balls.c</c>'s <c>gameEnded</c> flag.
+            /// </summary>
+            public bool GameEnded;
+
             #endregion
 
             public readonly Lock Lock = new();
@@ -1424,6 +1448,7 @@ namespace SS.Core.Modules
                     LastSendTime = default;
                     Settings = default;
                     BallCountOverridden = false;
+                    GameEnded = false;
                 }
 
                 return true;
