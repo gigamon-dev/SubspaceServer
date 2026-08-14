@@ -200,10 +200,11 @@ namespace SS.Core.Modules
                     ad.Balls[i].Time = ServerTick.Now + (uint)newGameDelay;
             }
 
-            // The ball game is over — notify subscribers. Fired outside ad.Lock (unlike the other ball callbacks,
-            // which fire inside it) so a handler is free to call back into IBalls.EndGame/TrySetBallCount without
-            // running under the lock. Only fire on the active->ended transition, so a second EndGame in the same goal
-            // (e.g. a golden goal that also satisfies the win condition) doesn't fire BallGameOver twice.
+            // The ball game is over — notify subscribers. Fired after releasing EndGame's own ad.Lock (the other ball
+            // callbacks fire while holding it). A subscriber may still be under the lock re-entrantly when EndGame was
+            // reached from a locked path (e.g. a goal: HandleGoal -> BallGoal -> CheckGameOver -> EndGame); ad.Lock is
+            // reentrant so that is safe. Only fire on the active->ended transition, so a second EndGame in the same
+            // goal (e.g. a golden goal that also satisfies the win condition) doesn't fire BallGameOver twice.
             // winnerFreq is -1 unless the caller (e.g. the scorer) reported a winning freq.
             if (!alreadyEnded)
                 BallGameOverCallback.Fire(arena, arena, winnerFreq);

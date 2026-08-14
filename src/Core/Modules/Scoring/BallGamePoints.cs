@@ -339,8 +339,8 @@ namespace SS.Core.Modules.Scoring
             Args = "<freq 0 score> [<freq 1 score> [... [<freq 7 score>]]]",
             Description = """
                 Changes score of current soccer game, based on arguments. Only supports
-                first eight freqs, and arena must be in absolute scoring mode 
-                (Soccer:CapturePoints < 0).
+                first eight freqs, and arena must be in absolute scoring mode
+                (Soccer:CapturePoints <= 0).
                 """)]
         private void Command_setscore(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -356,7 +356,7 @@ namespace SS.Core.Modules.Scoring
 
             if (ad.IsStealPoints)
             {
-                _chat.SendMessage(player, "Arena must be using absolute scoring (Soccer:CapturePoints < 0).");
+                _chat.SendMessage(player, "Arena must be using absolute scoring (Soccer:CapturePoints <= 0).");
                 return;
             }
 
