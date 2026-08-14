@@ -170,7 +170,7 @@ namespace SS.Core.Modules
 
         [ConfigHelp<int>("Soccer", "NewGameDelay", ConfigScope.Arena, Default = -3000,
             Description = "How long to wait between games (in ticks). If this is negative, the actual delay is random, between zero and the absolute value.")]
-        void IBalls.EndGame(Arena arena)
+        void IBalls.EndGame(Arena arena, short winnerFreq)
         {
             if (arena == null)
                 return;
@@ -200,12 +200,13 @@ namespace SS.Core.Modules
                     ad.Balls[i].Time = ServerTick.Now + (uint)newGameDelay;
             }
 
-            // The ball game is over — notify subscribers. Fired outside the lock so handlers may call back into IBalls.
-            // Only fire on the active->ended transition, so a second EndGame in the same goal (e.g. a golden goal
-            // that also satisfies the win condition) doesn't fire BallGameOver twice.
-            // ASSS's CB_BALLGAMEOVER carries no winner; -1 means "ended with no specific winner reported here".
+            // The ball game is over — notify subscribers. Fired outside ad.Lock (unlike the other ball callbacks,
+            // which fire inside it) so a handler is free to call back into IBalls.EndGame/TrySetBallCount without
+            // running under the lock. Only fire on the active->ended transition, so a second EndGame in the same goal
+            // (e.g. a golden goal that also satisfies the win condition) doesn't fire BallGameOver twice.
+            // winnerFreq is -1 unless the caller (e.g. the scorer) reported a winning freq.
             if (!alreadyEnded)
-                BallGameOverCallback.Fire(arena, arena, -1);
+                BallGameOverCallback.Fire(arena, arena, winnerFreq);
 
             IPersistExecutor? persistExecutor = _broker.GetInterface<IPersistExecutor>();
             if (persistExecutor != null)

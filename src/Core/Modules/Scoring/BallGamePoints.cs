@@ -193,7 +193,9 @@ namespace SS.Core.Modules.Scoring
             Description = """
                 A bitmask, indexed by ball id, of balls that this module should NOT score. For each such ball, another
                 module is expected to do its own goal handling (e.g. a PowerBall side-game). Bit 0 = ball 0. For a
-                single-ball arena, a value of 1 has the same effect as the old boolean 'custom game' flag.
+                single-ball arena, a value of 1 has the same effect as the old boolean 'custom game' flag. Note the
+                compatibility caveat for multi-ball arenas: previously any non-zero value meant "custom-game all balls",
+                whereas now a value of 1 excludes only ball 0 — set the mask bits for every ball you want excluded.
                 """)]
         private void Callback_ArenaAction(Arena arena, ArenaAction action)
         {
@@ -480,7 +482,7 @@ namespace SS.Core.Modules.Scoring
             {
                 _chat.SendArenaMessage(arena, ChatSound.Ding, $"Soccer game over.");
                 int points = RewardPoints(arena, freq);
-                _balls.EndGame(arena); // fires BallGameOver
+                _balls.EndGame(arena, freq); // fires BallGameOver with the winning freq
                 ResetTeamScores(ad);
 
                 // Note: ASSS doesn't send score stats updates here because it relies on the IBalls.EndGame to end the 'game' interval,
