@@ -216,7 +216,12 @@ namespace SS.Core.Modules.Scoring
                 // Steal scoring only applies when CapturePoints is positive. CapturePoints <= 0 means absolute scoring
                 // (0 would otherwise start every team with an empty pool, making it impossible to ever score).
                 ad.IsStealPoints = ad.CapturePoints > 0;
-                ResetTeamScores(ad);
+
+                // Only reset the scores on Create. A ConfChanged fires on any arena config write (e.g. MultiPub
+                // changing game-type settings), and wiping the score mid-game would break "change the map but keep
+                // the game going". A new game resets scores via EndGame instead.
+                if (action == ArenaAction.Create)
+                    ResetTeamScores(ad);
             }
         }
 

@@ -1185,7 +1185,7 @@ namespace SS.Core.Modules
 
             lock (ad.Lock)
             {
-                if (ballId > ad.BallCount)
+                if (ballId >= ad.BallCount)
                     return;
 
                 ref BallData bd = ref ad.Balls[ballId];

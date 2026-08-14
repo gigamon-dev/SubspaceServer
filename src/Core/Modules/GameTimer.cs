@@ -381,20 +381,30 @@ namespace SS.Core.Modules
 
                         GameTimerEndedCallback.Fire(arena, arena);
 
-                        if (ad.GameLength > TimeSpan.Zero)
+                        // A GameTimerEnded handler may have restarted the timer during the callback (e.g. a league
+                        // module adding golden-goal extra time via IGameTimer.SetTimer). If it set a new future
+                        // ending, honor it — don't stop/restart the timer or announce game over.
+                        if (ad.EndingTimestamp.HasValue && ad.EndingTimestamp.Value > now)
                         {
-                            if (ad.Start(now))
-                            {
-                                GameTimerChangedCallback.Fire(arena, arena, TimerChange.Started, TimerChangeReason.Completion, ad.GameLength != TimeSpan.Zero);
-                            }
+                            // Timer was restarted by a callback; leave it running.
                         }
                         else
                         {
-                            ad.Stop();
-                            GameTimerChangedCallback.Fire(arena, arena, TimerChange.Stopped, TimerChangeReason.Completion, ad.GameLength != TimeSpan.Zero);
-                        }
+                            if (ad.GameLength > TimeSpan.Zero)
+                            {
+                                if (ad.Start(now))
+                                {
+                                    GameTimerChangedCallback.Fire(arena, arena, TimerChange.Started, TimerChangeReason.Completion, ad.GameLength != TimeSpan.Zero);
+                                }
+                            }
+                            else
+                            {
+                                ad.Stop();
+                                GameTimerChangedCallback.Fire(arena, arena, TimerChange.Stopped, TimerChangeReason.Completion, ad.GameLength != TimeSpan.Zero);
+                            }
 
-                        _chat.SendArenaMessage(arena, ChatSound.Hallellula, $"NOTICE: Game over");
+                            _chat.SendArenaMessage(arena, ChatSound.Hallellula, $"NOTICE: Game over");
+                        }
                     }
                 }
             }
