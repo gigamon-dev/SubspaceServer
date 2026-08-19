@@ -1,5 +1,27 @@
 # Breaking Changes in Subspace Server .NET releases
 
+## v5.0.0
+
+The source generator for pub/sub callbacks has been simplified using C# 14 extension members. This is a source incompatible change which requires modifying how pub/sub callbacks are declared.
+
+Previously, to use the generator you would wrap the delegate in a static partial helper class, which the source generator would add methods to. The `[CallbackHelper]` attribute was used to mark the class so that the source generator would know to generate for it. The wrapper class name had to end with "Callback" and delegate name would need to match, with the name ending with "Delegate". For example,
+```C#
+[CallbackHelper]
+public static partial class ArenaActionCallback
+{
+    public delegate void ArenaActionDelegate(Arena arena, ArenaAction action);
+}
+```
+
+As of v5.0.0, the static partial helper class is no longer needed and there are no longer any naming requirements. You just define a delegate and mark it with the `[ComponentCallback]` marker attribute. For example,
+
+```C#
+[ComponentCallback]
+public delegate void ArenaActionCallback(Arena arena, ArenaAction action);
+```
+
+The easiest, recommended, way to migrate existing callbacks is to remove the static partial class and rename the delegate to it. Doing it this way means you will not need to change any of the calling code.
+
 ## v4.0.0
 
 - The BillingUdp module was updated to reduce memory allocations. This includes a modification to the `IBilling` interface. Encryption module binaries from earlier releases are no longer compatible.
