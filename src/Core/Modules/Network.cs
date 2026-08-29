@@ -1682,8 +1682,6 @@ namespace SS.Core.Modules
 
                         isResponseSent = true;
                         _ = Interlocked.Exchange(ref playerConnection.S2CTimeSyncRequestLastSent, serverTime);
-
-                        _logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"Time sync request with request time {clientTime} received at server time {serverTime}.");
                     }
 
                     // Collect lag data.
@@ -1725,8 +1723,6 @@ namespace SS.Core.Modules
                     return;
 
                 _lagCollect?.TimeSyncC2SResponse(player, response.RequestTime, serverTime, response.ResponseTime);
-
-                _logManager.LogP(LogLevel.Drivel, nameof(Network), player, $"Time sync response with request time {response.RequestTime}, response time {response.ResponseTime} received at server time {serverTime}.");
             }
         }
 

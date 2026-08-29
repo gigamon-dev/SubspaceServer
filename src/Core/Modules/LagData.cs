@@ -24,7 +24,6 @@ namespace SS.Core.Modules
 
         // Required dependencies
         private readonly IComponentBroker _broker;
-        private readonly ILogManager _logManager;
         private readonly IPlayerData _playerData;
 
         // Optional dependencies
@@ -44,7 +43,6 @@ namespace SS.Core.Modules
         public LagData(IComponentBroker broker, ILogManager logManager, IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
         }
 
@@ -107,7 +105,6 @@ namespace SS.Core.Modules
                     uint? updatedC2SLatencyEstimate = lagStats.RefreshC2SLatencyEstimate(GetSendRoutePercent(player));
                     if (updatedC2SLatencyEstimate is not null)
                     {
-                        _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Estimated C2S min latency updated to {updatedC2SLatencyEstimate.Value}.");
                         C2SLatencyEstimateChangedCallback.Fire(_broker, player, updatedC2SLatencyEstimate.Value);
                     }
                 }
@@ -175,7 +172,6 @@ namespace SS.Core.Modules
                 uint? updatedC2SLatencyEstimate = lagStats.UpdateTimeSyncResponseStats(serverRequestTime, serverResponseTime, clientResponseTime, GetSendRoutePercent(player));
                 if (updatedC2SLatencyEstimate is not null)
                 {
-                    _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Estimated C2S min latency updated to {updatedC2SLatencyEstimate.Value}.");
                     C2SLatencyEstimateChangedCallback.Fire(player.Arena ?? _broker, player, updatedC2SLatencyEstimate.Value);
                 }
             }
