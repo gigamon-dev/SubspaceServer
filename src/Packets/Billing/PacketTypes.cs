@@ -23,6 +23,7 @@
         UserKickout = 0x08,
         UserCommandChat = 0x09,
         UserChannelChat = 0x0A,
+        PlayerRestrictions = 0x0B,
         ScoreReset = 0x31,
         UserPacket = 0x32,
         BillingIdentity = 0x33,

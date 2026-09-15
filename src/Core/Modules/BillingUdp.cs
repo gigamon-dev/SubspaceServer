@@ -1294,7 +1294,7 @@ namespace SS.Core.Modules
         {
             _chat.SendArenaMessage((Arena?)null, "Notice: Connection to user database server restored. Log in again for full functionality.");
 
-            S2B_ServerCapabilities packet = new(multiCastChat: true, supportDemographics: true);
+            S2B_ServerCapabilities packet = new(multiCastChat: true, supportDemographics: true, supportsBanEnforcement: true);
             _networkClient.SendPacket(_cc!, ref packet, NetSendFlags.Reliable);
             _state = BillingState.LoggedIn;
             _identity = null;
