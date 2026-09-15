@@ -40,9 +40,9 @@ namespace SS.Packets.Billing
             init
             {
                 if (value)
-                    BitField |= SupportDemographicsMask;
+                    BitField |= MultiCastChatMask;
                 else
-                    BitField &= ~SupportDemographicsMask;
+                    BitField &= ~MultiCastChatMask;
             }
         }
 
