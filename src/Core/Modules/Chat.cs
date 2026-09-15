@@ -8,6 +8,7 @@ using SS.Packets.Game;
 using SS.Utilities;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -1154,6 +1155,9 @@ namespace SS.Core.Modules
             }
             else if (Ok(player, ChatMessageType.Private))
             {
+                if (!CanSendMessage(player, ChatMessageType.Private))
+                    return;
+
                 HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
                 try
@@ -1201,6 +1205,9 @@ namespace SS.Core.Modules
             }
             else if (Ok(player, type))
             {
+                if (!CanSendMessage(player, type))
+                    return;
+
                 _playerData.Lock();
 
                 try
@@ -1311,6 +1318,9 @@ namespace SS.Core.Modules
                 ChatMessageType type = isMacro ? ChatMessageType.PubMacro : ChatMessageType.Pub;
                 if (Ok(player, type))
                 {
+                    if (!CanSendMessage(player, type))
+                        return;
+
                     HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
 
                     try
@@ -1488,6 +1498,48 @@ namespace SS.Core.Modules
             ChatMessageType.ModChat => "MOD",
             _ => null,
         };
+
+        /// <summary>
+        /// Asks the advisors whether a player may send a message, and tells the player why when one
+        /// refuses.
+        /// </summary>
+        /// <remarks>
+        /// This is separate from <see cref="Ok"/> because a chat mask is state the player was already
+        /// told about when it was set, whereas an advisor decides per message and has a reason to give.
+        /// </remarks>
+        private bool CanSendMessage(Player player, ChatMessageType messageType)
+        {
+            Arena? arena = player.Arena;
+            ImmutableArray<IChatAdvisor> advisors = arena is not null
+                ? arena.GetAdvisors<IChatAdvisor>()
+                : _broker.GetAdvisors<IChatAdvisor>();
+
+            if (advisors.IsEmpty)
+                return true;
+
+            // Only worth a buffer once there is someone who might write into it.
+            StringBuilder errorMessage = _objectPoolManager.StringBuilderPool.Get();
+
+            try
+            {
+                foreach (IChatAdvisor advisor in advisors)
+                {
+                    if (!advisor.CanSendMessage(player, messageType, errorMessage))
+                    {
+                        if (errorMessage.Length > 0)
+                            ((IChat)this).SendMessage(player, errorMessage);
+
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+            finally
+            {
+                _objectPoolManager.StringBuilderPool.Return(errorMessage);
+            }
+        }
 
         private bool Ok(Player player, ChatMessageType messageType)
         {

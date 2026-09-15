@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.ObjectPool;
+using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using SS.Packets;
@@ -28,7 +29,7 @@ namespace SS.Core.Modules
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
-    public sealed class BillingUdp : IModule, IModuleLoaderAware, IBilling, IAuth, IClientConnectionHandler, IDisposable
+    public sealed class BillingUdp : IModule, IModuleLoaderAware, IBilling, IAuth, IClientConnectionHandler, IChatAdvisor, IFreqManagerEnforcerAdvisor, IDisposable
     {
         // required dependencies
         private readonly IComponentBroker _broker;
@@ -50,6 +51,11 @@ namespace SS.Core.Modules
 
         private InterfaceRegistrationToken<IAuth>? _iAuthToken;
         private InterfaceRegistrationToken<IBilling>? _iBillingToken;
+
+        // Registered on the root broker rather than per arena: a restriction the billing server sets
+        // follows the player around the zone, and must not be something an arena can opt out of.
+        private AdvisorRegistrationToken<IChatAdvisor>? _iChatAdvisorToken;
+        private AdvisorRegistrationToken<IFreqManagerEnforcerAdvisor>? _iFreqManagerEnforcerAdvisorToken;
 
         private PlayerDataKey<PlayerData> _pdKey;
 
@@ -153,6 +159,9 @@ namespace SS.Core.Modules
             _iAuthToken = broker.RegisterInterface<IAuth>(this);
             _iBillingToken = broker.RegisterInterface<IBilling>(this);
 
+            _iChatAdvisorToken = broker.RegisterAdvisor<IChatAdvisor>(this);
+            _iFreqManagerEnforcerAdvisorToken = broker.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
+
             return true;
         }
 
@@ -202,6 +211,12 @@ namespace SS.Core.Modules
 
         bool IModule.Unload(IComponentBroker broker)
         {
+            if (!broker.UnregisterAdvisor(ref _iFreqManagerEnforcerAdvisorToken))
+                return false;
+
+            if (!broker.UnregisterAdvisor(ref _iChatAdvisorToken))
+                return false;
+
             if (broker.UnregisterInterface(ref _iBillingToken) != 0)
                 return false;
 
@@ -489,6 +504,10 @@ namespace SS.Core.Modules
                         ProcessUserChannelChat(data);
                         break;
 
+                    case B2SPacketType.PlayerRestrictions:
+                        ProcessPlayerRestrictions(data);
+                        break;
+
                     case B2SPacketType.ScoreReset:
                         ProcessScoreReset(data);
                         break;
@@ -527,6 +546,84 @@ namespace SS.Core.Modules
         }
 
         #endregion
+
+        #region IChatAdvisor
+
+        bool IChatAdvisor.CanSendMessage(Player player, ChatMessageType messageType, StringBuilder? errorMessage)
+        {
+            switch (messageType)
+            {
+                case ChatMessageType.Pub:
+                case ChatMessageType.PubMacro:
+                    if (IsRestricted(player, BillingRestrictions.SilencePublic))
+                    {
+                        errorMessage?.Append("You are silenced and cannot send public messages.");
+                        return false;
+                    }
+                    break;
+
+                case ChatMessageType.Freq:
+                case ChatMessageType.EnemyFreq:
+                    if (IsRestricted(player, BillingRestrictions.SilenceTeam))
+                    {
+                        errorMessage?.Append("You are silenced and cannot send team messages.");
+                        return false;
+                    }
+                    break;
+
+                case ChatMessageType.Private:
+                    // Only messages to players in this zone. A private message to another zone goes
+                    // through the billing server, which silences those itself.
+                    if (IsRestricted(player, BillingRestrictions.SilencePrivate))
+                    {
+                        errorMessage?.Append("You are silenced and cannot send private messages.");
+                        return false;
+                    }
+                    break;
+            }
+
+            return true;
+        }
+
+        #endregion
+
+        #region IFreqManagerEnforcerAdvisor
+
+        bool IFreqManagerEnforcerAdvisor.CanEnterGame(Player player, StringBuilder? errorMessage)
+        {
+            if (!IsRestricted(player, BillingRestrictions.SpecLock))
+                return true;
+
+            errorMessage?.Append("You are locked to spectator mode and cannot enter a ship.");
+            return false;
+        }
+
+        ShipMask IFreqManagerEnforcerAdvisor.GetAllowableShips(Player player, ShipType ship, short freq, StringBuilder? errorMessage)
+        {
+            // CanEnterGame is only asked about a player who is in spec, so this is what covers one who
+            // is already flying and asks for a different ship.
+            if (!IsRestricted(player, BillingRestrictions.SpecLock))
+                return ShipMask.All;
+
+            errorMessage?.Append("You are locked to spectator mode and cannot enter a ship.");
+            return ShipMask.None;
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Checks whether the billing server has placed a restriction on a player.
+        /// </summary>
+        /// <remarks>
+        /// Called from an arena's thread as well as the mainloop, since a ship change can be handled on
+        /// either. <see cref="PlayerData.Restrictions"/> is what makes that safe.
+        /// </remarks>
+        private bool IsRestricted(Player player, BillingRestrictions restriction)
+        {
+            return player is not null
+                && player.TryGetExtraData(_pdKey, out PlayerData? playerData)
+                && (playerData.Restrictions & restriction) != 0;
+        }
 
         #region IDisposable
 
@@ -1728,6 +1825,80 @@ namespace SS.Core.Modules
             }
         }
 
+        private void ProcessPlayerRestrictions(Span<byte> data)
+        {
+            if (data.Length < B2S_PlayerRestrictions.Length)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_PlayerRestrictions)} - length ({data.Length}).");
+                return;
+            }
+
+            ref B2S_PlayerRestrictions packet = ref MemoryMarshal.AsRef<B2S_PlayerRestrictions>(data);
+
+            Player? player = _playerData.PidToPlayer(packet.ConnectionId);
+            if (player is null)
+            {
+                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Invalid {nameof(B2S_PlayerRestrictions)} - player not found ({packet.ConnectionId}).");
+                return;
+            }
+
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            // This is the whole set of restrictions on the player, already scoped for this zone, and not
+            // a delta. So it replaces what was there rather than adding to it: one that has been lifted
+            // or has expired simply arrives absent, and a player with none left arrives with an empty
+            // set.
+            BillingRestrictions previous = playerData.Restrictions;
+            BillingRestrictions restrictions = packet.Restrictions;
+
+            if (previous == restrictions)
+                return;
+
+            playerData.Restrictions = restrictions;
+            _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, $"Restrictions from the user database server: {restrictions}.");
+
+            // SilenceRemotePrivate and SilenceChat are deliberately not acted on. The billing server
+            // drops that traffic itself, so enforcing them here as well would silence the wrong thing.
+
+            if ((restrictions & BillingRestrictions.SpecLock) != 0)
+            {
+                // The advisor keeps a spec-locked player out of a ship, but it cannot move one who is
+                // already flying.
+                ForceSpectator(player);
+            }
+
+            // Nothing to do when a spec lock is lifted. The player is left where they are rather than
+            // being put back into a ship they did not ask for.
+        }
+
+        private void ForceSpectator(Player player)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || player.Status != PlayerState.Playing || player.Ship == ShipType.Spec)
+                return;
+
+            IGame? game = _broker.GetInterface<IGame>();
+            if (game is null)
+            {
+                _logManager.LogP(LogLevel.Warn, nameof(BillingUdp), player, $"Spec locked by the user database server, but {nameof(IGame)} is not available to force spectator mode.");
+                return;
+            }
+
+            try
+            {
+                game.SetShipAndFreq(player, ShipType.Spec, arena.SpecFreq);
+            }
+            finally
+            {
+                _broker.ReleaseInterface(ref game);
+            }
+
+            // Deliberately not the same wording as an arena ship lock, which says the same thing for a
+            // different reason and can be lifted by zone staff.
+            _chat.SendMessage(player, "You have been locked to spectator mode by the user database server.");
+        }
+
         [ConfigHelp<bool>("Billing", "HonorScoreResetRequests", ConfigScope.Global, Default = true,
             Description = "Whether to reset scores when the billing server says it is time to.")]
         [ConfigHelp("Billing", "ScoreResetArenaGroups", ConfigScope.Global, Default = Constants.ArenaGroup_Public,
@@ -1948,6 +2119,23 @@ namespace SS.Core.Modules
             public PlayerScore? LoadedScore;
             public PlayerScore? SavedScore;
 
+            private int restrictions;
+
+            /// <summary>
+            /// The restrictions the billing server has placed on the player.
+            /// </summary>
+            /// <remarks>
+            /// Written on the mainloop, where the billing server's packets are handled, but read from
+            /// an arena's own thread when a ship change is handled there. A whole set is written at
+            /// once and read at once, so the only thing needed is for a write to become visible to the
+            /// other thread.
+            /// </remarks>
+            public BillingRestrictions Restrictions
+            {
+                get => (BillingRestrictions)Volatile.Read(ref restrictions);
+                set => Volatile.Write(ref restrictions, (int)value);
+            }
+
             bool IResettable.TryReset()
             {
                 BillingUserId = 0;
@@ -1958,6 +2146,7 @@ namespace SS.Core.Modules
                 FirstLogin = null;
                 LoadedScore = null;
                 SavedScore = null;
+                Restrictions = BillingRestrictions.None;
                 return true;
             }
         }
