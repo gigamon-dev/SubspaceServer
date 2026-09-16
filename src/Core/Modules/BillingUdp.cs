@@ -591,10 +591,11 @@ namespace SS.Core.Modules
 
         bool IFreqManagerEnforcerAdvisor.CanEnterGame(Player player, StringBuilder? errorMessage)
         {
-            if (!IsRestricted(player, BillingRestrictions.SpecLock))
+            BillingRestrictions restrictions = GetRestrictions(player) & ShipLockRestrictions;
+            if (restrictions == BillingRestrictions.None)
                 return true;
 
-            errorMessage?.Append("You are locked to spectator mode and cannot enter a ship.");
+            errorMessage?.Append(GetShipLockMessage(restrictions));
             return false;
         }
 
@@ -602,27 +603,61 @@ namespace SS.Core.Modules
         {
             // CanEnterGame is only asked about a player who is in spec, so this is what covers one who
             // is already flying and asks for a different ship.
-            if (!IsRestricted(player, BillingRestrictions.SpecLock))
+            BillingRestrictions restrictions = GetRestrictions(player) & ShipLockRestrictions;
+            if (restrictions == BillingRestrictions.None)
                 return ShipMask.All;
 
-            errorMessage?.Append("You are locked to spectator mode and cannot enter a ship.");
+            errorMessage?.Append(GetShipLockMessage(restrictions));
             return ShipMask.None;
         }
 
         #endregion
 
         /// <summary>
-        /// Checks whether the billing server has placed a restriction on a player.
+        /// The restrictions that keep a player out of a ship.
+        /// </summary>
+        private const BillingRestrictions ShipLockRestrictions =
+            BillingRestrictions.SpecLock | BillingRestrictions.RegistrationLock | BillingRestrictions.NameQuotaLock;
+
+        /// <summary>
+        /// Gets the message explaining why a player may not enter a ship.
+        /// </summary>
+        /// <param name="restrictions">The ship-locking restrictions on the player. Must not be <see cref="BillingRestrictions.None"/>.</param>
+        private static string GetShipLockMessage(BillingRestrictions restrictions)
+        {
+            // Most restrictive first, because naming a lesser lock while a greater one is set would tell
+            // the player that clearing it would let them play. A ban they cannot resolve at all; a name
+            // quota they resolve on another name; a registration they resolve here and now.
+            if ((restrictions & BillingRestrictions.SpecLock) != 0)
+                return "You are banned from entering a ship.";
+
+            if ((restrictions & BillingRestrictions.NameQuotaLock) != 0)
+                return "Your account has too many names. Release one with ?nick release <name> to play on this one.";
+
+            return "You must complete registration before you can play. Type ?authhelp for instructions.";
+        }
+
+        /// <summary>
+        /// Gets the restrictions the billing server has placed on a player.
         /// </summary>
         /// <remarks>
         /// Called from an arena's thread as well as the mainloop, since a ship change can be handled on
         /// either. <see cref="PlayerData.Restrictions"/> is what makes that safe.
         /// </remarks>
+        private BillingRestrictions GetRestrictions(Player player)
+        {
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return BillingRestrictions.None;
+
+            return playerData.Restrictions;
+        }
+
+        /// <summary>
+        /// Checks whether the billing server has placed a restriction on a player.
+        /// </summary>
         private bool IsRestricted(Player player, BillingRestrictions restriction)
         {
-            return player is not null
-                && player.TryGetExtraData(_pdKey, out PlayerData? playerData)
-                && (playerData.Restrictions & restriction) != 0;
+            return (GetRestrictions(player) & restriction) != 0;
         }
 
         #region IDisposable
@@ -1861,18 +1896,20 @@ namespace SS.Core.Modules
             // SilenceRemotePrivate and SilenceChat are deliberately not acted on. The billing server
             // drops that traffic itself, so enforcing them here as well would silence the wrong thing.
 
-            if ((restrictions & BillingRestrictions.SpecLock) != 0)
+            BillingRestrictions shipLock = restrictions & ShipLockRestrictions;
+            if (shipLock != BillingRestrictions.None)
             {
-                // The advisor keeps a spec-locked player out of a ship, but it cannot move one who is
+                // The advisor keeps a locked player out of a ship, but it cannot move one who is
                 // already flying.
-                ForceSpectator(player);
+                ForceSpectator(player, shipLock);
             }
 
-            // Nothing to do when a spec lock is lifted. The player is left where they are rather than
-            // being put back into a ship they did not ask for.
+            // Nothing to do when a lock is lifted. The advisors read the mask that was just stored, so a
+            // player released from a registration lock can enter a ship immediately, without
+            // reconnecting. They are not put back into a ship they did not ask for.
         }
 
-        private void ForceSpectator(Player player)
+        private void ForceSpectator(Player player, BillingRestrictions shipLock)
         {
             Arena? arena = player.Arena;
             if (arena is null || player.Status != PlayerState.Playing || player.Ship == ShipType.Spec)
@@ -1881,7 +1918,7 @@ namespace SS.Core.Modules
             IGame? game = _broker.GetInterface<IGame>();
             if (game is null)
             {
-                _logManager.LogP(LogLevel.Warn, nameof(BillingUdp), player, $"Spec locked by the user database server, but {nameof(IGame)} is not available to force spectator mode.");
+                _logManager.LogP(LogLevel.Warn, nameof(BillingUdp), player, $"Locked out of a ship by the user database server, but {nameof(IGame)} is not available to force spectator mode.");
                 return;
             }
 
@@ -1894,9 +1931,9 @@ namespace SS.Core.Modules
                 _broker.ReleaseInterface(ref game);
             }
 
-            // Deliberately not the same wording as an arena ship lock, which says the same thing for a
+            // Deliberately not the wording an arena ship lock uses, which says the same thing for a
             // different reason and can be lifted by zone staff.
-            _chat.SendMessage(player, "You have been locked to spectator mode by the user database server.");
+            _chat.SendMessage(player, $"You have been moved to spectator mode. {GetShipLockMessage(shipLock)}");
         }
 
         [ConfigHelp<bool>("Billing", "HonorScoreResetRequests", ConfigScope.Global, Default = true,

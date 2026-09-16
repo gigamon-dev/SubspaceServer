@@ -17,36 +17,66 @@ namespace SS.Packets.Billing
         None = 0x00,
 
         /// <summary>
-        /// The player may not leave spectator mode. Enforced by the zone.
+        /// The player is banned from entering a ship. Enforced by the zone.
         /// </summary>
         SpecLock = 0x01,
 
         /// <summary>
+        /// The player may not enter a ship until they have completed registration. Enforced by the zone.
+        /// </summary>
+        /// <remarks>
+        /// The billing server sets this when a player enters auth-waiting at login and clears it the
+        /// moment they register, so a released player must be able to enter a ship without reconnecting.
+        /// It only sends this to zones advertising
+        /// <see cref="S2B_ServerCapabilities.SupportsBanEnforcement"/>; for zones without it, the billing
+        /// server falls back to kicking unregistered players on a timer instead. A zone that advertises
+        /// the capability but ignores this bit gets neither, and lets unregistered players fly
+        /// indefinitely.
+        /// </remarks>
+        RegistrationLock = 0x02,
+
+        /// <summary>
+        /// The player may not enter a ship because their account holds more names than it is allowed.
+        /// Enforced by the zone.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="RegistrationLock"/>, this is not resolved on the account the player is
+        /// logged in as. They have to release one of the account's other names before this one can be
+        /// played.
+        /// </remarks>
+        NameQuotaLock = 0x04,
+
+        /// <summary>
         /// The player may not send public (arena) messages. Enforced by the zone.
         /// </summary>
-        SilencePublic = 0x02,
+        SilencePublic = 0x08,
 
         /// <summary>
         /// The player may not send team messages. Enforced by the zone.
         /// </summary>
-        SilenceTeam = 0x04,
+        SilenceTeam = 0x10,
 
         /// <summary>
         /// The player may not send private messages to players in the same zone. Enforced by the zone.
         /// </summary>
-        SilencePrivate = 0x08,
+        SilencePrivate = 0x20,
 
         /// <summary>
         /// The player may not send private messages to players in other zones.
         /// Enforced by the billing server, which drops them before they reach the zone.
         /// </summary>
-        SilenceRemotePrivate = 0x10,
+        SilenceRemotePrivate = 0x40,
 
         /// <summary>
         /// The player may not send chat channel messages.
         /// Enforced by the billing server, which drops them before they reach the zone.
         /// </summary>
-        SilenceChat = 0x20,
+        SilenceChat = 0x80,
+
+        /// <summary>
+        /// Every silence, which is every restriction other than the three that keep a player out of a ship.
+        /// </summary>
+        SilenceAll = SilencePublic | SilenceTeam | SilencePrivate | SilenceRemotePrivate | SilenceChat,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
