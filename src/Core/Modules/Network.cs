@@ -1650,9 +1650,11 @@ namespace SS.Core.Modules
             if (data.Length != TimeSyncRequest.Length)
                 return;
 
+            long serverTimestamp = Stopwatch.GetTimestamp();
+            ServerTick serverTime = ServerTick.Now;
+
             ref readonly TimeSyncRequest request = ref MemoryMarshal.AsRef<TimeSyncRequest>(data);
             uint clientTime = request.Time;
-            ServerTick serverTime = ServerTick.Now;
             bool isResponseSent = false;
             
             if (conn is PlayerConnection playerConnection)
@@ -1664,8 +1666,23 @@ namespace SS.Core.Modules
                 if (_lagCollect is not null)
                 {
                     // Check if we're allowed to send a combined response and request.
-                    uint s2cLastSent = Interlocked.CompareExchange(ref playerConnection.S2CTimeSyncRequestLastSent, 0, 0);
-                    if (serverTime - new ServerTick(s2cLastSent) > 300) // only allow sending another request if one hasn't been sent in the past 3 seconds
+                    bool sendRequest = false;
+                    lock (playerConnection.TimeSyncRequestLock)
+                    {
+                        // Only send a request if we haven't sent one in the past 3 seconds
+                        // and there isn't already a request we're still waiting on a response for.
+                        if ((playerConnection.TimeSyncRequestSentTicks is null || (serverTime - playerConnection.TimeSyncRequestSentTicks.Value) > 300)
+                            && (playerConnection.TimeSyncRequestSentTimestamp is null
+                                || (int)(Stopwatch.GetElapsedTime(playerConnection.TimeSyncRequestSentTimestamp.Value, serverTimestamp).TotalMilliseconds / 10) > Math.Clamp((uint)(conn.AverageRoundTripTime + (4 * conn.AverageRoundTripDeviation)), 250, 2000)
+                            ))
+                        {
+                            playerConnection.TimeSyncRequestSentTimestamp = serverTimestamp;
+                            playerConnection.TimeSyncRequestSentTicks = serverTime;
+                            sendRequest = true;
+                        }
+                    }
+                    
+                    if (sendRequest)
                     {
                         // Since we just received the client's time, we might as well make use of it by sending our own time sync request.
                         // This allows us to calculate an additional roundtrip time from this client time and the one we'll get in the C2S timesync response.
@@ -1681,7 +1698,6 @@ namespace SS.Core.Modules
                         SendRaw(conn, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref responseAndRequest, 1)));
 
                         isResponseSent = true;
-                        _ = Interlocked.Exchange(ref playerConnection.S2CTimeSyncRequestLastSent, serverTime);
                     }
 
                     // Collect lag data.
@@ -1712,9 +1728,10 @@ namespace SS.Core.Modules
             if (data.Length != TimeSyncResponse.Length)
                 return;
 
-            ref readonly TimeSyncResponse response = ref MemoryMarshal.AsRef<TimeSyncResponse>(data);
-
+            long serverTimestamp = Stopwatch.GetTimestamp();
             uint serverTime = ServerTick.Now;
+
+            ref readonly TimeSyncResponse response = ref MemoryMarshal.AsRef<TimeSyncResponse>(data);
 
             if (conn is PlayerConnection playerConnection)
             {
@@ -1722,7 +1739,23 @@ namespace SS.Core.Modules
                 if (player is null)
                     return;
 
-                _lagCollect?.TimeSyncC2SResponse(player, response.RequestTime, serverTime, response.ResponseTime);
+                TimeSpan timestampRTT;
+                lock (playerConnection.TimeSyncRequestLock)
+                {
+                    if (playerConnection.TimeSyncRequestSentTimestamp is null
+                        || playerConnection.TimeSyncRequestSentTicks != response.RequestTime)
+                    {
+                        return;
+                    }
+
+                    timestampRTT = Stopwatch.GetElapsedTime(playerConnection.TimeSyncRequestSentTimestamp.Value, serverTimestamp);
+
+                    // Clear TimeSyncRequestSentTimestamp so that we know it's been processed,
+                    // but keep TimeSyncRequestSentTicks so that we can still tell when the last request was sent.
+                    playerConnection.TimeSyncRequestSentTimestamp = null;
+                }
+
+                _lagCollect?.TimeSyncC2SResponse(player, response.RequestTime, serverTime, response.ResponseTime, timestampRTT);
             }
         }
 
@@ -5440,12 +5473,24 @@ namespace SS.Core.Modules
             public IEncrypt? Encryptor;
 
             /// <summary>
-            /// The time the last S2C time sync request was sent.
+            /// The server time (<see cref="Stopwatch"/>) that the last S2C timesync request was sent.
+            /// This allows us to get round-trip time in high precision, whereas ticks is limited to centiseconds.
             /// </summary>
             /// <remarks>
-            /// Synchronized with <see cref="Interlocked"/>.
+            /// Synchronized with <see cref="TimeSyncRequestLock"/>.
             /// </remarks>
-            public uint S2CTimeSyncRequestLastSent;
+            public long? TimeSyncRequestSentTimestamp;
+
+            /// <summary>
+            /// The server time (ticks) that the last S2C timesync request was sent.
+            /// The timesync response should contain this value.
+            /// </summary>
+            /// <remarks>
+            /// Synchronized with <see cref="TimeSyncRequestLock"/>.
+            /// </remarks>
+            public ServerTick? TimeSyncRequestSentTicks;
+
+            public readonly Lock TimeSyncRequestLock = new();
 
             /// <summary>
             /// Whether the connection has been told to use the alternate timer mode.
@@ -5462,14 +5507,14 @@ namespace SS.Core.Modules
                 Encryptor = encryptor;
                 EncryptorName = encryptorName;
                 BandwidthLimiter = bandwidthLimiter ?? throw new ArgumentNullException(nameof(bandwidthLimiter));
-                _ = Interlocked.Exchange(ref S2CTimeSyncRequestLastSent, ServerTick.Now - 6000u);
             }
 
             public override bool TryReset()
             {
                 Player = null;
                 Encryptor = null;
-                S2CTimeSyncRequestLastSent = default;
+                TimeSyncRequestSentTimestamp = null;
+                TimeSyncRequestSentTicks = null;
                 AlternateTimerModeEnabled = false;
 
                 return base.TryReset();

@@ -1,4 +1,6 @@
-﻿namespace SS.Core.ComponentInterfaces
+﻿using System;
+
+namespace SS.Core.ComponentInterfaces
 {
     /// <summary>
     /// Client reported lag data from <see cref="Packets.Game.C2S_Security"/>.
@@ -68,9 +70,15 @@
         /// For collecting information when a client sends a position packet.
         /// </summary>
         /// <param name="player">The player the data is for.</param>
-        /// <param name="ms">The one-way time (difference between the server's time and the client's time from the position packet) in milliseconds.</param>
-        /// <param name="clientS2CPing">The S2C ping in milliseconds reported by the client in a position packet's extra position data. <see langword="null"/> for position packets without extra position data.</param>
-        void Position(Player player, int ms, int? clientS2CPing);
+        /// <param name="c2sLatency">
+        /// The C2S latency (ticks). This is the difference between the server's time and the position packet's time field. 
+        /// A negative value means the client sent a future time value.
+        /// </param>
+        /// <param name="clientS2CLatency">
+        /// The S2C latency (ticks) reported by the client in a position packet's extra position data. 
+        /// <see langword="null"/> for position packets without extra position data.
+        /// </param>
+        void Position(Player player, int c2sLatency, ushort? clientS2CLatency);
 
         /// <summary>
         /// Increments the number of S2C weapon packets sent to a player since entering the arena.
@@ -131,7 +139,8 @@
         /// <param name="serverRequestTime">The server time when the request was made.</param>
         /// <param name="serverResponseTime">The server time when the response was received.</param>
         /// <param name="clientResponseTime">The client time when the client responded to the request.</param>
-        void TimeSyncC2SResponse(Player player, uint serverRequestTime, uint serverResponseTime, uint clientResponseTime);
+        /// <param name="timestampRTT">The round-trip time of the timesync calculated by the server using <see cref="Stopwatch"/>.</param>
+        void TimeSyncC2SResponse(Player player, uint serverRequestTime, uint serverResponseTime, uint clientResponseTime, TimeSpan timestampRTT);
 
         /// <summary>
         /// Sets the C2S minimum latency estimate for fake players.

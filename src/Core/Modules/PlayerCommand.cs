@@ -568,8 +568,12 @@ namespace SS.Core.Modules
             _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetloss);
             _lagQuery.QueryTimeSyncDriftMs(targetPlayer, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev);
 
-            // average all pings together with reliable ping and time sync pings having twice the weight since they're far more accurate
-            int average = (positionPing.Average + clientPing.Average + (2 * reliablePing.Average) + (2 * clientTimeSyncPing.Average) + (2 * serverTimeSyncPing.Average)) / 8;
+            // Convert 1-way c2s position latency into 2-way latency.
+            int sendRoutePercent = _lagQuery.GetSendRoutePercent(targetPlayer);
+            int position2Way = positionPing.Average * 1000 / sendRoutePercent;
+
+            // Average all pings together with reliable ping and time sync pings having twice the weight since they're far more accurate.
+            int average = (position2Way + clientPing.Average + (2 * reliablePing.Average) + (2 * clientTimeSyncPing.Average) + (2 * serverTimeSyncPing.Average)) / 8;
 
             string prefix = targetPlayer == player ? "lag" : targetPlayer.Name!;
 
@@ -673,6 +677,38 @@ namespace SS.Core.Modules
                     }
 
                     _chat.SendMessage(player, sb);
+                    sb.Clear();
+
+                    //
+                    // SendRoutePercent
+                    //
+
+                    if (_lagQuery.TryGetDynamicSendRoutePercentData(
+                        targetPlayer,
+                        out sendRoutePercent,
+                        out DateTime? lastUpdated,
+                        out TimeSpan? rtt,
+                        out double c2sVariance,
+                        out double c2sSSampleMean,
+                        out long sampleCount,
+                        out long minSampleSize))
+                    {
+                        sb.Append($"{prefix}: SendRoutePercent {(lastUpdated is null ? "(default)" : "(adjusted)")}: {(sendRoutePercent / 10.0):F1}%");
+
+                        sb.Append($"  rtt: ");
+                        if (rtt is null)
+                        {
+                            sb.Append("n/a");
+                        }
+                        else
+                        {
+                            sb.Append($"{rtt.Value.TotalMilliseconds:F2}");
+                        }
+
+                        sb.Append($"  mean: {(c2sSSampleMean * 10):F2}  c2s variance: {c2sVariance:F3}  samples: {sampleCount}/{minSampleSize}");
+
+                        _chat.SendMessage(player, sb);
+                    }
                 }
                 finally
                 {
@@ -685,13 +721,16 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
-            Args = "[-r | -c | -s]",
+            Args = "[ -r | -c | -s | -o | -i ]",
             Description = """
                 Displays a histogram containing lag information about you or a target player.
-                By default, c2s position ping data is returned. 
+                By default, 1-way c2s position data (all) is returned. 
                 Use -r for reliable ping data.
                 Use -c for time sync data (client times).
                 Use -s for time sync data (server times).
+                Use -o for outgoing, 1-way s2c position data reported by the client (requires extra position data)
+                Use -i for incoming, 1-way c2s position data (sample)
+                For c2s position data, negative values are when the client overestimated the c2s latency.
                 """)]
         private void Command_laghist(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -702,39 +741,72 @@ namespace SS.Core.Modules
 
             try
             {
-                bool hasData;
+                int dataPointCount;
+                string description;
                 if (parameters.Contains("-r", StringComparison.OrdinalIgnoreCase))
-                    hasData = _lagQuery!.GetReliablePingHistogram(targetPlayer, histogramData);
-                else if (parameters.Contains("-c", StringComparison.OrdinalIgnoreCase))
-                    hasData = _lagQuery!.GetTimeSyncClientPingHistogram(targetPlayer, histogramData);
-                else if (parameters.Contains("-s", StringComparison.OrdinalIgnoreCase))
-                    hasData = _lagQuery!.GetTimeSyncServerPingHistogram(targetPlayer, histogramData);
-                else
-                    hasData = _lagQuery!.GetPositionPingHistogram(targetPlayer, histogramData);
-                    
-                if (hasData)
                 {
+                    dataPointCount = _lagQuery!.GetReliablePingHistogram(targetPlayer, histogramData);
+                    description = "Reliable Ping";
+                }
+                else if (parameters.Contains("-c", StringComparison.OrdinalIgnoreCase))
+                {
+                    dataPointCount = _lagQuery!.GetClientTimeSyncHistogram(targetPlayer, histogramData);
+                    description = "Client Time Sync";
+                }
+                else if (parameters.Contains("-s", StringComparison.OrdinalIgnoreCase))
+                {
+                    dataPointCount = _lagQuery!.GetServerTimeSyncHistogram(targetPlayer, histogramData);
+                    description = "Server Time Sync";
+                }
+                else if (parameters.Contains("-o", StringComparison.OrdinalIgnoreCase))
+                {
+                    dataPointCount = _lagQuery!.GetS2CPositionHistogram(targetPlayer, histogramData);
+                    description = "1-way S2C Position Latency (client reported)";
+                }
+                else if (parameters.Contains("-i", StringComparison.OrdinalIgnoreCase))
+                {
+                    dataPointCount = _lagQuery!.GetC2SPositionHistogram(targetPlayer, true, histogramData);
+                    description = "1-way C2S Position Latency (sample)";
+                }
+                else
+                {
+                    dataPointCount = _lagQuery!.GetC2SPositionHistogram(targetPlayer, false, histogramData);
+                    description = "1-way C2S Position Latency (all)";
+                }
+
+                // TODO: Add client reported S2C latency histogram (requires position packets with extra position data)
+                //_lagQuery.GetS2CPositionHistogram(targetPlayer, histogramData);
+                //description = "1-way S2C Position Latency";
+
+                string prefix = targetPlayer == player ? "laghist" : targetPlayer.Name!;
+
+                if (dataPointCount > 0 && histogramData.Count > 0)
+                {
+                    bool hasNegative = histogramData[0].Start < 0;
+
                     int max = 0;
-                    int sum = 0;
                     for (int i = 0; i < histogramData.Count; i++)
                     {
                         if (histogramData[i].Count > max)
                             max = histogramData[i].Count;
-
-                        sum += histogramData[i].Count;
                     }
 
-                    ReadOnlySpan<char> hist = "****************************************";
-                    string prefix = targetPlayer == player ? "laghist" : targetPlayer.Name!;
+                    _chat.SendMessage(player, $"{prefix}: {description} ({dataPointCount} data points)");
+                    ReadOnlySpan<char> bars = "****************************************";
+                    ReadOnlySpan<char> spaces = "                                        ";
                     for (int i = 0; i < histogramData.Count; i++)
                     {
-                        float histRatio = (float)histogramData[i].Count / max;
-                        _chat.SendMessage(player, $"{prefix}: {histogramData[i].Start,3} - {histogramData[i].End,3}: {histogramData[i].Count,7} | {hist[..(int)(hist.Length * histRatio)]}");
+                        int width = max > 0 ? (int)(bars.Length * (float)histogramData[i].Count / max) : 0;
+
+                        if (hasNegative)
+                            _chat.SendMessage(player, $"{prefix}: [{histogramData[i].Start,4}, {histogramData[i].End,4}]: {bars[..width]}{spaces[..(spaces.Length - width)]} ({histogramData[i].Count})");
+                        else
+                            _chat.SendMessage(player, $"{prefix}: [{histogramData[i].Start,3}, {histogramData[i].End,3}]: {bars[..width]}{spaces[..(spaces.Length - width)]} ({histogramData[i].Count})");
                     }
                 }
                 else
                 {
-                    _chat.SendMessage(player, "Data is not available.");
+                    _chat.SendMessage(player, $"{prefix}: {description} -- Data is not available.");
                 }
             }
             finally

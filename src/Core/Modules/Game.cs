@@ -1162,8 +1162,8 @@ namespace SS.Core.Modules
             {
                 _lagCollect.Position(
                     player,
-                    (gtc - pos.Time) * 10,
-                    hasExtra ? extra.S2CPing * 10 : new int?());
+                    (gtc - pos.Time),
+                    hasExtra ? extra.S2CPing : new ushort?());
             }
 
             bool isNewer = pos.Time > playerData.Position.Time;

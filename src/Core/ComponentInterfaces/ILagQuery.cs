@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -82,7 +83,7 @@ namespace SS.Core.ComponentInterfaces
     public interface ILagQuery : IComponentInterface
     {
         /// <summary>
-        /// Gets a player's ping info (from position packets).
+        /// Gets a player's 1-way C2S position latency data.
         /// </summary>
         /// <param name="player">The player to get data about.</param>
         /// <param name="ping">The data.</param>
@@ -170,35 +171,78 @@ namespace SS.Core.ComponentInterfaces
         void QueryTimeSyncDriftMs(Player player, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev);
 
         /// <summary>
-        /// Gets a player's ping histogram data based on C2S position packets.
+        /// Gets a player's latency histogram data based on the difference between the time field in C2S position packets and the actual server time.
+        /// </summary>
+        /// <param name="player">The player to get data for.</param>
+        /// <param name="sample"><see langword="true"/> for current sample data. <see langword="false"/> for population data.</param>
+        /// <param name="data">A collection to populate with data.</param>
+        /// <returns>The number of data points returned.</returns>
+        int GetC2SPositionHistogram(Player player, bool sample, ICollection<PingHistogramBucket> data);
+
+        /// <summary>
+        /// Gets a player's latency histogram data based on the S2C latency field provided by clients in C2S position packets (requires the client to send "extra position data").
         /// </summary>
         /// <param name="player">The player to get data for.</param>
         /// <param name="data">A collection to populate with data.</param>
-        /// <returns><see langword="true"/> if <paramref name="data"/> was populated with data. Otherwise, <see langword="false"/>.</returns>
-        bool GetPositionPingHistogram(Player player, ICollection<PingHistogramBucket> data);
+        /// <returns></returns>
+        int GetS2CPositionHistogram(Player player, ICollection<PingHistogramBucket> data);
 
         /// <summary>
         /// Gets a player's ping histogram data based on reliable packets.
         /// </summary>
         /// <param name="player">The player to get data for.</param>
         /// <param name="data">A collection to populate with data.</param>
-        /// <returns><see langword="true"/> if <paramref name="data"/> was populated with data. Otherwise, <see langword="false"/>.</returns>
-        bool GetReliablePingHistogram(Player player, ICollection<PingHistogramBucket> data);
+        /// <returns>The number of data points returned.</returns>
+        int GetReliablePingHistogram(Player player, ICollection<PingHistogramBucket> data);
 
         /// <summary>
         /// Gets a player's ping histogram data based timesync packets (client times).
         /// </summary>
         /// <param name="player">The player to get data for.</param>
         /// <param name="data">A collection to populate with data.</param>
-        /// <returns><see langword="true"/> if <paramref name="data"/> was populated with data. Otherwise, <see langword="false"/>.</returns>
-        bool GetTimeSyncClientPingHistogram(Player player, ICollection<PingHistogramBucket> data);
+        /// <returns>The number of data points returned.</returns>
+        int GetClientTimeSyncHistogram(Player player, ICollection<PingHistogramBucket> data);
 
         /// <summary>
         /// Gets a player's ping histogram data based timesync packets (server times).
         /// </summary>
         /// <param name="player">The player to get data for.</param>
         /// <param name="data">A collection to populate with data.</param>
-        /// <returns><see langword="true"/> if <paramref name="data"/> was populated with data. Otherwise, <see langword="false"/>.</returns>
-        bool GetTimeSyncServerPingHistogram(Player player, ICollection<PingHistogramBucket> data);
+        /// <returns>The number of data points returned.</returns>
+        int GetServerTimeSyncHistogram(Player player, ICollection<PingHistogramBucket> data);
+
+        /// <summary>
+        /// Gets the current Latency:SendRoutePercent for a <paramref name="player"/>.
+        /// </summary>
+        /// <param name="player">The player to get data for.</param>
+        /// <returns>The current value of Latency:SendRoutePercent which can be the default for the player's arena or can be a client setting override.</returns>
+        int GetSendRoutePercent(Player player);
+
+        /// <summary>
+        /// Gets whether dynamic Latency:SendRoutePercent adjustments are enabled.
+        /// </summary>
+        bool DynamicSendRoutePercentEnabled { get; }
+
+        /// <summary>
+        /// Gets data about dynamic Latency:SendRoutePercent adjustments.
+        /// </summary>
+        /// <param name="player">The player to get data for.</param>
+        /// <param name="sendRoutePercent">The current Latency:SendRoutePercent value.</param>
+        /// <param name="lastUpdated">When Latency:SendRoutePercent was last updated. <see langword="null"/> means it's not been adjusted.</param>
+        /// <param name="rtt">High precision round-trip time.</param>
+        /// <param name="c2sVariance">Variance in the C2S position packet times. Used to determine <paramref name="minSampleSize"/>.</param>
+        /// <param name="c2sSampleMean">Running arithmetic mean of C2S position packet times (in ticks).</param>
+        /// <param name="sampleCount">The current # of C2S position packet samples that resulted in <paramref name="c2sSampleMean"/>.</param>
+        /// <param name="minSampleSize">The minimum # of C2S position packet samples required to make a point estimate of C2S latency in the milliseconds with high confidence, based on <paramref name="c2sVariance"/>.</param>
+        /// <returns><see langword="true"/> if dynamic Latency:SendRoutePercent adjustments are enabled and data was retrieved; otherwise, <see langword="false"/>.</returns>
+        bool TryGetDynamicSendRoutePercentData(
+            Player player,
+            out int sendRoutePercent,
+            out DateTime? lastUpdated,
+            out TimeSpan? rtt,
+            out double c2sVariance,
+            out double c2sSampleMean,
+            out long sampleCount,
+            out long minSampleSize);
     }
 }

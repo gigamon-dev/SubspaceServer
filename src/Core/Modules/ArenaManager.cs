@@ -653,6 +653,8 @@ namespace SS.Core.Modules
                 IClientSettings? clientSettings = Broker.GetInterface<IClientSettings>();
                 if (clientSettings is not null)
                 {
+                    BeforeSendInitialClientSettingsCallback.Fire(Broker, player);
+
                     try
                     {
                         clientSettings.SendClientSettings(player);
