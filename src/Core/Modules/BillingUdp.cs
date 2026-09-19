@@ -628,13 +628,18 @@ namespace SS.Core.Modules
             // Most restrictive first, because naming a lesser lock while a greater one is set would tell
             // the player that clearing it would let them play. A ban they cannot resolve at all; a name
             // quota they resolve on another name; a registration they resolve here and now.
+            //
+            // These say what is wrong but deliberately not how to fix it. How a player registers, or
+            // frees up a name, is the billing server's business and differs between them, and it sends
+            // its own instructions over the command-message path. A command name hardcoded here would be
+            // wrong for every billing server that does not happen to use it.
             if ((restrictions & BillingRestrictions.SpecLock) != 0)
                 return "You are banned from entering a ship.";
 
             if ((restrictions & BillingRestrictions.NameQuotaLock) != 0)
-                return "Your account has too many names. Release one with ?nick release <name> to play on this one.";
+                return "Your account has too many names. Release one to play on this one.";
 
-            return "You must complete registration before you can play. Type ?authhelp for instructions.";
+            return "You must complete registration before you can play.";
         }
 
         /// <summary>
