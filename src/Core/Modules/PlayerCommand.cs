@@ -688,8 +688,7 @@ namespace SS.Core.Modules
                         out sendRoutePercent,
                         out DateTime? lastUpdated,
                         out TimeSpan? rtt,
-                        out double c2sVariance,
-                        out double c2sSSampleMean,
+                        out int c2sSampleMin,
                         out long sampleCount,
                         out long minSampleSize))
                     {
@@ -705,7 +704,7 @@ namespace SS.Core.Modules
                             sb.Append($"{rtt.Value.TotalMilliseconds:F2}");
                         }
 
-                        sb.Append($"  mean: {(c2sSSampleMean * 10):F2}  c2s variance: {c2sVariance:F3}  samples: {sampleCount}/{minSampleSize}");
+                        sb.Append($"  c2s: {(c2sSampleMin * 10)}  samples: {sampleCount}/{minSampleSize}");
 
                         _chat.SendMessage(player, sb);
                     }

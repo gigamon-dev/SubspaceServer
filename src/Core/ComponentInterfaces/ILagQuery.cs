@@ -240,8 +240,7 @@ namespace SS.Core.ComponentInterfaces
             out int sendRoutePercent,
             out DateTime? lastUpdated,
             out TimeSpan? rtt,
-            out double c2sVariance,
-            out double c2sSampleMean,
+            out int c2sSampleMin,
             out long sampleCount,
             out long minSampleSize);
     }

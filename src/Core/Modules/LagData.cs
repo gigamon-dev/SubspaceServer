@@ -43,9 +43,7 @@ namespace SS.Core.Modules
         private bool _dynamicSendRoutePercentEnabled;
         private TimeSpan _dynamicSendRoutePercentAdjustInterval;
         private int _dynamicSendRoutePercentC2SMinSampleSize;
-        private double _dynamicSendRoutePercentC2SConfidenceLevel;
-        private double _dynamicSendRoutePercentMinRTTRequired;
-        private int _dynamicSendRoutePercentAdjustPercent;
+        private int _dynamicSendRoutePercentMinRTTRequired;
         private int _dynamicSendRoutePercentMinimumAdjust;
         private int _dynamicSendRoutePercentMinValue;
         private int _dynamicSendRoutePercentMaxValue;
@@ -77,20 +75,8 @@ namespace SS.Core.Modules
                 Note: The system will only make a C2S latency point estimation if the sample size of position packets is large enough to meet
                 the required confidence level, according to the variance.
                 """)]
-        [ConfigHelp<double>("Latency", "DynamicSendRoutePercentC2SConfidenceLevel", ConfigScope.Global, Default = 3.0,
-            Description = """
-                The confidence level in standard deviations for making a point estimate of C2S latency.
-                3 sigma = 99.73%
-                """)]
-        [ConfigHelp<double>("Latency", "DynamicSendRoutePercentMinRTTRequired", ConfigScope.Global, Default = 30.0, Min = 10.0,
+        [ConfigHelp<int>("Latency", "DynamicSendRoutePercentMinRTTRequired", ConfigScope.Global, Default = 2, Min = 2,
             Description = "The minimum round-trip time (ms) required to dynamically adjust Latency:SendRoutePercent")]
-        [ConfigHelp<int>("Latency", "DynamicSendRoutePercentAdjustPercent", ConfigScope.Global, Default = 1000, Min = 1, Max = 1000,
-            Description = """
-                When adjusting Latency:SendRoutePercent, the percentage of the estimated change amount to adjust by.
-                E.g. if the estimated amount to adjust is 200 (20%) and this is set to 900 (90%), it will adjust by 180 (18%).
-                This can be useful to prevent from over adjusting.
-                In 0.1% (1000 = 100%, 500 = 50%, 10 = 1%, 1 = 0.1%).
-                """)]
         [ConfigHelp<int>("Latency", "DynamicSendRoutePercentMinimumAdjust", ConfigScope.Global, Default = 10, Min = 1, Max = 1000,
             Description = """
                 The minimum amount to adjust Latency:SendRoutePercent when a new estimate is made (enough data points).
@@ -106,18 +92,7 @@ namespace SS.Core.Modules
             _dynamicSendRoutePercentEnabled = _configManager.GetBool(_configManager.Global, "Latency", "DynamicSendRoutePercentEnabled", GlobalConf.Latency.DynamicSendRoutePercentEnabled.Default);
             _dynamicSendRoutePercentAdjustInterval = TimeSpan.FromSeconds(int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentAdjustInterval", GlobalConf.Latency.DynamicSendRoutePercentAdjustInterval.Default), GlobalConf.Latency.DynamicSendRoutePercentAdjustInterval.Min, int.MaxValue));
             _dynamicSendRoutePercentC2SMinSampleSize = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentC2SMinSampleSize", GlobalConf.Latency.DynamicSendRoutePercentC2SMinSampleSize.Default), GlobalConf.Latency.DynamicSendRoutePercentC2SMinSampleSize.Min, int.MaxValue);
-
-            string? confidenceLevelStr = _configManager.GetStr(_configManager.Global, "Latency", "DynamicSendRoutePercentC2SConfidenceLevel");
-            if (string.IsNullOrWhiteSpace(confidenceLevelStr) || !double.TryParse(confidenceLevelStr, out _dynamicSendRoutePercentC2SConfidenceLevel))
-                _dynamicSendRoutePercentC2SConfidenceLevel = GlobalConf.Latency.DynamicSendRoutePercentC2SConfidenceLevel.Default;
-
-            string? minRttStr = _configManager.GetStr(_configManager.Global, "Latency", "DynamicSendRoutePercentMinRTTRequired");
-            if(string.IsNullOrWhiteSpace(minRttStr) || !double.TryParse(minRttStr, out _dynamicSendRoutePercentMinRTTRequired))
-                _dynamicSendRoutePercentMinRTTRequired = GlobalConf.Latency.DynamicSendRoutePercentMinRTTRequired.Default;
-            else
-                _dynamicSendRoutePercentMinRTTRequired = double.Clamp(_dynamicSendRoutePercentMinRTTRequired, GlobalConf.Latency.DynamicSendRoutePercentMinRTTRequired.Min, int.MaxValue);
-
-            _dynamicSendRoutePercentAdjustPercent = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentAdjustPercent", GlobalConf.Latency.DynamicSendRoutePercentAdjustPercent.Default), GlobalConf.Latency.DynamicSendRoutePercentAdjustPercent.Min, GlobalConf.Latency.DynamicSendRoutePercentAdjustPercent.Max); 
+            _dynamicSendRoutePercentMinRTTRequired = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentMinRTTRequired", GlobalConf.Latency.DynamicSendRoutePercentMinRTTRequired.Default), GlobalConf.Latency.DynamicSendRoutePercentMinRTTRequired.Min, int.MaxValue);
             _dynamicSendRoutePercentMinimumAdjust = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentMinimumAdjust", GlobalConf.Latency.DynamicSendRoutePercentMinimumAdjust.Default), GlobalConf.Latency.DynamicSendRoutePercentMinimumAdjust.Min, GlobalConf.Latency.DynamicSendRoutePercentMinimumAdjust.Max);
             _dynamicSendRoutePercentMinValue = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentMinValue", GlobalConf.Latency.DynamicSendRoutePercentMinValue.Default), GlobalConf.Latency.DynamicSendRoutePercentMinValue.Min, GlobalConf.Latency.DynamicSendRoutePercentMinValue.Max);
             _dynamicSendRoutePercentMaxValue = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentMaxValue", GlobalConf.Latency.DynamicSendRoutePercentMaxValue.Default), GlobalConf.Latency.DynamicSendRoutePercentMaxValue.Min, GlobalConf.Latency.DynamicSendRoutePercentMaxValue.Max);
@@ -229,103 +204,80 @@ namespace SS.Core.Modules
                     && lagStats.PositionStats.C2SSampleCount >= _dynamicSendRoutePercentC2SMinSampleSize)
                 {
                     /*
-                    * Dynamic Latency:SendRoutePercent
-                    * 
-                    * Concept:
-                    * Use position packet time stats to estimate C2S latency.
-                    * The Subspace protocol uses centiseconds. However, that is not granular enough to make a good estimate.
-                    * Consider a round-trip ping of 10 cs (100 ms). An estimate would have accuracy of about 1/10, 10%.
-                    * Therefore, use point estimation to get C2S position packet time in milliseconds.
-                    * With milliseconds, an estimate within 1% accuracy should be possible.
-                    * SendRoutePercent allows adjusting to within a 1/10 of a percent.
-                    * Getting a higher precision than milliseconds would require an enormous # of data points, depending on variance.
-                    * To determine how many data points are needed to make a point estimation, use the sample size formula.
-                    * 
-                    * Sample size formula:
-                    * n = ((Z * σ) / E)²
-                    *   = (Z/E)² * σ²
-                    *   = (Z/E)² * variance
-                    * 
-                    * E = margin of error
-                    * 0.1 since We want the latency point estimation in ms. (0.1 centiseconds = 1 ms)
-                    * 
-                    * Z = confidence level in standard deviations 
-                    * e.g. 3 sigma = 99.73%
-                    * 
-                    * When enough position packet samples have been aquired to make a millisecond estimate of its mean, 
-                    * adjust Latency:SendRoutePercent using the following logic.
-                    *
-                    * Adjustment formula:
-                    * expectedMean = RTT * currentSendRoutePercent / 1000
-                    * This is what the client should have estimated the server time to be.
-                    * 
-                    * The average times from position packets should reflect it.
-                    * mean = average of times from a recent sample of position packets
-                    * 
-                    * Figure out how many milliseconds we should adjust for.
-                    * meanDiff = mean - expectedMean
-                    * 
-                    * adjustPercent = meanDiff / RTT
-                    * newSendRoutePercent = currentSendRoutePercent + adjustPercent
-                    * 
-                    * TODO: Investigate alternatives to using mean and variance such as median and quantile tracking:
-                    * HdrHistogram - https://github.com/HdrHistogram/HdrHistogram.NET
-                    * T-Digest - https://github.com/ASolomatin/T-Digest.NET
-                    */
+                     * Dynamic Latency:SendRoutePercent
+                     * --------------------------------
+                     * Detect imbalances between c2s latency and s2c latency by looking at the most recent sample set 
+                     * containing the differences between server times and position packet times.
+                     * Automatically adjust the Latency:SendRoutePercent client setting to nudge the client closer into sync.
+                     * 
+                     * Let:
+                     * rtt = minimum in the recent timesync sample set, converted to centiseconds
+                     * minC2S = the minimum latency recorded in recent samples of position packet times. 
+                     * 
+                     * Calculate what the client should have estimated the c2s latency to be using rtt and the current Latency:SendRoutePercent:
+                     * expected = rtt * currentSendRoutePercent / 1000
+                     * 
+                     * In theory, minC2S should match the expected value if everything was spot on.
+                     * Take the difference:
+                     * diff = minC2S - expected
+                     * 
+                     * Adjust Latency:SendRoutePercent if diff != 0:
+                     * adjustPercent = 1000 * diff / rtt
+                     * newSendRoutePercent = currentSendRoutePercent + adjustPercent
+                     */
 
-                    // Check if there are enough samples to estimate C2S latency to the millisecond.
-                    int minSampleSize = GetMinimumC2SSampleSize(lagStats.PositionStats.C2SPopulationVariance);
-                    if (lagStats.PositionStats.C2SSampleCount < minSampleSize)
+                    TimeSpan? minRTT = lagStats.TimeSync.GetMinRTT();
+                    if (minRTT is null)
                     {
-                        _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Insufficient position data for dynamic SendRoutePercent estimate (variance: {lagStats.PositionStats.C2SPopulationVariance}, have: {lagStats.PositionStats.C2SSampleCount}, need: {minSampleSize}).");
-                        return; // not enough data points to make an confident estimate of C2S latency
-                    }
-
-                    // Using the median should prevent outliers.
-                    TimeSpan? medianRTT = lagStats.TimeSync.GetMedianRTT();
-                    if (medianRTT is null)
-                        return; // shouldn't happen
-
-                    double rtt = medianRTT.Value.TotalMilliseconds;
-                    if (rtt < _dynamicSendRoutePercentMinRTTRequired)
-                    {
-                        // RTT is below the configured threshold for dynamically adjusting Latency:SendRoutePercent.
+                        // Don't have a RTT yet.
                         return;
                     }
 
-                    // Get a point estimate in milliseconds (using the centisecond position packet latency).
-                    double mean = lagStats.PositionStats.C2SSampleMean * 10; // convert to ms
-                    if (mean >= rtt)
+                    try
                     {
-                        // The client's server time estimate compared to RTT is too far off.
-                        return;
+                        int rtt = (int)(minRTT.Value.TotalMilliseconds / 10);
+                        if (rtt < _dynamicSendRoutePercentMinRTTRequired)
+                        {
+                            // RTT is below the configured threshold for dynamically adjusting Latency:SendRoutePercent.
+                            _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Dynamic SendRoutePercent - RTT too low (rtt: {rtt}, minrtt: {_dynamicSendRoutePercentMinRTTRequired})");
+                            return;
+                        }
+
+                        int currentSendRoutePercent = GetSendRoutePercent(player);
+                        int expected = rtt * currentSendRoutePercent / 1000;
+                        int minC2S = lagStats.PositionStats.C2SSampleMinimum;
+                        int diff = minC2S - expected;
+                        if (diff == 0)
+                        {
+                            // No adjustment needed.
+                            _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Dynamic SendRoutePercent calculated (rtt: {rtt}, c2s: {minC2S}, expected: {expected}, diff: {diff}, adjust: NONE, current: {currentSendRoutePercent}");
+                            return;
+                        }
+
+                        int adjustPercent = 1000 * diff / rtt;
+
+                        if (int.Abs(adjustPercent) >= _dynamicSendRoutePercentMinimumAdjust)
+                        {
+                            newSendRoutePercent = int.Clamp(currentSendRoutePercent + adjustPercent, _dynamicSendRoutePercentMinValue, _dynamicSendRoutePercentMaxValue);
+
+                            if (newSendRoutePercent.Value == currentSendRoutePercent)
+                            {
+                                // No change (clamped to min or max value already)
+                                newSendRoutePercent = null;
+                            }
+                            else
+                            {
+                                lagStats.SendRoutePercentOverride = newSendRoutePercent;
+                                lagStats.SendRoutePercentLastUpdated = DateTime.UtcNow;
+                            }
+                        }
+
+                        _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Dynamic SendRoutePercent calculated (rtt: {rtt}, c2s: {minC2S}, expected: {expected}, diff: {diff}, adjust: {adjustPercent}, current: {currentSendRoutePercent}, new: {newSendRoutePercent}");
                     }
-
-                    // Calculate how much to adjust.
-                    int currentSendRoutePercent = GetSendRoutePercent(player);
-                    double expectedMean = rtt * currentSendRoutePercent / 1000;
-                    double meanDiff = mean - expectedMean;
-                    int adjustPercent = (int)(meanDiff / rtt * _dynamicSendRoutePercentAdjustPercent);
-
-                    if (int.Abs(adjustPercent) >= _dynamicSendRoutePercentMinimumAdjust)
+                    finally
                     {
-                        newSendRoutePercent = int.Clamp(currentSendRoutePercent + adjustPercent, _dynamicSendRoutePercentMinValue, _dynamicSendRoutePercentMaxValue);
-
-                        if (newSendRoutePercent.Value == currentSendRoutePercent)
-                        {
-                            // No change (clamped to min or max value already)
-                            newSendRoutePercent = null;
-                        }
-                        else
-                        {
-                            lagStats.SendRoutePercentOverride = newSendRoutePercent;
-                            lagStats.SendRoutePercentLastUpdated = DateTime.UtcNow;
-                        }
+                        lagStats.PositionStats.ResetSampleStats();
                     }
-
-                    _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Dynamic SendRoutePercent calculated (rtt: {rtt}, variance: {lagStats.PositionStats.C2SPopulationVariance}, mean: {mean}, expectedMean: {expectedMean}, meanDiff: {meanDiff}, adjust: {adjustPercent}, current: {currentSendRoutePercent}, new: {newSendRoutePercent}");
-                    
-                    lagStats.PositionStats.ResetSampleStats();
                 }
             }
 
@@ -682,8 +634,7 @@ namespace SS.Core.Modules
             out int sendRoutePercent,
             out DateTime? lastUpdated,
             out TimeSpan? rtt,
-            out double c2sVariance,
-            out double c2sSampleMean,
+            out int c2sSampleMin,
             out long sampleCount,
             out long minSampleSize)
         {
@@ -694,8 +645,7 @@ namespace SS.Core.Modules
                 sendRoutePercent = default;
                 lastUpdated = null;
                 rtt = default;
-                c2sVariance = default;
-                c2sSampleMean = default;
+                c2sSampleMin = default;
                 sampleCount = default;
                 minSampleSize = default;
                 return false;
@@ -707,11 +657,10 @@ namespace SS.Core.Modules
             {
                 sendRoutePercentOverride = lagStats.SendRoutePercentOverride;
                 lastUpdated = lagStats.SendRoutePercentLastUpdated;
-                rtt = lagStats.TimeSync.GetMedianRTT();
-                c2sVariance = lagStats.PositionStats.C2SPopulationVariance;
-                c2sSampleMean = lagStats.PositionStats.C2SSampleMean;
+                rtt = lagStats.TimeSync.GetMinRTT();
+                c2sSampleMin = lagStats.PositionStats.C2SSampleMinimum;
                 sampleCount = lagStats.PositionStats.C2SSampleCount;
-                minSampleSize = GetMinimumC2SSampleSize(c2sVariance);
+                minSampleSize = _dynamicSendRoutePercentC2SMinSampleSize;
             }
 
             sendRoutePercent = sendRoutePercentOverride ?? GetSendRoutePercent(player);
@@ -725,22 +674,6 @@ namespace SS.Core.Modules
             return player.Arena is not null && _clientSettings is not null
                 ? int.Clamp(_clientSettings.GetSetting(player, _sendRoutePercentClientSettingIdentifier), MinSendRoutePercent, MaxSendRoutePercent)
                 : 500;
-        }
-
-        private int GetMinimumC2SSampleSize(double variance)
-        {
-            return int.Max(
-                _dynamicSendRoutePercentC2SMinSampleSize, 
-                GetMinimumSampleSize(_dynamicSendRoutePercentC2SConfidenceLevel, C2SEstimateMarginOfError, variance));
-        }
-
-        private static int GetMinimumSampleSize(double z, double e, double variance)
-        {
-            if (e == 0.0)
-                return int.MaxValue;
-
-            double confidenceErrorRatio = z / e;
-            return int.Clamp((int)Math.Ceiling((confidenceErrorRatio * confidenceErrorRatio * variance)), 1, int.MaxValue);
         }
 
         #region Helper classes
@@ -1249,34 +1182,22 @@ namespace SS.Core.Modules
                 }
             }
 
-            public TimeSpan? GetMedianRTT()
+            public TimeSpan? GetMinRTT()
             {
                 if (_samplesCount == 0)
                     return null; // no data yet
 
-                Span<TimeSpan> dataPoints = stackalloc TimeSpan[_samplesCount];
-                int dataPointIndex = 0;
+                TimeSpan? min = null;
 
                 for (int i = _samplesCount - 1; i >= 0; i--)
                 {
                     ref readonly TimeSyncSample sample = ref _samples[(_samplesHead + i) % _samples.Length];
 
-                    dataPoints[dataPointIndex++] = sample.ServerTimestampRTT;
+                    if (min is null || sample.ServerTimestampRTT < min)
+                        min = sample.ServerTimestampRTT;
                 }
 
-                dataPoints.Sort();
-
-                int mid = dataPoints.Length / 2;
-                if (dataPoints.Length % 2 != 0)
-                {
-                    // Odd number of elements
-                    return dataPoints[mid];
-                }
-                else
-                {
-                    // Even number of elements (average the two middle points)
-                    return ((dataPoints[mid - 1]) + (dataPoints[mid])) / 2;
-                }
+                return min;
             }
 
             public void GetHistory(ICollection<TimeSyncRecord> records)
@@ -1369,17 +1290,15 @@ namespace SS.Core.Modules
         private class PositionStats
         {
             private readonly PingStats _c2sPopulationStats = new(BucketWidth, PositionBucketCount, -(BucketWidth * PositionBucketCount / 2));
-            private readonly Histogram _c2sSampleHistogram = new(BucketWidth, PositionBucketCount, -(BucketWidth * PositionBucketCount / 2));
             private readonly WelfordVarianceCalculator _c2sPopulationCalculator = new();
-            private readonly WelfordVarianceCalculator _c2sSampleCalculator = new();
+            private readonly Histogram _c2sSampleHistogram = new(BucketWidth, PositionBucketCount, -(BucketWidth * PositionBucketCount / 2));
+            public long C2SSampleCount { get; private set; }
+            public int C2SSampleMinimum { get; private set; }
             private readonly PingStats _clientReportedS2CLatencyStats = new(BucketWidth, BucketCount, 0);
 
             public long C2SPopulationCount => _c2sPopulationCalculator.Count;
             public double C2SPopulationMean => _c2sPopulationCalculator.Mean;
             public double C2SPopulationVariance => _c2sPopulationCalculator.SampleVariance; // all the data we have is still a finite subset of an infinite stream of data, use sample variance
-            public long C2SSampleCount => _c2sSampleCalculator.Count;
-            public double C2SSampleMean => _c2sSampleCalculator.Mean;
-            public double C2SSampleVariance => _c2sSampleCalculator.SampleVariance;
 
             private const double ZFilterThreshold = 3.0;
 
@@ -1411,7 +1330,10 @@ namespace SS.Core.Modules
                 }
 
                 _c2sPopulationCalculator.AddValue(c2sValue);
-                _c2sSampleCalculator.AddValue(c2sValue);
+
+                C2SSampleCount++;
+                if (c2sLatency < C2SSampleMinimum)
+                    C2SSampleMinimum = c2sLatency;
 
                 if (clientS2CLatency is not null)
                     _clientReportedS2CLatencyStats.AddValue(clientS2CLatency.Value * 10); // convert ticks to ms
@@ -1428,7 +1350,8 @@ namespace SS.Core.Modules
             public void ResetSampleStats()
             {
                 _c2sSampleHistogram.Reset();
-                _c2sSampleCalculator.Reset();
+                C2SSampleCount = 0;
+                C2SSampleMinimum = int.MaxValue;
             }
 
             public int GetC2SHistogram(ICollection<PingHistogramBucket> data, bool sample = false)
