@@ -568,12 +568,8 @@ namespace SS.Core.Modules
             _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetloss);
             _lagQuery.QueryTimeSyncDriftMs(targetPlayer, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev);
 
-            // Convert 1-way c2s position latency into 2-way latency.
-            int sendRoutePercent = _lagQuery.GetSendRoutePercent(targetPlayer);
-            int position2Way = positionPing.Average * 1000 / sendRoutePercent;
-
             // Average all pings together with reliable ping and time sync pings having twice the weight since they're far more accurate.
-            int average = (position2Way + clientPing.Average + (2 * reliablePing.Average) + (2 * clientTimeSyncPing.Average) + (2 * serverTimeSyncPing.Average)) / 8;
+            int average = ((positionPing.Average * 2) + clientPing.Average + (2 * reliablePing.Average) + (2 * clientTimeSyncPing.Average) + (2 * serverTimeSyncPing.Average)) / 8;
 
             string prefix = targetPlayer == player ? "lag" : targetPlayer.Name!;
 
@@ -678,36 +674,6 @@ namespace SS.Core.Modules
 
                     _chat.SendMessage(player, sb);
                     sb.Clear();
-
-                    //
-                    // SendRoutePercent
-                    //
-
-                    if (_lagQuery.TryGetDynamicSendRoutePercentData(
-                        targetPlayer,
-                        out sendRoutePercent,
-                        out DateTime? lastUpdated,
-                        out TimeSpan? rtt,
-                        out int c2sSampleMin,
-                        out long sampleCount,
-                        out long minSampleSize))
-                    {
-                        sb.Append($"{prefix}: SendRoutePercent {(lastUpdated is null ? "(default)" : "(adjusted)")}: {(sendRoutePercent / 10.0):F1}%");
-
-                        sb.Append($"  rtt: ");
-                        if (rtt is null)
-                        {
-                            sb.Append("n/a");
-                        }
-                        else
-                        {
-                            sb.Append($"{rtt.Value.TotalMilliseconds:F2}");
-                        }
-
-                        sb.Append($"  c2s: {(c2sSampleMin * 10)}  samples: {sampleCount}/{minSampleSize}");
-
-                        _chat.SendMessage(player, sb);
-                    }
                 }
                 finally
                 {
@@ -720,16 +686,14 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None | CommandTarget.Player,
-            Args = "[ -r | -c | -s | -o | -i ]",
+            Args = "[ -r | -c | -s | -o ]",
             Description = """
                 Displays a histogram containing lag information about you or a target player.
-                By default, 1-way c2s position data (all) is returned. 
+                By default, c2s position latency is returned. 
                 Use -r for reliable ping data.
                 Use -c for time sync data (client times).
                 Use -s for time sync data (server times).
-                Use -o for outgoing, 1-way s2c position data reported by the client (requires extra position data)
-                Use -i for incoming, 1-way c2s position data (sample)
-                For c2s position data, negative values are when the client overestimated the c2s latency.
+                Use -o for outgoing, s2c position latency reported by the client (requires extra position data).
                 """)]
         private void Command_laghist(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -760,22 +724,13 @@ namespace SS.Core.Modules
                 else if (parameters.Contains("-o", StringComparison.OrdinalIgnoreCase))
                 {
                     dataPointCount = _lagQuery!.GetS2CPositionHistogram(targetPlayer, histogramData);
-                    description = "1-way S2C Position Latency (client reported)";
-                }
-                else if (parameters.Contains("-i", StringComparison.OrdinalIgnoreCase))
-                {
-                    dataPointCount = _lagQuery!.GetC2SPositionHistogram(targetPlayer, true, histogramData);
-                    description = "1-way C2S Position Latency (sample)";
+                    description = "S2C Position Latency (client reported)";
                 }
                 else
                 {
-                    dataPointCount = _lagQuery!.GetC2SPositionHistogram(targetPlayer, false, histogramData);
-                    description = "1-way C2S Position Latency (all)";
+                    dataPointCount = _lagQuery!.GetC2SPositionHistogram(targetPlayer, histogramData);
+                    description = "C2S Position Latency";
                 }
-
-                // TODO: Add client reported S2C latency histogram (requires position packets with extra position data)
-                //_lagQuery.GetS2CPositionHistogram(targetPlayer, histogramData);
-                //description = "1-way S2C Position Latency";
 
                 string prefix = targetPlayer == player ? "laghist" : targetPlayer.Name!;
 

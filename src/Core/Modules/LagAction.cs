@@ -306,12 +306,8 @@ namespace SS.Core.Modules
             _lagQuery.QueryTimeSyncPing(player, out PingSummary clientTimeSyncPing, out PingSummary serverTimeSyncPing);
             _lagQuery.QueryPacketloss(player, out PacketlossSummary packetloss);
 
-            // Convert 1-way c2s position latency into 2-way latency.
-            int sendRoutePercent = _lagQuery.GetSendRoutePercent(player);
-            int position2Way = positionPing.Average * 1000 / sendRoutePercent;
-
             // average all pings together with reliable ping and time sync pings having twice the weight since they're far more accurate
-            int averagePing = (position2Way + clientPing.Average + (2 * reliablePing.Average) + (2 * clientTimeSyncPing.Average) + (2 * serverTimeSyncPing.Average)) / 8;
+            int averagePing = ((positionPing.Average * 2) + clientPing.Average + (2 * reliablePing.Average) + (2 * clientTimeSyncPing.Average) + (2 * serverTimeSyncPing.Average)) / 8;
 
             // check conditions that force spec
             if (averagePing > lagLimits.Ping.ForceSpec)

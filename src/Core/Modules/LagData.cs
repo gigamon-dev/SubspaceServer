@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using GlobalConf = SS.Core.ConfigHelp.Constants.Global;
 
 namespace SS.Core.Modules
 {
@@ -20,16 +19,12 @@ namespace SS.Core.Modules
         private const int PacketlossMinPackets = 200;
         private const int BucketCount = 25;
         private const int BucketWidth = 20;
-        private const int PositionBucketCount = 30;
         private const int TimeSyncSamples = 24; // timesyncs are usually 5 seconds apart, so this is 2 minutes worth (assuming no packet loss)
         private const int MinSendRoutePercent = 1;
         private const int MaxSendRoutePercent = 999;
-        private const double C2SEstimateMarginOfError = 0.1; // 0.1 centiseconds = 1 ms
 
         // Required dependencies
         private readonly IComponentBroker _broker;
-        private readonly IConfigManager _configManager;
-        private readonly ILogManager _logManager;
         private readonly IPlayerData _playerData;
 
         // Optional dependencies
@@ -39,15 +34,6 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<ILagCollect>? _iLagCollectToken;
         private InterfaceRegistrationToken<ILagQuery>? _iLagQueryToken;
 
-        // Global.conf [Latency] settings for dynamic adjustment of Latency:SendRoutePercent
-        private bool _dynamicSendRoutePercentEnabled;
-        private TimeSpan _dynamicSendRoutePercentAdjustInterval;
-        private int _dynamicSendRoutePercentC2SMinSampleSize;
-        private int _dynamicSendRoutePercentMinRTTRequired;
-        private int _dynamicSendRoutePercentMinimumAdjust;
-        private int _dynamicSendRoutePercentMinValue;
-        private int _dynamicSendRoutePercentMaxValue;
-
         /// <summary>
         /// per player data key
         /// </summary>
@@ -55,52 +41,19 @@ namespace SS.Core.Modules
 
         private ClientSettingIdentifier _sendRoutePercentClientSettingIdentifier; // Latency:SendRoutePercent
 
-        public LagData(IComponentBroker broker, IConfigManager configManager, ILogManager logManager, IPlayerData playerData)
+        public LagData(IComponentBroker broker, IPlayerData playerData)
         {
             _broker = broker ?? throw new ArgumentNullException(nameof(broker));
-            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
         }
 
         #region IModule Members
 
-        [ConfigHelp<bool>("Latency", "DynamicSendRoutePercentEnabled", ConfigScope.Global, Default = false,
-            Description = "Whether to dynamically adjust Latency:SendRoutePercent based on lag stats (position packet times and RTT from time syncs).")]
-        [ConfigHelp<int>("Latency", "DynamicSendRoutePercentAdjustInterval", ConfigScope.Global, Default = 180, Min = 0,
-            Description = "After adjusting Latency:SendRoutePercent, the amount of time (seconds) until it can be adjusted again.")]
-        [ConfigHelp<int>("Latency", "DynamicSendRoutePercentC2SMinSampleSize", ConfigScope.Global, Default = 1000, Min = 100,
-            Description = """
-                The minimum # of position packet data points required to make a new estimate to dynamically adjust Latency:SendRoutePercent.
-                Note: The system will only make a C2S latency point estimation if the sample size of position packets is large enough to meet
-                the required confidence level, according to the variance.
-                """)]
-        [ConfigHelp<int>("Latency", "DynamicSendRoutePercentMinRTTRequired", ConfigScope.Global, Default = 2, Min = 2,
-            Description = "The minimum round-trip time (ms) required to dynamically adjust Latency:SendRoutePercent")]
-        [ConfigHelp<int>("Latency", "DynamicSendRoutePercentMinimumAdjust", ConfigScope.Global, Default = 10, Min = 1, Max = 1000,
-            Description = """
-                The minimum amount to adjust Latency:SendRoutePercent when a new estimate is made (enough data points).
-                This can be useful to prevent overriding when there's little difference.
-                In 0.1% (1000 = 100%, 500 = 50%, 10 = 1%, 1 = 0.1%).
-                """)]
-        [ConfigHelp<int>("Latency", "DynamicSendRoutePercentMinValue", ConfigScope.Global, Default = 250, Min = 1, Max = 500,
-            Description = "The minimum Latency:SendRoutePercent the system will dynamically adjust to.")]
-        [ConfigHelp<int>("Latency", "DynamicSendRoutePercentMaxValue", ConfigScope.Global, Default = 750, Min = 500, Max = 999,
-            Description = "The maximum Latency:SendRoutePercent the system will dynamically adjust to.")]
         bool IModule.Load(IComponentBroker broker)
         {
-            _dynamicSendRoutePercentEnabled = _configManager.GetBool(_configManager.Global, "Latency", "DynamicSendRoutePercentEnabled", GlobalConf.Latency.DynamicSendRoutePercentEnabled.Default);
-            _dynamicSendRoutePercentAdjustInterval = TimeSpan.FromSeconds(int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentAdjustInterval", GlobalConf.Latency.DynamicSendRoutePercentAdjustInterval.Default), GlobalConf.Latency.DynamicSendRoutePercentAdjustInterval.Min, int.MaxValue));
-            _dynamicSendRoutePercentC2SMinSampleSize = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentC2SMinSampleSize", GlobalConf.Latency.DynamicSendRoutePercentC2SMinSampleSize.Default), GlobalConf.Latency.DynamicSendRoutePercentC2SMinSampleSize.Min, int.MaxValue);
-            _dynamicSendRoutePercentMinRTTRequired = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentMinRTTRequired", GlobalConf.Latency.DynamicSendRoutePercentMinRTTRequired.Default), GlobalConf.Latency.DynamicSendRoutePercentMinRTTRequired.Min, int.MaxValue);
-            _dynamicSendRoutePercentMinimumAdjust = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentMinimumAdjust", GlobalConf.Latency.DynamicSendRoutePercentMinimumAdjust.Default), GlobalConf.Latency.DynamicSendRoutePercentMinimumAdjust.Min, GlobalConf.Latency.DynamicSendRoutePercentMinimumAdjust.Max);
-            _dynamicSendRoutePercentMinValue = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentMinValue", GlobalConf.Latency.DynamicSendRoutePercentMinValue.Default), GlobalConf.Latency.DynamicSendRoutePercentMinValue.Min, GlobalConf.Latency.DynamicSendRoutePercentMinValue.Max);
-            _dynamicSendRoutePercentMaxValue = int.Clamp(_configManager.GetInt(_configManager.Global, "Latency", "DynamicSendRoutePercentMaxValue", GlobalConf.Latency.DynamicSendRoutePercentMaxValue.Default), GlobalConf.Latency.DynamicSendRoutePercentMaxValue.Min, GlobalConf.Latency.DynamicSendRoutePercentMaxValue.Max);
-
             _lagkey = _playerData.AllocatePlayerData<PlayerLagStats>();
 
             PlayerActionCallback.Register(_broker, Callback_PlayerAction);
-            BeforeSendInitialClientSettingsCallback.Register(_broker, Callback_BeforeSendInitialClientSettings);
 
             _iLagCollectToken = _broker.RegisterInterface<ILagCollect>(this);
             _iLagQueryToken = _broker.RegisterInterface<ILagQuery>(this);
@@ -131,7 +84,6 @@ namespace SS.Core.Modules
                 return false;
 
             PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
-            BeforeSendInitialClientSettingsCallback.Unregister(_broker, Callback_BeforeSendInitialClientSettings);
 
             _playerData.FreePlayerData(ref _lagkey);
 
@@ -146,41 +98,15 @@ namespace SS.Core.Modules
             {
                 if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 {
-                    Interlocked.Exchange(ref lagStats.LastWeaponSentCount, 0);
-
-                    int sendRoutePercent = GetSendRoutePercent(player);
+                    lagStats.ResetWeaponSentCount();
 
                     // Changing arenas means the Latency:SendRoutePercent setting could have changed.
                     // Refresh the C2S latency estimate.
-                    uint? updatedC2SLatencyEstimate;
-                    lock (lagStats.Lock)
-                    {
-                        updatedC2SLatencyEstimate = lagStats.TimeSync.RefreshC2SLatencyEstimate(sendRoutePercent) ? lagStats.TimeSync.C2SLatencyEstimate!.Value : null;
-                    }
-
+                    uint? updatedC2SLatencyEstimate = lagStats.RefreshC2SLatencyEstimate(GetSendRoutePercent(player));
                     if (updatedC2SLatencyEstimate is not null)
                     {
                         C2SLatencyEstimateChangedCallback.Fire(_broker, player, updatedC2SLatencyEstimate.Value);
                     }
-                }
-            }
-        }
-
-        private void Callback_BeforeSendInitialClientSettings(Player player)
-        {
-            if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
-                return;
-
-            if (_dynamicSendRoutePercentEnabled && _clientSettings is not null)
-            {
-                if (lagStats.SendRoutePercentOverride is not null)
-                {
-                    // The player switched arenas, re-override Latency:SendRoutePercent.
-                    _clientSettings.OverrideSetting(player, _sendRoutePercentClientSettingIdentifier, lagStats.SendRoutePercentOverride.Value);
-
-                    // The client setting packet is sent immediately after this callback is executed,
-                    // so there is no need to call _clientSettings.SendClientSettings(player).
-                    // Doing so would double send the packet.
                 }
             }
         }
@@ -192,101 +118,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            int? newSendRoutePercent = null;
-
-            lock (lagStats.Lock)
-            {
-                lagStats.PositionStats.Add(c2sLatency, clientS2CLatency);
-
-                if (_dynamicSendRoutePercentEnabled 
-                    && _clientSettings is not null
-                    && (lagStats.SendRoutePercentLastUpdated is null || (lagStats.SendRoutePercentLastUpdated.Value + _dynamicSendRoutePercentAdjustInterval) < DateTime.UtcNow)
-                    && lagStats.PositionStats.C2SSampleCount >= _dynamicSendRoutePercentC2SMinSampleSize)
-                {
-                    /*
-                     * Dynamic Latency:SendRoutePercent
-                     * --------------------------------
-                     * Detect imbalances between c2s latency and s2c latency by looking at the most recent sample set 
-                     * containing the differences between server times and position packet times.
-                     * Automatically adjust the Latency:SendRoutePercent client setting to nudge the client closer into sync.
-                     * 
-                     * Let:
-                     * rtt = minimum in the recent timesync sample set, converted to centiseconds
-                     * minC2S = the minimum latency recorded in recent samples of position packet times. 
-                     * 
-                     * Calculate what the client should have estimated the c2s latency to be using rtt and the current Latency:SendRoutePercent:
-                     * expected = rtt * currentSendRoutePercent / 1000
-                     * 
-                     * In theory, minC2S should match the expected value if everything was spot on.
-                     * Take the difference:
-                     * diff = minC2S - expected
-                     * 
-                     * Adjust Latency:SendRoutePercent if diff != 0:
-                     * adjustPercent = 1000 * diff / rtt
-                     * newSendRoutePercent = currentSendRoutePercent + adjustPercent
-                     */
-
-                    TimeSpan? minRTT = lagStats.TimeSync.GetMinRTT();
-                    if (minRTT is null)
-                    {
-                        // Don't have a RTT yet.
-                        return;
-                    }
-
-                    try
-                    {
-                        int rtt = (int)(minRTT.Value.TotalMilliseconds / 10);
-                        if (rtt < _dynamicSendRoutePercentMinRTTRequired)
-                        {
-                            // RTT is below the configured threshold for dynamically adjusting Latency:SendRoutePercent.
-                            _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Dynamic SendRoutePercent - RTT too low (rtt: {rtt}, minrtt: {_dynamicSendRoutePercentMinRTTRequired})");
-                            return;
-                        }
-
-                        int currentSendRoutePercent = GetSendRoutePercent(player);
-                        int expected = rtt * currentSendRoutePercent / 1000;
-                        int minC2S = lagStats.PositionStats.C2SSampleMinimum;
-                        int diff = minC2S - expected;
-                        if (diff == 0)
-                        {
-                            // No adjustment needed.
-                            _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Dynamic SendRoutePercent calculated (rtt: {rtt}, c2s: {minC2S}, expected: {expected}, diff: {diff}, adjust: NONE, current: {currentSendRoutePercent}");
-                            return;
-                        }
-
-                        int adjustPercent = 1000 * diff / rtt;
-
-                        if (int.Abs(adjustPercent) >= _dynamicSendRoutePercentMinimumAdjust)
-                        {
-                            newSendRoutePercent = int.Clamp(currentSendRoutePercent + adjustPercent, _dynamicSendRoutePercentMinValue, _dynamicSendRoutePercentMaxValue);
-
-                            if (newSendRoutePercent.Value == currentSendRoutePercent)
-                            {
-                                // No change (clamped to min or max value already)
-                                newSendRoutePercent = null;
-                            }
-                            else
-                            {
-                                lagStats.SendRoutePercentOverride = newSendRoutePercent;
-                                lagStats.SendRoutePercentLastUpdated = DateTime.UtcNow;
-                            }
-                        }
-
-                        _logManager.LogP(LogLevel.Drivel, nameof(LagData), player, $"Dynamic SendRoutePercent calculated (rtt: {rtt}, c2s: {minC2S}, expected: {expected}, diff: {diff}, adjust: {adjustPercent}, current: {currentSendRoutePercent}, new: {newSendRoutePercent}");
-                    }
-                    finally
-                    {
-                        lagStats.PositionStats.ResetSampleStats();
-                    }
-                }
-            }
-
-            // If Latency:SendRoutePercent is to be adjusted, do it outside of the lock.
-            if (newSendRoutePercent is not null && _clientSettings is not null)
-            {
-                _clientSettings.OverrideSetting(player, _sendRoutePercentClientSettingIdentifier, newSendRoutePercent.Value);
-                _clientSettings.SendClientSettings(player);
-            }
+            lagStats.UpdatePositionStats(c2sLatency, clientS2CLatency);
         }
 
         void ILagCollect.IncrementWeaponSentCount(Player player)
@@ -294,7 +126,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            Interlocked.Increment(ref lagStats.LastWeaponSentCount);
+            lagStats.IncrementWeaponSentCount();
         }
 
         void ILagCollect.AddWeaponSentCount(Player player, uint value)
@@ -302,7 +134,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            Interlocked.Add(ref lagStats.LastWeaponSentCount, value);
+            lagStats.AddWeaponSentCount(value);
         }
 
         void ILagCollect.SetPendingWeaponSentCount(Player player)
@@ -310,10 +142,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            lock (lagStats.Lock)
-            {
-                lagStats.PendingWeaponSentCount = Interlocked.CompareExchange(ref lagStats.LastWeaponSentCount, 0, 0);
-            }
+            lagStats.SetPendingWeaponSentCount();
         }
 
         void ILagCollect.RelDelay(Player player, int ms)
@@ -321,10 +150,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            lock (lagStats.Lock)
-            {
-                lagStats.ReliablePing.AddValue(ms);
-            }
+            lagStats.UpdateReliableAckStats(ms);
         }
 
         void ILagCollect.ClientLatency(Player player, ref readonly ClientLatencyData data)
@@ -332,11 +158,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            lock (lagStats.Lock)
-            {
-                lagStats.ClientReportedData = data;
-                lagStats.WeaponSentCount = lagStats.PendingWeaponSentCount;
-            }
+            lagStats.UpdateClientLatencyStats(in data);
 
             PlayerLatencyStatsUpdatedCallback.Fire(_broker, player);
         }
@@ -346,11 +168,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            lock (lagStats.Lock)
-            {
-                lagStats.Packetloss = data;
-                lagStats.TimeSync.UpdateForRequestReceived(data.ServerTime, data.ClientTime, requestSent);
-            }
+            lagStats.UpdateTimeSyncRequestReceivedStats(in data, requestSent);
         }
 
         void ILagCollect.TimeSyncS2CRequest(Player player, uint serverRequestTime, uint? clientResponseTime)
@@ -358,10 +176,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            lock (lagStats.Lock)
-            {
-                lagStats.TimeSync.UpdateForRequestSent(serverRequestTime, clientResponseTime);
-            }
+            lagStats.UpdateTimeSyncRequestSentStats(serverRequestTime, clientResponseTime);
         }
 
         void ILagCollect.TimeSyncC2SResponse(Player player, uint serverRequestTime, uint serverResponseTime, uint clientResponseTime, TimeSpan timestampRTT)
@@ -369,14 +184,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            int sendRoutePercent = GetSendRoutePercent(player);
-            uint? updatedC2SLatencyEstimate;
-
-            lock (lagStats.Lock)
-            {
-                lagStats.TimeSync.UpdateForResponseReceived(serverRequestTime, serverResponseTime, clientResponseTime, timestampRTT, sendRoutePercent, out bool c2sLatencyEstimateUpdated);
-                updatedC2SLatencyEstimate = c2sLatencyEstimateUpdated ? lagStats.TimeSync.C2SLatencyEstimate!.Value : null;
-            }
+            uint? updatedC2SLatencyEstimate = lagStats.UpdateTimeSyncResponseStats(serverRequestTime, serverResponseTime, clientResponseTime, timestampRTT, GetSendRoutePercent(player));
 
             if (updatedC2SLatencyEstimate is not null)
             {
@@ -392,10 +200,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            lock (lagStats.Lock)
-            {
-                lagStats.TimeSync.OverrideC2SLatencyEstimate(estimate);
-            }
+            lagStats.SetFakeC2SMinLatencyEstimate(estimate);
         }
 
         void ILagCollect.RelStats(Player player, ref readonly ReliableLagData data)
@@ -403,10 +208,7 @@ namespace SS.Core.Modules
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return;
 
-            lock (lagStats.Lock)
-            {
-                lagStats.ReliableLagData = data;
-            }
+            lagStats.UpdateReliableStats(in data);
         }
 
         void ILagCollect.Clear(Player player)
@@ -429,10 +231,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            lock (lagStats.Lock)
-            {
-                lagStats.PositionStats.GetC2SSummary(out ping);
-            }
+            lagStats.QueryPositionPing(out ping);
         }
 
         void ILagQuery.QueryClientPing(Player player, out ClientPingSummary ping)
@@ -443,19 +242,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            lock (lagStats.Lock)
-            {
-                // ClientReportedPing is in ticks (centiseconds).  Convert to milliseconds.
-                ping.Current = lagStats.ClientReportedData.LastPing * 10;
-                ping.Average = lagStats.ClientReportedData.AveragePing * 10;
-                ping.Min = lagStats.ClientReportedData.LowestPing * 10;
-                ping.Max = lagStats.ClientReportedData.HighestPing * 10;
-                ping.S2CAverageCurrent = lagStats.ClientReportedData.S2CAverageCurrent * 10;
-                ping.S2CSlowTotal = lagStats.ClientReportedData.S2CSlowTotal;
-                ping.S2CFastTotal = lagStats.ClientReportedData.S2CFastTotal;
-                ping.S2CSlowCurrent = lagStats.ClientReportedData.S2CSlowCurrent;
-                ping.S2CFastCurrent = lagStats.ClientReportedData.S2CFastCurrent;
-            }
+            lagStats.QueryClientPing(out ping);
         }
 
         void ILagQuery.QueryReliablePing(Player player, out PingSummary ping)
@@ -466,10 +253,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            lock (lagStats.Lock)
-            {
-                lagStats.ReliablePing.GetSummary(out ping);
-            }
+            lagStats.QueryReliablePing(out ping);
         }
 
         void ILagQuery.QueryTimeSyncPing(Player player, out PingSummary clientPing, out PingSummary serverPing)
@@ -522,13 +306,7 @@ namespace SS.Core.Modules
         {
             if (player is not null && player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
             {
-                uint? c2s;
-
-                lock (lagStats.Lock)
-                {
-                    c2s = lagStats.TimeSync.C2SLatencyEstimate;
-                }
-
+                uint? c2s = lagStats.GetC2SMinLatencyEstimate();
                 if (c2s is not null)
                 {
                     estimate = c2s.Value;
@@ -578,12 +356,12 @@ namespace SS.Core.Modules
             }
         }
 
-        int ILagQuery.GetC2SPositionHistogram(Player player, bool sample, ICollection<PingHistogramBucket> data)
+        int ILagQuery.GetC2SPositionHistogram(Player player, ICollection<PingHistogramBucket> data)
         {
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
                 return 0;
 
-            return lagStats.GetC2SPositionHistogram(data, sample);
+            return lagStats.GetC2SPositionHistogram(data);
         }
 
         int ILagQuery.GetS2CPositionHistogram(Player player, ICollection<PingHistogramBucket> data)
@@ -617,54 +395,6 @@ namespace SS.Core.Modules
                 return 0;
 
             return lagStats.GetServerTimeSyncHistogram(data);
-        }
-
-        int ILagQuery.GetSendRoutePercent(Player player)
-        {
-            if (player is null)
-                return 500;
-
-            return GetSendRoutePercent(player);
-        }
-
-        bool ILagQuery.DynamicSendRoutePercentEnabled => _dynamicSendRoutePercentEnabled;
-
-        bool ILagQuery.TryGetDynamicSendRoutePercentData(
-            Player player,
-            out int sendRoutePercent,
-            out DateTime? lastUpdated,
-            out TimeSpan? rtt,
-            out int c2sSampleMin,
-            out long sampleCount,
-            out long minSampleSize)
-        {
-            if (!_dynamicSendRoutePercentEnabled
-                || player is null 
-                || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
-            {
-                sendRoutePercent = default;
-                lastUpdated = null;
-                rtt = default;
-                c2sSampleMin = default;
-                sampleCount = default;
-                minSampleSize = default;
-                return false;
-            }
-
-            int? sendRoutePercentOverride;
-
-            lock (lagStats.Lock)
-            {
-                sendRoutePercentOverride = lagStats.SendRoutePercentOverride;
-                lastUpdated = lagStats.SendRoutePercentLastUpdated;
-                rtt = lagStats.TimeSync.GetMinRTT();
-                c2sSampleMin = lagStats.PositionStats.C2SSampleMinimum;
-                sampleCount = lagStats.PositionStats.C2SSampleCount;
-                minSampleSize = _dynamicSendRoutePercentC2SMinSampleSize;
-            }
-
-            sendRoutePercent = sendRoutePercentOverride ?? GetSendRoutePercent(player);
-            return true;
         }
 
         #endregion
@@ -1182,24 +912,6 @@ namespace SS.Core.Modules
                 }
             }
 
-            public TimeSpan? GetMinRTT()
-            {
-                if (_samplesCount == 0)
-                    return null; // no data yet
-
-                TimeSpan? min = null;
-
-                for (int i = _samplesCount - 1; i >= 0; i--)
-                {
-                    ref readonly TimeSyncSample sample = ref _samples[(_samplesHead + i) % _samples.Length];
-
-                    if (min is null || sample.ServerTimestampRTT < min)
-                        min = sample.ServerTimestampRTT;
-                }
-
-                return min;
-            }
-
             public void GetHistory(ICollection<TimeSyncRecord> records)
             {
                 if (records is null)
@@ -1239,189 +951,53 @@ namespace SS.Core.Modules
             }
         }
 
-        /// <summary>
-        /// Welford's online algorithm for calculating variance.
-        /// https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
-        /// </summary>
-        private class WelfordVarianceCalculator
-        {
-            /// <summary>
-            /// The # of data points.
-            /// </summary>
-            public long Count { get; private set; } = 0;
-
-            /// <summary>
-            /// The running mean.
-            /// </summary>
-            public double Mean { get; private set; } = 0.0;
-
-            /// <summary>
-            /// Sum of squared differences from the mean.
-            /// </summary>
-            private double _m2 = 0.0;
-
-            /// <summary>
-            /// Gets the variance for a population. Divisor is the <see cref="Count"/>.
-            /// </summary>
-            public double PopulationVariance => Count > 0 ? _m2 / Count : 0.0;
-
-            /// <summary>
-            /// Gets the variance for a population. Divisor is <see cref="Count"/> - 1.
-            /// </summary>
-            public double SampleVariance => Count > 1 ? _m2 / (Count - 1) : 0.0;
-
-            public void AddValue(double value)
-            {
-                Count++;
-                double delta = value - Mean;
-                Mean += delta / Count;
-                double delta2 = value - Mean;
-                _m2 += delta * delta2;
-            }
-
-            public void Reset()
-            {
-                Count = 0;
-                Mean = 0.0;
-                _m2 = 0.0;
-            }
-        }
-
-        private class PositionStats
-        {
-            private readonly PingStats _c2sPopulationStats = new(BucketWidth, PositionBucketCount, -(BucketWidth * PositionBucketCount / 2));
-            private readonly WelfordVarianceCalculator _c2sPopulationCalculator = new();
-            private readonly Histogram _c2sSampleHistogram = new(BucketWidth, PositionBucketCount, -(BucketWidth * PositionBucketCount / 2));
-            public long C2SSampleCount { get; private set; }
-            public int C2SSampleMinimum { get; private set; }
-            private readonly PingStats _clientReportedS2CLatencyStats = new(BucketWidth, BucketCount, 0);
-
-            public long C2SPopulationCount => _c2sPopulationCalculator.Count;
-            public double C2SPopulationMean => _c2sPopulationCalculator.Mean;
-            public double C2SPopulationVariance => _c2sPopulationCalculator.SampleVariance; // all the data we have is still a finite subset of an infinite stream of data, use sample variance
-
-            private const double ZFilterThreshold = 3.0;
-
-            public void Add(int c2sLatency, ushort? clientS2CLatency)
-            {
-                _c2sPopulationStats.AddValue(c2sLatency * 10); // convert ticks to ms
-                _c2sSampleHistogram.AddValue(c2sLatency * 10); // convert ticks to ms
-
-                double c2sValue = c2sLatency;
-
-                if (C2SPopulationCount > 50)
-                {
-                    double stdDev = Math.Sqrt(C2SPopulationVariance);
-                    if (stdDev > 0.0)
-                    {
-                        // Use a bounded Z-score filter to limit the effect of outliers (spikes).
-                        double z = (c2sLatency - C2SPopulationMean) / stdDev;
-
-                        // Winsorize: https://en.wikipedia.org/wiki/Winsorizing
-                        if (z > ZFilterThreshold)
-                        {
-                            c2sValue = C2SPopulationMean + (ZFilterThreshold * stdDev);
-                        }
-                        else if(z < -ZFilterThreshold)
-                        {
-                            c2sValue = C2SPopulationMean - (ZFilterThreshold * stdDev);
-                        }
-                    }
-                }
-
-                _c2sPopulationCalculator.AddValue(c2sValue);
-
-                C2SSampleCount++;
-                if (c2sLatency < C2SSampleMinimum)
-                    C2SSampleMinimum = c2sLatency;
-
-                if (clientS2CLatency is not null)
-                    _clientReportedS2CLatencyStats.AddValue(clientS2CLatency.Value * 10); // convert ticks to ms
-            }
-
-            public void Reset()
-            {
-                _c2sPopulationStats.Reset();
-                _c2sPopulationCalculator.Reset();
-                ResetSampleStats();
-                _clientReportedS2CLatencyStats.Reset();
-            }
-
-            public void ResetSampleStats()
-            {
-                _c2sSampleHistogram.Reset();
-                C2SSampleCount = 0;
-                C2SSampleMinimum = int.MaxValue;
-            }
-
-            public int GetC2SHistogram(ICollection<PingHistogramBucket> data, bool sample = false)
-            {
-                if (sample)
-                    return _c2sSampleHistogram.GetData(data);
-                else
-                    return _c2sPopulationStats.GetHistogram(data);
-            }
-
-            public void GetC2SSummary(out PingSummary summary)
-            {
-                _c2sPopulationStats.GetSummary(out summary);
-            }
-
-            public int GetS2CHistogram(ICollection<PingHistogramBucket> data)
-            {
-                return _clientReportedS2CLatencyStats.GetHistogram(data);
-            }
-        }
-
         private class PlayerLagStats : IResettable
         {
-            public readonly PositionStats PositionStats = new();
-            public int? SendRoutePercentOverride;
-            public DateTime? SendRoutePercentLastUpdated;
-            public readonly PingStats ReliablePing = new(BucketWidth, BucketCount, 0);
-            public ClientLatencyData ClientReportedData;
-            public TimeSyncRequestData Packetloss;
-            public readonly TimeSyncStats TimeSync = new();
-            public ReliableLagData ReliableLagData;
+            private readonly PingStats _c2sLatencyStats = new(BucketWidth, BucketCount, 0);
+            private readonly PingStats _s2cLatencyStats = new(BucketWidth, BucketCount, 0);
+            private readonly PingStats _reliablePing = new(BucketWidth, BucketCount, 0);
+            private ClientLatencyData _clientReportedData;
+            private TimeSyncRequestData _packetloss;
+            private readonly TimeSyncStats _timeSync = new();
+            private ReliableLagData _reliableLagData;
 
             /// <summary>
             /// The latest # of weapon packets that the server sent to the client since entering an arena.
             /// </summary>
             /// <remarks>Synchronized with <see cref="Interlocked"/> methods.</remarks>
-            public uint LastWeaponSentCount;
+            private uint _lastWeaponSentCount;
 
             /// <summary>
             /// The # of weapon packets that the server sent to the client since entering an arena, as of the start of a security check.
             /// </summary>
-            public uint PendingWeaponSentCount;
+            private uint _pendingWeaponSentCount;
 
             /// <summary>
             /// The # of weapon packets that the server sent to the client since entering an arena, as of the last successful security check.
             /// </summary>
-            public uint WeaponSentCount;
+            private uint _weaponSentCount;
 
             /// <summary>
             /// The # of weapon packets that the client reported it received since entering an arena, as of the last successful security check.
             /// </summary>
-            public uint WeaponReceiveCount => ClientReportedData.WeaponCount;
+            private uint WeaponReceiveCount => _clientReportedData.WeaponCount;
 
-            public readonly Lock Lock = new();
+            private readonly Lock _lock = new();
 
             public void Reset()
             {
-                lock (Lock)
+                lock (_lock)
                 {
-                    PositionStats.Reset();
-                    SendRoutePercentOverride = null;
-                    SendRoutePercentLastUpdated = null;
-                    ReliablePing.Reset();
-                    ClientReportedData = default;
-                    Packetloss = default;
-                    TimeSync.Reset();
-                    ReliableLagData = default;
-                    Interlocked.Exchange(ref LastWeaponSentCount, 0);
-                    PendingWeaponSentCount = 0;
-                    WeaponSentCount = 0;
+                    _c2sLatencyStats.Reset();
+                    _s2cLatencyStats.Reset();
+                    _reliablePing.Reset();
+                    _clientReportedData = default;
+                    _packetloss = default;
+                    _timeSync.Reset();
+                    _reliableLagData = default;
+                    Interlocked.Exchange(ref _lastWeaponSentCount, 0);
+                    _pendingWeaponSentCount = 0;
+                    _weaponSentCount = 0;
                 }
             }
 
@@ -1431,23 +1007,165 @@ namespace SS.Core.Modules
                 return true;
             }
 
+            public void UpdatePositionStats(int c2sLatency, ushort? clientS2CLatency)
+            {
+                lock (_lock)
+                {
+                    _c2sLatencyStats.AddValue(c2sLatency * 10); // convert ticks to ms
+
+                    if (clientS2CLatency is not null)
+                        _s2cLatencyStats.AddValue(clientS2CLatency.Value * 10); // convert ticks to ms
+                }
+            }
+
+            public void ResetWeaponSentCount()
+            {
+                Interlocked.Exchange(ref _lastWeaponSentCount, 0);
+            }
+
+            public void IncrementWeaponSentCount()
+            {
+                Interlocked.Increment(ref _lastWeaponSentCount);
+            }
+
+            public void AddWeaponSentCount(uint value)
+            {
+                Interlocked.Add(ref _lastWeaponSentCount, value);
+            }
+
+            public void SetPendingWeaponSentCount()
+            {
+                lock (_lock)
+                {
+                    _pendingWeaponSentCount = Interlocked.CompareExchange(ref _lastWeaponSentCount, 0, 0);
+                }
+            }
+
+            public void UpdateReliableAckStats(int ms)
+            {
+                lock (_lock)
+                {
+                    _reliablePing.AddValue(ms);
+                }
+            }
+
+            public void UpdateClientLatencyStats(ref readonly ClientLatencyData data)
+            {
+                lock (_lock)
+                {
+                    _clientReportedData = data;
+                    _weaponSentCount = _pendingWeaponSentCount;
+                }
+            }
+
+            public void UpdateTimeSyncRequestReceivedStats(ref readonly TimeSyncRequestData data, bool requestSent)
+            {
+                lock (_lock)
+                {
+                    _packetloss = data;
+                    _timeSync.UpdateForRequestReceived(data.ServerTime, data.ClientTime, requestSent);
+                }
+            }
+
+            public void UpdateTimeSyncRequestSentStats(uint serverTime, uint? clientTime)
+            {
+                lock (_lock)
+                {
+                    _timeSync.UpdateForRequestSent(serverTime, clientTime);
+                }
+            }
+
+            public uint? UpdateTimeSyncResponseStats(uint serverRequestTime, uint serverResponseTime, uint clientResponseTime, TimeSpan timestampRTT, int sendRoutePercent)
+            {
+                lock (_lock)
+                {
+                    _timeSync.UpdateForResponseReceived(serverRequestTime, serverResponseTime, clientResponseTime, timestampRTT, sendRoutePercent, out bool c2sLatencyEstimateUpdated);
+                    return c2sLatencyEstimateUpdated ? _timeSync.C2SLatencyEstimate!.Value : null;
+                }
+            }
+
+            public uint? RefreshC2SLatencyEstimate(int sendRoutePercent)
+            {
+                lock (_lock)
+                {
+                    return _timeSync.RefreshC2SLatencyEstimate(sendRoutePercent) ? _timeSync.C2SLatencyEstimate!.Value : null;
+                }
+            }
+
+            public void SetFakeC2SMinLatencyEstimate(uint estimate)
+            {
+                lock (_lock)
+                {
+                    _timeSync.OverrideC2SLatencyEstimate(estimate);
+                }
+            }
+
+            public uint? GetC2SMinLatencyEstimate()
+            {
+                lock (_lock)
+                {
+                    return _timeSync.C2SLatencyEstimate;
+                }
+            }
+
+            public void UpdateReliableStats(ref readonly ReliableLagData data)
+            {
+                lock (_lock)
+                {
+                    _reliableLagData = data;
+                }
+            }
+
+            public void QueryPositionPing(out PingSummary summary)
+            {
+                lock (_lock)
+                {
+                    _c2sLatencyStats.GetSummary(out summary);
+                }
+            }
+
+            public void QueryClientPing(out ClientPingSummary ping)
+            {
+                lock (_lock)
+                {
+                    // ClientReportedPing is in ticks (centiseconds).  Convert to milliseconds.
+                    ping.Current = _clientReportedData.LastPing * 10;
+                    ping.Average = _clientReportedData.AveragePing * 10;
+                    ping.Min = _clientReportedData.LowestPing * 10;
+                    ping.Max = _clientReportedData.HighestPing * 10;
+                    ping.S2CAverageCurrent = _clientReportedData.S2CAverageCurrent * 10;
+                    ping.S2CSlowTotal = _clientReportedData.S2CSlowTotal;
+                    ping.S2CFastTotal = _clientReportedData.S2CFastTotal;
+                    ping.S2CSlowCurrent = _clientReportedData.S2CSlowCurrent;
+                    ping.S2CFastCurrent = _clientReportedData.S2CFastCurrent;
+                }
+            }
+
+            public void QueryReliablePing(out PingSummary ping)
+            {
+                lock (_lock)
+                {
+                    _reliablePing.GetSummary(out ping);
+                }
+            }
+
             public void QueryTimeSyncPing(out PingSummary clientPing, out PingSummary serverPing)
             {
-                lock (Lock)
+                lock (_lock)
                 {
-                    TimeSync.ClientPing.GetSummary(out clientPing);
-                    TimeSync.ServerPing.GetSummary(out serverPing);
+                    _timeSync.ClientPing.GetSummary(out clientPing);
+                    _timeSync.ServerPing.GetSummary(out serverPing);
                 }
             }
 
             public void QueryPacketloss(out PacketlossSummary summary)
             {
-                lock (Lock)
+                lock (_lock)
                 {
-                    summary.S2C = CalculatePacketloss(Packetloss.ServerPacketsSent, Packetloss.ClientPacketsReceived);
-                    summary.C2S = CalculatePacketloss(Packetloss.ClientPacketsSent, Packetloss.ServerPacketsReceived);
-                    summary.S2CWeapon = CalculatePacketloss(WeaponSentCount, WeaponReceiveCount);
-                    summary.TimeSync = CalculatePacketloss(TimeSync.S2CRequestCount, TimeSync.C2SResponseCount);
+                    summary.S2C = CalculatePacketloss(_packetloss.ServerPacketsSent, _packetloss.ClientPacketsReceived);
+                    summary.C2S = CalculatePacketloss(_packetloss.ClientPacketsSent, _packetloss.ServerPacketsReceived);
+                    summary.S2CWeapon = CalculatePacketloss(_weaponSentCount, WeaponReceiveCount);
+                    summary.TimeSync = CalculatePacketloss(_timeSync.S2CRequestCount, _timeSync.C2SResponseCount);
                 }
 
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1461,98 +1179,98 @@ namespace SS.Core.Modules
 
             public void QueryPacketloss(out PacketlossSummary summary, out PacketlossDetails details)
             {
-                lock (Lock)
+                lock (_lock)
                 {
                     QueryPacketloss(out summary);
 
-                    details.ServerPacketsSent = Packetloss.ServerPacketsSent;
-                    details.ClientPacketsReceived = Packetloss.ClientPacketsReceived;
-                    details.ClientPacketsSent = Packetloss.ClientPacketsSent;
-                    details.ServerPacketsReceived = Packetloss.ServerPacketsReceived;
-                    details.WeaponSentCount = WeaponSentCount;
+                    details.ServerPacketsSent = _packetloss.ServerPacketsSent;
+                    details.ClientPacketsReceived = _packetloss.ClientPacketsReceived;
+                    details.ClientPacketsSent = _packetloss.ClientPacketsSent;
+                    details.ServerPacketsReceived = _packetloss.ServerPacketsReceived;
+                    details.WeaponSentCount = _weaponSentCount;
                     details.WeaponReceiveCount = WeaponReceiveCount;
                 }
             }
 
             public void QueryReliableLag(out ReliableLagData data)
             {
-                lock (Lock)
+                lock (_lock)
                 {
-                    data = ReliableLagData;
+                    data = _reliableLagData;
                 }
             }
 
             public void QueryTimeSyncHistory(ICollection<TimeSyncRecord> records)
             {
-                lock (Lock)
+                lock (_lock)
                 {
-                    TimeSync.GetHistory(records);
+                    _timeSync.GetHistory(records);
                 }
             }
 
             public void QueryTimeSyncDriftTicks(out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev)
             {
-                lock (Lock)
+                lock (_lock)
                 {
                     // Client value is already in ticks.
-                    clientDrift = ClientReportedData.TimerDrift;
+                    clientDrift = _clientReportedData.TimerDrift;
 
                     // Server values are in milliseconds, convert to ticks.
-                    serverDriftAvg = TimeSync.DriftAvg / 10;
-                    serverDriftStdDev = TimeSync.DriftStdDev / 10;
+                    serverDriftAvg = _timeSync.DriftAvg / 10;
+                    serverDriftStdDev = _timeSync.DriftStdDev / 10;
                 }
             }
 
             public void QueryTimeSyncDriftMs(out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev)
             {
-                lock (Lock)
+                lock (_lock)
                 {
                     // Client value is in ticks, convert to milliseconds.
-                    clientDrift = ClientReportedData.TimerDrift * 10;
+                    clientDrift = _clientReportedData.TimerDrift * 10;
 
                     // Server values are already in milliseconds.
-                    serverDriftAvg = TimeSync.DriftAvg;
-                    serverDriftStdDev = TimeSync.DriftStdDev;
+                    serverDriftAvg = _timeSync.DriftAvg;
+                    serverDriftStdDev = _timeSync.DriftStdDev;
                 }
             }
 
-            public int GetC2SPositionHistogram(ICollection<PingHistogramBucket> data, bool sample)
+            public int GetC2SPositionHistogram(ICollection<PingHistogramBucket> data)
             {
-                lock (Lock)
+                lock (_lock)
                 {
-                    return PositionStats.GetC2SHistogram(data, sample);
+                    return _c2sLatencyStats.GetHistogram(data);
                 }
             }
 
             public int GetS2CPositionHistogram(ICollection<PingHistogramBucket> data)
             {
-                lock (Lock)
+                lock (_lock)
                 {
-                    return PositionStats.GetS2CHistogram(data);
+                    return _s2cLatencyStats.GetHistogram(data);
                 }
             }
 
             public int GetReliablePingHistogram(ICollection<PingHistogramBucket> data)
             {
-                lock (Lock)
+                lock (_lock)
                 {
-                    return ReliablePing.GetHistogram(data);
+                    return _reliablePing.GetHistogram(data);
                 }
             }
 
             public int GetClientTimeSyncHistogram(ICollection<PingHistogramBucket> data)
             {
-                lock (Lock)
+                lock (_lock)
                 {
-                    return TimeSync.ClientPing.GetHistogram(data);
+                    return _timeSync.ClientPing.GetHistogram(data);
                 }
             }
 
             public int GetServerTimeSyncHistogram(ICollection<PingHistogramBucket> data)
             {
-                lock (Lock)
+                lock (_lock)
                 {
-                    return TimeSync.ServerPing.GetHistogram(data);
+                    return _timeSync.ServerPing.GetHistogram(data);
                 }
             }
         }
