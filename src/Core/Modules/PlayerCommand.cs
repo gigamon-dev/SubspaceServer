@@ -743,9 +743,7 @@ namespace SS.Core.Modules
 
                 if (dataPointCount > 0 && histogramData.Count > 0)
                 {
-                    bool hasNegative = histogramData[0].Start < 0;
-
-                    int max = 0;
+                    uint max = 0;
                     for (int i = 0; i < histogramData.Count; i++)
                     {
                         if (histogramData[i].Count > max)
@@ -753,16 +751,13 @@ namespace SS.Core.Modules
                     }
 
                     _chat.SendMessage(player, $"{prefix}: {description} ({dataPointCount} data points)");
+
                     ReadOnlySpan<char> bars = "****************************************";
                     ReadOnlySpan<char> spaces = "                                        ";
                     for (int i = 0; i < histogramData.Count; i++)
                     {
                         int width = max > 0 ? (int)(bars.Length * (float)histogramData[i].Count / max) : 0;
-
-                        if (hasNegative)
-                            _chat.SendMessage(player, $"{prefix}: [{histogramData[i].Start,4}, {histogramData[i].End,4}]: {bars[..width]}{spaces[..(spaces.Length - width)]} ({histogramData[i].Count})");
-                        else
-                            _chat.SendMessage(player, $"{prefix}: [{histogramData[i].Start,3}, {histogramData[i].End,3}]: {bars[..width]}{spaces[..(spaces.Length - width)]} ({histogramData[i].Count})");
+                        _chat.SendMessage(player, $"{prefix}: [{histogramData[i].Start,3}, {histogramData[i].End,3}]: {bars[..width]}{spaces[..(spaces.Length - width)]} ({histogramData[i].Count})");
                     }
                 }
                 else

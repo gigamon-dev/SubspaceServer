@@ -58,17 +58,17 @@ namespace SS.Core.ComponentInterfaces
         public uint WeaponSentCount, WeaponReceiveCount;
     }
 
-    public record struct TimeSyncRecord()
+    public record struct TimeSyncRecord
     {
         public required uint ServerTime;
         public required uint ClientTime;
     }
 
-    public record struct PingHistogramBucket()
+    public record struct PingHistogramBucket
     {
         public required int Start;
         public required int End;
-        public required int Count;
+        public required uint Count;
     }
 
     /// <summary>

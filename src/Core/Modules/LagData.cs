@@ -425,7 +425,7 @@ namespace SS.Core.Modules
             private readonly int _bucketCount;
             private readonly int _minValue;
             private readonly int _maxValue;
-            private readonly int[] _buckets;
+            private readonly uint[] _buckets;
 
             /// <summary>
             /// Gets the total number of values added to the histogram.
@@ -451,7 +451,7 @@ namespace SS.Core.Modules
 
                 // Calculate the maximum exclusive boundary supported by the buckets
                 _maxValue = minValue + (bucketWidth * bucketCount) - 1;
-                _buckets = new int[bucketCount];
+                _buckets = new uint[bucketCount];
             }
 
             /// <summary>
