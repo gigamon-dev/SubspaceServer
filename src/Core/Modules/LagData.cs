@@ -245,16 +245,15 @@ namespace SS.Core.Modules
             lagStats.QueryClientPing(out ping);
         }
 
-        void ILagQuery.QueryClientPing(Player player, out PingSummary ping, out ClientLagStats stats)
+        void ILagQuery.QueryClientLagStats(Player player, out ClientLagStats stats)
         {
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
             {
-                ping = default;
                 stats = default;
                 return;
             }
 
-            lagStats.QueryClientPing(out ping, out stats);
+            lagStats.QueryClientLagStats(out stats);
         }
 
         void ILagQuery.QueryReliablePing(Player player, out PingSummary ping)
@@ -563,14 +562,14 @@ namespace SS.Core.Modules
             public int Average;
 
             /// <summary>
-            /// Maximum ping in milliseconds
-            /// </summary>
-            public int Max;
-
-            /// <summary>
             /// Minimum ping in milliseconds
             /// </summary>
             public int Min;
+
+            /// <summary>
+            /// Maximum ping in milliseconds
+            /// </summary>
+            public int Max;
 
             public void AddValue(int ms)
             {
@@ -608,8 +607,8 @@ namespace SS.Core.Modules
                 Histogram.Reset();
                 Current = 0;
                 Average = 0;
-                Max = 0;
                 Min = 0;
+                Max = 0;
             }
         }
 
@@ -1148,12 +1147,10 @@ namespace SS.Core.Modules
                 }
             }
 
-            public void QueryClientPing(out PingSummary ping, out ClientLagStats stats)
+            public void QueryClientLagStats(out ClientLagStats stats)
             {
                 lock (_lock)
                 {
-                    QueryClientPing(out ping);
-
                     // Client reported latency is in ticks (centiseconds).  Convert to milliseconds.
                     stats.S2CAverageCurrent = _clientReportedData.S2CAverageCurrent * 10;
                     stats.S2CSlowTotal = _clientReportedData.S2CSlowTotal;

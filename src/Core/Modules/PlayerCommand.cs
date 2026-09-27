@@ -561,25 +561,32 @@ namespace SS.Core.Modules
                 return;
             }
 
-            _lagQuery.QueryClientPing(targetPlayer, out PingSummary clientPing, out ClientLagStats clientStats);
             _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing);
+            _lagQuery.QueryClientPing(targetPlayer, out PingSummary clientPing); // 1-way
             _lagQuery.QueryReliablePing(targetPlayer, out PingSummary reliablePing);
             _lagQuery.QueryTimeSyncPing(targetPlayer, out PingSummary clientTimeSyncPing, out PingSummary serverTimeSyncPing);
             _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetloss);
-            _lagQuery.QueryTimeSyncDriftMs(targetPlayer, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev);
 
-            // Average all pings together with reliable ping and time sync pings having twice the weight since they're far more accurate.
-            int average = ((positionPing.Average * 2) + clientPing.Average + (2 * reliablePing.Average) + (2 * clientTimeSyncPing.Average) + (2 * serverTimeSyncPing.Average)) / 8;
+            // Average all pings together with more accurate values given additional weight:
+            // - reliable ping having twice the weight
+            // - time sync ping (client and server counted separately) effectively twice the weight
+            // Note: Position ping is 1-way latency. It is doubled to estimate 2-way, not for weight.
+            int averagePing = ((positionPing.Average * 2) + clientPing.Average + (2 * reliablePing.Average) + clientTimeSyncPing.Average + serverTimeSyncPing.Average) / 6;
 
             string prefix = targetPlayer == player ? "lag" : targetPlayer.Name!;
 
             if (!parameters.Contains("-v", StringComparison.OrdinalIgnoreCase))
             {
-                _chat.SendMessage(player, $"{prefix}: avg ping: {average}  ploss: s2c: {packetloss.S2C * 100d:F2} c2s: {packetloss.C2S * 100d:F2}");
+                int minPing = Math.Min(Math.Min(Math.Min(Math.Min((positionPing.Min * 2), clientPing.Min), reliablePing.Min), clientTimeSyncPing.Min), serverTimeSyncPing.Min);
+                int maxPing = Math.Max(Math.Max(Math.Max(Math.Max((positionPing.Max * 2), clientPing.Max), reliablePing.Max), clientTimeSyncPing.Max), serverTimeSyncPing.Max);
+
+                _chat.SendMessage(player, $"{prefix}: ping: {averagePing} ({minPing}-{maxPing})  ploss: s2c: {packetloss.S2C * 100d:F2} c2s: {packetloss.C2S * 100d:F2}");
             }
             else
             {
+                _lagQuery.QueryClientLagStats(player, out ClientLagStats clientStats);
                 _lagQuery.QueryReliableLag(targetPlayer, out ReliableLagData reliableLag);
+                _lagQuery.QueryTimeSyncDriftMs(targetPlayer, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev);
 
                 _chat.SendMessage(player, $"{prefix}: s2c ping: {clientPing.Current} {clientPing.Average} ({clientPing.Min}-{clientPing.Max}) (reported by client)");
                 _chat.SendMessage(player, $"{prefix}: c2s ping: {positionPing.Current} {positionPing.Average} ({positionPing.Min}-{positionPing.Max}) (from position pkt times)");
@@ -587,7 +594,7 @@ namespace SS.Core.Modules
                 _chat.SendMessage(player, $"{prefix}: sts ping: {serverTimeSyncPing.Current} {serverTimeSyncPing.Average} ({serverTimeSyncPing.Min}-{serverTimeSyncPing.Max}) (server time sync)");
                 _chat.SendMessage(player, $"{prefix}: cts ping: {clientTimeSyncPing.Current} {clientTimeSyncPing.Average} ({clientTimeSyncPing.Min}-{clientTimeSyncPing.Max}) (client time sync)");
 
-                _chat.SendMessage(player, $"{prefix}: effective ping: {average} (average of above)");
+                _chat.SendMessage(player, $"{prefix}: effective ping: {averagePing} (average of above)");
 
                 double s2cRelLoss = (reliableLag.Retries == 0) ? 0d : ((reliableLag.Retries - reliableLag.AckDups) * 100d / reliableLag.ReliablePacketsSent);
                 _chat.SendMessage(player, $"{prefix}: ploss: s2c: {packetloss.S2C * 100d:F2}  c2s: {packetloss.C2S * 100d:F2}  s2cwpn: {packetloss.S2CWeapon * 100d:F2}  s2crel: {s2cRelLoss:F2}  ts: {packetloss.TimeSync * 100d:F2}");
@@ -665,7 +672,7 @@ namespace SS.Core.Modules
 
                     if (serverDriftStdDev is not null)
                     {
-                        sb.Append($"{serverDriftStdDev.Value:F0}");
+                        sb.Append($"{serverDriftStdDev.Value:F2}");
                     }
                     else
                     {

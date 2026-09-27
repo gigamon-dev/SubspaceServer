@@ -312,17 +312,20 @@ namespace SS.Core.Modules
 
         private void CheckLag(Player player, ArenaLagLimits lagLimits)
         {
-            // gather data
+            // Gather data
             _lagQuery.QueryClientPing(player, out PingSummary clientPing);
-            _lagQuery.QueryPositionPing(player, out PingSummary positionPing);
+            _lagQuery.QueryPositionPing(player, out PingSummary positionPing); // 1-way
             _lagQuery.QueryReliablePing(player, out PingSummary reliablePing);
             _lagQuery.QueryTimeSyncPing(player, out PingSummary clientTimeSyncPing, out PingSummary serverTimeSyncPing);
             _lagQuery.QueryPacketloss(player, out PacketlossSummary packetloss);
 
-            // average all pings together with reliable ping and time sync pings having twice the weight since they're far more accurate
-            int averagePing = ((positionPing.Average * 2) + clientPing.Average + (2 * reliablePing.Average) + (2 * clientTimeSyncPing.Average) + (2 * serverTimeSyncPing.Average)) / 8;
+            // Average all pings together with more accurate values given additional weight:
+            // - reliable ping having twice the weight
+            // - time sync ping (client and server counted separately) effectively twice the weight
+            // Note: Position ping is 1-way latency. It is doubled to estimate 2-way, not for weight.
+            int averagePing = ((positionPing.Average * 2) + clientPing.Average + (2 * reliablePing.Average) + clientTimeSyncPing.Average + serverTimeSyncPing.Average) / 6;
 
-            // check conditions that force spec
+            // Check conditions that force spec
             if (averagePing > lagLimits.Ping.ForceSpec)
             {
                 player.Flags.NoShip = true;

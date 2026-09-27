@@ -91,12 +91,11 @@ namespace SS.Core.ComponentInterfaces
         void QueryClientPing(Player player, out PingSummary ping);
 
         /// <summary>
-        /// Get a player's ping info (reported by the client).
+        /// Gets a player's lag stats (reported by the client).
         /// </summary>
         /// <param name="player">The player to get data about.</param>
-        /// <param name="ping">The data.</param>
         /// <param name="stats">The detailed data.</param>
-        void QueryClientPing(Player player, out PingSummary ping, out ClientLagStats stats);
+        void QueryClientLagStats(Player player, out ClientLagStats stats);
 
         /// <summary>
         /// Gets a player's ping info (from reliable packets).
