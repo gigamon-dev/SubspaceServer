@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace SS.Core.ComponentInterfaces
 {
@@ -9,15 +8,10 @@ namespace SS.Core.ComponentInterfaces
     }
 
     /// <summary>
-    /// Client reported latency stat summary.
+    /// Client reported latency stats.
     /// </summary>
-    public struct ClientPingSummary
+    public struct ClientLagStats
     {
-        /// <summary>
-        /// Ping (ms)
-        /// </summary>
-        public int Current, Average, Min, Max;
-
         /// <summary>
         /// The average time (ms) difference between position packet times to the estimated server time, for the current interval.
         /// </summary>
@@ -94,7 +88,15 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="player">The player to get data about.</param>
         /// <param name="ping">The data.</param>
-        void QueryClientPing(Player player, out ClientPingSummary ping);
+        void QueryClientPing(Player player, out PingSummary ping);
+
+        /// <summary>
+        /// Get a player's ping info (reported by the client).
+        /// </summary>
+        /// <param name="player">The player to get data about.</param>
+        /// <param name="ping">The data.</param>
+        /// <param name="stats">The detailed data.</param>
+        void QueryClientPing(Player player, out PingSummary ping, out ClientLagStats stats);
 
         /// <summary>
         /// Gets a player's ping info (from reliable packets).

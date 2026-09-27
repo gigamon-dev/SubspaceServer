@@ -234,7 +234,7 @@ namespace SS.Core.Modules
             lagStats.QueryPositionPing(out ping);
         }
 
-        void ILagQuery.QueryClientPing(Player player, out ClientPingSummary ping)
+        void ILagQuery.QueryClientPing(Player player, out PingSummary ping)
         {
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
             {
@@ -243,6 +243,18 @@ namespace SS.Core.Modules
             }
 
             lagStats.QueryClientPing(out ping);
+        }
+
+        void ILagQuery.QueryClientPing(Player player, out PingSummary ping, out ClientLagStats stats)
+        {
+            if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
+            {
+                ping = default;
+                stats = default;
+                return;
+            }
+
+            lagStats.QueryClientPing(out ping, out stats);
         }
 
         void ILagQuery.QueryReliablePing(Player player, out PingSummary ping)
@@ -268,15 +280,15 @@ namespace SS.Core.Modules
             lagStats.QueryTimeSyncPing(out clientPing, out serverPing);
         }
 
-        void ILagQuery.QueryPacketloss(Player player, out PacketlossSummary packetloss)
+        void ILagQuery.QueryPacketloss(Player player, out PacketlossSummary summary)
         {
             if (player is null || !player.TryGetExtraData(_lagkey, out PlayerLagStats? lagStats))
             {
-                packetloss = default;
+                summary = default;
                 return;
             }
 
-            lagStats.QueryPacketloss(out packetloss);
+            lagStats.QueryPacketloss(out summary);
         }
 
         void ILagQuery.QueryPacketloss(Player player, out PacketlossSummary summary, out PacketlossDetails details)
@@ -759,7 +771,7 @@ namespace SS.Core.Modules
                 ref readonly TimeSyncSample newSample = ref _samples[sampleIndex];
 
                 // Collect ping data for the lag histogram of time sync data.
-                ServerPing.AddValue(newSample.ServerRTT * 10);
+                ServerPing.AddValue((int)newSample.ServerTimestampRTT.TotalMilliseconds);
                 if (newSample.ClientRTT is not null)
                     ClientPing.AddValue(newSample.ClientRTT.Value * 10);
 
@@ -776,7 +788,7 @@ namespace SS.Core.Modules
                         for (int i = _samplesCount - 1; i >= 0; i--)
                         {
                             int checkIndex = (_samplesHead + i) % _samples.Length;
-                            if (_minRoundtripResultIndex is null || _samples[checkIndex].ServerRTT < _samples[_minRoundtripResultIndex.Value].ServerRTT)
+                            if (_minRoundtripResultIndex is null || _samples[checkIndex].ServerTimestampRTT < _samples[_minRoundtripResultIndex.Value].ServerTimestampRTT)
                             {
                                 _minRoundtripResultIndex = checkIndex;
                                 changed = true;
@@ -788,9 +800,9 @@ namespace SS.Core.Modules
                         // Compare the new sample with the current known minimum.
                         ref readonly TimeSyncSample currentSample = ref _samples[_minRoundtripResultIndex.Value];
 
-                        if (newSample.ServerRTT <= currentSample.ServerRTT)
+                        if (newSample.ServerTimestampRTT <= currentSample.ServerTimestampRTT)
                         {
-                            changed = newSample.ServerRTT < currentSample.ServerRTT;
+                            changed = newSample.ServerTimestampRTT < currentSample.ServerTimestampRTT;
                             _minRoundtripResultIndex = sampleIndex;
                         }
                     }
@@ -814,7 +826,7 @@ namespace SS.Core.Modules
                 if (_minRoundtripResultIndex is null)
                     return false;
 
-                uint newEstimate = (uint)(_samples[_minRoundtripResultIndex!.Value].ServerRTT * sendRoutePercent / 1000);
+                uint newEstimate = (uint)(_samples[_minRoundtripResultIndex!.Value].ServerTimestampRTT.TotalMilliseconds / 10 * sendRoutePercent / 1000);
                 
                 if (C2SLatencyEstimate is null // no active estimate yet
                     || C2SLatencyEstimate.Value != newEstimate) // estimate is dirty
@@ -1116,28 +1128,38 @@ namespace SS.Core.Modules
                 }
             }
 
-            public void QueryPositionPing(out PingSummary summary)
+            public void QueryPositionPing(out PingSummary ping)
             {
                 lock (_lock)
                 {
-                    _c2sLatencyStats.GetSummary(out summary);
+                    _c2sLatencyStats.GetSummary(out ping);
                 }
             }
 
-            public void QueryClientPing(out ClientPingSummary ping)
+            public void QueryClientPing(out PingSummary ping)
             {
                 lock (_lock)
                 {
-                    // ClientReportedPing is in ticks (centiseconds).  Convert to milliseconds.
+                    // Client reported latency is in ticks (centiseconds).  Convert to milliseconds.
                     ping.Current = _clientReportedData.LastPing * 10;
                     ping.Average = _clientReportedData.AveragePing * 10;
                     ping.Min = _clientReportedData.LowestPing * 10;
                     ping.Max = _clientReportedData.HighestPing * 10;
-                    ping.S2CAverageCurrent = _clientReportedData.S2CAverageCurrent * 10;
-                    ping.S2CSlowTotal = _clientReportedData.S2CSlowTotal;
-                    ping.S2CFastTotal = _clientReportedData.S2CFastTotal;
-                    ping.S2CSlowCurrent = _clientReportedData.S2CSlowCurrent;
-                    ping.S2CFastCurrent = _clientReportedData.S2CFastCurrent;
+                }
+            }
+
+            public void QueryClientPing(out PingSummary ping, out ClientLagStats stats)
+            {
+                lock (_lock)
+                {
+                    QueryClientPing(out ping);
+
+                    // Client reported latency is in ticks (centiseconds).  Convert to milliseconds.
+                    stats.S2CAverageCurrent = _clientReportedData.S2CAverageCurrent * 10;
+                    stats.S2CSlowTotal = _clientReportedData.S2CSlowTotal;
+                    stats.S2CFastTotal = _clientReportedData.S2CFastTotal;
+                    stats.S2CSlowCurrent = _clientReportedData.S2CSlowCurrent;
+                    stats.S2CFastCurrent = _clientReportedData.S2CFastCurrent;
                 }
             }
 

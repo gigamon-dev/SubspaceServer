@@ -561,7 +561,7 @@ namespace SS.Core.Modules
                 return;
             }
 
-            _lagQuery.QueryClientPing(targetPlayer, out ClientPingSummary clientPing);
+            _lagQuery.QueryClientPing(targetPlayer, out PingSummary clientPing, out ClientLagStats clientStats);
             _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing);
             _lagQuery.QueryReliablePing(targetPlayer, out PingSummary reliablePing);
             _lagQuery.QueryTimeSyncPing(targetPlayer, out PingSummary clientTimeSyncPing, out PingSummary serverTimeSyncPing);
@@ -601,14 +601,14 @@ namespace SS.Core.Modules
                     //
 
                     // avg (last interval)
-                    sb.Append($"{prefix}: s2c pos: last avg: {clientPing.S2CAverageCurrent}");
+                    sb.Append($"{prefix}: s2c pos: last avg: {clientStats.S2CAverageCurrent}");
 
                     // Slow (last interval)
-                    uint intervalTotal = (uint)clientPing.S2CSlowCurrent + clientPing.S2CFastCurrent;
+                    uint intervalTotal = (uint)clientStats.S2CSlowCurrent + clientStats.S2CFastCurrent;
                     sb.Append("  last slow: ");
                     if (intervalTotal > 0)
                     {
-                        sb.Append($"{((double)clientPing.S2CSlowCurrent / intervalTotal):F2} ({clientPing.S2CSlowCurrent}/{intervalTotal})");
+                        sb.Append($"{((double)clientStats.S2CSlowCurrent / intervalTotal):F2} ({clientStats.S2CSlowCurrent}/{intervalTotal})");
                     }
                     else
                     {
@@ -616,11 +616,11 @@ namespace SS.Core.Modules
                     }
 
                     // Slow (all intervals)
-                    uint allTotal = intervalTotal + clientPing.S2CSlowTotal + clientPing.S2CFastTotal;
+                    uint allTotal = intervalTotal + clientStats.S2CSlowTotal + clientStats.S2CFastTotal;
                     sb.Append("  all slow: ");
                     if (allTotal > 0)
                     {
-                        uint allSlow = clientPing.S2CSlowCurrent + clientPing.S2CSlowTotal;
+                        uint allSlow = clientStats.S2CSlowCurrent + clientStats.S2CSlowTotal;
                         sb.Append($"{((double)allSlow / allTotal):F2} ({allSlow}/{allTotal})");
                     }
                     else

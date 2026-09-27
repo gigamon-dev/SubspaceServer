@@ -332,7 +332,7 @@ namespace SS.Core.Modules
             _network.GetConnectionStats(targetPlayer, ref stats);
 
             _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing);
-            _lagQuery.QueryClientPing(targetPlayer, out ClientPingSummary clientPing);
+            _lagQuery.QueryClientPing(targetPlayer, out PingSummary clientPing, out ClientLagStats clientStats);
             _lagQuery.QueryReliablePing(targetPlayer, out PingSummary reliablePing);
             _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetlossSummary, out PacketlossDetails packetlossDetails);
             _lagQuery.QueryReliableLag(targetPlayer, out ReliableLagData reliableLag);
@@ -350,7 +350,7 @@ namespace SS.Core.Modules
             _chat.SendMessage(player, $"LOSS: S2C:{packetlossSummary.S2C * 100d,4:F1}%  C2S:{packetlossSummary.C2S * 100d,4:F1}%  S2CWeapons:{packetlossSummary.S2CWeapon * 100d,4:F1}%  S2C_RelOut:{relPacketsLost}({reliableLag.ReliablePacketsSent})");
             _chat.SendMessage(player, $"S2C:{packetlossDetails.ServerPacketsSent}-->{packetlossDetails.ClientPacketsReceived}  C2S:{packetlossDetails.ClientPacketsSent}-->{packetlossDetails.ServerPacketsReceived}");
             _chat.SendMessage(player, $"C2S CURRENT: Slow:0 Fast:0 0.0%   TOTAL: Slow:0 Fast:0 0.0%");
-            _chat.SendMessage(player, $"S2C CURRENT: Slow:{clientPing.S2CSlowCurrent} Fast:{clientPing.S2CFastCurrent} 0.0%   TOTAL: Slow:{clientPing.S2CSlowTotal} Fast:{clientPing.S2CFastTotal} 0.0%");
+            _chat.SendMessage(player, $"S2C CURRENT: Slow:{clientStats.S2CSlowCurrent} Fast:{clientStats.S2CFastCurrent} 0.0%   TOTAL: Slow:{clientStats.S2CSlowTotal} Fast:{clientStats.S2CFastTotal} 0.0%");
 
             TimeSpan sessionDuration = DateTime.UtcNow - targetPlayer.ConnectTime;
             if (_billing is null || !_billing.TryGetUsage(targetPlayer, out TimeSpan usage, out DateTime? firstLoginTimestamp))
@@ -377,7 +377,7 @@ namespace SS.Core.Modules
             }
 
             _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing);
-            _lagQuery.QueryClientPing(targetPlayer, out ClientPingSummary clientPing);
+            _lagQuery.QueryClientPing(targetPlayer, out PingSummary clientPing);
             _lagQuery.QueryReliablePing(targetPlayer, out PingSummary reliablePing);
             _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetloss);
 
