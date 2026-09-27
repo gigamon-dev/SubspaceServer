@@ -78,6 +78,8 @@ namespace SS.Replay
         private readonly ICrowns _crowns;
         private readonly IFake _fake;
         private readonly IGame _game;
+        private readonly ILagCollect _lagCollect;
+        private readonly ILagQuery _lagQuery;
         private readonly ILogManager _logManager;
         private readonly IMainloop _mainloop;
         private readonly IMapData _mapData;
@@ -92,6 +94,8 @@ namespace SS.Replay
 
         private static readonly ArrayPool<byte> _recordBufferPool = ArrayPool<byte>.Create();
 
+        private readonly Action<(Player Player, uint C2SLatency)> _mainloopWorkItem_C2SLatencyEstimateChanged;
+
         public ReplayModule(
             IArenaManager arenaManager,
             IBalls balls,
@@ -103,6 +107,8 @@ namespace SS.Replay
             ICrowns crowns,
             IFake fake,
             IGame game,
+            ILagCollect lagCollect,
+            ILagQuery lagQuery,
             ILogManager logManager,
             IMainloop mainloop,
             IMapData mapData,
@@ -121,6 +127,8 @@ namespace SS.Replay
             _crowns = crowns ?? throw new ArgumentNullException(nameof(crowns));
             _fake = fake ?? throw new ArgumentNullException(nameof(fake));
             _game = game ?? throw new ArgumentNullException(nameof(game));
+            _lagCollect = lagCollect ?? throw new ArgumentNullException(nameof(lagCollect));
+            _lagQuery = lagQuery ?? throw new ArgumentNullException(nameof(lagQuery));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
             _mapData = mapData ?? throw new ArgumentNullException(nameof(mapData));
@@ -128,6 +136,8 @@ namespace SS.Replay
             _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
             _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
             _securitySeedSync = securitySeedSync ?? throw new ArgumentNullException(nameof(securitySeedSync));
+
+            _mainloopWorkItem_C2SLatencyEstimateChanged = MainloopWorkItem_C2SLatencyEstimateChanged;
         }
 
         #region Module members
@@ -339,6 +349,12 @@ namespace SS.Replay
                 shipChange = new(ServerTick.Now, (short)player.Id, newShip, newFreq);
 
                 ad.RecorderQueue!.Add(new RecordBuffer(buffer, ShipChange.Length));
+
+                if (oldShip == ShipType.Spec && newShip != ShipType.Spec // changing from spec into a ship
+                    && _lagQuery.TryGetC2SMinLatencyEstimate(player, out uint c2sLatency))
+                {
+                    RecordC2SLatencyEstimate(ad, player, c2sLatency);
+                }
             }
         }
 
@@ -560,6 +576,37 @@ namespace SS.Replay
             ref TurretKickoff turretKickoff = ref MemoryMarshal.AsRef<TurretKickoff>(buffer.AsSpan(0, TurretKickoff.Length));
             turretKickoff = new(ServerTick.Now, (short)player.Id);
             ad.RecorderQueue!.Add(new RecordBuffer(buffer, TurretKickoff.Length));
+        }
+
+        private void Callback_C2SLatencyEstimateChanged(Player player, uint c2sLatency)
+        {
+            if (!_mainloop.IsMainloop)
+            {
+                _mainloop.QueueMainWorkItem(_mainloopWorkItem_C2SLatencyEstimateChanged, (player, c2sLatency));
+            }
+            else
+            {
+                Arena? arena = player.Arena;
+                if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
+                    return;
+
+                RecordC2SLatencyEstimate(ad, player, c2sLatency);
+            }
+        }
+
+        private static void RecordC2SLatencyEstimate(ArenaData ad, Player player, uint c2sLatency)
+        {
+            byte[] buffer = _recordBufferPool.Rent(C2SLatencyEstimateChange.Length);
+            ref C2SLatencyEstimateChange latencyChange = ref MemoryMarshal.AsRef<C2SLatencyEstimateChange>(buffer.AsSpan(0, C2SLatencyEstimateChange.Length));
+            latencyChange = new(ServerTick.Now, (short)player.Id, c2sLatency);
+            ad.RecorderQueue!.Add(new RecordBuffer(buffer, C2SLatencyEstimateChange.Length));
+        }
+
+        private void MainloopWorkItem_C2SLatencyEstimateChanged((Player Player, uint C2SLatency) dto)
+        {
+            Debug.Assert(_mainloop.IsMainloop);
+
+            Callback_C2SLatencyEstimateChanged(dto.Player, dto.C2SLatency);
         }
 
         #endregion
@@ -822,6 +869,7 @@ namespace SS.Replay
                 FlagLostCallback.Register(arena, Callback_CarryFlagDrop);
                 AttachCallback.Register(arena, Callback_Attach);
                 TurretKickoffCallback.Register(arena, Callback_TurretKickoff);
+                C2SLatencyEstimateChangedCallback.Register(arena, Callback_C2SLatencyEstimateChanged);
 
                 ad.RecorderTask = Task.Factory.StartNew(
                     () =>
@@ -894,6 +942,19 @@ namespace SS.Replay
                             ad.RecorderQueue!.Add(new RecordBuffer(buffer, CrownToggle.Length));
                         }
                     }
+
+                    // C2S latency estimate
+                    foreach (Player player in _playerData.Players)
+                    {
+                        if (player.Arena == arena
+                            && player.Status == PlayerState.Playing
+                            && player.Ship != ShipType.Spec
+                            && _lagQuery.TryGetC2SMinLatencyEstimate(player, out uint c2sLatency))
+                        {
+                            RecordC2SLatencyEstimate(ad, player, c2sLatency);
+                        }
+                    }
+
                 }
                 finally
                 {
@@ -1028,6 +1089,7 @@ namespace SS.Replay
                 FlagLostCallback.Unregister(arena, Callback_CarryFlagDrop);
                 AttachCallback.Unregister(arena, Callback_Attach);
                 TurretKickoffCallback.Unregister(arena, Callback_TurretKickoff);
+                C2SLatencyEstimateChangedCallback.Unregister(arena, Callback_C2SLatencyEstimateChanged);
 
                 ad.RecorderQueue.CompleteAdding();
                 return true;
@@ -1876,6 +1938,14 @@ namespace SS.Replay
 
                                         break;
 
+                                    case EventType.C2SLatencyEstimateChanged:
+                                        if ((readLength += ReadFromStream(gzStream, buffer[EventHeader.Length..C2SLatencyEstimateChange.Length])) != C2SLatencyEstimateChange.Length)
+                                        {
+                                            _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to read enough bytes for a {head.Type} event.");
+                                            return;
+                                        }
+                                        break;
+
                                     default:
                                         _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unknown event type {head.Type}.");
                                         return;
@@ -2345,6 +2415,18 @@ namespace SS.Replay
                             if (ad.PlayerIdMap.TryGetValue(positionWithExtraWrapper.PlayerId, out player))
                             {
                                 _game.FakePosition(player, ref positionWithExtraWrapper.PositionPacket, ref positionWithExtraWrapper.ExtraPositionData);
+                            }
+                            break;
+
+                        case EventType.C2SLatencyEstimateChanged:
+                            ref C2SLatencyEstimateChange c2sLatencyEstimateChange = ref MemoryMarshal.AsRef<C2SLatencyEstimateChange>(buffer);
+                            if (ad.PlayerIdMap.TryGetValue(c2sLatencyEstimateChange.PlayerId, out player))
+                            {
+                                _lagCollect.SetFakeC2SMinLatencyEstimate(player, c2sLatencyEstimateChange.C2SLatencyEstimate);
+                            }
+                            else
+                            {
+                                _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"{head.Type} event for non-existent PlayerId {c2sLatencyEstimateChange.PlayerId}.");
                             }
                             break;
 

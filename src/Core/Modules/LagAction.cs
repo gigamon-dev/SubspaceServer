@@ -2,6 +2,7 @@
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
 using System;
+using System.Diagnostics;
 using System.Threading;
 using LagSettings = SS.Core.ConfigHelp.Constants.Arena.Lag;
 
@@ -42,7 +43,7 @@ namespace SS.Core.Modules
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly CancellationToken _cancellationToken;
 
-        private readonly Action<Player> _mainloopWorkItem_checkPlayer;
+        private readonly Action<Player> _checkPlayer;
 
         public LagAction(
             IArenaManager arenaManager,
@@ -68,7 +69,7 @@ namespace SS.Core.Modules
             _cancellationTokenSource = new CancellationTokenSource();
             _cancellationToken = _cancellationTokenSource.Token;
 
-            _mainloopWorkItem_checkPlayer = MainloopWorkItem_CheckPlayer;
+            _checkPlayer = CheckPlayer;
         }
 
         #region Module members
@@ -83,6 +84,7 @@ namespace SS.Core.Modules
             _checkInterval = TimeSpan.FromMilliseconds(_configManager.GetInt(_configManager.Global, "Lag", "CheckInterval", ConfigHelp.Constants.Global.Lag.CheckInterval.Default) * 10);
 
             ArenaActionCallback.Register(broker, Callback_ArenaAction);
+            PlayerLatencyStatsUpdatedCallback.Register(broker, Callback_PlayerLatencyStatsUpdated);
 
             _checkThread = new Thread(CheckThread);
             _checkThread.Name = nameof(LagAction);
@@ -102,6 +104,7 @@ namespace SS.Core.Modules
             }
 
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
+            PlayerLatencyStatsUpdatedCallback.Unregister(broker, Callback_PlayerLatencyStatsUpdated);
 
             _arenaManager.FreeArenaData(ref _adKey);
             _playerData.FreePlayerData(ref _pdKey);
@@ -189,6 +192,23 @@ namespace SS.Core.Modules
             }
         }
 
+        private void Callback_PlayerLatencyStatsUpdated(Player player)
+        {
+            if (player is null)
+                return;
+
+            if (_mainloop.IsMainloop)
+            {
+                // Already on the mainloop, run the lag check synchronously.
+                CheckPlayer(player);
+            }
+            else
+            {
+                // Queue the actual lag check to be done by the mainloop thread.
+                _mainloop.QueueMainWorkItem(_checkPlayer, player);
+            }
+        }
+
         private void CheckThread()
         {
             WaitHandle cancellationWaitHandle = _cancellationToken.WaitHandle;
@@ -206,20 +226,20 @@ namespace SS.Core.Modules
                 {
                     DateTime? lastChecked = null;
 
-                    foreach (Player p in _playerData.Players)
+                    foreach (Player player in _playerData.Players)
                     {
-                        if (p.Status == PlayerState.Playing
-                            && p.IsStandard
-                            && p.TryGetExtraData(_pdKey, out PlayerData? pd))
+                        if (player.Status == PlayerState.Playing
+                            && player.IsStandard
+                            && player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                         {
-                            lock (pd.Lock)
+                            lock (playerData.Lock)
                             {
-                                if (!pd.IsChecking
-                                    && now - pd.LastCheck > _checkInterval
-                                    && (toCheck == null || pd.LastCheck < lastChecked))
+                                if (!playerData.IsChecking
+                                    && now - playerData.LastCheck > _checkInterval
+                                    && (toCheck is null || playerData.LastCheck < lastChecked))
                                 {
-                                    toCheck = p;
-                                    toCheckPlayerData = pd;
+                                    toCheck = player;
+                                    toCheckPlayerData = playerData;
                                 }
                             }
                         }
@@ -241,19 +261,18 @@ namespace SS.Core.Modules
 
                     // TODO: Review threading logic and maybe move the logic onto this worker thread if it's safe. For now, using the mainloop thread to do it.
                     // Queue the actual lag check to be done by the mainloop thread.
-                    _mainloop.QueueMainWorkItem(_mainloopWorkItem_checkPlayer, toCheck);
+                    _mainloop.QueueMainWorkItem(_checkPlayer, toCheck);
                 }
 
                 cancellationWaitHandle.WaitOne(playerCount > 0 ? _checkInterval / playerCount : _checkInterval);
             }
         }
 
-        private void MainloopWorkItem_CheckPlayer(Player player)
+        private void CheckPlayer(Player player)
         {
-            if (player == null)
-                return;
+            Debug.Assert(_mainloop.IsMainloop);
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
             try
@@ -262,10 +281,7 @@ namespace SS.Core.Modules
                     return;
 
                 Arena? arena = player.Arena;
-                if (arena == null)
-                    return;
-
-                if (!arena.TryGetExtraData(_adKey, out ArenaLagLimits? lagLimits))
+                if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaLagLimits? lagLimits))
                     return;
 
                 lock (lagLimits.Lock)
@@ -276,19 +292,16 @@ namespace SS.Core.Modules
             }
             finally
             {
-                lock (pd.Lock)
+                lock (playerData.Lock)
                 {
-                    pd.IsChecking = false;
-                    pd.LastCheck = DateTime.UtcNow;
+                    playerData.IsChecking = false;
+                    playerData.LastCheck = DateTime.UtcNow;
                 }
             }
         }
 
         private void CheckSpike(Player player, ArenaLagLimits lagLimits)
         {
-            if (player == null)
-                return;
-
             TimeSpan lastReceive = _network.GetLastReceiveTimeSpan(player);
             if (lastReceive > lagLimits.SpikeForceSpec
                 && Spec(player, lagLimits.SpecFreq, "spike"))
@@ -299,16 +312,20 @@ namespace SS.Core.Modules
 
         private void CheckLag(Player player, ArenaLagLimits lagLimits)
         {
-            // gather data
-            _lagQuery.QueryPositionPing(player, out PingSummary positionPing);
-            _lagQuery.QueryClientPing(player, out ClientPingSummary clientPing);
+            // Gather data
+            _lagQuery.QueryClientPing(player, out PingSummary clientPing);
+            _lagQuery.QueryPositionPing(player, out PingSummary positionPing); // 1-way
             _lagQuery.QueryReliablePing(player, out PingSummary reliablePing);
+            _lagQuery.QueryTimeSyncPing(player, out PingSummary clientTimeSyncPing, out PingSummary serverTimeSyncPing);
             _lagQuery.QueryPacketloss(player, out PacketlossSummary packetloss);
 
-            // average all pings together with reliable ping counted twice
-            int averagePing = (positionPing.Average + clientPing.Average + (2 * reliablePing.Average)) / 4;
+            // Average all pings together with more accurate values given additional weight:
+            // - reliable ping having twice the weight
+            // - time sync ping (client and server counted separately) effectively twice the weight
+            // Note: Position ping is 1-way latency. It is doubled to estimate 2-way, not for weight.
+            int averagePing = ((positionPing.Average * 2) + clientPing.Average + (2 * reliablePing.Average) + clientTimeSyncPing.Average + serverTimeSyncPing.Average) / 6;
 
-            // check conditions that force spec
+            // Check conditions that force spec
             if (averagePing > lagLimits.Ping.ForceSpec)
             {
                 player.Flags.NoShip = true;

@@ -55,6 +55,8 @@
         PositionWrapper = 150,
         PositionWithExtraWrapper = 151,
 
+        C2SLatencyEstimateChanged = 160,
+
         // TODO: bricks (allow multiple, allow specifying a time to allow for placing initial bricks)
     }
 }

@@ -331,16 +331,18 @@ namespace SS.Core.Modules
             NetConnectionStats stats = new();
             _network.GetConnectionStats(targetPlayer, ref stats);
 
-            _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing);
-            _lagQuery.QueryClientPing(targetPlayer, out ClientPingSummary clientPing);
+            _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing); // 1-way
+            _lagQuery.QueryClientPing(targetPlayer, out PingSummary clientPing);
             _lagQuery.QueryReliablePing(targetPlayer, out PingSummary reliablePing);
+            _lagQuery.QueryTimeSyncPing(targetPlayer, out PingSummary clientTimeSyncPing, out PingSummary serverTimeSyncPing);
             _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetlossSummary, out PacketlossDetails packetlossDetails);
             _lagQuery.QueryReliableLag(targetPlayer, out ReliableLagData reliableLag);
+            _lagQuery.QueryClientLagStats(targetPlayer, out ClientLagStats clientStats);
 
-            int current = (positionPing.Current + clientPing.Current + 2 * reliablePing.Current) / 4;
-            int average = (positionPing.Average + clientPing.Average + 2 * reliablePing.Average) / 4;
-            int low = Math.Min(Math.Min(positionPing.Min, clientPing.Min), reliablePing.Min);
-            int high = Math.Max(Math.Max(positionPing.Max, clientPing.Max), reliablePing.Max);
+            int current = ((positionPing.Current * 2) + clientPing.Current + (2 * reliablePing.Current) + clientTimeSyncPing.Current + serverTimeSyncPing.Current) / 6;
+            int average = ((positionPing.Average * 2) + clientPing.Average + (2 * reliablePing.Average) + clientTimeSyncPing.Average + serverTimeSyncPing.Average) / 6;
+            int low = Math.Min(Math.Min(Math.Min(Math.Min((positionPing.Min * 2), clientPing.Min), reliablePing.Min), clientTimeSyncPing.Min), serverTimeSyncPing.Min);
+            int high = Math.Max(Math.Max(Math.Max(Math.Max((positionPing.Max * 2), clientPing.Max), reliablePing.Max), clientTimeSyncPing.Max), serverTimeSyncPing.Max);
 
             _chat.SendMessage(player, $"IP:{targetPlayer.IPAddress}  TimeZoneBias:{targetPlayer.TimeZoneBias}  Freq:{targetPlayer.Freq}  TypedName:{targetPlayer.Name}  Demo:0  MachineId:{targetPlayer.MacId}");
 
@@ -350,7 +352,7 @@ namespace SS.Core.Modules
             _chat.SendMessage(player, $"LOSS: S2C:{packetlossSummary.S2C * 100d,4:F1}%  C2S:{packetlossSummary.C2S * 100d,4:F1}%  S2CWeapons:{packetlossSummary.S2CWeapon * 100d,4:F1}%  S2C_RelOut:{relPacketsLost}({reliableLag.ReliablePacketsSent})");
             _chat.SendMessage(player, $"S2C:{packetlossDetails.ServerPacketsSent}-->{packetlossDetails.ClientPacketsReceived}  C2S:{packetlossDetails.ClientPacketsSent}-->{packetlossDetails.ServerPacketsReceived}");
             _chat.SendMessage(player, $"C2S CURRENT: Slow:0 Fast:0 0.0%   TOTAL: Slow:0 Fast:0 0.0%");
-            _chat.SendMessage(player, $"S2C CURRENT: Slow:{clientPing.S2CSlowCurrent} Fast:{clientPing.S2CFastCurrent} 0.0%   TOTAL: Slow:{clientPing.S2CSlowTotal} Fast:{clientPing.S2CFastTotal} 0.0%");
+            _chat.SendMessage(player, $"S2C CURRENT: Slow:{clientStats.S2CSlowCurrent} Fast:{clientStats.S2CFastCurrent} 0.0%   TOTAL: Slow:{clientStats.S2CSlowTotal} Fast:{clientStats.S2CFastTotal} 0.0%");
 
             TimeSpan sessionDuration = DateTime.UtcNow - targetPlayer.ConnectTime;
             if (_billing is null || !_billing.TryGetUsage(targetPlayer, out TimeSpan usage, out DateTime? firstLoginTimestamp))
@@ -376,15 +378,16 @@ namespace SS.Core.Modules
                 targetPlayer = player;
             }
 
-            _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing);
-            _lagQuery.QueryClientPing(targetPlayer, out ClientPingSummary clientPing);
+            _lagQuery.QueryPositionPing(targetPlayer, out PingSummary positionPing); // 1-way
+            _lagQuery.QueryClientPing(targetPlayer, out PingSummary clientPing);
             _lagQuery.QueryReliablePing(targetPlayer, out PingSummary reliablePing);
+            _lagQuery.QueryTimeSyncPing(targetPlayer, out PingSummary clientTimeSyncPing, out PingSummary serverTimeSyncPing);
             _lagQuery.QueryPacketloss(targetPlayer, out PacketlossSummary packetloss);
 
-            int current = (positionPing.Current + clientPing.Current + 2 * reliablePing.Current) / 4;
-            int average = (positionPing.Average + clientPing.Average + 2 * reliablePing.Average) / 4;
-            int low = Math.Min(Math.Min(positionPing.Min, clientPing.Min), reliablePing.Min);
-            int high = Math.Max(Math.Max(positionPing.Max, clientPing.Max), reliablePing.Max);
+            int current = ((positionPing.Current * 2) + clientPing.Current + (2 * reliablePing.Current) + clientTimeSyncPing.Current + serverTimeSyncPing.Current) / 6;
+            int average = ((positionPing.Average * 2) + clientPing.Average + (2 * reliablePing.Average) + clientTimeSyncPing.Average + serverTimeSyncPing.Average) / 6;
+            int low = Math.Min(Math.Min(Math.Min(Math.Min((positionPing.Min * 2), clientPing.Min), reliablePing.Min), clientTimeSyncPing.Min), serverTimeSyncPing.Min);
+            int high = Math.Max(Math.Max(Math.Max(Math.Max((positionPing.Max * 2), clientPing.Max), reliablePing.Max), clientTimeSyncPing.Max), serverTimeSyncPing.Max);
 
             _chat.SendMessage(player, $"PING Current:{current} ms  Average:{average} ms  Low:{low} ms  High:{high} ms  S2C:{packetloss.S2C * 100d,4:F1}%  C2S:{packetloss.C2S * 100d,4:F1}%  S2CWeapons:{packetloss.S2CWeapon * 100d,4:F1}%");
         }

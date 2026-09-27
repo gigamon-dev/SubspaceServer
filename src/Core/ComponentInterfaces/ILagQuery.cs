@@ -8,15 +8,10 @@ namespace SS.Core.ComponentInterfaces
     }
 
     /// <summary>
-    /// Client reported latency stat summary.
+    /// Client reported latency stats.
     /// </summary>
-    public struct ClientPingSummary
+    public struct ClientLagStats
     {
-        /// <summary>
-        /// Ping (ms)
-        /// </summary>
-        public int Current, Average, Min, Max;
-
         /// <summary>
         /// The average time (ms) difference between position packet times to the estimated server time, for the current interval.
         /// </summary>
@@ -53,7 +48,7 @@ namespace SS.Core.ComponentInterfaces
 
     public struct PacketlossSummary
     {
-        public double S2C, C2S, S2CWeapon;
+        public double S2C, C2S, S2CWeapon, TimeSync;
     }
 
     public struct PacketlossDetails
@@ -82,7 +77,7 @@ namespace SS.Core.ComponentInterfaces
     public interface ILagQuery : IComponentInterface
     {
         /// <summary>
-        /// Gets a player's ping info (from position packets).
+        /// Gets a player's 1-way C2S position latency data.
         /// </summary>
         /// <param name="player">The player to get data about.</param>
         /// <param name="ping">The data.</param>
@@ -93,7 +88,14 @@ namespace SS.Core.ComponentInterfaces
         /// </summary>
         /// <param name="player">The player to get data about.</param>
         /// <param name="ping">The data.</param>
-        void QueryClientPing(Player player, out ClientPingSummary ping);
+        void QueryClientPing(Player player, out PingSummary ping);
+
+        /// <summary>
+        /// Gets a player's lag stats (reported by the client).
+        /// </summary>
+        /// <param name="player">The player to get data about.</param>
+        /// <param name="stats">The detailed data.</param>
+        void QueryClientLagStats(Player player, out ClientLagStats stats);
 
         /// <summary>
         /// Gets a player's ping info (from reliable packets).
@@ -101,6 +103,14 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">The player to get data about.</param>
         /// <param name="ping">The data.</param>
         void QueryReliablePing(Player player, out PingSummary ping);
+
+        /// <summary>
+        /// Gets a player's ping info (from time syncs).
+        /// </summary>
+        /// <param name="player"></param>
+        /// <param name="clientPing"></param>
+        /// <param name="serverPing"></param>
+        void QueryTimeSyncPing(Player player, out PingSummary clientPing, out PingSummary serverPing);
 
         /// <summary>
         /// Gets a <paramref name="player"/>'s packetloss <paramref name="summary"/>.
@@ -123,6 +133,18 @@ namespace SS.Core.ComponentInterfaces
         /// <param name="player">The player to get data about.</param>
         /// <param name="reliableLag">The data.</param>
         void QueryReliableLag(Player player, out ReliableLagData reliableLag);
+
+        /// <summary>
+        /// Gets the estimated minimum C2S latency (in ticks).
+        /// </summary>
+        /// <remarks>
+        /// This is based on the minimum roundtrip time of data samples from recent time syncs.
+        /// The minimum is useful for position packets since a player's position time shouldn't come before the current server time - the player's minimum C2S latency.
+        /// </remarks>
+        /// <param name="player">The player to get the data for.</param>
+        /// <param name="estimate">When this method returns, the estimated C2S latency if a time sync response was received.</param>
+        /// <returns><see langword="true"/> if a estimate was available; otherwise, <see langword="false"/>.</returns>
+        bool TryGetC2SMinLatencyEstimate(Player player, out uint estimate);
 
         /// <summary>
         /// Gets a player's history of time sync requests (0x00 0x05 core packet).
@@ -150,19 +172,43 @@ namespace SS.Core.ComponentInterfaces
         void QueryTimeSyncDriftMs(Player player, out int? clientDrift, out int? serverDriftAvg, out double? serverDriftStdDev);
 
         /// <summary>
-        /// Gets a player's ping histogram data based on C2S position packets.
+        /// Gets a player's latency histogram data based on the difference between the time field in C2S position packets and the actual server time.
         /// </summary>
         /// <param name="player">The player to get data for.</param>
         /// <param name="data">A collection to populate with data.</param>
-        /// <returns><see langword="true"/> if <paramref name="data"/> was populated with data. Otherwise, <see langword="false"/>.</returns>
-        bool GetPositionPingHistogram(Player player, ICollection<PingHistogramBucket> data);
+        /// <returns>The number of data points returned.</returns>
+        int GetC2SPositionHistogram(Player player, ICollection<PingHistogramBucket> data);
+
+        /// <summary>
+        /// Gets a player's latency histogram data based on the S2C latency field provided by clients in C2S position packets (requires the client to send "extra position data").
+        /// </summary>
+        /// <param name="player">The player to get data for.</param>
+        /// <param name="data">A collection to populate with data.</param>
+        /// <returns></returns>
+        int GetS2CPositionHistogram(Player player, ICollection<PingHistogramBucket> data);
 
         /// <summary>
         /// Gets a player's ping histogram data based on reliable packets.
         /// </summary>
         /// <param name="player">The player to get data for.</param>
         /// <param name="data">A collection to populate with data.</param>
-        /// <returns><see langword="true"/> if <paramref name="data"/> was populated with data. Otherwise, <see langword="false"/>.</returns>
-        bool GetReliablePingHistogram(Player player, ICollection<PingHistogramBucket> data);
+        /// <returns>The number of data points returned.</returns>
+        int GetReliablePingHistogram(Player player, ICollection<PingHistogramBucket> data);
+
+        /// <summary>
+        /// Gets a player's ping histogram data based timesync packets (client times).
+        /// </summary>
+        /// <param name="player">The player to get data for.</param>
+        /// <param name="data">A collection to populate with data.</param>
+        /// <returns>The number of data points returned.</returns>
+        int GetClientTimeSyncHistogram(Player player, ICollection<PingHistogramBucket> data);
+
+        /// <summary>
+        /// Gets a player's ping histogram data based timesync packets (server times).
+        /// </summary>
+        /// <param name="player">The player to get data for.</param>
+        /// <param name="data">A collection to populate with data.</param>
+        /// <returns>The number of data points returned.</returns>
+        int GetServerTimeSyncHistogram(Player player, ICollection<PingHistogramBucket> data);
     }
 }

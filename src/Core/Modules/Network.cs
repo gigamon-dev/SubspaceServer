@@ -285,7 +285,7 @@ namespace SS.Core.Modules
             _oohandlers[3]  = CorePacket_Reliable;       // 0x03 - reliable
             _oohandlers[4]  = CorePacket_Ack;            // 0x04 - reliable response
             _oohandlers[5]  = CorePacket_SyncRequest;    // 0x05 - time sync request
-            _oohandlers[6]  = null;                      // 0x06 - time sync response
+            _oohandlers[6]  = CorePacket_SyncResponse;   // 0x06 - time sync response
             _oohandlers[7]  = CorePacket_Drop;           // 0x07 - close connection
             _oohandlers[8]  = CorePacket_BigData;        // 0x08 - bigpacket
             _oohandlers[9]  = CorePacket_BigData;        // 0x09 - bigpacket end
@@ -1650,32 +1650,112 @@ namespace SS.Core.Modules
             if (data.Length != TimeSyncRequest.Length)
                 return;
 
+            long serverTimestamp = Stopwatch.GetTimestamp();
+            ServerTick serverTime = ServerTick.Now;
+
             ref readonly TimeSyncRequest request = ref MemoryMarshal.AsRef<TimeSyncRequest>(data);
             uint clientTime = request.Time;
-            uint serverTime = ServerTick.Now;
-
-            // note: this bypasses bandwidth limits
-            TimeSyncResponse response = new(clientTime, serverTime);
-            SendRaw(conn, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)));
-
-            // submit data to lagdata
-            if (_lagCollect is not null && conn is PlayerConnection playerConnection)
+            bool isResponseSent = false;
+            
+            if (conn is PlayerConnection playerConnection)
             {
                 Player? player = playerConnection.Player;
                 if (player is null)
                     return;
 
-                TimeSyncData timeSyncData = new()
+                if (_lagCollect is not null)
                 {
-                    ServerPacketsReceived = Interlocked.CompareExchange(ref conn.PacketsReceived, 0, 0),
-                    ServerPacketsSent = Interlocked.CompareExchange(ref conn.PacketsSent, 0, 0),
-                    ClientPacketsReceived = request.PacketsReceived,
-                    ClientPacketsSent = request.PacketsSent,
-                    ServerTime = serverTime,
-                    ClientTime = clientTime,
-                };
+                    // Check if we're allowed to send a combined response and request.
+                    bool sendRequest = false;
+                    lock (playerConnection.TimeSyncRequestLock)
+                    {
+                        // Only send a request if we haven't sent one in the past 3 seconds
+                        // and there isn't already a request we're still waiting on a response for.
+                        if ((playerConnection.TimeSyncRequestSentTicks is null || (serverTime - playerConnection.TimeSyncRequestSentTicks.Value) > 300)
+                            && (playerConnection.TimeSyncRequestSentTimestamp is null
+                                || (int)(Stopwatch.GetElapsedTime(playerConnection.TimeSyncRequestSentTimestamp.Value, serverTimestamp).TotalMilliseconds / 10) > Math.Clamp((uint)(conn.AverageRoundTripTime + (4 * conn.AverageRoundTripDeviation)), 250, 2000)
+                            ))
+                        {
+                            playerConnection.TimeSyncRequestSentTimestamp = serverTimestamp;
+                            playerConnection.TimeSyncRequestSentTicks = serverTime;
+                            sendRequest = true;
+                        }
+                    }
+                    
+                    if (sendRequest)
+                    {
+                        // Since we just received the client's time, we might as well make use of it by sending our own time sync request.
+                        // This allows us to calculate an additional roundtrip time from this client time and the one we'll get in the C2S timesync response.
 
-                _lagCollect.TimeSync(player, in timeSyncData);
+                        // Send a response and request back to the client, combined in one grouped packet.
+                        // Note: this bypasses bandwidth limits
+                        GroupedTimeSyncResponseAndRequest responseAndRequest = new(
+                            clientTime,
+                            serverTime,
+                            Interlocked.CompareExchange(ref conn.PacketsSent, 0, 0) + 1, // +1 for this packet
+                            Interlocked.CompareExchange(ref conn.PacketsReceived, 0, 0));
+
+                        SendRaw(conn, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref responseAndRequest, 1)));
+
+                        isResponseSent = true;
+                    }
+
+                    // Collect lag data.
+                    TimeSyncRequestData timeSyncData = new()
+                    {
+                        ServerPacketsReceived = Interlocked.CompareExchange(ref conn.PacketsReceived, 0, 0),
+                        ServerPacketsSent = Interlocked.CompareExchange(ref conn.PacketsSent, 0, 0),
+                        ClientPacketsReceived = request.PacketsReceived,
+                        ClientPacketsSent = request.PacketsSent,
+                        ServerTime = serverTime,
+                        ClientTime = clientTime,
+                    };
+
+                    _lagCollect.TimeSyncC2SRequestAndS2CRequest(player, in timeSyncData, isResponseSent);
+                }
+            }
+
+            if (!isResponseSent)
+            {
+                // Note: this bypasses bandwidth limits
+                TimeSyncResponse response = new(clientTime, serverTime);
+                SendRaw(conn, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref response, 1)));
+            }
+        }
+
+        private void CorePacket_SyncResponse(Span<byte> data, ConnData conn, NetReceiveFlags flags)
+        {
+            if (data.Length != TimeSyncResponse.Length)
+                return;
+
+            long serverTimestamp = Stopwatch.GetTimestamp();
+            uint serverTime = ServerTick.Now;
+
+            ref readonly TimeSyncResponse response = ref MemoryMarshal.AsRef<TimeSyncResponse>(data);
+
+            if (conn is PlayerConnection playerConnection)
+            {
+                Player? player = playerConnection.Player;
+                if (player is null)
+                    return;
+
+                TimeSpan timestampRTT;
+                lock (playerConnection.TimeSyncRequestLock)
+                {
+                    if (playerConnection.TimeSyncRequestSentTimestamp is null
+                        || playerConnection.TimeSyncRequestSentTicks != response.RequestTime)
+                    {
+                        return;
+                    }
+
+                    timestampRTT = Stopwatch.GetElapsedTime(playerConnection.TimeSyncRequestSentTimestamp.Value, serverTimestamp);
+
+                    // Clear TimeSyncRequestSentTimestamp so that we know it's been processed,
+                    // but keep TimeSyncRequestSentTicks so that we can still tell when the last request was sent.
+                    playerConnection.TimeSyncRequestSentTimestamp = null;
+                }
+
+                _lagCollect?.TimeSyncC2SResponse(player, response.RequestTime, serverTime, response.ResponseTime, timestampRTT);
             }
         }
 
@@ -5393,6 +5473,26 @@ namespace SS.Core.Modules
             public IEncrypt? Encryptor;
 
             /// <summary>
+            /// The server time (<see cref="Stopwatch"/>) that the last S2C timesync request was sent.
+            /// This allows us to get round-trip time in high precision, whereas ticks is limited to centiseconds.
+            /// </summary>
+            /// <remarks>
+            /// Synchronized with <see cref="TimeSyncRequestLock"/>.
+            /// </remarks>
+            public long? TimeSyncRequestSentTimestamp;
+
+            /// <summary>
+            /// The server time (ticks) that the last S2C timesync request was sent.
+            /// The timesync response should contain this value.
+            /// </summary>
+            /// <remarks>
+            /// Synchronized with <see cref="TimeSyncRequestLock"/>.
+            /// </remarks>
+            public ServerTick? TimeSyncRequestSentTicks;
+
+            public readonly Lock TimeSyncRequestLock = new();
+
+            /// <summary>
             /// Whether the connection has been told to use the alternate timer mode.
             /// </summary>
             /// <remarks>
@@ -5413,6 +5513,8 @@ namespace SS.Core.Modules
             {
                 Player = null;
                 Encryptor = null;
+                TimeSyncRequestSentTimestamp = null;
+                TimeSyncRequestSentTicks = null;
                 AlternateTimerModeEnabled = false;
 
                 return base.TryReset();
@@ -6591,6 +6693,24 @@ namespace SS.Core.Modules
 
                 Interlocked.Increment(ref _network._globalStats.GroupedStats[0]);
             }
+        }
+
+        /// <summary>
+        /// A grouped packet containing a <see cref="TimeSyncResponse"/> and a <see cref="TimeSyncRequest"/>.
+        /// </summary>
+        /// <param name="requestTime"></param>
+        /// <param name="time"></param>
+        /// <param name="packetsSent"></param>
+        /// <param name="packetsReceived"></param>
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        private readonly struct GroupedTimeSyncResponseAndRequest(uint requestTime, uint time , uint packetsSent, uint packetsReceived)
+        {
+            public readonly byte T1 = 0x00;
+            public readonly byte T2 = 0x0E;
+            public readonly byte ResponseLength = (byte)TimeSyncResponse.Length;
+            public readonly TimeSyncResponse Response = new(requestTime, time);
+            public readonly byte RequestLength = (byte)TimeSyncRequest.Length;
+            public readonly TimeSyncRequest Request = new(time, packetsSent, packetsReceived);
         }
 
         /// <summary>
