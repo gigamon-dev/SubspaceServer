@@ -4,9 +4,7 @@ namespace SS.Core.ComponentCallbacks
     /// Callback fired when a ball game (re)starts in an arena — when the first ball spawns after the game had ended
     /// (or after the ball count was set to 0). Fired by the <see cref="SS.Core.Modules.Balls"/> module.
     /// </summary>
-    [CallbackHelper]
-    public static partial class BallGameStartCallback
-    {
-        public delegate void BallGameStartDelegate(Arena arena);
-    }
+    /// <param name="arena">The arena the game started in.</param>
+    [ComponentCallback]
+    public delegate void BallGameStartCallback(Arena arena);
 }

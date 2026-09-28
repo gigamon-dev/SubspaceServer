@@ -5,9 +5,7 @@ namespace SS.Matchmaking.Callbacks
     /// <summary>
     /// Callback for when a player enters the 'Playing' state.
     /// </summary>
-    [CallbackHelper]
-    public static partial class PlayerStartPlayingCallback
-    {
-        public delegate void PlayerStartPlayingDelegate(Player player);
-    }
+    /// <param name="player">The player that entered the 'Playing' state.</param>
+    [ComponentCallback]
+    public delegate void PlayerStartPlayingCallback(Player player);
 }

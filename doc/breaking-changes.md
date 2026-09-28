@@ -6,6 +6,7 @@ The source generator for pub/sub callbacks has been simplified using C# 14 exten
 
 Previously, to use the generator you would wrap the delegate in a static partial helper class, which the source generator would add methods to. The `[CallbackHelper]` attribute was used to mark the class so that the source generator would know to generate for it. The wrapper class name had to end with "Callback" and delegate name would need to match, with the name ending with "Delegate". For example,
 ```C#
+// OLD WAY
 [CallbackHelper]
 public static partial class ArenaActionCallback
 {
@@ -16,11 +17,12 @@ public static partial class ArenaActionCallback
 As of v5.0.0, the static partial helper class is no longer needed and there are no longer any naming requirements. You just define a delegate and mark it with the `[ComponentCallback]` marker attribute. For example,
 
 ```C#
+// NEW WAY
 [ComponentCallback]
 public delegate void ArenaActionCallback(Arena arena, ArenaAction action);
 ```
 
-The easiest, recommended, way to migrate existing callbacks is to remove the static partial class and rename the delegate to it. Doing it this way means you will not need to change any of the calling code.
+As shown in the above example, the easiest, recommended, way to migrate existing callbacks is to remove the static partial class and rename the delegate to it. Doing it this way means you most likely will not need to change any of the calling code. However, if you had nested types inside of the static partial helper class. The nested type can no longer be nested. An example of this is how previously, `SpawnCallback` contained a nested enum, `SpawnCallback.SpawnReason`. Since this scenario was already going to require code modifications, `SpawnCallback` was renamed to `PlayerSpawnCallback`, and the nested enum, `SpawnCallback.SpawnReason`, was renamed to `PlayerSpawnReason`.
 
 ## v4.0.0
 

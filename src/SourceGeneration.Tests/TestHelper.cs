@@ -31,7 +31,7 @@ namespace SS.SourceGeneration.Tests
                 .UseDirectory("Snapshots");
         }
 
-        public static Task VerifyCallbackHelperGenerator(string source)
+        public static Task VerifyComponentCallbackGenerator(string source)
         {
             SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(source);
 
@@ -49,7 +49,7 @@ namespace SS.SourceGeneration.Tests
                 syntaxTrees: [syntaxTree],
                 references: references);
 
-            CallbackHelperGenerator generator = new();
+            ComponentCallbackGenerator generator = new();
 
             GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);
 

@@ -63,7 +63,7 @@ namespace SS.SourceGeneration
 
             context.RegisterSourceOutput(
                 generateClassTargetProvider,
-                GenerateCallbackHelpers);
+                GenerateCallbackExtensionMembers);
         }
 
         private static bool IsValidGenerateCallbackTarget(SyntaxNode node, CancellationToken token)
@@ -200,7 +200,7 @@ namespace SS.SourceGeneration
             }
         }
 
-        private void GenerateCallbackHelpers(SourceProductionContext context, GenerateCallbackInfo generateCallbackInfo)
+        private void GenerateCallbackExtensionMembers(SourceProductionContext context, GenerateCallbackInfo generateCallbackInfo)
         {
             int parameterCount = generateCallbackInfo.Parameters.Array.Length;
             StringBuilder parametersBuilder = new();

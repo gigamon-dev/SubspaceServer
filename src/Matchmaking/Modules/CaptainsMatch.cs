@@ -365,7 +365,7 @@ namespace SS.Matchmaking.Modules
             arenaData.FreqManagerEnforcerAdvisorToken = arena.RegisterAdvisor<IFreqManagerEnforcerAdvisor>(this);
 
             KillCallback.Register(arena, Callback_Kill);
-            SpawnCallback.Register(arena, Callback_Spawn);
+            PlayerSpawnCallback.Register(arena, Callback_PlayerSpawn);
             ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
             PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
 
@@ -407,7 +407,7 @@ namespace SS.Matchmaking.Modules
                 return false;
 
             KillCallback.Unregister(arena, Callback_Kill);
-            SpawnCallback.Unregister(arena, Callback_Spawn);
+            PlayerSpawnCallback.Unregister(arena, Callback_PlayerSpawn);
             ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
             PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
 
@@ -799,10 +799,10 @@ namespace SS.Matchmaking.Modules
             ScheduleWinConditionCheck(arenaData, killedMatch);
         }
 
-        private void Callback_Spawn(Player player, SpawnCallback.SpawnReason reason)
+        private void Callback_PlayerSpawn(Player player, PlayerSpawnReason reason)
         {
-            bool isAfterDeath = (reason & SpawnCallback.SpawnReason.AfterDeath) != 0;
-            bool isShipChange = (reason & SpawnCallback.SpawnReason.ShipChange) != 0;
+            bool isAfterDeath = (reason & PlayerSpawnReason.AfterDeath) != 0;
+            bool isShipChange = (reason & PlayerSpawnReason.ShipChange) != 0;
 
             if (!isAfterDeath)
                 return;
