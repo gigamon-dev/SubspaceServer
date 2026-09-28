@@ -44,18 +44,12 @@ namespace SS.Core.ComponentCallbacks
     }
 
     /// <summary>
-    /// Helper class for the <see cref="FlagLostDelegate"/> callback.
+    /// Callback delegate for when a flag is lost in a carry flag game.
     /// </summary>
-    [CallbackHelper]
-    public static partial class FlagLostCallback
-    {
-        /// <summary>
-        /// Delegate for when a flag is lost in a carry flag game.
-        /// </summary>
-        /// <param name="arena">The arena.</param>
-        /// <param name="player">The player that lost the flag.</param>
-        /// <param name="flagId">The ID of the flag that was lost.</param>
-        /// <param name="reason">The reason the flag was lost.</param>
-        public delegate void FlagLostDelegate(Arena arena, Player player, short flagId, FlagLostReason reason);
-    }
+    /// <param name="arena">The arena.</param>
+    /// <param name="player">The player that lost the flag.</param>
+    /// <param name="flagId">The ID of the flag that was lost.</param>
+    /// <param name="reason">The reason the flag was lost.</param>
+    [ComponentCallback]
+    public delegate void FlagLostCallback(Arena arena, Player player, short flagId, FlagLostReason reason);
 }

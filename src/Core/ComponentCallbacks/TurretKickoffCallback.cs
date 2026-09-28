@@ -1,15 +1,9 @@
 ﻿namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
-    /// Helper class for the <see cref="TurretKickoffCallback"/> callback.
+    /// Callback delegate for when a player kicks off attached players.
     /// </summary>
-    [CallbackHelper]
-    public static partial class TurretKickoffCallback
-    {
-        /// <summary>
-        /// Delegate for when a player kicks off attached players.
-        /// </summary>
-        /// <param name="player">The player that kicked off attached players.</param>
-        public delegate void TurretKickoffDelegate(Player player);
-    }
+    /// <param name="player">The player that kicked off attached players.</param>
+    [ComponentCallback]
+    public delegate void TurretKickoffCallback(Player player);
 }

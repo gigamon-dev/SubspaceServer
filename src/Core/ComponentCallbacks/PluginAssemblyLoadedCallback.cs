@@ -3,15 +3,9 @@
 namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
-    /// Helper class for the <see cref="PluginAssemblyLoadedDelegate"/>.
+    /// Callback delegate for when a plug-in assembly is loaded by the <see cref="ModuleManager"/>.
     /// </summary>
-    [CallbackHelper]
-    public static partial class PluginAssemblyLoadedCallback
-    {
-        /// <summary>
-        /// Delegate for a callback when a plug-in assembly is loaded by the <see cref="ModuleManager"/>.
-        /// </summary>
-        /// <param name="assembly">The plug-in assembly that was loaded.</param>
-        public delegate void PluginAssemblyLoadedDelegate(Assembly assembly);
-    }
+    /// <param name="assembly">The plug-in assembly that was loaded.</param>
+    [ComponentCallback]
+    public delegate void PluginAssemblyLoadedCallback(Assembly assembly);
 }

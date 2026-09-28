@@ -26,11 +26,11 @@ namespace SS.Matchmaking.Callbacks
     }
 
     /// <summary>
-    /// Callback for when a member has been removed from a <see cref="IPlayerGroup"/>.
+    /// Callback delegate for when a member has been removed from a <see cref="IPlayerGroup"/>.
     /// </summary>
-    [CallbackHelper]
-    public static partial class PlayerGroupMemberRemovedCallback
-    {
-        public delegate void PlayerGroupMemberRemovedDelegate(IPlayerGroup group, Player player, PlayerGroupMemberRemovedReason reason);
-    }
+    /// <param name="group"></param>
+    /// <param name="player"></param>
+    /// <param name="reason"></param>
+    [ComponentCallback]
+    public delegate void PlayerGroupMemberRemovedCallback(IPlayerGroup group, Player player, PlayerGroupMemberRemovedReason reason);
 }

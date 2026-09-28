@@ -3,9 +3,10 @@ using SS.Matchmaking.League;
 
 namespace SS.Matchmaking.Callbacks
 {
-    [CallbackHelper]
-    public static partial class LeagueMatchEndedCallback
-    {
-        public delegate void LeagueMatchEndedDelegate(ILeagueMatch leagueMatch);
-    }
+    /// <summary>
+    /// Callback delegate for when a league match has ended.
+    /// </summary>
+    /// <param name="leagueMatch"></param>
+    [ComponentCallback]
+    public delegate void LeagueMatchEndedCallback(ILeagueMatch leagueMatch);
 }

@@ -4,15 +4,9 @@ using SS.Matchmaking.TeamVersus;
 namespace SS.Matchmaking.Callbacks
 {
     /// <summary>
-    /// Callback for when a team versus match starts.
+    /// Callback delegate for when a Team Versus match has started.
     /// </summary>
-    [CallbackHelper]
-    public static partial class TeamVersusMatchStartedCallback
-    {
-        /// <summary>
-        /// Delegate for when a team versus match starts.
-        /// </summary>
-        /// <param name="matchData">The match that started.</param>
-        public delegate void TeamVersusMatchStartedDelegate(IMatchData matchData);
-    }
+    /// <param name="matchData">The match that started.</param>
+    [ComponentCallback]
+    public delegate void TeamVersusMatchStartedCallback(IMatchData matchData);
 }

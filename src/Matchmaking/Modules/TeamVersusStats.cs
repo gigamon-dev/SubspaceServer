@@ -289,7 +289,7 @@ namespace SS.Matchmaking.Modules
             PlayerDamageCallback.Register(arena, Callback_PlayerDamage);
             PlayerPositionPacketCallback.Register(arena, Callback_PlayerPositionPacket);
             ShipFreqChangeCallback.Register(arena, Callback_ShipFreqChange);
-            SpawnCallback.Register(arena, Callback_Spawn);
+            PlayerSpawnCallback.Register(arena, Callback_PlayerSpawn);
 
             _commandManager.AddCommand(CommandNames.Chart, Command_chart, arena);
             _commandManager.AddCommand(CommandNames.ChartHelp, Command_charthelp, arena);
@@ -324,7 +324,7 @@ namespace SS.Matchmaking.Modules
             PlayerDamageCallback.Unregister(arena, Callback_PlayerDamage);
             PlayerPositionPacketCallback.Unregister(arena, Callback_PlayerPositionPacket);
             ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
-            SpawnCallback.Unregister(arena, Callback_Spawn);
+            PlayerSpawnCallback.Unregister(arena, Callback_PlayerSpawn);
 
             return true;
         }
@@ -2934,7 +2934,7 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        private void Callback_Spawn(Player player, SpawnCallback.SpawnReason reason)
+        private void Callback_PlayerSpawn(Player player, PlayerSpawnReason reason)
         {
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;

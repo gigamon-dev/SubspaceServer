@@ -1,14 +1,8 @@
 ﻿namespace SS.Core.ComponentCallbacks
 {
     /// <summary>
-    /// Helper class for the <see cref="GlobalConfigChangedDelegate"/> callback.
+    /// Callback delegate for when the global.conf file has changed.
     /// </summary>
-    [CallbackHelper]
-    public static partial class GlobalConfigChangedCallback
-    {
-        /// <summary>
-        /// Delegate for a callback that is invoked when the global.conf file was changed.
-        /// </summary>
-        public delegate void GlobalConfigChangedDelegate();
-    }
+    [ComponentCallback]
+    public delegate void GlobalConfigChangedCallback();
 }
