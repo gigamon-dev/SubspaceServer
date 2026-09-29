@@ -12,7 +12,7 @@ EBombDamagePercent=1000
 BBombDamagePercent=1000
 
 [Mine]
-MineAliveTime=3000
+MineAliveTime=4500
 TeamMaxMines=30
 
 [Shrapnel]
@@ -22,7 +22,7 @@ ShrapnelDamagePercent=1000
 Random=0
 
 [Burst]
-BurstDamageLevel=212
+BurstDamageLevel=266
 
 [Toggle]
 AntiWarpPixels=1500
@@ -41,6 +41,9 @@ DeathPrizeTime=800
 EngineShutdownTime=700
 TakePrizeReliable=0
 S2CTakePrizeReliable=0
+DontShareBrick=1
+DontShareBurst=1
+DontShareThor=1
 
 [Radar]
 RadarMode=0
@@ -49,34 +52,36 @@ MapZoomFactor=10
 
 [Team]
 MaxFrequency=2
-MaxPerTeam=8
+MaxPerTeam=20
 MaxPerPrivateTeam=0
-ForceEvenTeams=0
+ForceEvenTeams=1
 DesiredTeams=2
 SpectatorFrequency=8025
+IncludeSpectators=0
+InitialSpec=1
 
 [Kill]
 MaxBonus=0
 MaxPenalty=0
 RewardBase=0
-BountyIncreaseForKill=10
-EnterDelay=200
-KillPointsPerFlag=2
+BountyIncreaseForKill=1
+EnterDelay=500
+KillPointsPerFlag=0
 KillPointsMinimumBounty=80
 DebtKills=0
 NoRewardKillDelay=0
-BountyRewardPercent=10
-FixedKillReward=-1
+BountyRewardPercent=0
+FixedKillReward=0
 JackpotBountyPercent=0
 
 [Repel]
-RepelSpeed=5000
-RepelTime=225
+RepelSpeed=1300
+RepelTime=1
 RepelDistance=512
 
 [Message]
 MessageReliable=0
-AllowAudioMessages=1
+AllowAudioMessages=0
 BongAllowed=0
 QuickMessageLimit=8
 MessageTeamReliable=1
@@ -128,7 +133,7 @@ FrequencyShift=900
 TickerDelay=1000
 ExtraPositionData=1
 WarpRadiusLimit=100
-ActivateAppShutdownTime=300
+ActivateAppShutdownTime=0
 NearDeathLevel=0
 VictoryMusic=0
 FrequencyShipTypes=0
@@ -183,7 +188,7 @@ NonCrownMinimumBounty=100
 CrownRecoverKills=3
 
 [Bullet]
-BulletDamageLevel=212
+BulletDamageLevel=266
 BulletDamageUpgrade=0
 BulletAliveTime=250
 ExactDamage=1
