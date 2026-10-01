@@ -945,8 +945,9 @@ namespace SS.Core
 
                         PluginAssemblyUnloadingCallback.Fire(this, assembly);
 
-                        // TODO: Investigate why this sometimes causes a seg fault on Linux and Mac.
-                        //moduleLoadContext.Unload();
+                        // TODO: Confirm that this no longer occasionally causes a seg fault on Linux and macOS.
+                        // If this is still an issue, comment out this line and set the ModulePluginLoadContext to not be collectible.
+                        moduleLoadContext.Unload();
                     }
                 }
             }
@@ -1464,7 +1465,7 @@ namespace SS.Core
         /// This class is <see langword="private"/> to the <see cref="ModuleManager"/> 
         /// which fully manages loading each plugin assembly into a separate, isolated context.
         /// </summary>
-        private class ModulePluginLoadContext(string moduleAssemblyPath) : AssemblyLoadContext(Path.GetFileNameWithoutExtension(moduleAssemblyPath), false)
+        private class ModulePluginLoadContext(string moduleAssemblyPath) : AssemblyLoadContext(Path.GetFileNameWithoutExtension(moduleAssemblyPath), true)
         {
             private readonly AssemblyDependencyResolver _resolver = new(moduleAssemblyPath);
 
