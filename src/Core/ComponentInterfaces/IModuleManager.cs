@@ -130,20 +130,33 @@ namespace SS.Core.ComponentInterfaces
         #region Unload
 
         /// <summary>
-        /// Unloads a module.
+        /// Unloads a module by name.
         /// </summary>
         /// <param name="moduleTypeName">
         /// The <see cref="Type"/> name of module. 
         /// It can be the <see cref="Type.FullName"/> or for built-in modules, the <see cref="Type.AssemblyQualifiedName"/>.
         /// </param>
-        /// <returns></returns>
+        /// <returns>
+        /// The # of modules unloaded.
+        /// This usually is only one, but can be more than one if:
+        /// more than one assembly declared the same type in the same namespace OR
+        /// an assembly is loaded more than once (e.g. from 2 file locations which may or may not differ in version).
+        /// </returns>
         Task<int> UnloadModuleAsync(string moduleTypeName);
 
         /// <summary>
-        /// 
+        /// Unloads a module by name.
         /// </summary>
-        /// <param name="type"></param>
-        /// <returns></returns>
+        /// <param name="moduleTypeName"><inheritdoc cref="UnloadModuleAsync(string)" path="/param[@name='moduleTypeName']"/></param>
+        /// <param name="gcPlugin">Whether to force a garbage collection when a plug-in assembly is unloaded.</param>
+        /// <returns><inheritdoc cref="UnloadModuleAsync(string)" path="/returns"/></returns>
+        Task<int> UnloadModuleAsync(string moduleTypeName, bool gcPlugin);
+
+        /// <summary>
+        /// Unloads a module by type.
+        /// </summary>
+        /// <param name="type">The type of the module.</param>
+        /// <returns>Whether the module was unloaded.</returns>
         Task<bool> UnloadModuleAsync(Type type);
 
         /// <summary>

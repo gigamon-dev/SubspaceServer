@@ -2968,17 +2968,41 @@ namespace SS.Core.Modules
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<module name>",
-            Description = "Attempts to unload the specified module from the server.")]
+            Args = "[--gc] <module name>",
+            Description = """
+                Attempts to unload the specified module from the server.
+                Use --gc to wait for a plug-in module's AssemblyLoadContext to unload and induce garbage collections to try to force it to happen.
+                """)]
         private void Command_rmmod(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
             if (parameters.IsWhiteSpace())
                 return;
 
-            UnloadModuleAsync(player, parameters.ToString());
+            bool gc = false;
+            ReadOnlySpan<char> remaining = parameters;
+
+            Span<Range> ranges = stackalloc Range[2];
+            while (remaining.Split(ranges, ' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) == 2)
+            {
+                ReadOnlySpan<char> token = remaining[ranges[0]];
+
+                if (token.StartsWith('-'))
+                {
+                    if (token.Equals("--gc", StringComparison.OrdinalIgnoreCase))
+                        gc = true;
+
+                    remaining = remaining[ranges[1]];
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            UnloadModuleAsync(player, remaining.ToString(), gc);
 
             // async local function (since the command handler can't be made async)
-            async void UnloadModuleAsync(Player? player, string moduleTypeName)
+            async void UnloadModuleAsync(Player? player, string moduleTypeName, bool gc)
             {
                 if (_mm is null || player is null)
                     return;
@@ -2986,7 +3010,7 @@ namespace SS.Core.Modules
                 // Remember the player's name so that we can check the player object's state after the await.
                 string playerName = player.Name!;
 
-                int unloadCount = await _mm.UnloadModuleAsync(moduleTypeName).ConfigureAwait(false);
+                int unloadCount = await _mm.UnloadModuleAsync(moduleTypeName, gc).ConfigureAwait(false);
 
                 // The player object's state could have changed (e.g. disconnect) by the time the continuation executes.
                 player = _playerData.FindPlayer(playerName);

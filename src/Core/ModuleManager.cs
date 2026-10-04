@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
@@ -741,6 +742,11 @@ namespace SS.Core
 
         public async Task<int> UnloadModuleAsync(string moduleTypeName)
         {
+            return await UnloadModuleAsync(moduleTypeName, false);
+        }
+
+        public async Task<int> UnloadModuleAsync(string moduleTypeName, bool gcPlugin)
+        {
             ArgumentException.ThrowIfNullOrWhiteSpace(moduleTypeName);
 
             Type? type = Type.GetType(moduleTypeName);
@@ -750,10 +756,11 @@ namespace SS.Core
                 return success ? 1 : 0;
             }
 
-            return await UnloadPluginModule(moduleTypeName).ConfigureAwait(false);
+            return await UnloadPluginModuleAsync(moduleTypeName, gcPlugin).ConfigureAwait(false);
         }
 
-        private async Task<int> UnloadPluginModule(string moduleTypeName)
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private async Task<int> UnloadPluginModuleAsync(string moduleTypeName, bool gc)
         {
             Type[] types;
 
@@ -763,14 +770,69 @@ namespace SS.Core
             }
 
             int count = 0;
+            LinkedList<WeakReference>? unloadedContexts = null;
 
             foreach (Type type in types)
             {
-                if (await UnloadModuleAsync(type).ConfigureAwait(false))
+                (bool success, WeakReference? unloadedPluginContext) = await ProcessUnloadModuleAsync(type).ConfigureAwait(false);
+                if (success)
+                {
                     count++;
+
+                    if (gc && unloadedPluginContext is not null)
+                    {
+                        unloadedContexts ??= new();
+                        unloadedContexts.AddLast(unloadedPluginContext);
+                    }
+                }
+            }
+
+            if (unloadedContexts is not null)
+            {
+                // Remove references to the type(s) so that the AssemblyLoadContext(s) can unload.
+                Array.Clear(types);
+
+                await Task.Run(() =>
+                {
+                    WaitForAssemblyLoadContextUnloadWithGC(unloadedContexts);
+                }).ConfigureAwait(false);
             }
 
             return count;
+
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            static void WaitForAssemblyLoadContextUnloadWithGC(LinkedList<WeakReference> unloadedContexts)
+            {
+                // Based on: https://learn.microsoft.com/en-us/dotnet/standard/assembly/unloadability
+                // but for multiple AssemblyLoadContexts.
+                for (int i = 0; i < 10; i++)
+                {
+                    LinkedListNode<WeakReference>? node = unloadedContexts.First;
+                    while (node is not null)
+                    {
+                        LinkedListNode<WeakReference>? next = node.Next;
+                        if (!node.Value.IsAlive)
+                        {
+                            unloadedContexts.Remove(node);
+                        }
+
+                        node = next;
+                    }
+
+                    if (unloadedContexts.Count == 0)
+                    {
+                        WriteLogM(LogLevel.Info, "Plug-in module AssemblyLoadContext fully unloaded.");
+                        return;
+                    }
+
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                }
+
+                // The plug-in module's AssemblyLoadContext did not unload.
+                WriteLogM(LogLevel.Warn, "Plug-in module AssemblyLoadContext did not unload even after forced GC. This means there is something keeping the ALC alive. For more info, see: https://learn.microsoft.com/en-us/dotnet/standard/assembly/unloadability#troubleshoot-unloadability-issues");
+            }
         }
 
         public async Task<bool> UnloadModuleAsync(Type type)
@@ -781,7 +843,8 @@ namespace SS.Core
 
             try
             {
-                return await ProcessUnloadModuleAsync(type).ConfigureAwait(false);
+                (bool success, _) = await ProcessUnloadModuleAsync(type).ConfigureAwait(false);
+                return success;
             }
             finally
             {
@@ -790,14 +853,18 @@ namespace SS.Core
         }
 
         /// <summary>
-        /// 
+        /// Unloads a module.
         /// </summary>
         /// <remarks>
         /// This method assumes the <see cref="_moduleSemaphore"/> was already entered.
         /// </remarks>
-        /// <param name="type"></param>
-        /// <returns></returns>
-        private async Task<bool> ProcessUnloadModuleAsync(Type type)
+        /// <param name="type">The module type to unload.</param>
+        /// <returns>
+        /// Whether the module was unloaded, 
+        /// and for plug-in modules only, a WeakReference to the AssemblyLoadContext if the ALC was requested to be unload (the module was the last one loaded for the assembly).
+        /// </returns>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private async Task<(bool Success, WeakReference? UnloadedAssemblyLoadContext)> ProcessUnloadModuleAsync(Type type)
         {
             LinkedListNode<Type>? node;
             ModuleData? moduleData;
@@ -809,12 +876,12 @@ namespace SS.Core
                 if (node is null)
                 {
                     WriteLogM(LogLevel.Error, $"Can't unload module [{type.FullName}] because it is not loaded.");
-                    return false;
+                    return (false, null);
                 }
 
                 if (!_moduleTypeLookup.TryGetValue(type, out moduleData))
                 {
-                    return false;
+                    return (false, null);
                 }
             }
 
@@ -851,7 +918,7 @@ namespace SS.Core
                 if (moduleData.AttachedArenas.Count > 0)
                 {
                     WriteLogM(LogLevel.Error, $"Can't unload module [{moduleData.ModuleType.FullName}] because it failed to detach from at least one arena.");
-                    return false;
+                    return (false, null);
                 }
             }
 
@@ -859,7 +926,7 @@ namespace SS.Core
             if (moduleData.IsPostLoaded && !await PreUnloadAsync(moduleData).ConfigureAwait(false))
             {
                 WriteLogM(LogLevel.Error, $"Can't unload module [{moduleData.ModuleType.FullName}] because it failed to pre-unload.");
-                return false;
+                return (false, null);
             }
 
             // Unload
@@ -883,13 +950,13 @@ namespace SS.Core
                 if (!success)
                 {
                     WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}].");
-                    return false;
+                    return (false, null);
                 }
             }
             catch (Exception ex)
             {
                 WriteLogM(LogLevel.Error, $"Error unloading module [{moduleData.ModuleType.FullName}]. Exception: {ex.Message}");
-                return false;
+                return (false, null);
             }
 
             // Dispose
@@ -903,6 +970,8 @@ namespace SS.Core
             }
 
             ReleaseDependencies(moduleData);
+
+            WeakReference? unloadedAssemblyLoadContext = null;
 
             lock (_moduleLock)
             {
@@ -948,11 +1017,13 @@ namespace SS.Core
                         // TODO: Confirm that this no longer occasionally causes a seg fault on Linux and macOS.
                         // If this is still an issue, comment out this line and set the ModulePluginLoadContext to not be collectible.
                         moduleLoadContext.Unload();
+
+                        unloadedAssemblyLoadContext = new WeakReference(moduleLoadContext, trackResurrection: true);
                     }
                 }
             }
 
-            return true;
+            return (true, unloadedAssemblyLoadContext);
         }
 
         #endregion
