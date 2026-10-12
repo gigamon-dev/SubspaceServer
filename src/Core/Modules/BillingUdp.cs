@@ -66,6 +66,7 @@ namespace SS.Core.Modules
         private int _cfgMaxConcurrentBannerUpload;
         private bool _cfgEnableIsometryCompatibility;
         private bool _cfgSessionReattach;
+        private bool _cfgKickUnauthenticatedOnReconnect;
 
         private int _pendingAuths;
         private int _interruptedAuths;
@@ -160,6 +161,12 @@ namespace SS.Core.Modules
                 is restored after being lost, so that they do not have to log in again.
                 This only has an effect with a billing server that supports it.
                 """)]
+        [ConfigHelp<bool>("Billing", "KickUnauthenticatedOnReconnect", ConfigScope.Global, Default = true,
+            Description = """
+                Whether to kick the players who were let in without being authenticated, with a ^ in front of their name,
+                once the connection to the billing server is restored. They were let in because there was no connection
+                to check them with, and are not necessarily who their name says. Kicking them has them log in again properly.
+                """)]
         bool IModule.Load(IComponentBroker broker)
         {
             _arenaPlayerStats = broker.GetInterface<IArenaPlayerStats>();
@@ -175,6 +182,7 @@ namespace SS.Core.Modules
             _cfgMaxConcurrentBannerUpload = _configManager.GetInt(_configManager.Global, "Billing", "MaxConcurrentBannerUpload", BillingSettings.MaxConcurrentBannerUpload.Default);
             _cfgEnableIsometryCompatibility = _configManager.GetBool(_configManager.Global, "Billing", "EnableIsometryCompatibility", BillingSettings.EnableIsometryCompatibility.Default);
             _cfgSessionReattach = _configManager.GetBool(_configManager.Global, "Billing", "SessionReattach", BillingSettings.SessionReattach.Default);
+            _cfgKickUnauthenticatedOnReconnect = _configManager.GetBool(_configManager.Global, "Billing", "KickUnauthenticatedOnReconnect", BillingSettings.KickUnauthenticatedOnReconnect.Default);
 
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
@@ -1494,6 +1502,7 @@ namespace SS.Core.Modules
 
                     result.SetSquad("");
                     playerData.IsKnownToBiller = false;
+                    playerData.IsUnauthenticated = true;
                     _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Fallback: no entry for this player.");
                 }
                 else // Mismatch or anything else
@@ -1513,6 +1522,7 @@ namespace SS.Core.Modules
             if (_reattachPhase == ReattachPhase.None)
             {
                 _chat.SendArenaMessage((Arena?)null, "Notice: Connection to user database server restored. Log in again for full functionality.");
+                KickUnauthenticated();
             }
             else
             {
@@ -1764,8 +1774,12 @@ namespace SS.Core.Modules
                         if (!ran)
                             playerData.Reattach = ReattachState.None;
 
-                        if (!playerData.IsKnownToBiller && player.Status == PlayerState.Playing)
+                        if (!playerData.IsKnownToBiller
+                            && player.Status == PlayerState.Playing
+                            && !(playerData.IsUnauthenticated && _cfgKickUnauthenticatedOnReconnect)) // told as they are kicked
+                        {
                             set.Add(player);
+                        }
                     }
                 }
                 finally
@@ -1775,6 +1789,59 @@ namespace SS.Core.Modules
 
                 if (set.Count > 0)
                     _chat.SendSetMessage(set, "Notice: Log in again for full functionality.");
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
+
+            KickUnauthenticated();
+        }
+
+        /// <summary>
+        /// Kicks the players who were let in without being authenticated, now that there is a
+        /// billing server to authenticate them with.
+        /// </summary>
+        /// <remarks>
+        /// Only those let in with a ^ in front of their name. A player who was authenticated, by the
+        /// billing server before the connection was lost or by the fallback while it was, is who they
+        /// say they are and stays.
+        /// </remarks>
+        private void KickUnauthenticated()
+        {
+            if (!_cfgKickUnauthenticatedOnReconnect)
+                return;
+
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                _playerData.Lock();
+
+                try
+                {
+                    foreach (Player player in _playerData.Players)
+                    {
+                        if (player.TryGetExtraData(_pdKey, out PlayerData? playerData) && playerData.IsUnauthenticated)
+                            set.Add(player);
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                if (set.Count == 0)
+                    return;
+
+                _chat.SendSetMessage(set, "Notice: You were let in without being authenticated. Log in again now that the user database server is available.");
+
+                // Done after releasing the player data lock, since kicking takes it for writing.
+                foreach (Player player in set)
+                {
+                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Kicking, the player was let in without being authenticated and the user database server is available again.");
+                    _playerData.KickPlayer(player);
+                }
             }
             finally
             {
@@ -2540,6 +2607,13 @@ namespace SS.Core.Modules
             public uint BillingUserId;
             public TimeSpan Usage;
             public bool IsKnownToBiller;
+
+            /// <summary>
+            /// Whether the player was let in without being authenticated, with a ^ in front of their
+            /// name, because there was no billing server or fallback to say who they are.
+            /// </summary>
+            public bool IsUnauthenticated;
+
             public bool HasDemographics;
             public IAuthRequest? AuthRequest;
             public DateTime? FirstLogin;
@@ -2579,6 +2653,7 @@ namespace SS.Core.Modules
                 BillingUserId = 0;
                 Usage = TimeSpan.Zero;
                 IsKnownToBiller = false;
+                IsUnauthenticated = false;
                 HasDemographics = false;
                 AuthRequest = null;
                 FirstLogin = null;

@@ -126,6 +126,8 @@ The zone does not send the requests at a fixed rate. The billing server says how
 
 Everyone is told when the connection is restored. Only the players who are left without a session are told to log in again. A player the billing server says was banned in the meantime is kicked.
 
+Players who joined while the connection was down could not be authenticated, and were let in with a `^` in front of their name. They are kicked once the connection is restored, so that they log in again and are authenticated. This does not depend on the billing server supporting session reattach, and can be turned off with `Billing:KickUnauthenticatedOnReconnect = 0`.
+
 Reattach also works after the connection is dropped and reconnected by hand with `?userdbadm drop` and `?userdbadm connect`, provided the billing server is still holding the sessions by then.
 
 ---
