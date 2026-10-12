@@ -408,33 +408,48 @@ namespace SS.Core.Modules
                         _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Too many pending auths, try again later.");
                     }
                 }
-                else if (_billingFallback is not null)
-                {
-                    // Biller isn't connected, use fallback.
-                    ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)loginPacket.Name).SliceNullTerminated();
-                    Span<char> nameSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
-                    int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
-                    Debug.Assert(nameSpan.Length == decodedCharCount);
-
-                    ReadOnlySpan<byte> passwordBytes = ((ReadOnlySpan<byte>)loginPacket.Password).SliceNullTerminated();
-                    Span<char> passwordSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
-                    decodedCharCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
-                    Debug.Assert(passwordSpan.Length == decodedCharCount);
-
-                    try
-                    {
-                        _billingFallback.Check(player, nameSpan, passwordSpan, _fallbackDone, player);
-                    }
-                    finally
-                    {
-                        passwordSpan.Clear();
-                    }
-                }
                 else
                 {
-                    // act like not found in fallback
-                    FallbackDone(player, BillingFallbackResult.NotFound);
+                    // Biller isn't connected, use fallback.
+                    AuthenticateWithFallback(player, authRequest);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Authenticates a player without the billing server.
+        /// </summary>
+        /// <remarks>
+        /// The <see cref="_lock"/> must be held, and <see cref="PlayerData.AuthRequest"/> must already be set to <paramref name="authRequest"/>.
+        /// </remarks>
+        private void AuthenticateWithFallback(Player player, IAuthRequest authRequest)
+        {
+            if (_billingFallback is null)
+            {
+                // act like not found in fallback
+                FallbackDone(player, BillingFallbackResult.NotFound);
+                return;
+            }
+
+            ref readonly LoginPacket loginPacket = ref authRequest.LoginPacket;
+
+            ReadOnlySpan<byte> nameBytes = ((ReadOnlySpan<byte>)loginPacket.Name).SliceNullTerminated();
+            Span<char> nameSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(nameBytes)];
+            int decodedCharCount = StringUtils.DefaultEncoding.GetChars(nameBytes, nameSpan);
+            Debug.Assert(nameSpan.Length == decodedCharCount);
+
+            ReadOnlySpan<byte> passwordBytes = ((ReadOnlySpan<byte>)loginPacket.Password).SliceNullTerminated();
+            Span<char> passwordSpan = stackalloc char[StringUtils.DefaultEncoding.GetCharCount(passwordBytes)];
+            decodedCharCount = StringUtils.DefaultEncoding.GetChars(passwordBytes, passwordSpan);
+            Debug.Assert(passwordSpan.Length == decodedCharCount);
+
+            try
+            {
+                _billingFallback.Check(player, nameSpan, passwordSpan, _fallbackDone, player);
+            }
+            finally
+            {
+                passwordSpan.Clear();
             }
         }
 
@@ -1447,22 +1462,50 @@ namespace SS.Core.Modules
                 _chat.SendArenaMessage((Arena?)null, "Notice: Connection to user database server lost.");
             }
 
-            // Clear IsKnownToBiller values
-            _playerData.Lock();
+            // Players whose login was sent to the billing server and not yet answered. The answer is not
+            // coming now, so they are authenticated without it instead of being left waiting.
+            HashSet<Player> interruptedSet = _objectPoolManager.PlayerSetPool.Get();
 
             try
             {
-                foreach (Player player in _playerData.Players)
+                // Clear IsKnownToBiller values
+                _playerData.Lock();
+
+                try
                 {
-                    if (player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                    foreach (Player player in _playerData.Players)
                     {
-                        playerData.IsKnownToBiller = false;
+                        if (player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                        {
+                            if (playerData.IsKnownToBiller && playerData.AuthRequest is not null)
+                                interruptedSet.Add(player);
+
+                            playerData.IsKnownToBiller = false;
+                        }
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                // Every login that was counted is one of those, or belongs to a player who has since
+                // left. Either way the billing server will never answer it.
+                _pendingAuths = 0;
+
+                // Done after releasing the player data lock, since completing a login takes it for writing.
+                foreach (Player player in interruptedSet)
+                {
+                    if (player.TryGetExtraData(_pdKey, out PlayerData? playerData) && playerData.AuthRequest is not null)
+                    {
+                        _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Login interrupted by the loss of the user database server connection, using fallback.");
+                        AuthenticateWithFallback(player, playerData.AuthRequest);
                     }
                 }
             }
             finally
             {
-                _playerData.Unlock();
+                _objectPoolManager.PlayerSetPool.Return(interruptedSet);
             }
 
             // Close the client connection
@@ -1522,7 +1565,10 @@ namespace SS.Core.Modules
             if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
-            if (playerData.AuthRequest is null)
+            // IsKnownToBiller is false for a login that is not waiting on the billing server: one handed
+            // to the fallback, including one interrupted by a dropped connection whose answer arrives
+            // late, before the connection is fully closed.
+            if (playerData.AuthRequest is null || !playerData.IsKnownToBiller)
             {
                 _logManager.LogP(LogLevel.Warn, nameof(BillingUdp), player, $"Unexpected {nameof(B2S_UserLogin)} response.");
                 return;
