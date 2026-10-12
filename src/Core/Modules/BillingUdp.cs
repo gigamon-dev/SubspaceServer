@@ -65,6 +65,7 @@ namespace SS.Core.Modules
         private TimeSpan _cfgRetryTimeSpan;
         private int _cfgMaxConcurrentBannerUpload;
         private bool _cfgEnableIsometryCompatibility;
+        private bool _cfgSessionReattach;
 
         private int _pendingAuths;
         private int _interruptedAuths;
@@ -78,6 +79,28 @@ namespace SS.Core.Modules
         private readonly Dictionary<int, S2B_UserBanner> _bannerUploadDictionary = new(32);
         private int _bannerUploadPendingCount = 0;
         private readonly Lock _lock = new();
+
+        // Session reattach
+        private ReattachPhase _reattachPhase = ReattachPhase.None;
+        private BillingSessionReattachRun? _reattachRun;
+        private DateTime _serverConnectTime;
+        private readonly List<BillingSessionReattachResult> _reattachResults = [];
+
+        /// <summary>
+        /// How long after connecting to wait for the billing server to say that it supports session reattach.
+        /// </summary>
+        private static readonly TimeSpan ReattachCapabilitiesTimeout = TimeSpan.FromSeconds(10);
+
+        /// <summary>
+        /// How long to wait for the billing server to answer one session reattach packet.
+        /// </summary>
+        private static readonly TimeSpan ReattachPacketTimeout = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// How long before the billing server stops accepting session reattach packets to stop sending
+        /// them, leaving time for the packet that ends it to arrive.
+        /// </summary>
+        private static readonly TimeSpan ReattachStopMargin = TimeSpan.FromSeconds(5);
 
         // Cached delegates
         private readonly ClientReliableCallback _mainloop_ReliableCallback_ServerDisconnect;
@@ -131,6 +154,12 @@ namespace SS.Core.Modules
                 Toggles using logic specific to the Isometry billing server.
                 This should only be enabled when connecting to an Isometry 2.0+ billing server.
                 """)]
+        [ConfigHelp<bool>("Billing", "SessionReattach", ConfigScope.Global, Default = true,
+            Description = """
+                Whether to ask the billing server to give players their sessions back when the connection to it
+                is restored after being lost, so that they do not have to log in again.
+                This only has an effect with a billing server that supports it.
+                """)]
         bool IModule.Load(IComponentBroker broker)
         {
             _arenaPlayerStats = broker.GetInterface<IArenaPlayerStats>();
@@ -145,6 +174,7 @@ namespace SS.Core.Modules
             _cfgRetryTimeSpan = TimeSpan.FromSeconds(_configManager.GetInt(_configManager.Global, "Billing", "RetryInterval", BillingSettings.RetryInterval.Default));
             _cfgMaxConcurrentBannerUpload = _configManager.GetInt(_configManager.Global, "Billing", "MaxConcurrentBannerUpload", BillingSettings.MaxConcurrentBannerUpload.Default);
             _cfgEnableIsometryCompatibility = _configManager.GetBool(_configManager.Global, "Billing", "EnableIsometryCompatibility", BillingSettings.EnableIsometryCompatibility.Default);
+            _cfgSessionReattach = _configManager.GetBool(_configManager.Global, "Billing", "SessionReattach", BillingSettings.SessionReattach.Default);
 
             NewPlayerCallback.Register(broker, Callback_NewPlayer);
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
@@ -481,8 +511,16 @@ namespace SS.Core.Modules
             lock (_lock)
             {
                 _networkClient.SendPacket(_cc!, ref packet, NetSendFlags.Reliable);
+
+                // Sent straight away rather than once logged in. A billing server that supports session
+                // reattach only keeps the sessions of players who log in after it has been told that the
+                // zone does too, and it is the reply to this that says whether it does.
+                S2B_ServerCapabilities capabilities = new(multiCastChat: true, supportDemographics: true, supportsBanEnforcement: true, supportsSessionReattach: _cfgSessionReattach);
+                _networkClient.SendPacket(_cc!, ref capabilities, NetSendFlags.Reliable);
+
                 _state = BillingState.WaitLogin;
-                _lastEvent = DateTime.UtcNow;
+                _lastEvent = _serverConnectTime = DateTime.UtcNow;
+                _reattachPhase = _cfgSessionReattach ? ReattachPhase.AwaitingCapabilities : ReattachPhase.None;
             }
         }
 
@@ -537,6 +575,14 @@ namespace SS.Core.Modules
 
                     case B2SPacketType.UserMulticastChannelChat:
                         ProcessUserMulticastChannelChat(data);
+                        break;
+
+                    case B2SPacketType.BillerCapabilities:
+                        ProcessBillerCapabilities(data);
+                        break;
+
+                    case B2SPacketType.SessionReattachResponse:
+                        ProcessSessionReattachResponse(data);
                         break;
 
                     default:
@@ -824,6 +870,9 @@ namespace SS.Core.Modules
                         _lastEvent = now;
                     }
 
+                    // Session reattach
+                    DoReattachWork(now);
+
                     // Interrupted Auths
                     if (_interruptedAuthsDampTime == null || (now - _interruptedAuthsDampTime.Value).TotalSeconds >= 10)
                     {
@@ -953,25 +1002,42 @@ namespace SS.Core.Modules
 
                 if (playerData.IsKnownToBiller)
                 {
-                    S2B_UserLogoff packet = new(
-                        player.Id,
-                        0, // TODO: put real reason here
-                        0, 0, 0, 0); // TODO: get real latency numbers
-
-                    ReadOnlySpan<byte> packetBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
-
-                    if (_cfgSavePublicPlayerScores && playerData.SavedScore != null)
-                    {
-                        packet.Score = playerData.SavedScore.Value;
-                        _networkClient.SendPacket(_cc!, packetBytes, NetSendFlags.Reliable);
-                    }
-                    else
-                    {
-                        _networkClient.SendPacket(_cc!, packetBytes[..S2B_UserLogoff.LengthWithoutScore], NetSendFlags.Reliable);
-                    }
-
+                    SendUserLogoff(player, playerData);
                     playerData.IsKnownToBiller = false;
                 }
+                else if (playerData.Reattach is ReattachState.Pending or ReattachState.TimedOut
+                    && _reattachRun is not null
+                    && _reattachRun.Remove(player.Id)
+                    && _state == BillingState.LoggedIn)
+                {
+                    // The billing server was asked to give the player's session back and has yet to
+                    // answer. It handles what it is sent in order, so this ends the session if it does
+                    // give it back, and is ignored if it does not. Waiting for the answer instead would
+                    // risk logging off whoever is given the player's id next.
+                    SendUserLogoff(player, playerData);
+                }
+
+                playerData.Reattach = ReattachState.None;
+            }
+        }
+
+        private void SendUserLogoff(Player player, PlayerData playerData)
+        {
+            S2B_UserLogoff packet = new(
+                player.Id,
+                0, // TODO: put real reason here
+                0, 0, 0, 0); // TODO: get real latency numbers
+
+            ReadOnlySpan<byte> packetBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
+
+            if (_cfgSavePublicPlayerScores && playerData.SavedScore != null)
+            {
+                packet.Score = playerData.SavedScore.Value;
+                _networkClient.SendPacket(_cc!, packetBytes, NetSendFlags.Reliable);
+            }
+            else
+            {
+                _networkClient.SendPacket(_cc!, packetBytes[..S2B_UserLogoff.LengthWithoutScore], NetSendFlags.Reliable);
             }
         }
 
@@ -1444,10 +1510,16 @@ namespace SS.Core.Modules
 
         private void LoggedIn()
         {
-            _chat.SendArenaMessage((Arena?)null, "Notice: Connection to user database server restored. Log in again for full functionality.");
+            if (_reattachPhase == ReattachPhase.None)
+            {
+                _chat.SendArenaMessage((Arena?)null, "Notice: Connection to user database server restored. Log in again for full functionality.");
+            }
+            else
+            {
+                // Who has to log in again is not known yet. Those that do are told when it is.
+                _chat.SendArenaMessage((Arena?)null, "Notice: Connection to user database server restored.");
+            }
 
-            S2B_ServerCapabilities packet = new(multiCastChat: true, supportDemographics: true, supportsBanEnforcement: true);
-            _networkClient.SendPacket(_cc!, ref packet, NetSendFlags.Reliable);
             _state = BillingState.LoggedIn;
             _identity = null;
 
@@ -1478,7 +1550,21 @@ namespace SS.Core.Modules
                         if (player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                         {
                             if (playerData.IsKnownToBiller && playerData.AuthRequest is not null)
+                            {
                                 interruptedSet.Add(player);
+                            }
+                            else if (playerData.IsKnownToBiller && _cfgSessionReattach)
+                            {
+                                // Logged in through the billing server, which may be asked to give the
+                                // session back when the connection is restored.
+                                playerData.Reattach = ReattachState.Held;
+                            }
+                            else if (playerData.Reattach != ReattachState.None)
+                            {
+                                // The connection was lost again before the billing server answered for
+                                // the player, so there is still a session to ask for.
+                                playerData.Reattach = ReattachState.Held;
+                            }
 
                             playerData.IsKnownToBiller = false;
                         }
@@ -1492,6 +1578,10 @@ namespace SS.Core.Modules
                 // Every login that was counted is one of those, or belongs to a player who has since
                 // left. Either way the billing server will never answer it.
                 _pendingAuths = 0;
+
+                _reattachPhase = ReattachPhase.None;
+                _reattachRun = null;
+                _reattachResults.Clear();
 
                 // Done after releasing the player data lock, since completing a login takes it for writing.
                 foreach (Player player in interruptedSet)
@@ -1523,6 +1613,253 @@ namespace SS.Core.Modules
                 _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Lost connection to user database server (auto-retry in {_cfgRetryTimeSpan.TotalSeconds} seconds).");
             }
         }
+
+        #region Session reattach
+
+        private void ProcessBillerCapabilities(Span<byte> data)
+        {
+            if (!BillingSessionReattachRun.TryReadCapabilities(data, out B2S_BillerCapabilities capabilities))
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid {nameof(B2S_BillerCapabilities)} - length ({data.Length}).");
+                return;
+            }
+
+            if (_reattachPhase != ReattachPhase.AwaitingCapabilities)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Unexpected {nameof(B2S_BillerCapabilities)}.");
+                return;
+            }
+
+            if (!capabilities.SupportsSessionReattach)
+            {
+                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), "The user database server does not support session reattach.");
+                EndReattach(false);
+                return;
+            }
+
+            // The time the billing server allows is counted from when it was sent the connect packet.
+            TimeSpan window = TimeSpan.FromSeconds(capabilities.ReattachWindowSeconds);
+            TimeSpan margin = window > ReattachStopMargin * 2 ? ReattachStopMargin : window / 2;
+            DateTime now = DateTime.UtcNow;
+
+            _reattachRun = new BillingSessionReattachRun(
+                capabilities.ReattachMaxEntries,
+                capabilities.ReattachMaxUnanswered,
+                ReattachPacketTimeout,
+                _serverConnectTime + window - margin);
+
+            int count = 0;
+
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player player in _playerData.Players)
+                {
+                    // A player who logged in since the connection was restored has a session already.
+                    if (player.TryGetExtraData(_pdKey, out PlayerData? playerData)
+                        && playerData.Reattach == ReattachState.Held
+                        && !playerData.IsKnownToBiller
+                        && playerData.AuthRequest is null)
+                    {
+                        _reattachRun.Add(player.Id, playerData.BillingUserId, playerData.BillerName);
+                        playerData.Reattach = ReattachState.Pending;
+                        count++;
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            _reattachPhase = ReattachPhase.Running;
+            _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Asking the user database server to restore the sessions of {count} player(s).");
+
+            SendReattachPackets(now);
+        }
+
+        private void ProcessSessionReattachResponse(Span<byte> data)
+        {
+            DateTime now = DateTime.UtcNow;
+
+            if (_reattachRun is null || !_reattachRun.TryProcessResponse(now, data, _reattachResults))
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Invalid or unexpected {nameof(B2SPacketType.SessionReattachResponse)} - length ({data.Length}).");
+                return;
+            }
+
+            ApplyReattachResults();
+
+            // The answer is what makes room for the next packet. There is no other pacing.
+            if (_reattachPhase == ReattachPhase.Running)
+                SendReattachPackets(now);
+        }
+
+        private void DoReattachWork(DateTime now)
+        {
+            if (_reattachPhase == ReattachPhase.AwaitingCapabilities)
+            {
+                // A billing server that supports it answers the capabilities packet straight away.
+                if (now - _serverConnectTime >= ReattachCapabilitiesTimeout)
+                {
+                    _logManager.LogM(LogLevel.Drivel, nameof(BillingUdp), "The user database server did not say that it supports session reattach.");
+                    EndReattach(false);
+                }
+            }
+            else if (_reattachPhase == ReattachPhase.Running)
+            {
+                _reattachRun!.CheckTimeouts(now, _reattachResults);
+                ApplyReattachResults();
+                SendReattachPackets(now);
+            }
+        }
+
+        /// <summary>
+        /// Sends as many session reattach packets as the billing server allows to be unanswered, and
+        /// the packet that ends it once there is nothing left to send or wait for.
+        /// </summary>
+        private void SendReattachPackets(DateTime now)
+        {
+            Span<byte> buffer = stackalloc byte[BillingSessionReattachRun.MaxPacketLength];
+
+            while (_reattachRun!.TryWriteNextPacket(now, buffer, out int bytesWritten))
+            {
+                _networkClient.SendPacket(_cc!, buffer[..bytesWritten], NetSendFlags.Reliable);
+            }
+
+            if (_reattachRun.IsComplete)
+            {
+                // Sent even if there was nobody to ask for, since it is what tells the billing server
+                // to close the sessions that were not asked for.
+                int length = _reattachRun.WriteEnd(buffer);
+                _networkClient.SendPacket(_cc!, buffer[..length], NetSendFlags.Reliable);
+
+                EndReattach(true);
+            }
+        }
+
+        /// <summary>
+        /// Ends the wait for sessions to be restored, and tells the players who are left without one.
+        /// </summary>
+        /// <param name="ran">Whether the billing server was asked. If not, it does not support it.</param>
+        private void EndReattach(bool ran)
+        {
+            // The run is kept after it has ended, for an answer that arrives after it was given up on.
+            _reattachPhase = ran ? ReattachPhase.Ended : ReattachPhase.None;
+
+            HashSet<Player> set = _objectPoolManager.PlayerSetPool.Get();
+
+            try
+            {
+                _playerData.Lock();
+
+                try
+                {
+                    foreach (Player player in _playerData.Players)
+                    {
+                        if (!player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                            continue;
+
+                        if (!ran)
+                            playerData.Reattach = ReattachState.None;
+
+                        if (!playerData.IsKnownToBiller && player.Status == PlayerState.Playing)
+                            set.Add(player);
+                    }
+                }
+                finally
+                {
+                    _playerData.Unlock();
+                }
+
+                if (set.Count > 0)
+                    _chat.SendSetMessage(set, "Notice: Log in again for full functionality.");
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(set);
+            }
+        }
+
+        private void ApplyReattachResults()
+        {
+            foreach (BillingSessionReattachResult result in _reattachResults)
+            {
+                ApplyReattachResult(result);
+            }
+
+            _reattachResults.Clear();
+        }
+
+        private void ApplyReattachResult(BillingSessionReattachResult result)
+        {
+            // A player who leaves is taken out of the run, so a result is always for a player who is
+            // still here. The state is checked anyway, since the id could otherwise be someone else's.
+            Player? player = _playerData.PidToPlayer(result.ConnectionId);
+            if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
+                return;
+
+            switch (result.Outcome)
+            {
+                case BillingSessionReattachOutcome.TimedOut:
+                    if (playerData.Reattach == ReattachState.Pending)
+                    {
+                        playerData.Reattach = ReattachState.TimedOut;
+                        _logManager.LogP(LogLevel.Warn, nameof(BillingUdp), player, "The user database server did not answer in time, session not restored.");
+                    }
+                    return;
+
+                case BillingSessionReattachOutcome.NotSent:
+                    if (playerData.Reattach == ReattachState.Pending)
+                    {
+                        playerData.Reattach = ReattachState.None;
+                        _logManager.LogP(LogLevel.Warn, nameof(BillingUdp), player, "Ran out of time to ask the user database server, session not restored.");
+                    }
+                    return;
+
+                case BillingSessionReattachOutcome.Answered:
+                    if (playerData.Reattach != ReattachState.Pending)
+                        return;
+                    break;
+
+                case BillingSessionReattachOutcome.AnsweredLate:
+                    if (playerData.Reattach != ReattachState.TimedOut)
+                        return;
+                    break;
+
+                default:
+                    return;
+            }
+
+            playerData.Reattach = ReattachState.None;
+
+            switch (result.Status)
+            {
+                case SessionReattachStatus.Accepted:
+                    // The billing server follows this with the player's restrictions, which replace
+                    // those held from before the connection was lost.
+                    playerData.IsKnownToBiller = true;
+                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, $"Session restored with user id {playerData.BillingUserId}.");
+                    break;
+
+                case SessionReattachStatus.AlreadyAttached:
+                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Session not restored, the user database server already has one.");
+                    break;
+
+                case SessionReattachStatus.Banned:
+                    // Banned since logging in. The billing server has sent the player the reason.
+                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, "Session not restored, the player has been banned. Kicking.");
+                    _playerData.KickPlayer(player);
+                    break;
+
+                default:
+                    _logManager.LogP(LogLevel.Info, nameof(BillingUdp), player, $"Session not restored ({result.Status}).");
+                    break;
+            }
+        }
+
+        #endregion
 
         private void Mainloop_ReliableCallback_ServerDisconnect(IClientConnection connection, bool success)
         {
@@ -1583,6 +1920,8 @@ namespace SS.Core.Modules
                 playerData.FirstLogin = packet.FirstLogin.ToDateTime();
                 playerData.Usage = packet.Usage;
                 playerData.BillingUserId = packet.UserId;
+                playerData.BillerName = packet.Name;
+                playerData.Reattach = ReattachState.None;
 
                 // Note: ASSS has this commented out, but here we provide a config setting.
                 if (_cfgLoadPublicPlayerScores && data.Length >= B2S_UserLogin.LengthWithScore)
@@ -2207,6 +2546,17 @@ namespace SS.Core.Modules
             public PlayerScore? LoadedScore;
             public PlayerScore? SavedScore;
 
+            /// <summary>
+            /// The player's name as the billing server gave it when they logged in, which is what it
+            /// is to be given back when asking for the session to be restored.
+            /// </summary>
+            public B2S_UserLogin.NameInlineArray BillerName;
+
+            /// <summary>
+            /// Where the player is in having their session restored.
+            /// </summary>
+            public ReattachState Reattach;
+
             private int restrictions;
 
             /// <summary>
@@ -2234,9 +2584,63 @@ namespace SS.Core.Modules
                 FirstLogin = null;
                 LoadedScore = null;
                 SavedScore = null;
+                BillerName = default;
+                Reattach = ReattachState.None;
                 Restrictions = BillingRestrictions.None;
                 return true;
             }
+        }
+
+        /// <summary>
+        /// Where a player is in having their billing server session restored after the connection was lost.
+        /// </summary>
+        private enum ReattachState
+        {
+            /// <summary>
+            /// There is no session to ask the billing server for.
+            /// </summary>
+            None,
+
+            /// <summary>
+            /// The player was logged in through the billing server when the connection was lost.
+            /// </summary>
+            Held,
+
+            /// <summary>
+            /// The billing server is being asked, or is about to be.
+            /// </summary>
+            Pending,
+
+            /// <summary>
+            /// The billing server was asked and did not answer in time. It may yet.
+            /// </summary>
+            TimedOut,
+        }
+
+        /// <summary>
+        /// Where the module is in restoring sessions on the current connection to the billing server.
+        /// </summary>
+        private enum ReattachPhase
+        {
+            /// <summary>
+            /// Not restoring sessions: it is turned off, the billing server does not support it, or there is no connection.
+            /// </summary>
+            None,
+
+            /// <summary>
+            /// Waiting for the billing server to say whether it supports it.
+            /// </summary>
+            AwaitingCapabilities,
+
+            /// <summary>
+            /// Asking the billing server for sessions.
+            /// </summary>
+            Running,
+
+            /// <summary>
+            /// The billing server has been told that the zone is done asking.
+            /// </summary>
+            Ended,
         }
 
         private enum BillingState
