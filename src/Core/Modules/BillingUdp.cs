@@ -161,7 +161,7 @@ namespace SS.Core.Modules
                 is restored after being lost, so that they do not have to log in again.
                 This only has an effect with a billing server that supports it.
                 """)]
-        [ConfigHelp<bool>("Billing", "KickUnauthenticatedOnReconnect", ConfigScope.Global, Default = true,
+        [ConfigHelp<bool>("Billing", "KickUnauthenticatedOnReconnect", ConfigScope.Global, Default = false,
             Description = """
                 Whether to kick the players who were let in without being authenticated, with a ^ in front of their name,
                 once the connection to the billing server is restored. They were let in because there was no connection
