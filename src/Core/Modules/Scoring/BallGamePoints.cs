@@ -237,10 +237,17 @@ namespace SS.Core.Modules.Scoring
                 return;
 
             short scoringFreq = player.Freq;
-            if (scoringFreq < 0 || scoringFreq >= MaxTeams)
-                return;
 
             _balls.GetGoalInfo(arena, scoringFreq, goalCoordinates, out _, out short? ownerFreq);
+
+            // In the two-goal modes the goal decides who scores, as in ASSS: a goal on one side is a point for the team
+            // attacking it. The scorer's own freq only decides that indirectly (even freqs defend one side, odd the
+            // other), so a player on any freq other than 0 or 1 still scores for the right team.
+            if ((ad.Mode == SoccerMode.LeftRight || ad.Mode == SoccerMode.TopBottom) && ownerFreq is not null)
+                scoringFreq = (short)(1 - ownerFreq.Value);
+
+            if (scoringFreq < 0 || scoringFreq >= MaxTeams)
+                return;
 
             bool nullGoal = false;
 
@@ -277,7 +284,7 @@ namespace SS.Core.Modules.Scoring
                         if (otherPlayer.Arena == arena
                             && otherPlayer.Status == PlayerState.Playing)
                         {
-                            if (otherPlayer.Freq == player.Freq)
+                            if (otherPlayer.Freq == scoringFreq)
                                 teamSet.Add(otherPlayer);
                             else
                                 enemySet.Add(otherPlayer);
