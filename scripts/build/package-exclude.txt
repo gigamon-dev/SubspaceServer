@@ -25,6 +25,7 @@ recordings/*
 bin/modules/Example/
 
 # Arenas not shipped in releases
+arenas/aswz/
 arenas/scf/
 arenas/tce/
 
