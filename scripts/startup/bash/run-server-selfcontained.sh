@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Startup script for a self-contained Subspace Server .NET build.
+# Startup script for a self-contained Afluxion build.
 # It checks the server's exit code and will automatically restart the server when necessary.
 # For example, if the server is to recycle with ?recyclezone or ?shutdown -r.
 #
@@ -56,7 +56,7 @@ CONTINUE=true
 
 while $CONTINUE; do
 
-  log "Starting Subspace Server .NET"
+  log "Starting Afluxion"
 
   # Run the server, writing stderr to both stdout and the script log file.
   ./bin/SubspaceServer 3>&1 1>&2 2>&3 | tee -a $SCRIPTLOG
@@ -81,6 +81,6 @@ while $CONTINUE; do
     CONTINUE=false
   fi
 
-log "Subspace Server .NET exited: $MSG"
+log "Afluxion exited: $MSG"
 
 done

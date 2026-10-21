@@ -2,7 +2,7 @@
     Runs on Windows PowerShell 5.1+ and PowerShell 7+ (pwsh, cross-platform).
 
 .SYNOPSIS
-    Builds ready-to-run Subspace Server .NET "zone" folders, one self-contained
+    Builds ready-to-run Afluxion "zone" folders, one self-contained
     package per target runtime (RID).
 
 .DESCRIPTION
@@ -96,7 +96,7 @@ Set-StrictMode -Version Latest
 
 function Show-Usage {
     Write-Host @'
-build-zone.ps1 - build ready-to-run Subspace Server .NET "zone" packages,
+build-zone.ps1 - build ready-to-run Afluxion "zone" packages,
 one standalone folder per runtime (RID).
 
 USAGE

@@ -1,13 +1,17 @@
-# Subspace Server .NET
-A zone server for the multiplayer game Subspace based on *A Small Subspace Server*.
+# Subspace Server: Afluxion
+
+A zone server for the multiplayer game *Subspace*.
 
 ## About
-This is a cross-platform server written in C#.  It was developed based on the *A Small Subspace Server* (*ASSS*) open-source project and can be considered a derivative.  As such, the modular design closely resembles that of *ASSS* and is meant to be extended in very much the same ways. 
 
-This project provides everything needed to host a zone. It has all of the essential functionality from *ASSS* and also many of the extras. 
+This is a cross-platform server written in C# with an emphasis on high performance.  It was developed based on the *A Small Subspace Server* (*ASSS*) open-source project.  As such, the modular design closely resembles that of *ASSS* and is meant to be extended in very much the same ways.
+
+This project provides everything needed to host a zone. It has all of the essential functionality from *ASSS*, many of the extras, plus many additional features.
 
 - See [asss-equivalents](./doc/asss-equivalents.md) for a detailed listing and comparison of included parts.
 - Also, see [additional-features](./doc/additional-features.md) for information about features that this server adds, which are not in *ASSS*.
+
+> The 'A' in Afluxion stands for "A Small Subspace Server", and "fluxion" is a nod towards it being a derivative work, even though written from the ground up.
 
 ## Get Started
 
@@ -34,6 +38,7 @@ To build the server,
 - Remember to place a copy of **Continuum.exe** (currently 0.40) into the zone's **'clients'** folder: `"src/SubspaceServer/Zone/clients"` before running.
 
 ## Dependencies
+
 - [CommunityToolkit.HighPerformance](https://www.nuget.org/packages/CommunityToolkit.HighPerformance) - for reducing string allocations by using StringPool
 - [Google.Protobuf](https://www.nuget.org/packages/Google.Protobuf) - for serializing data
 - [Microsoft.Data.Sqlite](https://www.nuget.org/packages/Microsoft.Data.Sqlite) - for an embedded database that persists player and arena data
@@ -44,11 +49,14 @@ To build the server,
 - [System.IO.Hashing](https://www.nuget.org/packages/System.IO.Hashing) - for a CRC-32 implementation compatible with zlib's
 
 ## License
+
 GNU GPLv2, since that's what *A Small Subspace Server* uses and much of this can be considered as being a derivative of it.
 
 ## Thanks
+
 This project exists by standing on the shoulders of giants. Thank you to **Grelminar** for creating *A Small Subspace Server*. This would not have been possible without his work and the inspiration it provided. Thank you to everyone that contributed to the *A Small Subspace Server* project. All of your efforts can be considered as being part of this project as well. Thank you to **POiD** for all the knowledge and help he has provided. Thank you to **plushmonkey** for his ZeroBot project, help in finding / investigating bugs, and sharing his knowledge. Thank you to those that have contributed code to this project. Thank you to the creators of Subspace for making this great game, to everyone that has ever helped to keep the game going over the years, and to everyone that helps keep the game alive today.
 
 ## Related
+
 - Repository: [A Small Subspace Server](https://bitbucket.org/grelminar/asss) / [JoWie fork](https://bitbucket.org/jowie/asss)
 - Player Bot: [Zero](https://github.com/plushmonkey/zero) (a great tool for stress testing the server and quite fun to play too)

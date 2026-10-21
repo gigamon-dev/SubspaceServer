@@ -1,4 +1,4 @@
-# Subspace Server .NET Quickstart from ASSS
+# Afluxion Quickstart from ASSS
 
 ### Contents
 
@@ -9,7 +9,7 @@
 [Run the server](#run-the-server)<br>
 [Take it further](#take-it-further)<br>
 
-This article provides instructions on how to quickly get *Subspace Server .NET* up and running for those that already have a zone using *ASSS* and would like to try to hosting it using *Subspace Server .NET*.
+This article provides instructions on how to quickly get *Afluxion* up and running for those that already have a zone using *ASSS* and would like to try to hosting it using *Afluxion*.
 
 If you don't already have a zone running *ASSS*, see [Quickstart](./quickstart.md) instead for instructions on how to set up from scratch.
 
@@ -33,9 +33,9 @@ Copy files from your ASSS zone including:
 
 ## Transition to Modules.config
 
-ASSS uses the `conf/modules.conf` file to determine the which modules to load and the order to load them in. Subspace Server .NET uses `conf/Modules.config`, which is similar, but is an XML file.
+ASSS uses the `conf/modules.conf` file to determine the which modules to load and the order to load them in. Afluxion uses `conf/Modules.config`, which is similar, but is an XML file.
 
-Module names are slightly different in Subspace Server .NET. It should be relatively obvious which modules you'll want to load compared to those being  loaded for your existing ASSS zone. In fact, the default load order is more or less the same. If in doubt, see [asss-equivalents](asss-equivalents.md) for a mapping of ASSS modules to Subspace Server .NET modules.
+Module names are slightly different in Afluxion. It should be relatively obvious which modules you'll want to load compared to those being  loaded for your existing ASSS zone. In fact, the default load order is more or less the same. If in doubt, see [asss-equivalents](asss-equivalents.md) for a mapping of ASSS modules to Afluxion modules.
 
 ## Modules Attached to Arenas
 
@@ -51,7 +51,7 @@ AttachModules = \
 	buy
 ```
 
-The setting is similar in Subspace Server .NET, except that the module names are different. Here's the equivalent of the above for Subspace Server .NET:
+The setting is similar in Afluxion, except that the module names are different. Here's the equivalent of the above for Afluxion:
 ```INI
 [ Modules ]
 AttachModules = \
@@ -61,7 +61,7 @@ AttachModules = \
 	SS.Core.Modules.Buy
 ```
 
-Notice the modules differ slightly in name, and they include the full namespace. See [asss-equivalents](asss-equivalents.md) for a mapping of ASSS modules to Subspace Server .NET modules.
+Notice the modules differ slightly in name, and they include the full namespace. See [asss-equivalents](asss-equivalents.md) for a mapping of ASSS modules to Afluxion modules.
 
 ## Run the server
 

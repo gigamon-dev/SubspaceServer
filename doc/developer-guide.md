@@ -1,8 +1,8 @@
-# Subspace Server .NET - Developer Guide
+# Afluxion - Developer Guide
 
-The modular design that Subspace Server .NET uses mirrors that of ASSS and as such is meant to be completely customizable and extendable. Yes, you can always modify the core server itself by cloning the repository and making your own changes. However, more likely you will want to add your own custom functionality by writing modules that plug-in to the server. This document is to provide some guidance on how to do just that.
+The modular design that Afluxion uses mirrors that of ASSS and as such is meant to be completely customizable and extendable. Yes, you can always modify the core server itself by cloning the repository and making your own changes. However, more likely you will want to add your own custom functionality by writing modules that plug-in to the server. This document is to provide some guidance on how to do just that.
 
-> For those familiar with ASSS, writing a module for Subspace Server .NET should be a walk in the park. All of the same concepts apply, the only difference is that you'll be using features built into the C# language rather than all the macro magic ASSS uses.
+> For those familiar with ASSS, writing a module for Afluxion should be a walk in the park. All of the same concepts apply, the only difference is that you'll be using features built into the C# language rather than all the macro magic ASSS uses.
 
 ## Modules
 
@@ -148,6 +148,7 @@ The asynchronous versions are there in case there is a need to do asynchronous w
 Loading and unloading a module is a necessity. Therefore, a module must implement either `IModule` or `IAsyncModule`.
 
 ### `IModuleLoaderAware` / `IAsyncModuleLoaderAware`
+
 The `IModuleLoaderAware` and `IAsyncModuleLoaderAware` interfaces provide a mechanism that allows tying into additional steps of loading and unloading. The **PostLoad** step is done during startup after all modules listed in the *Modules.config* file have been loaded. Likewise, **PreUnload** is an additional step called during shutdown, which happens before the `Unload` method of any module is called.
 
 > **Tip:** Modules can be manually loaded and unloaded using in-game commands `?insmod` and `?rmmod` respectively. This obviously happens after the initial module loading process, so any module that implements `IModuleLoaderAware` or `IAsyncModuleLoaderAware` and is manually loaded with `?insmod` will be immediately be **PostLoad**ed. Likewise, any module that is manually unloaded with `?rmmod` will be **PreUnload**ed.
@@ -185,6 +186,7 @@ public sealed class LoaderAwareExample : IModule, IModuleLoaderAware
 
 
 ### `IArenaAttachableModule` / `IAsyncArenaAttachableModule`
+
 The `IArenaAttachableModule` and `IAsyncArenaAttachableModule` interfaces provide a mechanism to perform tasks for specific arenas that they are configured for, rather than server-wide (all arenas). It can be used when you only want your module to affect certain arenas. There is an arena.conf setting `Modules:AttachModules` which allows you to specify the modules that should be attached. Here's an example of what that setting might look like:
 ```ini
 ; This is in an arena.conf
@@ -232,6 +234,7 @@ public sealed class ArenaAttachableExample : IModule, IArenaAttachableModule
 > View the [example code](/src/Example/ModuleLifeCycleExamples/ArenaAttachableExample.cs)
 
 ## ComponentBroker
+
 Now that you know how to create a module and get it to load, you'll want your module to talk to other parts of the the server. This is where the `ComponentBroker` comes in. The `ComponentBroker` acts as an intermediary providing services for modules to interact with one another. That is, modules use a `ComponentBroker` to discover parts from other modules and to expose parts of themselves to other modules. A `ComponentBroker` provides three mechanisms for modules to communicate with one another: [Component Interfaces](#component-interfacesinterfaces), [Component Callbacks](#component-callbackscallbacks), and [Component Advisors](#component-advisorsdvisors). 
 
 > **Note:** In this document I'm referring to Interfaces, Callbacks, and Advisors, with "Component" in their names to be less ambiguious and show that they are meant to be used the `ComponentBroker`. Also, "Components" are usually modules, but that doesn't have to be the case. It is completely possible for a module to pass a `ComponentBroker` to another part which is not a module.
@@ -240,11 +243,12 @@ A `ComponentBroker` acts like a container. There is one root `ComponentBroker` w
 
 > In ASSS, the equivalent of the `ComponentBroker` is the module manager, exposed through the `Imodman` interface.
 
-> ***Fun fact:*** In Subspace Server .NET, there also is a `ModuleManager` and it happens to be the 'root' `ComponentBroker`.
+> ***Fun fact:*** In Afluxion, there also is a `ModuleManager` and it happens to be the 'root' `ComponentBroker`.
 
 Remember, the `Load` and `Unload` methods? Their first parameter is an `IComponentBroker`.  It's the 'root' `ComponentBroker` that gets passed in.
 
 ## Component Interfaces
+
 Component Interfaces are exactly what they sound like, they're normal C# interfaces that a component can register on a `ComponentBroker` for others to find and use. To help distinguish any interface from a component interface, they derive from `SS.Core.IComponentInterface`.
 
 Normally, there is only one implementation of an Component Interface. However, it is possible for multiple modules to each register an instance for the same ComponentInterface. In this case, the last one registered becomes the 'current' implementation, effectively overriding the previous. Authentication modules which implement the `IAuth` Component Interface use this feature to chain authentication logic on top of each other. That is, one authentication module gets the prior implementation before overriding it. Then, when and if it needs to, it can fail over and call the original implementation.
@@ -260,6 +264,7 @@ Getting the currently registered instance implementing a Component Interface can
 - Manually get an interface using `IComponentBroker`.
 
 #### **Injection**
+
 Dependencies that are **required** can be injected into a module's constructor. The server will only be able to call the constructor if it can find **all** of the required dependencies. Optional, interface dependencies should use the Manual method.
 
 > **Fun fact:** The Component Interface functionality of the `ComponentBroker` is a form of *service locator*. The injection of Component Interfaces into a module's constructor is a form of *dependency injection* that is performed by the `ModuleManager`. Together, they provide a form of *Inversion of Control (IoC)*.
@@ -283,7 +288,7 @@ public sealed class InjectionExample : IModule
     bool IModule.Load(IComponentBroker broker)
     {
         // Use it.
-        _logManager.LogM(LogLevel.Info, nameof(InjectionExample), "Subspace Server .NET is awesome!");
+        _logManager.LogM(LogLevel.Info, nameof(InjectionExample), "Afluxion is awesome!");
 
         return true;
     }
@@ -301,6 +306,7 @@ public sealed class InjectionExample : IModule
 > View the full example code at: [InjectionExample](../src/Example/InterfaceExamples/InjectionExample.cs)
 
 #### **Manually**
+
 Component Interfaces can be manually gotten using the `GetInterface` method of `ComponentBroker`. It will return a reference to the currently registered instance, or null if not found. Getting an Component Interface manually is done when it's an optional dependency. That is, your module can still work without it.
 
 >**IMPORTANT**:  The `ComponentBroker` keeps track of a reference count for Component Interfaces. `GetInterface` increments the count and `ReleaseInterface` decrements the count. Each call to `GetInterface` should have a corresponding `ReleaseInterface`. Failure to do so will prevent modules from unloading because they'll think still being used.
@@ -325,7 +331,7 @@ public sealed class ManualExample : IModule
         // Use it, only if it was available.
         // Keep in mind, GetInterface could have returned null.
         // Therefore, checking for null with the ?. (null-conditional operator)
-        _logManager?.LogM(LogLevel.Info, nameof(ManualExample), "Subspace Server .NET is awesome!");
+        _logManager?.LogM(LogLevel.Info, nameof(ManualExample), "Afluxion is awesome!");
 
         return true;
     }
@@ -455,10 +461,12 @@ public sealed class RegistrationExample : IModule, IMyExample
 > View the full example code at: [RegistrationExample](../src/Example/InterfaceExamples/RegistrationExample.cs)
 
 ### Arena-specific Component Interfaces
+
 As mentioned previously, an `Arena` is a `ComponentBroker`. Interfaces can be registered on an `Arena` to customize behavior for that arena. When `GetInterface` is called on an `Arena`, the `Arena` will try to find the interface locally, but if not found fall back to its parent, the root `ComponentBroker` to find it. This means there can be a "default" implementation registered on the root `ComponentBroker`, and `Arena`-specific implementations to override the default implementation.
 
 
 ## Component Callbacks
+
 Component Callbacks are an implementation of the publisher-subscriber pattern where any component can be a publisher, and any component can be a subscriber. There can be multiple publishers and multiple subscribers.
 
 Registering for a callback on an `Arena` means you only want events for that specific arena.
@@ -515,6 +523,7 @@ public sealed class RegistrationExample(IChat chat) : IModule
 > View the full example code at: [RegistrationExample](../src/Example/CallbackExamples/RegistrationExample.cs)
 
 ### Register for an Component Callback on an arena
+
 The last example showed registering for a Component Callback globally, for all arenas. Registering for a Component Callback on an individual arena is similar, you just have to use the arena, not the root `ComponentBroker`. Here's an example where the `IArenaAttachableModule` interface (which was discussed [earlier](#iarenaattachablemodule)), is used to only register for the PlayerAction Component Callback on arenas that the module is attached to.
 
 ```C#
@@ -569,6 +578,7 @@ public sealed class ArenaRegistrationExample(IChat chat) : IModule, IArenaAttach
 > View the full example code at: [ArenaRegistrationExample](../src/Example/CallbackExamples/ArenaRegistrationExample.cs)
 
 ### Creating a new Component Callback
+
 To create a new Component Callback, the bare minimum needed is to define a delegate. However, a source generator is provided to assist, and using it is recommended. The source generator adds static methods to `Register`, `Unregister`, and `Fire` a callback. To use the source generator, add a reference to your plug-in project's .csproj file. It'll look like this:
 ```XML
 <ProjectReference Include="..\SourceGeneration\SourceGeneration.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
@@ -602,6 +612,7 @@ public delegate void MyExampleCallback(int foo, string bar, bool baz);
 ```
 
 ### Firing a Component Callback
+
 When you want to fire (invoke) a Component Callback just use the helper class `Fire` method and pass in the `ComponentBroker` that you want it invoked on. Here's an example firing the Component Callback we just created above:
 
 ```C#
@@ -619,12 +630,14 @@ MyExampleCallback.Fire(arena, 123, "Hello single arena!", true);
 Of course, you are not limited to only firing callbacks you've created. You can also fire any of the built-in callbacks if it makes sense for your use case. However, most likely, you'll be firing your own callbacks.
 
 ## Component Advisors
+
 Advisors are interfaces that are expected to have more than one implementation. The `ComponentBroker` just keeps track of a collection of instances for each advisor interface type.
 - Registering adds an instance to the collection. 
 - Unregistering removes an instance from the collection. 
 - Using an advisor just means getting a collection of implementations for a specified advsior interface type, and then asking each implementation in the collection for advice on how to proceed with a given task.
 
 ### Defining a Component Advisor interface
+
 ``` C#
 using SS.Core;
 
@@ -657,6 +670,7 @@ public interface IMyExampleAdvisor : IComponentAdvisor
 > View the full example code at: [IMyExampleAdvisor](../src/Example/AdvisorExamples/IMyExampleAdvisor.cs)
 
 ### Registering and Unregistering an instance of Component Advisor
+
 ```C#
 /// <summary>
 /// This is an example on how to register and unregister a custom advisor.
@@ -698,6 +712,7 @@ public sealed class RegistrationExample : IModule, IMyExampleAdvisor
 > View the full example code at: [RegistrationExample](../src/Example/AdvisorExamples/RegistrationExample.cs)
 
 ### Using a Component Advisor to get advice.
+
 ```C#
 /// <summary>
 /// An example on how to use an advisor.
@@ -757,6 +772,7 @@ public sealed class UseAdvisorExample(IComponentBroker broker) : IModule
 
 
 ## The `Player` class and Per-player data
+
 The `Player` class is one of the most used and most important types in the server. References of the `Player` type are passed around all throughout the server. As you could have guessed, each instance represents an actual player. This is usually a client connected to the server, though "fake" ones can exist for other reasons too (e.g. playing a recording, AI bots, etc). The `PlayerData` module manages all the `Player` objects and is accessible through the `IPlayerData` interface.
 
 It is very likely that there will be a need to store data about a player when building a module. A module is free to manage its own data structures. So it is entirely possible for a module to maintain a Dictionary that maps from a `Player` (or PlayerId) to a custom piece of data. However, instead of doing that, the `PlayerData` module provides a **per-player** data mechanism.
@@ -769,17 +785,19 @@ Normally, `AllocatePlayerData` is used when a module loads and `FreePlayerData` 
 
 > **Design:**<br>
 In ASSS, per-player data is implemented using a chunk of reserved bytes inside of each Player struct. Having the data within the Player struct means that accessing it could be faster, as it's right next to all of the other data for that player (likely read on the same memory page). The chunk of reserved memory is limited in size though. To store a large piece of data, a module would just store a pointer in the per-player data, pointing to some other memory location (allocated with malloc).<br><br>
-In Subspace Server .NET, per-player data is stored using a Dictionary in each `Player` object which just contains references to other objects. This is equivalent to how modules in ASSS store pointers in per-player data. If there is a penality for the extra indirection, it is mostly irrelevant. Note: Adding functionality to reserve bytes inside of a `Player`, like ASSS does, is possible using a fixed-sized buffer, but it seems unnecessary.
+In Afluxion, per-player data is stored using a Dictionary in each `Player` object which just contains references to other objects. This is equivalent to how modules in ASSS store pointers in per-player data. If there is a penality for the extra indirection, it is mostly irrelevant. Note: Adding functionality to reserve bytes inside of a `Player`, like ASSS does, is possible using a fixed-sized buffer, but it seems unnecessary.
 
 ## The `Arena` class and Per-arena data
 
 The `Arena` class is another type widely used within the server. As you've already learned, it's important as a `ComponentBroker`. It is passed in many callbacks and through many methods on interfaces. As with `Player`, it is very likely there will be a need to store data for an `Arena`. Therefore, the `ArenaManager` module provides a similar mechanism: **per-arena** data. It works identically to per-player data, except for arenas. Use the `IArenaManager` interface to call the `AllocateArenaData` and `FreeArenaData` methods. Use the `TryGetExtraData` method on an `Arena` to access that arena's data.
 
 ## IDisposable pattern
+
 - If a module implements the `IDisposable` or `IAsyncDisposable` interface, the server will dispose the module after it is unloaded.
 - If Per-Player Data or Per-Arena Data class implements the `IDisposable` interface, the server will handle disposing the object when if it is dropped from use.
 
 ## Threading
+
 The server is a multithreaded application. However, for the most part, your module's logic will be running on the mainloop thread. The mainloop thread is the thread that the majority of the server's logic runs on. 
 
 > The actual loop logic of the mainloop thread is in the Mainloop module.
@@ -799,6 +817,7 @@ When on a worker thread use `IMainloop.QueueMainWorkItem` to transition executio
 - TODO: Add better documentation on thread-safe interface methods.
 
 ### async/await
+
 The Task asynchronous programming model with `async` / `await` can be used as well. The mainloop thread has a custom `SynchronizationContext` which allows execution to resume on the mainloop thread after an `await`. As normal, you can use [ConfigureAwait](https://learn.microsoft.com/en-us/dotnet/api/system.threading.tasks.task.configureawait) to control it.
 
 > You might notice that internally, the server itself does not make much use of async/await. This is because: much of the server's logic was based directly off of ASSS, much the server was made before async/await existed, and it aims for zero allocations (see [Performance, allocations, and garbage collection](#performance-allocations-and-garbage-collection)) . As such, when the server needs to do work asynchronously, it mostly uses the callback pattern. That is, a method that does work asynchronously takes in a delegate as a parameter, such that the delegate will be executed on the mainloop thread when the operation is complete.
@@ -808,6 +827,7 @@ Be careful of shared data (e.g. Player or Arena objects) when using async/await.
 DO feel free to use async/await. The [TeamVersusMatch module](../src/Matchmaking/Modules/TeamVersusMatch.cs) is example that uses it.
 
 ### Synchronization
+
 When data is shared between multiple threads, standard synchronization techniques must be used, such as locking. `Player` and `Arena` objects are the most common types of shared data used thoughout the server. Multiple threads read and write to these objects. The `IPlayerData` interface and `IArenaManager` interface each expose collections of `Player` and `Arena` objects respectively. For synchronization, these interfaces provide Lock and Unlock methods that need to be called while accessing the collections.
 
 > The server uses the Lock and Unlock methods of the `IPlayerData` and `IArenaManager` interfaces to synchronize not just access to the collections, but also that of certain data within the `Player` and `Arena` objects. For example, `Player.Status`.
@@ -815,9 +835,11 @@ When data is shared between multiple threads, standard synchronization technique
 The server executes a lot of logic on the mainloop thread and use the mainloop work queue as a form of synchronization. The mainloop acts as the defining order of the game state. It simply executes queued work items and timers in their proper order. The order that they are processed in is the order that things are considered to have occured. The major state changes to `Player` and `Arena` objects are executed in mainloop timers. In other words, the major `Player` and `Arena` state changes are executed on the mainloop thread. That means, if your code also executes on the mainloop thread, it's *mostly* safe to assume that that no critical changes are being made to the state of Player or Arena objects that you have a reference to.
 
 ## Performance, allocations, and garbage collection
+
 It is very easy to allocate memory on the heap in .NET. However, those allocations come at a cost. When the references to that memory go out of scope, it's up to the garbage collector to clean up. Garbage collection takes time. In a real-time video game, having a delay can be very bad. Yes, this is the server-side, but any delay is going to seen as lag. Therefore, memory allocations and garbage collection are still a concern to be aware of.
 
 ## String allocations
+
 It is highly recommended that when writing code for the server, that attention be made to not allocate strings when possible. A lot of effort has been put into reducing allocations of string objects. The few remaining places that allocate string objects are: player names, squad names, and arena names. Though, they are pooled to reduce the need to allocate. This was a design decision to make it easier to use those names, rather than have to deal with passing around mutable buffers of characters.
 
 The server extensively uses `Span<char>` and `ReadOnlySpan<char>`, many times in conjuction with `stackalloc`. For example, even when a chat packet is received, no string objects are allocated to process it.
@@ -829,16 +851,19 @@ When accessing a string keyed `HashSet<T>` or `Dictionary<TKey, TValue>`, avoid 
 > Prior to .NET 9, to get around string allocations for `HashSet` and `Dictionary` lookups, the `SS.Utilties.Trie` and `SS.Utilties.Trie<TValue>` classes provided a workaround. As their name implies, they use an implementation of the trie data structure. The downside was that they used a lot of memory upfront. The `GetAlternateLookup` mechanism has mostly replaced their use. However, they are still useful when you need a collection that can quickly search for keys that start with a given substring.
 
 ## Object Pooling
+
 Object pooling is a technique in which objects can be reused. The basic idea behind it is that a pool of objects is maintained. This pool is used such that when an object is needed, it will try to get one from the pool, rather than allocate a new one. And when an object is no longer needed, it can be returned to the pool so that it can be reused later on.
 
 > **Fun fact:** ASSS does pooling too, even though it is in C which doesn't have garbage collection. The ASSS 'net' module keeps a pool of data buffers, so that it doesn't need to allocate memory every time it needs to send or receive data.
 
 ### Microsoft.Extensions.ObjectPool
+
 The Microsoft.Extensions.ObjectPool NuGet package provides a very useful implementation of object pooling. It is used extensively in the server. 
 
 The `SS.Utilities.ObjectPool` namespace adds some pooled object policies for commonly used types: `Dictionary<TKey,TValue>`, `HashSet<T>`, `LinkedListNode<T>`, and `List<T>`.
 
 ### Objects aware of their pool
+
 In certain scenarios, it makes sense that an object itself keeps track of the pool it originated from, and have the ability to return itself to that pool. For this type of scenario, the `SS.Utilities` assembly contains the `PooledObject` class and associated `Pool` class. `PooledObject` implements the `IDisposable` interface. When disposed, the object returns itself to its originating pool.
 
 > **Design:** If you've ever used ADO.NET, this design is similar to how disposing a database connection returns the connection to a pool to be reused.
@@ -852,17 +877,20 @@ Rather than having to create your own pools, the `IObjectPoolManager` interface 
 - NameHashSetPool: A pool of `HashSet<string>` objects that are case-insensitive. Useful if you need to store player names or arena names.
 
 ### Object Pooling of Per-Player Data and Per-Arena Data
+
 The per-player data and per-arena data APIs support object pooling too. This can be done in two ways: by implementing the `Microsoft.Extensions.ObjectPool.IResettable` interface OR by using the `IPooledObjectPolicy<T>` overloads of the `IPlayerData.AllocatePlayerData` and `IArenaData.AllocateArenaData` methods.
 
 #### `IResettable`
+
 If the class being used for per-player data or per-arena data implements the `Microsoft.Extensions.ObjectPool.IResettable` interface, the server is able to use a pool for those objects. The `IResettable` interface just contains a `TryReset` method, which is meant to reset the object back to its original state as if it had just been constructed. The idea being, if you're able to reset an object, it can be reused. This approach means the type is aware that it may be used in a pool and is providing the `Reset` functionality itself.
 
 #### `IPooledObjectPolicy<T>` method overloads of `AllocatePlayerData` and `AllocateArenaData`
+
 There are overloads of the `IPlayerData.AllocatePlayerData` and `IArenaData.AllocateArenaData` methods which allow passing in an `IPooledObjectPolicy<T>`. This interface is the one from Microsoft.Extensions.ObjectPool. With a custom policy, you are able to define how an object is created and what to do when an object is being returned to the pool (such as resetting an object's state so that it can be reused).
 
 ## Best Practices
 
-Here are some recommendations when writing code for Subspace Server .NET. I've tried to follow these as much as possible, though of course there are always exceptions.
+Here are some recommendations when writing code for Afluxion. I've tried to follow these as much as possible, though of course there are always exceptions.
 
 - Don't execute blocking logic on the mainloop thread.
   + If during a module life-cycle step, implement the asynchronous interface (`IAsyncModule`, `IAsyncModuleLoaderAware`, and `IAsyncArenaAttachableModule`) with `async`/`await`.

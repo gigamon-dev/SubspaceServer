@@ -1,4 +1,4 @@
-# Breaking Changes in Subspace Server .NET releases
+# Breaking Changes in Afluxion releases
 
 ## v5.0.0
 

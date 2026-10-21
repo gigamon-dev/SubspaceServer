@@ -1290,7 +1290,7 @@ namespace SS.Core.Modules
                 """)]
         private void Command_version(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
-            _chat.SendMessage(player, $"Subspace Server .NET");
+            _chat.SendMessage(player, "Afluxion");
 
             if (_capabilityManager!.HasCapability(player, Constants.Capabilities.IsStaff))
             {

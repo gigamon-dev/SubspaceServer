@@ -20,7 +20,7 @@ public sealed class ManualExample : IModule
         // Use it, only if it was available.
         // Keep in mind, GetInterface could have returned null.
         // Therefore, checking for null with the ?. (null-conditional operator)
-        _logManager?.LogM(LogLevel.Info, nameof(ManualExample), "Subspace Server .NET is awesome!");
+        _logManager?.LogM(LogLevel.Info, nameof(ManualExample), "Afluxion is awesome!");
 
         return true;
     }

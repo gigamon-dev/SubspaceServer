@@ -1,6 +1,6 @@
 # Zone packaging
 
-Builds ready-to-run **zone** folders for Subspace Server .NET — one standalone
+Builds ready-to-run **zone** folders for Afluxion — one standalone
 package per platform, so you deploy only the one that matches your target.
 
 - `build-zone.ps1` — PowerShell 7+ (`pwsh`); runs on Windows, Linux, and macOS.

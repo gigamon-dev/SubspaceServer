@@ -41,7 +41,7 @@ namespace SS.Core
     internal class CoreModuleInfoAttribute : ModuleInfoAttribute
     {
         internal CoreModuleInfoAttribute()
-            : base($"Subspace Server .NET")
+            : base("Afluxion")
         {
         }
     }

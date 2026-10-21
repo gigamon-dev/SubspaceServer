@@ -19,7 +19,7 @@ public sealed class InjectionExample : IModule
     bool IModule.Load(IComponentBroker broker)
     {
         // Use it.
-        _logManager.LogM(LogLevel.Info, nameof(InjectionExample), "Subspace Server .NET is awesome!");
+        _logManager.LogM(LogLevel.Info, nameof(InjectionExample), "Afluxion is awesome!");
 
         return true;
     }

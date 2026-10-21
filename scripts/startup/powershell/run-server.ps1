@@ -1,4 +1,4 @@
-# This is a startup script for running Subspace Server .NET.
+# This is a startup script for running Afluxion.
 # It checks the server's exit code and will automatically restart the server when necessary.
 # For example, if the server is to recycle with ?recyclezone or ?shutdown -r.
 #
@@ -28,7 +28,7 @@ cd $zoneRoot
 $continue = $true
 
 do {
-    Write-Output "$(Get-Date -Format 'u'): Starting Subspace Server .NET"
+    Write-Output "$(Get-Date -Format 'u'): Starting Afluxion"
 
     $process = Start-Process dotnet ./bin/SubspaceServer.dll -PassThru -Wait
 
@@ -69,6 +69,6 @@ do {
         }
     }
 
-    Write-Output "$(Get-Date -Format 'u'): Subspace Server .NET exited: $message"
+    Write-Output "$(Get-Date -Format 'u'): Afluxion exited: $message"
 
 } while($continue)

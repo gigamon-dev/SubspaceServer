@@ -1,4 +1,4 @@
-# Subspace Server .NET Quickstart
+# Afluxion Quickstart
 
 ### Contents
 
@@ -8,7 +8,7 @@
 [Connect to your zone](#connect-to-your-zone)<br>
 [Take it further](#take-it-further)<br>
 
-This article provides instructions on how to quickly get *Subspace Server .NET* up and running from scratch.
+This article provides instructions on how to quickly get *Afluxion* up and running from scratch.
 
 If you already have a zone running *ASSS*, see [Quickstart from ASSS](quickstart-from-asss.md) instead for instructions on how to use your existing *ASSS* files.
 

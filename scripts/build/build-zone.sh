@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# build-zone.sh - build ready-to-run Subspace Server .NET "zone" packages,
+# build-zone.sh - build ready-to-run Afluxion "zone" packages,
 # one standalone folder per runtime (RID). Bash twin of build-zone.ps1.
 #
 # Run with --help for usage. Framework-dependent by default (targets need the
@@ -12,7 +12,7 @@ ALL_RIDS=(win-x64 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64)
 
 usage() {
   cat <<'EOF'
-build-zone.sh - build ready-to-run Subspace Server .NET "zone" packages,
+build-zone.sh - build ready-to-run Afluxion "zone" packages,
 one standalone folder per runtime (RID).
 
 USAGE

@@ -1,4 +1,4 @@
-# Subspace Server .NET User Manual
+# Afluxion User Manual
 
 > This is a work in progress.
 
@@ -140,6 +140,7 @@ Are in format:
 - higher_than_smod
 
 #### Special bulit-in capabilities
+
 - **seemodchat** - 
 - **sendmodchat** - 
 - **sendsoundmessages** - 

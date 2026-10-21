@@ -31,7 +31,7 @@
         public const int HZ_Latency = 103;
 
         /// <summary>
-        /// Version used by this zone server, Subspace Server .NET (codename "afluxion").
+        /// Version used by this zone server.
         /// </summary>
         public const int Afluxion = 200;
     }

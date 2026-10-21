@@ -1,8 +1,10 @@
 # Equivalents to ASSS
+
 This document provides an overview of the various server parts and their relation to those in ASSS. For the most part, there is a one-to-one mapping to the parts within ASSS.
 
 ## Modules
-| ASSS  | Subspace Server .NET | Notes |
+
+| ASSS  | Afluxion | Notes |
 | --- | --- | --- |
 | admincmd | SS.Core.Modules.AdminCommand | |
 | aliasdb | - | No plans to add it. Use billing server functionality instead. |
@@ -102,7 +104,8 @@ This document provides an overview of the various server parts and their relatio
 | &lt;py&gt; watchgreen | - | No plans to add it. |
 
 ## Interfaces
-| ASSS  | Subspace Server .NET | Notes |
+
+| ASSS  | Afluxion | Notes |
 | --- | --- | --- |
 | Iarenaman | SS.Core.ComponentInterfaces.IArenaManager | |
 | Iarenaplace | SS.Core.ComponentInterfaces.IArenaPlace | |
@@ -166,7 +169,8 @@ This document provides an overview of the various server parts and their relatio
 | Iwatchdamage | SS.Core.ComponentInterfaces.IWatchDamage | |
 
 ## Callbacks
-| ASSS  | Subspace Server .NET | Notes |
+
+| ASSS  | Afluxion | Notes |
 | --- | --- | --- |
 | CB_ARENAACTION | SS.Core.ComponentCallbacks.ArenaActionCallback | |
 | CB_ATTACH | SS.Core.ComponentCallbacks.AttachCallback | |
@@ -211,7 +215,8 @@ This document provides an overview of the various server parts and their relatio
 | CB_WARZONEWIN | n/a | |
 
 ## Advisors
-| ASSS  | Subspace Server .NET | Notes |
+
+| ASSS  | Afluxion | Notes |
 | --- | --- | --- |
 | - | SS.Core.ComponentAdvsiors.IArenaAuthorizationAdvsior | |
 | Aballs | SS.Core.ComponentAdvisors.IBallsAdvisor | |
