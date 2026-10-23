@@ -14,6 +14,8 @@
         UserCommand = 0x13,
         UserChannelChat = 0x14,
         ServerCapabilities = 0x15,
+        SessionReattach = 0x16,
+        SessionReattachEnd = 0x17,
     }
 
     public enum B2SPacketType : byte
@@ -28,5 +30,7 @@
         UserPacket = 0x32,
         BillingIdentity = 0x33,
         UserMulticastChannelChat = 0x34,
+        BillerCapabilities = 0x35,
+        SessionReattachResponse = 0x36,
     }
 }

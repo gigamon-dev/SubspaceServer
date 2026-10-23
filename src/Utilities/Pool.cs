@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace SS.Utilities
@@ -45,6 +46,28 @@ namespace SS.Utilities
     }
 
     /// <summary>
+    /// A registry of <see cref="Pool{T}"/> instances.
+    /// </summary>
+    /// <remarks>
+    /// When <see cref="Pool{T}"/> is used with a type that is in a plug-in assembly, keeping the pool in a static field would
+    /// cause a collectable plug-in assembly fail to unload. This class works around that problem by using <see cref="ConditionalWeakTable{TKey, TValue}"/>. 
+    /// </remarks>
+    internal static class PoolSingletonRegistry
+    {
+        private static readonly ConditionalWeakTable<Type, object> _registry = [];
+
+        /// <summary>
+        /// Gets the pool singleton instance for the specified <typeparamref name="T"/>.
+        /// </summary>
+        /// <typeparam name="T">The type of object to store in the pool.</typeparam>
+        /// <returns>The pool instance.</returns>
+        public static Pool<T> Get<T>() where T : PooledObject, new()
+        {
+            return (Pool<T>)_registry.GetValue(typeof(T), static _ => new Pool<T>());
+        }
+    }
+
+    /// <summary>
     /// An object pool implementation where the objects are aware of the pool they originated from and can return themselves to it when disposed.
     /// </summary>
     /// <typeparam name="T">The type of object to store in the pool.</typeparam>
@@ -53,7 +76,7 @@ namespace SS.Utilities
         /// <summary>
         /// The default pool. This can be used like a singleton, recommended.
         /// </summary>
-        public static Pool<T> Default { get; set; } = new();
+        public static Pool<T> Default => PoolSingletonRegistry.Get<T>();
 
         private readonly ConcurrentQueue<T> _available = [];
 

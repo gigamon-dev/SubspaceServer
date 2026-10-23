@@ -94,6 +94,11 @@ namespace SS.Core.Modules
                 else
                 {
                     ad.Stop();
+
+                    // Stopped by a GameTimerEnded handler: the handler is keeping the game going without a timer.
+                    if (ad.IsEnding)
+                        ad.IsStoppedWhileEnding = true;
+
                     GameTimerChangedCallback.Fire(arena, arena, TimerChange.Stopped, TimerChangeReason.InterfaceCall, ad.GameLength != TimeSpan.Zero);
                     return true;
                 }
@@ -102,6 +107,29 @@ namespace SS.Core.Modules
             {
                 return false;
             }
+        }
+
+        bool IGameTimer.TryGetRemaining(Arena arena, out TimeSpan remaining)
+        {
+            if (arena.TryGetExtraData(_adKey, out ArenaData? ad))
+            {
+                if (ad.IsEnabled)
+                {
+                    remaining = ad.EndingTimestamp!.Value - DateTime.UtcNow;
+                    if (remaining < TimeSpan.Zero)
+                        remaining = TimeSpan.Zero;
+
+                    return true;
+                }
+                else if (ad.PausedRemaining != null)
+                {
+                    remaining = ad.PausedRemaining.Value;
+                    return true;
+                }
+            }
+
+            remaining = TimeSpan.Zero;
+            return false;
         }
 
         #endregion
@@ -379,7 +407,17 @@ namespace SS.Core.Modules
                     {
                         _logManager.LogA(LogLevel.Drivel, nameof(GameTimer), arena, "Timer expired.");
 
-                        GameTimerEndedCallback.Fire(arena, arena);
+                        ad.IsEnding = true;
+                        ad.IsStoppedWhileEnding = false;
+
+                        try
+                        {
+                            GameTimerEndedCallback.Fire(arena, arena);
+                        }
+                        finally
+                        {
+                            ad.IsEnding = false;
+                        }
 
                         // A GameTimerEnded handler may have restarted the timer during the callback (e.g. a league
                         // module adding golden-goal extra time via IGameTimer.SetTimer). If it set a new future
@@ -387,6 +425,11 @@ namespace SS.Core.Modules
                         if (ad.EndingTimestamp.HasValue && ad.EndingTimestamp.Value > now)
                         {
                             // Timer was restarted by a callback; leave it running.
+                        }
+                        else if (ad.IsStoppedWhileEnding)
+                        {
+                            // Timer was stopped by a callback, which is continuing the game untimed (e.g. a golden
+                            // goal) and will end it itself. It has already been stopped, so there is nothing to do.
                         }
                         else
                         {
@@ -470,6 +513,16 @@ namespace SS.Core.Modules
             /// Index of the next notification. -1 when there is none.
             /// </summary>
             public int NextWarningIndex = -1;
+
+            /// <summary>
+            /// Whether the <see cref="GameTimerEndedCallback"/> is being fired.
+            /// </summary>
+            public bool IsEnding;
+
+            /// <summary>
+            /// Whether the timer was stopped through <see cref="IGameTimer.SetTimer"/> while <see cref="IsEnding"/>.
+            /// </summary>
+            public bool IsStoppedWhileEnding;
 
             public bool Start(DateTime asOf)
             {
@@ -562,6 +615,8 @@ namespace SS.Core.Modules
                 PausedRemaining = null;
                 WarningAt.Clear();
                 NextWarningIndex = -1;
+                IsEnding = false;
+                IsStoppedWhileEnding = false;
                 return true;
             }
         }

@@ -112,6 +112,34 @@ Added the ability to get conneciton stats for client connections. Updated the Bi
 
 ---
 
+## BillingUdp module - Session reattach
+
+When the connection to the billing server is lost, the players in the zone stay in the zone, but the billing server no longer knows about them. Once the connection is restored, they are without chat channels, remote private messages, billing server commands and so on, until each of them logs in again. Logging in again means reconnecting to the zone.
+
+With session reattach, the zone asks the billing server to give those sessions back instead. This is an extension to the billing protocol, so it only does anything with a billing server that supports it. With one that doesn't, nothing changes.
+
+It is on by default and can be turned off with `Billing:SessionReattach = 0`.
+
+### How it works
+
+- The zone tells the billing server that it supports session reattach, with a bit in the S2B Server Capabilities packet (0x15). It now sends that packet immediately after the connect packet, rather than once it considers itself logged in.
+- A billing server that supports it replies with a B2S Biller Capabilities packet (0x35), which says how long the zone has to ask and how much it may ask for at a time. A billing server that doesn't support it sends nothing, and the zone carries on as it always has.
+- The zone asks for the sessions of players who were logged in through the billing server when the connection was lost and who are still in the zone, in S2B Session Reattach packets (0x16). Each player is identified by connection id, user id, and name. No password is involved, so the billing server only gives back a session that it opened for the zone itself and never saw logged off.
+- The billing server answers each with a B2S Session Reattach Response packet (0x36), with a status for each player. For a player it accepts, it follows up with the player's current restrictions.
+- The zone finishes with a S2B Session Reattach End packet (0x17), which tells the billing server to close whatever sessions were not asked for, such as those of players who left while the connection was down.
+
+The zone does not send the requests at a fixed rate. The billing server says how many may be waiting on an answer, and the zone sends the next when an answer arrives.
+
+### What players see
+
+Everyone is told when the connection is restored. Only the players who are left without a session are told to log in again. A player the billing server says was banned in the meantime is kicked.
+
+Players who joined while the connection was down could not be authenticated, and were let in with a `^` in front of their name. They are kicked once the connection is restored, so that they log in again and are authenticated. This does not depend on the billing server supporting session reattach, and can be turned off with `Billing:KickUnauthenticatedOnReconnect = 0`.
+
+Reattach also works after the connection is dropped and reconnected by hand with `?userdbadm drop` and `?userdbadm connect`, provided the billing server is still holding the sessions by then.
+
+---
+
 ## Network module - Configurable incoming reliable window size
 
 Added the ability to configure the size of the incoming reliable data buffer.

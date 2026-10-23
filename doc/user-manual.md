@@ -301,6 +301,10 @@ The administrator of the billing server should be able to provide you with the s
 - `ServerName` - the name to use for your zone on the billing server
 - `Password` - the password to connect to the billing server with
 
+If the connection to the billing server is lost and later restored, the zone asks the billing server to give the players who were logged in their sessions back, so that they do not have to log in again. This only has an effect with a billing server that supports it. It can be turned off by adding `SessionReattach = 0` to the `[Billing]` section.
+
+Players who join while there is no connection to the billing server cannot be authenticated, and are let in with a `^` in front of their name. They are kicked when the connection is restored, so that they log in again. That can be turned off with `KickUnauthenticatedOnReconnect = 0` in the `[Billing]` section.
+
 ### Arena Attachable modules
 
 Certain modules need to be attached to an arena for their functionality to be made active. This allows for a more fine grained control over which functionality to use available in each arena, rather be active server-wide (every arena). The downside is that it requires a bit more configuration.
