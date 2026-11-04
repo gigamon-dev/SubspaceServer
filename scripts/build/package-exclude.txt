@@ -15,6 +15,10 @@
 # Git repository artifacts
 **/.gitignore
 
+# macOS filesystem metadata (Finder cruft / AppleDouble resource forks)
+**/.DS_Store
+**/._*
+
 # Runtime working directories - shipped empty (state is created at runtime)
 data/*
 log/*
