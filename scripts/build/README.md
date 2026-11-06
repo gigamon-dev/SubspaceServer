@@ -43,7 +43,7 @@ zone/
    │  └─ modules/<Name>/       plug-in modules: Replay, Matchmaking (+ prebuilt/<rid> overlays)
    ├─ conf/ arenas/ maps/            content from src/SubspaceServer/Zone
    ├─ data/ log/ tmp/ recordings/ clients/   runtime dirs, shipped empty
-   ├─ LICENSE  news.txt  obscene.txt  scrty  scrty1
+   ├─ LICENSE  news.txt  obscene.txt  scrty  scrty1  vip.txt
    └─ run-server.ps1 (all)  +  run-server.cmd (Windows)  /  run-server.sh (Linux, macOS)
 ```
 
