@@ -363,10 +363,16 @@ namespace SS.Core.Modules
                 {
                     try
                     {
+                        // Sent nameless, so the client saves it as the update it requested.
                         if (!await fileTransfer.SendFileAsync(player, "clients/update.exe", string.Empty.AsMemory(), false).ConfigureAwait(false))
                         {
                             _logManager.LogM(LogLevel.Warn, nameof(MapNewsDownload), "Update request, but error setting up to be sent.");
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        // This is an async void method, so an exception must not escape it.
+                        _logManager.LogP(LogLevel.Error, nameof(MapNewsDownload), player, $"Update request, but error sending it. {ex.Message}");
                     }
                     finally
                     {

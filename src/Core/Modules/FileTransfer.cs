@@ -111,7 +111,8 @@ namespace SS.Core.Modules
             ArgumentNullException.ThrowIfNull(player);
             ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-            if (MemoryExtensions.IsWhiteSpace(filename.Span))
+            // An empty name sends a nameless file (e.g. the client update). A non-empty name cannot be all white-space.
+            if (!filename.IsEmpty && MemoryExtensions.IsWhiteSpace(filename.Span))
                 throw new ArgumentException("Cannot be white-space.", nameof(filename));
 
             if (!_mainloop.IsMainloop)
@@ -161,7 +162,8 @@ namespace SS.Core.Modules
             ArgumentNullException.ThrowIfNull(player);
             ArgumentNullException.ThrowIfNull(stream);
 
-            if (MemoryExtensions.IsWhiteSpace(filename.Span))
+            // An empty name sends a nameless file (e.g. the client update). A non-empty name cannot be all white-space.
+            if (!filename.IsEmpty && MemoryExtensions.IsWhiteSpace(filename.Span))
                 throw new ArgumentException("Cannot be white-space.", nameof(filename));
 
             if (!_mainloop.IsMainloop)
@@ -827,10 +829,11 @@ namespace SS.Core.Modules
                 Player = player;
 
                 // In the header, the filename field is 16 bytes, and the last byte must be a null-terminator.
-                // Therefore, the filename must be able to be encoded into 1 to 15 bytes.
+                // Therefore, the filename must be able to be encoded into 0 to 15 bytes.
+                // An empty filename sends a nameless file, which the client saves as the file it last requested (e.g. the client update).
                 int byteCount = StringUtils.DefaultEncoding.GetByteCount(filename);
-                if (byteCount < 1 || byteCount > 15)
-                    throw new ArgumentException("The value cannot be encoded into 1 to 15 bytes.", nameof(filename));
+                if (byteCount > 15)
+                    throw new ArgumentException("The value cannot be encoded into 0 to 15 bytes.", nameof(filename));
 
                 StringUtils.WriteNullPaddedString(_header.AsSpan(1), filename, true);
                 Stream = stream ?? throw new ArgumentNullException(nameof(stream));

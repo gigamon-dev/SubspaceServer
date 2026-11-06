@@ -28,7 +28,7 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="player">The player to send file to.</param>
         /// <param name="path">The path of the file to send.</param>
-        /// <param name="filename">The name of the uploaded file.</param>
+        /// <param name="filename">The name of the uploaded file (encoded into at most 15 bytes). Empty sends a nameless file, which the client saves as the file it last requested (e.g. the client update).</param>
         /// <param name="deleteAfter">Whether the file at <paramref name="path"/> should be deleted after it is sent.</param>
         /// <returns><see langword="true"/> if the file was queued to be sent. Otherwise, <see langword="false"/>.</returns>
         Task<bool> SendFileAsync(Player player, string path, ReadOnlyMemory<char> filename, bool deleteAfter);
@@ -41,7 +41,7 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="player">The player to send file to.</param>
         /// <param name="stream">The stream containing the data to send as a file.</param>
-        /// <param name="filename">The name of the uploaded file.</param>
+        /// <param name="filename">The name of the uploaded file (encoded into at most 15 bytes). Empty sends a nameless file.</param>
         /// <returns><see langword="true"/> if the file was queued to be sent. Otherwise, <see langword="false"/>.</returns>
         Task<bool> SendFileAsync(Player player, Stream stream, ReadOnlyMemory<char> filename);
 
@@ -54,7 +54,7 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="player">The player to send the file to.</param>
         /// <param name="stream">The stream containing the file data. The stream will be closed/disposed.</param>
-        /// <param name="filename">The name of the file.</param>
+        /// <param name="filename">The name of the file (encoded into at most 15 bytes). Empty sends a nameless file.</param>
         /// <returns><see langword="true"/> if the file was queued to be sent. Otherwise, <see langword="false"/>.</returns>
         bool SendFile(Player player, MemoryStream stream, ReadOnlySpan<char> filename);
 
