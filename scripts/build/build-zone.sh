@@ -327,7 +327,16 @@ for rid in "${RIDS[@]}"; do
     version="4.0.0"
     out="$ARCHIVE_DIR/SubspaceServer-$version-$rid.tar.gz"
     rm -f "$out"
-    tar -czf "$out" -C "$zone_dir" .
+    # Normalize ownership to root (so the tarball doesn't carry the builder's uid/gid)
+    # and drop macOS resource forks. GNU tar and bsdtar (macOS) take different flags.
+    tar_own=()
+    if tar --version 2>/dev/null | grep -qi 'GNU tar'; then
+      tar_own=(--owner=0 --group=0)                                   # Linux / GNU tar
+    else
+      tar_own=(--uid 0 --gid 0)                                       # bsdtar (incl. macOS)
+      [[ "$(uname -s)" == "Darwin" ]] && tar_own+=(--disable-copyfile)
+    fi
+    tar "${tar_own[@]}" -czf "$out" -C "$zone_dir" .
     echo "    archive: $out"
   fi
 
