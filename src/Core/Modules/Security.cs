@@ -690,6 +690,12 @@ namespace SS.Core.Modules
                         exeOk = true;
                     }
 
+                    if (player.Flags.IsVip)
+                    {
+                        // A VIP may run a non-standard client, so its exe checksum is not checked.
+                        exeOk = true;
+                    }
+
                     if (!exeOk)
                     {
                         if (!_capabilityManager.HasCapability(player, Constants.Capabilities.SuppressSecurity))
@@ -739,6 +745,13 @@ namespace SS.Core.Modules
             }
 
             ref readonly C2S_SecurityViolationHeader packet = ref MemoryMarshal.AsRef<C2S_SecurityViolationHeader>(data);
+
+            if (player.Flags.IsVip && packet.Violation == ClientViolation.DataChecksumMismatch)
+            {
+                // A VIP may run a non-standard client, so this violation is ignored.
+                return;
+            }
+
             ReadOnlySpan<byte> messageBytes = data[C2S_SecurityViolationHeader.Length..];
             messageBytes = StringUtils.SliceNullTerminated(messageBytes);
             Span<char> message = stackalloc char[StringUtils.DefaultEncoding.GetMaxCharCount(messageBytes.Length)];

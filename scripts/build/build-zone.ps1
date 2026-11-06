@@ -13,7 +13,7 @@
         |   |                       + shared NuGet + this RID's native assets [SkiaSharp, SQLite])
         |   \- modules/<Name>/      each plug-in module's private assemblies
         |- conf/ arenas/ maps/ data/ clients/ log/ tmp/ recordings/   (from the Zone template)
-        |- news.txt obscene.txt scrty scrty1
+        |- news.txt obscene.txt scrty scrty1 vip.txt
         \- run-server.(sh|cmd)      launcher with the exit-code/recycle loop
 
     Each <rid> folder is fully self-describing and contains ONLY that platform's

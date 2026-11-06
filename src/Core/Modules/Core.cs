@@ -945,6 +945,9 @@ namespace SS.Core.Modules
                 player.Packet.Squad.Set(authResult.Squad); // this can truncate
                 player.Squad = StringPool.Shared.GetOrAdd(Truncate(authResult.Squad, Constants.MaxSquadNameLength));
 
+                // VIP: trusted to run a non-standard client (vip.txt, Vip:AllVips, Vip:AllowPrerelease).
+                player.Flags.IsVip = IsVip(player, playerData.AuthRequest!, out _);
+
                 // Make sure we don't have two identical players.
                 // If so, do not increment stage yet. We'll do it when the other player leaves.
                 if (oldPlayer != null && oldPlayer != player)
@@ -998,6 +1001,36 @@ namespace SS.Core.Modules
             }
         }
 
+        /// <summary>
+        /// Gets whether a player is a VIP, using <see cref="IVipList"/> if it is loaded.
+        /// </summary>
+        /// <param name="player">The player, with its final name.</param>
+        /// <param name="authRequest">The player's login request.</param>
+        /// <param name="isClientVip">Whether the player is a VIP because of its client (decided before its name is checked).</param>
+        /// <returns><see langword="true"/> if the player is a VIP.</returns>
+        private bool IsVip(Player player, AuthRequest authRequest, out bool isClientVip)
+        {
+            isClientVip = false;
+
+            if (!player.IsStandard)
+                return false;
+
+            IVipList? vipList = _broker.GetInterface<IVipList>();
+            if (vipList is null)
+                return false;
+
+            try
+            {
+                ushort clientVersion = ((IAuthRequest)authRequest).LoginPacket.CVersion;
+                isClientVip = vipList.IsClientVip(player.Type, clientVersion, ClientVersion_Cont);
+                return isClientVip || vipList.IsListed(player.Name);
+            }
+            finally
+            {
+                _broker.ReleaseInterface(ref vipList);
+            }
+        }
+
         private void SendLoginResponse(Player player)
         {
             if (player == null)
@@ -1033,7 +1066,11 @@ namespace SS.Core.Modules
 
                     if (player.Type == ClientType.Continuum)
                     {
-                        S2C_ContinuumVersion pkt = new(ClientVersion_Cont, _continuumChecksum);
+                        // A VIP by client (Vip:AllVips, or Vip:AllowPrerelease with a newer Continuum) is told its own version, so it is not asked to change version.
+                        IsVip(player, playerData.AuthRequest, out bool isClientVip);
+                        ushort continuumVersion = isClientVip ? ((IAuthRequest)playerData.AuthRequest).LoginPacket.CVersion : ClientVersion_Cont;
+
+                        S2C_ContinuumVersion pkt = new(continuumVersion, _continuumChecksum);
                         _network!.SendToOne(player, ref pkt, NetSendFlags.Reliable);
 
                         lr.ExeChecksum = _continuumChecksum;
@@ -1051,6 +1088,11 @@ namespace SS.Core.Modules
                         // to make the client think it's a mod
                         lr.ExeChecksum = uint.MaxValue;
                         lr.CodeChecksum = uint.MaxValue;
+                    }
+                    else if (player.Flags.IsVip)
+                    {
+                        // tells the client to skip its exe and code checksum checks
+                        lr.IsVip = 1;
                     }
 
                     if (lr.Code == (byte)AuthCode.CustomText)

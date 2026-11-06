@@ -1,0 +1,14 @@
+# Place VIP player names in this file. One per line (not case-sensitive). Lines starting with # are ignored.
+# This file is used by the SS.Core.Modules.VipList module.
+#
+# A VIP is trusted to run a non-standard client, such as a Continuum pre-release, a modified client or a bot.
+# A VIP:
+#   - is told by the login response to skip the client's own exe and code checksum checks,
+#   - is not kicked for an exe checksum mismatch in the server's security check,
+#   - has a "data checksum mismatch" security violation from its client ignored.
+#
+# Wildcard: a line that is just *! makes every player a VIP.
+#
+# Related settings in global.conf:
+#   Vip:AllVips          - every player is a VIP.
+#   Vip:AllowPrerelease  - a player running a Continuum newer than the server's is a VIP and is not asked to change version.

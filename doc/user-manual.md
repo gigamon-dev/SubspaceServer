@@ -28,6 +28,7 @@
 + obscene.txt
 + scrty
 + scrty1
++ vip.txt
 ```
 
 TODO: Add info about each folder and notable files.

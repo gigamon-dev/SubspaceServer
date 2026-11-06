@@ -720,6 +720,15 @@ namespace SS.Core
                 internal set { flagVector[BitVector32Masks.GetMask(12)] = value; }
             }
 
+            /// <summary>
+            /// if the player is a VIP: trusted to run a non-standard client (see <see cref="ComponentInterfaces.IVipList"/>)
+            /// </summary>
+            public bool IsVip
+            {
+                get { return flagVector[BitVector32Masks.GetMask(13)]; }
+                internal set { flagVector[BitVector32Masks.GetMask(13)] = value; }
+            }
+
             internal void Initialize()
             {
                 flagVector = new(0);
