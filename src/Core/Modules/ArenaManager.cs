@@ -291,8 +291,7 @@ namespace SS.Core.Modules
                             // send whoami packet so the clients leave the arena
                             if (player.IsStandard)
                             {
-                                S2C_WhoAmI whoAmI = new((short)player.Id);
-                                _network?.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
+                                SendWhoAmI(player, arena);
                             }
                             else if (player.IsChat)
                             {
@@ -646,8 +645,7 @@ namespace SS.Core.Modules
             if (player.IsStandard)
             {
                 // send whoami packet
-                S2C_WhoAmI whoAmI = new((short)player.Id);
-                _network?.SendToOne(player, ref whoAmI, NetSendFlags.Reliable);
+                SendWhoAmI(player, arena);
 
                 // send settings
                 IClientSettings? clientSettings = Broker.GetInterface<IClientSettings>();
@@ -1883,6 +1881,23 @@ namespace SS.Core.Modules
 
             // make sure that any work associated with the arena that is to run on the mainloop is complete
             _mainloop.WaitForMainWorkItemDrain();
+        }
+
+        /// <summary>
+        /// Sends the whoami packet (S2C 0x01). Continuum clients also get the arena name.
+        /// </summary>
+        private void SendWhoAmI(Player player, Arena arena)
+        {
+            S2C_WhoAmI whoAmI = new((short)player.Id);
+            int length = S2C_WhoAmI.Length;
+
+            if (player.Type == ClientType.Continuum)
+                length = whoAmI.SetArenaName(arena.Name);
+
+            _network?.SendToOne(
+                player,
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref whoAmI, 1))[..length],
+                NetSendFlags.Reliable);
         }
 
         private void LeaveArena(Player player)
