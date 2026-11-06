@@ -92,7 +92,7 @@ This document provides an overview of the various server parts and their relatio
 | - | SS.Core.Modules.Scoring.SpeedGame | |
 | stats | SS.Core.Modules.Scoring.Stats | |
 | unixsignal | SS.Core.Modules.PosixSignal |  |
-| contrib:voices | - | No plans to add it. |
+| contrib:voices | SS.Core.Modules.Voices | Off unless Voices:Enabled is set. No rate limiting; a voice is not sent to a player while another is still being sent to them. |
 | watchdamage | SS.Core.Modules.WatchDamage | |
 | &lt;py&gt; exceptlogging | - | No plans to add it. |
 | &lt;py&gt; fm_password | - | No plans to add it. |
