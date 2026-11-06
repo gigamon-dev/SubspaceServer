@@ -2407,6 +2407,14 @@ namespace SS.Core.Modules
                 return;
 
             ref readonly C2S_Green c2s = ref MemoryMarshal.AsRef<C2S_Green>(data);
+
+            // A green can only be on a map tile: [0..1023].
+            if (c2s.X < 0 || c2s.X > 1023 || c2s.Y < 0 || c2s.Y > 1023)
+            {
+                _logManager.LogP(LogLevel.Malicious, nameof(Game), player, $"Bad green packet (tile {c2s.X},{c2s.Y} is outside the map).");
+                return;
+            }
+
             Prize prize = c2s.Prize;
 
             // don't forward non-shared prizes
