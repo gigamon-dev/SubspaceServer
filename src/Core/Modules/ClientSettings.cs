@@ -798,8 +798,9 @@ namespace SS.Core.Modules
                 cs.ByteSettings[i] = (byte)_configManager.GetInt(ch, ClientSettingsConfig.ByteNames[i].Section, ClientSettingsConfig.ByteNames[i].Key, 0);
             }
 
-            ushort total = 0;
-            arenaData.pwps[0] = 0;
+            // The byte just before the prize weights (Unused:Unused1) is the weight of prize 0, "no prize":
+            // clients include it in their prize table, so count it here as well.
+            ushort total = arenaData.pwps[0] = cs.ByteSettings[S2C_ClientSettings.ByteInlineArray.Length - 1];
             for (int i = 0; i < S2C_ClientSettings.PrizeWeightInlineArray.Length; i++)
             {
                 cs.PrizeWeightSettings[i] = (byte)_configManager.GetInt(ch, ClientSettingsConfig.PrizeWeightNames[i].Section, ClientSettingsConfig.PrizeWeightNames[i].Key, 0);
