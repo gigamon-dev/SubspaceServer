@@ -3199,6 +3199,30 @@ namespace SS.Core.Modules
             }
         }
 
+        /// <summary>
+        /// A Latency:S2CNoDataKickoutDelay (in ticks) must be above this to limit the keep alive threshold.
+        /// </summary>
+        private const int MinKeepAliveKickoutDelay = 200;
+
+        /// <summary>
+        /// How long before the client's no-data kickout (in ticks) a keep alive is sent at the latest, to allow for latency.
+        /// </summary>
+        private const int KeepAliveKickoutMargin = 100;
+
+        /// <summary>
+        /// Gets how long a player connection may go without being sent data before a keep alive packet is sent:
+        /// Net:PlayerKeepAliveThreshold, or less if the player's arena has a short Latency:S2CNoDataKickoutDelay.
+        /// </summary>
+        private TimeSpan GetKeepAliveThreshold(PlayerConnection playerConnection)
+        {
+            TimeSpan threshold = _config.PlayerKeepAliveThreshold;
+            long arenaThresholdTicks = Interlocked.Read(ref playerConnection.ArenaKeepAliveThresholdTicks);
+
+            return arenaThresholdTicks > 0 && arenaThresholdTicks < threshold.Ticks
+                ? TimeSpan.FromTicks(arenaThresholdTicks)
+                : threshold;
+        }
+
         private void SendOutgoing(ConnData conn, ref PacketGrouper packetGrouper, BandwidthPriority? priorityFilter = null)
         {
             long now = Stopwatch.GetTimestamp();
@@ -3207,7 +3231,7 @@ namespace SS.Core.Modules
             if (playerConnection is not null // game protocol only
                 && playerConnection.Player is not null
                 && playerConnection.Player.Status == PlayerState.Playing
-                && Stopwatch.GetElapsedTime(Interlocked.Read(ref conn.LastSendTimestamp), now) > _config.PlayerKeepAliveThreshold)
+                && Stopwatch.GetElapsedTime(Interlocked.Read(ref conn.LastSendTimestamp), now) > GetKeepAliveThreshold(playerConnection))
             {
                 // Check if there is any pending outgoing data.
                 bool hasPendingOutgoing = false;
@@ -4088,6 +4112,24 @@ namespace SS.Core.Modules
             if (action == PlayerAction.Connect)
             {
                 ((INetworkTimerMode)this).SetTimerMode(player, _playersUseAlternateTimerMode);
+            }
+            else if (action == PlayerAction.EnterArena || action == PlayerAction.LeaveArena)
+            {
+                if (!player.TryGetExtraData(_connKey, out PlayerConnection? conn))
+                    return;
+
+                long thresholdTicks = 0;
+
+                if (action == PlayerAction.EnterArena && arena?.Cfg is ConfigHandle ch)
+                {
+                    // The client disconnects a player in a ship that receives no data for Latency:S2CNoDataKickoutDelay.
+                    // When that is shorter than the keep alive threshold allows for, send keep alives often enough to beat it.
+                    int kickoutDelay = _configManager.GetInt(ch, "Latency", "S2CNoDataKickoutDelay", 0);
+                    if (kickoutDelay > MinKeepAliveKickoutDelay)
+                        thresholdTicks = TimeSpan.FromMilliseconds((kickoutDelay - KeepAliveKickoutMargin) * 10).Ticks;
+                }
+
+                Interlocked.Exchange(ref conn.ArenaKeepAliveThresholdTicks, thresholdTicks);
             }
         }
 
@@ -5500,6 +5542,15 @@ namespace SS.Core.Modules
             /// </remarks>
             public bool AlternateTimerModeEnabled;
 
+            /// <summary>
+            /// The longest time the connection may go without being sent data before a keep alive packet is sent,
+            /// for the arena the player is in, in <see cref="TimeSpan"/> ticks. 0 when there is no limit beyond the global threshold.
+            /// </summary>
+            /// <remarks>
+            /// Set on the mainloop thread when the player enters or leaves an arena; read on the send thread.
+            /// </remarks>
+            public long ArenaKeepAliveThresholdTicks;
+
             public void Initialize(IEncrypt? encryptor, string? encryptorName, IBandwidthLimiter bandwidthLimiter)
             {
                 Initialize();
@@ -5516,6 +5567,7 @@ namespace SS.Core.Modules
                 TimeSyncRequestSentTimestamp = null;
                 TimeSyncRequestSentTicks = null;
                 AlternateTimerModeEnabled = false;
+                ArenaKeepAliveThresholdTicks = 0;
 
                 return base.TryReset();
             }
@@ -6291,6 +6343,7 @@ namespace SS.Core.Modules
 
             /// <summary>
             /// How long after not having sent data to a player connection, to send a <see cref="Packets.Game.S2CPacketType.KeepAlive"/> packet (game protocol).
+            /// In an arena whose Latency:S2CNoDataKickoutDelay is shorter than this plus a margin, the arena's limit is used instead (see GetKeepAliveThreshold).
             /// </summary>
             public TimeSpan PlayerKeepAliveThreshold { get; private set; }
 
