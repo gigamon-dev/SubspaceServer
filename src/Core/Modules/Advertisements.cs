@@ -33,6 +33,8 @@ namespace SS.Core.Modules
     /// Each advertisement is sent as S2C <see cref="S2CPacketType.AdBanner"/> (0x30):
     /// <c>[0x30][u8 display mode][u16 width][u16 height][i32 duration][width * height pixels, top row first]</c>.
     /// The client shows it until the duration (in hundredths of a second) runs out. A duration of 0 or less is never shown.
+    /// A packet can be up to 500,000 bytes, which clients accept. One over <see cref="Constants.MaxBigPacket"/> bytes is too large
+    /// to send reliably as one packet, so it is always sent as sized data.
     /// </para>
     /// <para>
     /// Advertise:SendMode sets when a random advertisement is sent: on entering an arena, after being killed, or both.
@@ -48,6 +50,7 @@ namespace SS.Core.Modules
     /// lets go of all of it. A reload lists the zone folder once to see which advertisement files exist, keeps one <see cref="FileInfo"/>
     /// only for each file that does, and allocates a packet only for a file that is new or changed. Reads use pooled async state machines,
     /// so reading a file does not allocate per row. Packets are not pooled: a sized send may still be reading one after it is replaced.
+    /// A packet over 85,000 bytes is allocated on the large object heap; that only happens when such a file is loaded or changes.
     /// </para>
     /// </remarks>
     [CoreModuleInfo]
@@ -62,6 +65,14 @@ namespace SS.Core.Modules
         /// S2C 0x30 header: type, display mode, width, height, duration.
         /// </summary>
         private const int HeaderLength = 10;
+
+        /// <summary>
+        /// The largest S2C 0x30 packet that clients accept, header included.
+        /// </summary>
+        /// <remarks>
+        /// One larger than <see cref="Constants.MaxBigPacket"/> can't be sent reliably as one packet, so it is always sent as sized data.
+        /// </remarks>
+        private const int MaxPacketLength = 500_000;
 
         /// <summary>
         /// BITMAPFILEHEADER (14 bytes) followed by a BITMAPINFOHEADER (40 bytes).
@@ -345,7 +356,7 @@ namespace SS.Core.Modules
         /// </summary>
         /// <param name="player">The player to send to.</param>
         /// <param name="isEnterArena">
-        /// <see langword="true"/> to send it reliably, regardless of when the player was last sent one.
+        /// <see langword="true"/> to send it regardless of when the player was last sent one: reliably, unless it is too large for that.
         /// <see langword="false"/> to send it as sized data, unless the player was sent one in the last 30 seconds.
         /// </param>
         private void SendAdvertisement(Player player, bool isEnterArena)
@@ -373,7 +384,8 @@ namespace SS.Core.Modules
 
             byte[] advertisement = advertisements[Random.Shared.Next(advertisements.Length)];
 
-            if (isEnterArena)
+            // A reliable packet can be at most MaxBigPacket bytes. A larger advertisement always goes as sized data.
+            if (isEnterArena && advertisement.Length <= Constants.MaxBigPacket)
                 _network.SendToOne(player, advertisement, NetSendFlags.Reliable);
             else
                 _network.SendSized(player, advertisement.Length, _getAdvertisementData!, advertisement);
@@ -679,8 +691,8 @@ namespace SS.Core.Modules
                 return (null, $"invalid size ({width} x {height}).");
 
             long packetLength = HeaderLength + (long)width * height;
-            if (packetLength > Constants.MaxBigPacket)
-                return (null, $"too large ({width} x {height}); the image can be at most {Constants.MaxBigPacket - HeaderLength} pixels.");
+            if (packetLength > MaxPacketLength)
+                return (null, $"too large ({width} x {height}); the image can be at most {MaxPacketLength - HeaderLength} pixels.");
 
             if (pixelOffset < BitmapHeaderLength)
                 return (null, $"invalid pixel data offset ({pixelOffset}).");
