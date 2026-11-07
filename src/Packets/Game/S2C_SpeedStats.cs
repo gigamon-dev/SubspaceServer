@@ -67,7 +67,7 @@ namespace SS.Packets.Game
 
         public void GetTopScore(int index, out short playerId, out int score)
         {
-            if (index < 0 && index >= TopScoreCount)
+            if (index < 0 || index >= TopScoreCount)
                 throw new ArgumentOutOfRangeException(nameof(index));
 
             playerId = LittleEndianConverter.Convert(TopPlayerIds[index]);
@@ -76,7 +76,7 @@ namespace SS.Packets.Game
 
         public void SetTopScore(int index, short playerId, int score)
         {
-            if (index < 0 && index >= TopScoreCount)
+            if (index < 0 || index >= TopScoreCount)
                 throw new ArgumentOutOfRangeException(nameof(index));
 
             TopPlayerIds[index] = LittleEndianConverter.Convert(playerId);
@@ -85,7 +85,7 @@ namespace SS.Packets.Game
 
         public void ClearTopScore(int index)
         {
-            if (index < 0 && index >= TopScoreCount)
+            if (index < 0 || index >= TopScoreCount)
                 throw new ArgumentOutOfRangeException(nameof(index));
 
             SetTopScore(index, -1, 0);
