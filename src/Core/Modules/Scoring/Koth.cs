@@ -198,7 +198,7 @@ namespace SS.Core.Modules.Scoring
                     DateTime max = DateTime.UtcNow + ad.Settings.ExpireTimeSpan;
                     killerData.ExpireTimestamp = killerData.ExpireTimestamp!.Value + ad.Settings.NonCrownAdjustTimeSpan;
                     if (killerData.ExpireTimestamp.Value > max)
-                        killedData.ExpireTimestamp = max;
+                        killerData.ExpireTimestamp = max;
 
                     _crowns.TryAddTime(killer, ad.Settings.NonCrownAdjustTimeSpan);
                 }

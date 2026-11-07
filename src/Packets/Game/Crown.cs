@@ -28,7 +28,7 @@ namespace SS.Packets.Game
 
         public readonly byte Type = (byte)S2CPacketType.Crown;
         private readonly byte action = (byte)action;
-        private readonly uint duration = LittleEndianConverter.Convert((uint)(duration.TotalMilliseconds / 10));
+        private readonly int duration = LittleEndianConverter.Convert((int)(duration.TotalMilliseconds / 10));
         private readonly short playerId = LittleEndianConverter.Convert(playerId);
 
         #region Helper Properties
@@ -52,7 +52,11 @@ namespace SS.Packets.Game
         #endregion
 
         public readonly byte Type = add ? (byte)S2CPacketType.AddCrownTimer : (byte)S2CPacketType.SetCrownTimer;
-        private readonly uint duration = LittleEndianConverter.Convert((uint)(duration.TotalMilliseconds / 10));
+
+        /// <summary>
+        /// Signed: the client subtracts a negative add.
+        /// </summary>
+        private readonly int duration = LittleEndianConverter.Convert((int)(duration.TotalMilliseconds / 10));
 
         #region Helper Properties
 
