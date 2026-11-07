@@ -6,6 +6,8 @@ using SS.Packets.Game;
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using System.IO.Enumeration;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -41,6 +43,12 @@ namespace SS.Core.Modules
     /// loads no files and watches none. When on, each bitmap is read straight into its packet, and sending allocates nothing.
     /// Per-player data is only allocated when advertisements are sent after being killed, since only that needs the time of the last one.
     /// </para>
+    /// <para>
+    /// Since the module can be loaded and unloaded while the server runs, loading keeps its allocations to what it needs, and unloading
+    /// lets go of all of it. A reload lists the zone folder once to see which advertisement files exist, keeps one <see cref="FileInfo"/>
+    /// only for each file that does, and allocates a packet only for a file that is new or changed. Reads use pooled async state machines,
+    /// so reading a file does not allocate per row. Packets are not pooled: a sized send may still be reading one after it is replaced.
+    /// </para>
     /// </remarks>
     [CoreModuleInfo]
     public sealed class Advertisements(
@@ -64,6 +72,11 @@ namespace SS.Core.Modules
         /// The file name prefixes that are looked for: <c>advert_</c>, and the subgame names <c>b_ad</c> and <c>r_ad</c>.
         /// </summary>
         private static readonly string[] FilePrefixes = ["advert_", "b_ad", "r_ad"];
+
+        /// <summary>
+        /// The <see cref="FileSystemWatcher"/> filters for the advertisement files, one for each of <see cref="FilePrefixes"/>.
+        /// </summary>
+        private static readonly string[] WatchFilters = ["advert_*.bmp", "b_ad*.bmp", "r_ad*.bmp"];
 
         /// <summary>
         /// The # of advertisement files of each prefix that are looked for (advert_0.bmp to advert_127.bmp, and likewise b_ad and r_ad).
@@ -111,16 +124,10 @@ namespace SS.Core.Modules
         private FileSystemWatcher? _fileSystemWatcher;
 
         /// <summary>
-        /// Every advertisement file that is looked for, created when the module loads. Each is refreshed on a reload, so checking
-        /// a file allocates nothing. Used only by the loader.
+        /// The loader's record of every advertisement file name that is looked for, indexed by <see cref="GetFileIndex"/>.
+        /// Used only by the loader.
         /// </summary>
-        private FileInfo[] _files = [];
-
-        /// <summary>
-        /// What was last read from each file in <see cref="_files"/> (same index), or <see langword="null"/> if it does not exist
-        /// or could not be read. Used only by the loader.
-        /// </summary>
-        private LoadedFile?[] _loadedFiles = [];
+        private AdvertisementFile[] _files = [];
 
         /// <summary>
         /// The buffer that a file's bitmap header is read into. Used only by the loader.
@@ -164,6 +171,17 @@ namespace SS.Core.Modules
         /// </summary>
         private GetSizedSendDataDelegate<byte[]>? _getAdvertisementData;
 
+        /// <summary>
+        /// Cached delegates for the callbacks, so that registering and unregistering use the same instance rather than allocating one each.
+        /// </summary>
+        private PlayerActionCallback.PlayerActionDelegate? _playerActionCallback;
+        private KillCallback.KillDelegate? _killCallback;
+
+        /// <summary>
+        /// Cached delegate for <see cref="LoadLoopAsync"/>, so that starting the loader does not allocate a closure.
+        /// </summary>
+        private Func<Task>? _loadLoop;
+
         #region Module members
 
         [ConfigHelp<int>("Advertise", "SendMode", ConfigScope.Global, Default = 0, Min = 0, Max = 3,
@@ -197,6 +215,7 @@ namespace SS.Core.Modules
             _sendOnEnterArena = sendMode == 1 || sendMode == 3;
             _sendOnKilled = sendMode == 2 || sendMode == 3;
             _getAdvertisementData = GetAdvertisementData;
+            _loadLoop = LoadLoopAsync;
 
             // Only sending after being killed needs to know when the player was last sent one.
             if (_sendOnKilled)
@@ -204,32 +223,29 @@ namespace SS.Core.Modules
 
             _logManager.LogM(LogLevel.Info, nameof(Advertisements), $"Advertisements are on (send mode:{sendMode}, display mode:{_displayMode}, duration:{_duration}).");
 
-            _files = new FileInfo[FilePrefixes.Length * MaxFilesPerPrefix];
-            _loadedFiles = new LoadedFile?[_files.Length];
+            // One record per file name that is looked for. A FileInfo is only created for a file once it is found.
+            _files = new AdvertisementFile[FilePrefixes.Length * MaxFilesPerPrefix];
             _bitmapHeader = new byte[BitmapHeaderLength];
-
-            int fileIndex = 0;
-            foreach (string prefix in FilePrefixes)
-            {
-                for (int i = 0; i < MaxFilesPerPrefix; i++)
-                    _files[fileIndex++] = new FileInfo($"{prefix}{i}.bmp");
-            }
 
             lock (_loadLock)
             {
                 _loadCancellation = new CancellationTokenSource();
             }
 
-            // Read the files again whenever one of them is added, changed, renamed or deleted.
+            // Read the files again whenever one of them is added, changed, renamed or deleted, or if the watcher missed events.
+            // Unloading disposes the watcher rather than unsubscribing, so each handler is only created once.
+            FileSystemEventHandler changedHandler = FileSystemWatcher_Changed;
+
             _fileSystemWatcher = new FileSystemWatcher(".");
-            foreach (string prefix in FilePrefixes)
-                _fileSystemWatcher.Filters.Add($"{prefix}*.bmp");
+            foreach (string filter in WatchFilters)
+                _fileSystemWatcher.Filters.Add(filter);
 
             _fileSystemWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName;
-            _fileSystemWatcher.Changed += FileSystemWatcher_Changed;
-            _fileSystemWatcher.Created += FileSystemWatcher_Changed;
-            _fileSystemWatcher.Deleted += FileSystemWatcher_Changed;
+            _fileSystemWatcher.Changed += changedHandler;
+            _fileSystemWatcher.Created += changedHandler;
+            _fileSystemWatcher.Deleted += changedHandler;
             _fileSystemWatcher.Renamed += FileSystemWatcher_Changed;
+            _fileSystemWatcher.Error += FileSystemWatcher_Error;
             _fileSystemWatcher.EnableRaisingEvents = true;
 
             // The files are read on a worker thread. Waiting here does not block the server; it only means the module is done loading
@@ -237,10 +253,16 @@ namespace SS.Core.Modules
             await QueueLoad().ConfigureAwait(false);
 
             if (_sendOnEnterArena)
-                PlayerActionCallback.Register(_broker, Callback_PlayerAction);
+            {
+                _playerActionCallback = Callback_PlayerAction;
+                PlayerActionCallback.Register(_broker, _playerActionCallback);
+            }
 
             if (_sendOnKilled)
-                KillCallback.Register(_broker, Callback_Kill);
+            {
+                _killCallback = Callback_Kill;
+                KillCallback.Register(_broker, _killCallback);
+            }
 
             return true;
         }
@@ -250,19 +272,23 @@ namespace SS.Core.Modules
             if (!_isEnabled)
                 return true;
 
-            if (_sendOnEnterArena)
-                PlayerActionCallback.Unregister(_broker, Callback_PlayerAction);
+            if (_playerActionCallback is not null)
+            {
+                PlayerActionCallback.Unregister(_broker, _playerActionCallback);
+                _playerActionCallback = null;
+            }
 
-            if (_sendOnKilled)
-                KillCallback.Unregister(_broker, Callback_Kill);
+            if (_killCallback is not null)
+            {
+                KillCallback.Unregister(_broker, _killCallback);
+                _killCallback = null;
+            }
 
             if (_fileSystemWatcher is not null)
             {
+                // Disposing stops the events, so the handlers don't need to be removed (which would allocate a delegate for each).
+                // A handler already running when this happens finds the loader stopped (see QueueLoad).
                 _fileSystemWatcher.EnableRaisingEvents = false;
-                _fileSystemWatcher.Changed -= FileSystemWatcher_Changed;
-                _fileSystemWatcher.Created -= FileSystemWatcher_Changed;
-                _fileSystemWatcher.Deleted -= FileSystemWatcher_Changed;
-                _fileSystemWatcher.Renamed -= FileSystemWatcher_Changed;
                 _fileSystemWatcher.Dispose();
                 _fileSystemWatcher = null;
             }
@@ -291,9 +317,9 @@ namespace SS.Core.Modules
             if (_sendOnKilled)
                 _playerData.FreePlayerData(ref _pdKey);
 
+            // Let go of everything that was loaded.
             _advertisements = [];
             _files = [];
-            _loadedFiles = [];
             _bitmapHeader = [];
             _hasLoaded = false;
             _isEnabled = false;
@@ -370,6 +396,13 @@ namespace SS.Core.Modules
             QueueLoad();
         }
 
+        private void FileSystemWatcher_Error(object sender, ErrorEventArgs e)
+        {
+            // Most likely the watcher's buffer overflowed and change events were lost. A reload checks every file, so nothing is missed.
+            _logManager.LogM(LogLevel.Warn, nameof(Advertisements), $"File watcher error; checking the advertisement files again. {e.GetException().Message}");
+            QueueLoad();
+        }
+
         /// <summary>
         /// Requests that the advertisement files be read, starting the loader on a worker thread if it is not already running.
         /// </summary>
@@ -386,13 +419,26 @@ namespace SS.Core.Modules
                     return Task.CompletedTask; // unloading
 
                 _isLoadRequested = true;
-                CancellationToken cancellationToken = _loadCancellation.Token;
-                return _loadTask ??= Task.Run(() => LoadLoopAsync(cancellationToken));
+                return _loadTask ??= Task.Run(_loadLoop!);
             }
         }
 
-        private async Task LoadLoopAsync(CancellationToken cancellationToken)
+        private async Task LoadLoopAsync()
         {
+            CancellationToken cancellationToken;
+
+            lock (_loadLock)
+            {
+                if (_loadCancellation is null)
+                {
+                    // Unloaded before the loader started.
+                    _loadTask = null;
+                    return;
+                }
+
+                cancellationToken = _loadCancellation.Token;
+            }
+
             while (true)
             {
                 lock (_loadLock)
@@ -438,28 +484,58 @@ namespace SS.Core.Modules
         /// Checks all of the advertisement files (prefix0.bmp to prefix127.bmp, for each prefix), reading only those that are new or changed.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// The zone folder is listed once to find which advertisement files exist. Each one that does gets a <see cref="FileInfo"/>
+        /// the first time it is found, which is refreshed on every reload after that. Its length and last write time come from the
+        /// file itself rather than the folder listing, which can be out of date while a file is open for writing.
+        /// </para>
+        /// <para>
         /// A file is taken as unchanged when its length and last write time are the same as when it was last read; it keeps its packet.
         /// A file that was skipped as invalid is remembered the same way, so it is not read (or warned about) again until it changes.
         /// A file that could not be opened or read is not remembered, so it is tried again on the next reload.
+        /// </para>
         /// </remarks>
         /// <returns>
         /// The packets of all the usable files, or <see langword="null"/> if nothing changed since the last load.
         /// </returns>
-        private async Task<byte[][]?> LoadAdvertisementsAsync(CancellationToken cancellationToken)
+        [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+        private async ValueTask<byte[][]?> LoadAdvertisementsAsync(CancellationToken cancellationToken)
         {
+            AdvertisementFile[] files = _files;
+
+            // Find which of the files exist.
+            for (int index = 0; index < files.Length; index++)
+                files[index].IsFound = false;
+
+            using (AdvertisementFileEnumerator enumerator = new())
+            {
+                while (enumerator.MoveNext())
+                    files[enumerator.Current].IsFound = true;
+            }
+
             bool isChanged = !_hasLoaded;
             int count = 0;
 
-            for (int index = 0; index < _files.Length; index++)
+            for (int index = 0; index < files.Length; index++)
             {
-                FileInfo file = _files[index];
-                file.Refresh();
+                FileInfo? info = null;
 
-                if (!file.Exists)
+                if (files[index].IsFound)
                 {
-                    if (_loadedFiles[index] is not null)
+                    info = files[index].Info ??= new FileInfo(GetFileName(index));
+                    info.Refresh();
+
+                    if (!info.Exists)
+                        info = null; // deleted since the listing
+                }
+
+                if (info is null)
+                {
+                    if (files[index].IsRead)
                     {
-                        _loadedFiles[index] = null; // deleted
+                        // Deleted. The FileInfo is kept in case the file is added again.
+                        files[index].IsRead = false;
+                        files[index].Packet = null;
                         isChanged = true;
                     }
 
@@ -467,15 +543,15 @@ namespace SS.Core.Modules
                 }
 
                 // Taken before reading, so that a write during the read shows up as a change on the next reload.
-                long length = file.Length;
-                DateTime lastWriteTimeUtc = file.LastWriteTimeUtc;
+                long length = info.Length;
+                DateTime lastWriteTimeUtc = info.LastWriteTimeUtc;
 
-                if (_loadedFiles[index] is LoadedFile loadedFile
-                    && loadedFile.Length == length
-                    && loadedFile.LastWriteTimeUtc == lastWriteTimeUtc)
+                if (files[index].IsRead
+                    && files[index].Length == length
+                    && files[index].LastWriteTimeUtc == lastWriteTimeUtc)
                 {
                     // Unchanged.
-                    if (loadedFile.Packet is not null)
+                    if (files[index].Packet is not null)
                         count++;
 
                     continue;
@@ -488,7 +564,7 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    (packet, error) = await LoadFileAsync(file.FullName, _bitmapHeader, cancellationToken).ConfigureAwait(false);
+                    (packet, error) = await LoadFileAsync(info.FullName, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -496,17 +572,21 @@ namespace SS.Core.Modules
                 }
                 catch (Exception ex)
                 {
-                    _logManager.LogM(LogLevel.Warn, nameof(Advertisements), $"Unable to read '{file.Name}'. {ex.Message}");
-                    _loadedFiles[index] = null;
+                    _logManager.LogM(LogLevel.Warn, nameof(Advertisements), $"Unable to read '{info.Name}'. {ex.Message}");
+                    files[index].IsRead = false;
+                    files[index].Packet = null;
                     continue;
                 }
 
                 if (packet is null)
-                    _logManager.LogM(LogLevel.Warn, nameof(Advertisements), $"Skipping '{file.Name}': {error}");
+                    _logManager.LogM(LogLevel.Warn, nameof(Advertisements), $"Skipping '{info.Name}': {error}");
                 else
                     count++;
 
-                _loadedFiles[index] = new LoadedFile(length, lastWriteTimeUtc, packet);
+                files[index].IsRead = true;
+                files[index].Length = length;
+                files[index].LastWriteTimeUtc = lastWriteTimeUtc;
+                files[index].Packet = packet;
             }
 
             _hasLoaded = true;
@@ -514,11 +594,14 @@ namespace SS.Core.Modules
             if (!isChanged)
                 return null;
 
+            if (count == 0)
+                return [];
+
             byte[][] advertisements = new byte[count][];
             int advertisementIndex = 0;
-            foreach (LoadedFile? loadedFile in _loadedFiles)
+            for (int index = 0; index < files.Length; index++)
             {
-                if (loadedFile?.Packet is byte[] packet)
+                if (files[index].Packet is byte[] packet)
                     advertisements[advertisementIndex++] = packet;
             }
 
@@ -532,7 +615,8 @@ namespace SS.Core.Modules
         /// A file that is in use (most likely still being written) is tried again a few times. If it was saved part way through,
         /// it is skipped as truncated, and the change event for the rest of the save reads it again.
         /// </remarks>
-        private async Task<(byte[]? Packet, string? Error)> LoadFileAsync(string path, byte[] header, CancellationToken cancellationToken)
+        [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+        private async ValueTask<(byte[]? Packet, string? Error)> LoadFileAsync(string path, CancellationToken cancellationToken)
         {
             SafeFileHandle? handle = null;
 
@@ -551,7 +635,7 @@ namespace SS.Core.Modules
 
             using (handle)
             {
-                return await CreatePacketAsync(handle, header, cancellationToken).ConfigureAwait(false);
+                return await CreatePacketAsync(handle, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -559,11 +643,13 @@ namespace SS.Core.Modules
         /// Creates an S2C 0x30 packet from an uncompressed 8-bit bitmap file, reading the pixels straight into the packet.
         /// </summary>
         /// <param name="handle">The file, opened for asynchronous reads.</param>
-        /// <param name="header">A buffer of <see cref="BitmapHeaderLength"/> bytes to read the bitmap header into.</param>
         /// <param name="cancellationToken">The token to observe for cancellation.</param>
         /// <returns>The packet, or <see langword="null"/> and the reason the file can't be used.</returns>
-        private async Task<(byte[]? Packet, string? Error)> CreatePacketAsync(SafeFileHandle handle, byte[] header, CancellationToken cancellationToken)
+        [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+        private async ValueTask<(byte[]? Packet, string? Error)> CreatePacketAsync(SafeFileHandle handle, CancellationToken cancellationToken)
         {
+            byte[] header = _bitmapHeader; // reused for each file
+
             // There's no need to get the file's length first: a read that comes up short means the file is truncated.
             if (!await TryReadExactlyAsync(handle, header, 0, cancellationToken).ConfigureAwait(false)
                 || header[0] != (byte)'B'
@@ -599,7 +685,8 @@ namespace SS.Core.Modules
             if (pixelOffset < BitmapHeaderLength)
                 return (null, $"invalid pixel data offset ({pixelOffset}).");
 
-            byte[] buffer = new byte[packetLength];
+            // Not zeroed first: the header and every pixel are written below, and the buffer is dropped if any read comes up short.
+            byte[] buffer = GC.AllocateUninitializedArray<byte>((int)packetLength);
             buffer[0] = (byte)S2CPacketType.AdBanner;
             buffer[1] = _displayMode;
             BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(2), (ushort)width);
@@ -623,8 +710,12 @@ namespace SS.Core.Modules
         /// <summary>
         /// Reads from a file until <paramref name="buffer"/> is full.
         /// </summary>
+        /// <remarks>
+        /// Called once per pixel row, so it uses a pooled state machine: a read that completes asynchronously does not allocate.
+        /// </remarks>
         /// <returns><see langword="true"/> if the buffer was filled; <see langword="false"/> if the end of the file was reached first.</returns>
-        private static async Task<bool> TryReadExactlyAsync(SafeFileHandle handle, Memory<byte> buffer, long fileOffset, CancellationToken cancellationToken)
+        [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+        private static async ValueTask<bool> TryReadExactlyAsync(SafeFileHandle handle, Memory<byte> buffer, long fileOffset, CancellationToken cancellationToken)
         {
             while (!buffer.IsEmpty)
             {
@@ -640,12 +731,115 @@ namespace SS.Core.Modules
         }
 
         /// <summary>
-        /// What was read from an advertisement file.
+        /// Gets the index of an advertisement file name in <see cref="_files"/>: the prefix's position in <see cref="FilePrefixes"/>
+        /// times <see cref="MaxFilesPerPrefix"/>, plus the file's number.
         /// </summary>
-        /// <param name="Length">The file's length when it was read.</param>
-        /// <param name="LastWriteTimeUtc">The file's last write time when it was read.</param>
-        /// <param name="Packet">The S2C 0x30 packet, or <see langword="null"/> if the file is not a usable bitmap.</param>
-        private readonly record struct LoadedFile(long Length, DateTime LastWriteTimeUtc, byte[]? Packet);
+        /// <param name="fileName">The file name, such as <c>advert_3.bmp</c>.</param>
+        /// <returns>The index, or -1 if <paramref name="fileName"/> isn't an advertisement file name.</returns>
+        private static int GetFileIndex(ReadOnlySpan<char> fileName)
+        {
+            // Match names the way the file system does: ignoring case on Windows and macOS, but not elsewhere.
+            StringComparison comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
+            if (!fileName.EndsWith(".bmp", comparison))
+                return -1;
+
+            fileName = fileName[..^4];
+
+            for (int prefixIndex = 0; prefixIndex < FilePrefixes.Length; prefixIndex++)
+            {
+                string prefix = FilePrefixes[prefixIndex];
+                if (!fileName.StartsWith(prefix, comparison))
+                    continue;
+
+                // The number as GetFileName writes it: 1 to 3 digits, no sign and no leading zero.
+                ReadOnlySpan<char> digits = fileName[prefix.Length..];
+                if (digits.IsEmpty || digits.Length > 3 || (digits.Length > 1 && digits[0] == '0'))
+                    return -1;
+
+                int number = 0;
+                foreach (char c in digits)
+                {
+                    if (!char.IsAsciiDigit(c))
+                        return -1;
+
+                    number = number * 10 + (c - '0');
+                }
+
+                return number < MaxFilesPerPrefix ? prefixIndex * MaxFilesPerPrefix + number : -1;
+            }
+
+            return -1;
+        }
+
+        /// <summary>
+        /// Gets the file name for an index in <see cref="_files"/>, such as <c>advert_3.bmp</c>.
+        /// </summary>
+        private static string GetFileName(int index)
+        {
+            return $"{FilePrefixes[index / MaxFilesPerPrefix]}{index % MaxFilesPerPrefix}.bmp";
+        }
+
+        /// <summary>
+        /// The loader's record of one advertisement file name.
+        /// </summary>
+        private struct AdvertisementFile
+        {
+            /// <summary>
+            /// The file, created the first time it is found and refreshed on each reload after that.
+            /// </summary>
+            public FileInfo? Info;
+
+            /// <summary>
+            /// Whether the latest listing of the zone folder found the file.
+            /// </summary>
+            public bool IsFound;
+
+            /// <summary>
+            /// Whether the file has been read since it last changed (whether or not it was a usable bitmap).
+            /// </summary>
+            public bool IsRead;
+
+            /// <summary>
+            /// The file's length and last write time when it was read.
+            /// </summary>
+            public long Length;
+            public DateTime LastWriteTimeUtc;
+
+            /// <summary>
+            /// The S2C 0x30 packet, or <see langword="null"/> if the file is not a usable bitmap.
+            /// </summary>
+            public byte[]? Packet;
+        }
+
+        /// <summary>
+        /// Lists the advertisement files in the zone folder, giving the index (see <see cref="GetFileIndex"/>) of each.
+        /// </summary>
+        /// <remarks>
+        /// One read of the folder per reload, rather than checking each of the possible names. Other entries are skipped
+        /// without allocating, and nothing is allocated per file found.
+        /// </remarks>
+        private sealed class AdvertisementFileEnumerator() : FileSystemEnumerator<int>(".", Options)
+        {
+            private static readonly EnumerationOptions Options = new()
+            {
+                RecurseSubdirectories = false,
+                IgnoreInaccessible = true,
+                AttributesToSkip = 0, // include hidden and system files, as opening the file by name would
+            };
+
+            protected override bool ShouldIncludeEntry(ref FileSystemEntry entry)
+            {
+                return !entry.IsDirectory && GetFileIndex(entry.FileName) >= 0;
+            }
+
+            protected override int TransformEntry(ref FileSystemEntry entry)
+            {
+                return GetFileIndex(entry.FileName);
+            }
+        }
 
         private sealed class PlayerData : IResettable
         {
