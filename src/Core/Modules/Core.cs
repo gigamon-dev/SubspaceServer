@@ -1113,6 +1113,9 @@ namespace SS.Core.Modules
                     }
 
                     _network!.SendToOne(player, ref lr, NetSendFlags.Reliable);
+
+                    // Follow the login response with the 1-byte LoginOK packet. Continuum doesn't act on it; it's sent for clients that do.
+                    _network.SendToOne(player, [(byte)S2CPacketType.LoginOK], NetSendFlags.Reliable);
                 }
                 else if (player.IsChat)
                 {
