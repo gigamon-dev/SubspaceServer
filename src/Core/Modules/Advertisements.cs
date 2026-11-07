@@ -5,7 +5,6 @@ using SS.Core.ComponentInterfaces;
 using SS.Packets.Game;
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,7 +23,9 @@ namespace SS.Core.Modules
     /// </para>
     /// <para>
     /// The files are read asynchronously on a worker thread, so loading the module (including with ?insmod) does not hold up the server.
-    /// They are read again whenever one of them is added, changed, renamed or deleted, and the new set replaces the old one once it is read.
+    /// They are checked again whenever one of them is added, changed, renamed or deleted. Only a file whose length or last write time
+    /// changed is read again; every other file keeps the packet it already has. When something did change, the new set replaces the old one
+    /// once it is ready.
     /// </para>
     /// <para>
     /// Each advertisement is sent as S2C <see cref="S2CPacketType.AdBanner"/> (0x30):
@@ -109,6 +110,28 @@ namespace SS.Core.Modules
 
         private FileSystemWatcher? _fileSystemWatcher;
 
+        /// <summary>
+        /// Every advertisement file that is looked for, created when the module loads. Each is refreshed on a reload, so checking
+        /// a file allocates nothing. Used only by the loader.
+        /// </summary>
+        private FileInfo[] _files = [];
+
+        /// <summary>
+        /// What was last read from each file in <see cref="_files"/> (same index), or <see langword="null"/> if it does not exist
+        /// or could not be read. Used only by the loader.
+        /// </summary>
+        private LoadedFile?[] _loadedFiles = [];
+
+        /// <summary>
+        /// The buffer that a file's bitmap header is read into. Used only by the loader.
+        /// </summary>
+        private byte[] _bitmapHeader = [];
+
+        /// <summary>
+        /// Whether the loader has finished a load. Used only by the loader.
+        /// </summary>
+        private bool _hasLoaded;
+
         private readonly Lock _loadLock = new();
 
         /// <summary>
@@ -180,6 +203,17 @@ namespace SS.Core.Modules
                 _pdKey = _playerData.AllocatePlayerData<PlayerData>();
 
             _logManager.LogM(LogLevel.Info, nameof(Advertisements), $"Advertisements are on (send mode:{sendMode}, display mode:{_displayMode}, duration:{_duration}).");
+
+            _files = new FileInfo[FilePrefixes.Length * MaxFilesPerPrefix];
+            _loadedFiles = new LoadedFile?[_files.Length];
+            _bitmapHeader = new byte[BitmapHeaderLength];
+
+            int fileIndex = 0;
+            foreach (string prefix in FilePrefixes)
+            {
+                for (int i = 0; i < MaxFilesPerPrefix; i++)
+                    _files[fileIndex++] = new FileInfo($"{prefix}{i}.bmp");
+            }
 
             lock (_loadLock)
             {
@@ -258,6 +292,10 @@ namespace SS.Core.Modules
                 _playerData.FreePlayerData(ref _pdKey);
 
             _advertisements = [];
+            _files = [];
+            _loadedFiles = [];
+            _bitmapHeader = [];
+            _hasLoaded = false;
             _isEnabled = false;
 
             return true;
@@ -370,13 +408,20 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    byte[][] advertisements = await LoadAdvertisementsAsync(cancellationToken).ConfigureAwait(false);
-                    _advertisements = advertisements;
-
-                    if (advertisements.Length == 0)
-                        _logManager.LogM(LogLevel.Warn, nameof(Advertisements), "Advertise:SendMode is set, but no advertisements were found (advert_#.bmp, b_ad#.bmp, r_ad#.bmp).");
+                    byte[][]? advertisements = await LoadAdvertisementsAsync(cancellationToken).ConfigureAwait(false);
+                    if (advertisements is null)
+                    {
+                        _logManager.LogM(LogLevel.Drivel, nameof(Advertisements), "Checked the advertisement files, but none changed.");
+                    }
                     else
-                        _logManager.LogM(LogLevel.Info, nameof(Advertisements), $"Loaded {advertisements.Length} advertisement(s).");
+                    {
+                        _advertisements = advertisements;
+
+                        if (advertisements.Length == 0)
+                            _logManager.LogM(LogLevel.Warn, nameof(Advertisements), "Advertise:SendMode is set, but no advertisements were found (advert_#.bmp, b_ad#.bmp, r_ad#.bmp).");
+                        else
+                            _logManager.LogM(LogLevel.Info, nameof(Advertisements), $"Loaded {advertisements.Length} advertisement(s).");
+                    }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -390,50 +435,94 @@ namespace SS.Core.Modules
         }
 
         /// <summary>
-        /// Reads all of the advertisement files (prefix0.bmp to prefix127.bmp, for each prefix).
+        /// Checks all of the advertisement files (prefix0.bmp to prefix127.bmp, for each prefix), reading only those that are new or changed.
         /// </summary>
-        /// <returns>The packets of the files that could be read.</returns>
-        private async Task<byte[][]> LoadAdvertisementsAsync(CancellationToken cancellationToken)
+        /// <remarks>
+        /// A file is taken as unchanged when its length and last write time are the same as when it was last read; it keeps its packet.
+        /// A file that was skipped as invalid is remembered the same way, so it is not read (or warned about) again until it changes.
+        /// A file that could not be opened or read is not remembered, so it is tried again on the next reload.
+        /// </remarks>
+        /// <returns>
+        /// The packets of all the usable files, or <see langword="null"/> if nothing changed since the last load.
+        /// </returns>
+        private async Task<byte[][]?> LoadAdvertisementsAsync(CancellationToken cancellationToken)
         {
-            List<byte[]> advertisements = [];
-            byte[] header = new byte[BitmapHeaderLength]; // reused for each file
+            bool isChanged = !_hasLoaded;
+            int count = 0;
 
-            foreach (string prefix in FilePrefixes)
+            for (int index = 0; index < _files.Length; index++)
             {
-                for (int i = 0; i < MaxFilesPerPrefix; i++)
+                FileInfo file = _files[index];
+                file.Refresh();
+
+                if (!file.Exists)
                 {
-                    string path = $"{prefix}{i}.bmp";
-                    if (!File.Exists(path))
-                        continue;
-
-                    byte[]? packet;
-                    string? error;
-
-                    try
+                    if (_loadedFiles[index] is not null)
                     {
-                        (packet, error) = await LoadFileAsync(path, header, cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logManager.LogM(LogLevel.Warn, nameof(Advertisements), $"Unable to read '{path}'. {ex.Message}");
-                        continue;
+                        _loadedFiles[index] = null; // deleted
+                        isChanged = true;
                     }
 
-                    if (packet is null)
-                    {
-                        _logManager.LogM(LogLevel.Warn, nameof(Advertisements), $"Skipping '{path}': {error}");
-                        continue;
-                    }
-
-                    advertisements.Add(packet);
+                    continue;
                 }
+
+                // Taken before reading, so that a write during the read shows up as a change on the next reload.
+                long length = file.Length;
+                DateTime lastWriteTimeUtc = file.LastWriteTimeUtc;
+
+                if (_loadedFiles[index] is LoadedFile loadedFile
+                    && loadedFile.Length == length
+                    && loadedFile.LastWriteTimeUtc == lastWriteTimeUtc)
+                {
+                    // Unchanged.
+                    if (loadedFile.Packet is not null)
+                        count++;
+
+                    continue;
+                }
+
+                isChanged = true;
+
+                byte[]? packet;
+                string? error;
+
+                try
+                {
+                    (packet, error) = await LoadFileAsync(file.FullName, _bitmapHeader, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logManager.LogM(LogLevel.Warn, nameof(Advertisements), $"Unable to read '{file.Name}'. {ex.Message}");
+                    _loadedFiles[index] = null;
+                    continue;
+                }
+
+                if (packet is null)
+                    _logManager.LogM(LogLevel.Warn, nameof(Advertisements), $"Skipping '{file.Name}': {error}");
+                else
+                    count++;
+
+                _loadedFiles[index] = new LoadedFile(length, lastWriteTimeUtc, packet);
             }
 
-            return [.. advertisements];
+            _hasLoaded = true;
+
+            if (!isChanged)
+                return null;
+
+            byte[][] advertisements = new byte[count][];
+            int advertisementIndex = 0;
+            foreach (LoadedFile? loadedFile in _loadedFiles)
+            {
+                if (loadedFile?.Packet is byte[] packet)
+                    advertisements[advertisementIndex++] = packet;
+            }
+
+            return advertisements;
         }
 
         /// <summary>
@@ -549,6 +638,14 @@ namespace SS.Core.Modules
 
             return true;
         }
+
+        /// <summary>
+        /// What was read from an advertisement file.
+        /// </summary>
+        /// <param name="Length">The file's length when it was read.</param>
+        /// <param name="LastWriteTimeUtc">The file's last write time when it was read.</param>
+        /// <param name="Packet">The S2C 0x30 packet, or <see langword="null"/> if the file is not a usable bitmap.</param>
+        private readonly record struct LoadedFile(long Length, DateTime LastWriteTimeUtc, byte[]? Packet);
 
         private sealed class PlayerData : IResettable
         {
