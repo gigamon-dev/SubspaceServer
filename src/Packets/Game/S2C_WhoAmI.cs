@@ -11,8 +11,13 @@ namespace SS.Packets.Game
     /// </summary>
     /// <remarks>
     /// The original form is 3 bytes. For Continuum, the arena name and its null terminator can follow the player id,
-    /// which <see cref="SetArenaName"/> adds.
-    /// Continuum accepts 3 to 19 bytes and only reads the player id; it drops a longer packet.
+    /// which <see cref="SetArenaName"/> adds. Continuum accepts 3 to 19 bytes and drops a longer packet.
+    /// <para>
+    /// Continuum uses the name as the arena's folder under the zone folder, where it looks for arena files first.
+    /// Without a name it uses the name it asked for when it entered the arena, which is empty for a public arena.
+    /// An empty name means the zone's "public" folder, and is the only case in which Continuum restores and stores a
+    /// saved ship, so the name should only be sent for an arena that is not public.
+    /// </para>
     /// </remarks>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct S2C_WhoAmI(short playerId)
