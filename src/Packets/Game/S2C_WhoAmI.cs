@@ -13,10 +13,16 @@ namespace SS.Packets.Game
     /// The original form is 3 bytes. For Continuum, the arena name and its null terminator can follow the player id,
     /// which <see cref="SetArenaName"/> adds. Continuum accepts 3 to 19 bytes and drops a longer packet.
     /// <para>
-    /// Continuum uses the name as the arena's folder under the zone folder, where it looks for arena files first.
-    /// Without a name it uses the name it asked for when it entered the arena, which is empty for a public arena.
-    /// An empty name means the zone's "public" folder, and is the only case in which Continuum restores and stores a
-    /// saved ship, so the name should only be sent for an arena that is not public.
+    /// Continuum keeps the name as the arena it is in:
+    /// <list type="bullet">
+    /// <item>3 bytes: no name, so it keeps the name it last asked for (empty for a public arena). That is wrong when the
+    /// server placed or moved the player to a different arena.</item>
+    /// <item>4 bytes: an empty name, meaning a public arena.</item>
+    /// <item>5 to 19 bytes: the arena name. Continuum treats the last byte as the null terminator.</item>
+    /// </list>
+    /// The name selects the arena's folder under the zone folder (the "public" folder when empty), whose files take
+    /// precedence over the zone's. Continuum only saves and restores a ship (Misc:AllowSavedShips) while the name is empty,
+    /// so a public arena should be sent an empty name, not its "0", "1", ... name.
     /// </para>
     /// </remarks>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -51,7 +57,7 @@ namespace SS.Packets.Game
         /// <summary>
         /// Appends the arena name, for Continuum clients.
         /// </summary>
-        /// <param name="value">The arena name. It is truncated to fit (15 bytes), since Continuum drops a packet of more than 19 bytes.</param>
+        /// <param name="value">The arena name, or empty for a public arena. It is truncated to fit (15 bytes), since Continuum drops a packet of more than 19 bytes.</param>
         /// <returns>Number of bytes for the packet.</returns>
         public int SetArenaName(ReadOnlySpan<char> value)
         {

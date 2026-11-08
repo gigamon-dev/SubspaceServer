@@ -1884,17 +1884,19 @@ namespace SS.Core.Modules
         }
 
         /// <summary>
-        /// Sends the whoami packet (S2C 0x01). Continuum clients in a non-public arena also get the arena name.
+        /// Sends the whoami packet (S2C 0x01). Continuum clients also get the arena name, which is empty for a public arena.
         /// </summary>
         private void SendWhoAmI(Player player, Arena arena)
         {
             S2C_WhoAmI whoAmI = new((short)player.Id);
             int length = S2C_WhoAmI.Length;
 
-            // Continuum treats an empty name as a public arena: it uses the zone's "public" folder and restores the saved ship.
-            // A public arena's name ("0", "1", ...) would make it a separate arena folder with no saved ship, so it is not sent.
-            if (player.Type == ClientType.Continuum && !arena.IsPublic)
-                length = whoAmI.SetArenaName(arena.Name);
+            // Continuum keeps the name as the arena it is in. Without one (the 3-byte form) it keeps the name it last asked for,
+            // which is wrong when the server placed or moved the player elsewhere, so it is always sent.
+            // An empty name (4 bytes) means a public arena: the zone's "public" folder, and the only case in which Continuum
+            // saves and restores a ship. So a public arena's name ("0", "1", ...) is not sent, only an empty one.
+            if (player.Type == ClientType.Continuum)
+                length = whoAmI.SetArenaName(arena.IsPublic ? ReadOnlySpan<char>.Empty : arena.Name);
 
             _network?.SendToOne(
                 player,
