@@ -1896,7 +1896,7 @@ namespace SS.Core.Modules
             // An empty name (4 bytes) means a public arena: the zone's "public" folder, and the only case in which Continuum
             // saves and restores a ship. So a public arena's name ("0", "1", ...) is not sent, only an empty one.
             if (player.Type == ClientType.Continuum)
-                length = whoAmI.SetArenaName(arena.IsPublic ? ReadOnlySpan<char>.Empty : arena.Name);
+                length = whoAmI.SetArenaName(arena.IsPublic ? [] : arena.BaseName);
 
             _network?.SendToOne(
                 player,
