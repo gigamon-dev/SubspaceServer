@@ -185,6 +185,12 @@ namespace SS.Core.ComponentInterfaces
     }
 
     /// <summary>
+    /// Changes client settings that are about to be sent to a player.
+    /// </summary>
+    /// <param name="settings">The settings to change.</param>
+    public delegate void ClientSettingsModifier(ref S2C_ClientSettings settings);
+
+    /// <summary>
     /// Interface for a service that manages the client settings.
     /// </summary>
     /// <remarks>
@@ -214,6 +220,34 @@ namespace SS.Core.ComponentInterfaces
         /// </remarks>
         /// <param name="player">The player to send settings to.</param>
         void SendClientSettings(Player player);
+
+        /// <summary>
+        /// Sends client settings to a player, changed for this one send.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="modifier"/> changes the settings that <see cref="SendClientSettings(Player)"/> would send.
+        /// The changed settings become the player's current settings, as returned by <see cref="GetSetting(Player, ClientSettingIdentifier)"/>
+        /// and used by <see cref="GetChecksum(Player, uint)"/>, so that the server agrees with what the client has.
+        /// They last until settings are next sent to the player, which sends the usual settings again.
+        /// The <see cref="Modules.Game"/> module does that with <see cref="RestoreClientSettings(Player)"/> whenever the player's ship is reset
+        /// (death, ship or freq change, ship reset).
+        /// Arena and player overrides are not changed.
+        /// </remarks>
+        /// <param name="player">The player to send settings to.</param>
+        /// <param name="modifier">Changes the settings before they are sent.</param>
+        void SendClientSettings(Player player, ClientSettingsModifier modifier);
+
+        /// <summary>
+        /// Sends the usual client settings to a player that was last sent changed settings by <see cref="SendClientSettings(Player, ClientSettingsModifier)"/>.
+        /// </summary>
+        /// <remarks>
+        /// A client keeps its settings when its ship is reset, so changed settings would otherwise carry over to the new ship.
+        /// Call this before sending a packet that resets the player's ship, so that the ship is reset with the usual settings.
+        /// A client that gets settings after its ship was reset keeps its ship's stats between the initial and maximum values.
+        /// </remarks>
+        /// <param name="player">The player to send settings to.</param>
+        /// <returns><see langword="true"/> if settings were sent; <see langword="false"/> if the player's settings were not changed.</returns>
+        bool RestoreClientSettings(Player player);
 
         /// <summary>
         /// Gets the checksum of a player's client settings.

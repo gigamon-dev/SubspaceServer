@@ -16,6 +16,7 @@ namespace SS.Core.Modules
         IArenaManager arenaManager,
         ICapabilityManager capabilityManager,
         IChat chat,
+        IClientSettings clientSettings,
         IConfigManager configManager,
         ICommandManager commandManager,
         IFileTransfer fileTransfer,
@@ -35,6 +36,7 @@ namespace SS.Core.Modules
         private readonly IArenaManager _arenaManager = arenaManager ?? throw new ArgumentNullException(nameof(arenaManager));
         private readonly ICapabilityManager _capabilityManager = capabilityManager ?? throw new ArgumentNullException(nameof(capabilityManager));
         private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly IClientSettings _clientSettings = clientSettings ?? throw new ArgumentNullException(nameof(clientSettings));
         private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
         private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
         private readonly IFileTransfer _fileTransfer = fileTransfer ?? throw new ArgumentNullException(nameof(fileTransfer));
@@ -61,6 +63,7 @@ namespace SS.Core.Modules
             _commandManager.AddCommand("delfile", Command_delfile);
             _commandManager.AddCommand("renfile", Command_renfile);
             _commandManager.AddCommand("ufo", Command_ufo);
+            _commandManager.AddCommand("super", Command_super);
 
             return true;
         }
@@ -80,6 +83,7 @@ namespace SS.Core.Modules
             _commandManager.RemoveCommand("delfile", Command_delfile);
             _commandManager.RemoveCommand("renfile", Command_renfile);
             _commandManager.RemoveCommand("ufo", Command_ufo);
+            _commandManager.RemoveCommand("super", Command_super);
 
             return true;
         }
@@ -836,6 +840,167 @@ namespace SS.Core.Modules
 
             _network.SendToOne(targetPlayer, ufoPacket, NetSendFlags.Reliable);
             _chat.SendMessage(player, $"UFO set to {ufoPacket[1]} for {targetPlayer.Name}");
+        }
+
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = null,
+            Description = """
+                Sends super ship settings to you, or to the target player. Only that player's
+                client gets them: weapons and items cost no energy, weapons fire faster, ships
+                have more thrust, speed and recharge and start fully upgraded, item limits are
+                raised, and bullet, bomb and burst damage levels are 0. The client also fills
+                the current ship with energy, items and the top gun and bomb levels.
+                It ends when the player's ship is reset (death, ship or freq change, ship reset),
+                or when the player is next sent settings, such as on entering an arena or when
+                the arena's settings change. Use ?super again to get it back.
+                """)]
+        private void Command_super(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            if (!target.TryGetPlayerTarget(out Player? targetPlayer))
+                targetPlayer = player;
+
+            // Clients only fill the ship once, when the settings arrive, but keep the settings when the ship is reset.
+            // So the Game module sends the usual settings again whenever the ship is reset (see IClientSettings.RestoreClientSettings),
+            // rather than leave a ship with no damage and the boosted speed but without the rest of the loadout.
+            _clientSettings.SendClientSettings(targetPlayer, MakeSuperSettings);
+        }
+
+        #endregion
+
+        #region Super settings
+
+        private static readonly int ShipBulletFireEnergy = ShipShortIndex("BulletFireEnergy");
+        private static readonly int ShipMultiFireEnergy = ShipShortIndex("MultiFireEnergy");
+        private static readonly int ShipBombFireEnergy = ShipShortIndex("BombFireEnergy");
+        private static readonly int ShipBombFireEnergyUpgrade = ShipShortIndex("BombFireEnergyUpgrade");
+        private static readonly int ShipLandmineFireEnergy = ShipShortIndex("LandmineFireEnergy");
+        private static readonly int ShipLandmineFireEnergyUpgrade = ShipShortIndex("LandmineFireEnergyUpgrade");
+        private static readonly int ShipCloakEnergy = ShipShortIndex("CloakEnergy");
+        private static readonly int ShipStealthEnergy = ShipShortIndex("StealthEnergy");
+        private static readonly int ShipAntiWarpEnergy = ShipShortIndex("AntiWarpEnergy");
+        private static readonly int ShipXRadarEnergy = ShipShortIndex("XRadarEnergy");
+        private static readonly int ShipAfterburnerEnergy = ShipShortIndex("AfterburnerEnergy");
+        private static readonly int ShipBombThrust = ShipShortIndex("BombThrust");
+        private static readonly int ShipAttachBounty = ShipShortIndex("AttachBounty");
+        private static readonly int ShipBulletFireDelay = ShipShortIndex("BulletFireDelay");
+        private static readonly int ShipMultiFireDelay = ShipShortIndex("MultiFireDelay");
+        private static readonly int ShipBombFireDelay = ShipShortIndex("BombFireDelay");
+        private static readonly int ShipLandmineFireDelay = ShipShortIndex("LandmineFireDelay");
+        private static readonly int ShipMaximumRotation = ShipShortIndex("MaximumRotation");
+        private static readonly int ShipMaximumThrust = ShipShortIndex("MaximumThrust");
+        private static readonly int ShipMaximumSpeed = ShipShortIndex("MaximumSpeed");
+        private static readonly int ShipMaximumRecharge = ShipShortIndex("MaximumRecharge");
+        private static readonly int ShipMaximumEnergy = ShipShortIndex("MaximumEnergy");
+        private static readonly int ShipInitialRotation = ShipShortIndex("InitialRotation");
+        private static readonly int ShipInitialThrust = ShipShortIndex("InitialThrust");
+        private static readonly int ShipInitialSpeed = ShipShortIndex("InitialSpeed");
+        private static readonly int ShipInitialRecharge = ShipShortIndex("InitialRecharge");
+        private static readonly int ShipInitialEnergy = ShipShortIndex("InitialEnergy");
+        private static readonly int ShipDamageFactor = ShipShortIndex("DamageFactor");
+        private static readonly int ShipPrizeShareLimit = ShipShortIndex("PrizeShareLimit");
+
+        private static readonly int ShipMaxMines = ShipByteIndex("MaxMines");
+        private static readonly int ShipRepelMax = ShipByteIndex("RepelMax");
+        private static readonly int ShipBurstMax = ShipByteIndex("BurstMax");
+        private static readonly int ShipDecoyMax = ShipByteIndex("DecoyMax");
+        private static readonly int ShipThorMax = ShipByteIndex("ThorMax");
+        private static readonly int ShipBrickMax = ShipByteIndex("BrickMax");
+        private static readonly int ShipRocketMax = ShipByteIndex("RocketMax");
+        private static readonly int ShipPortalMax = ShipByteIndex("PortalMax");
+
+        private static readonly int BulletDamageLevel = Index(ClientSettingsConfig.LongNames, "Bullet", "BulletDamageLevel");
+        private static readonly int BulletDamageUpgrade = Index(ClientSettingsConfig.LongNames, "Bullet", "BulletDamageUpgrade");
+        private static readonly int BombDamageLevel = Index(ClientSettingsConfig.LongNames, "Bomb", "BombDamageLevel");
+        private static readonly int BurstDamageLevel = Index(ClientSettingsConfig.LongNames, "Burst", "BurstDamageLevel");
+        private static readonly int EngineShutdownTime = Index(ClientSettingsConfig.ShortNames, "Prize", "EngineShutdownTime");
+        private static readonly int MaxPerTeam = Index(ClientSettingsConfig.ByteNames, "Team", "MaxPerTeam");
+        private static readonly int TeamMaxMines = Index(ClientSettingsConfig.ByteNames, "Mine", "TeamMaxMines");
+
+        /// <summary>
+        /// Changes client settings into the super settings that ?super sends.
+        /// </summary>
+        /// <param name="settings">The settings to change.</param>
+        internal static void MakeSuperSettings(ref S2C_ClientSettings settings)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                ref ShipSettings ship = ref settings.Ships[i];
+
+                // Weapons and items cost no energy.
+                ship.Int16Settings[ShipBulletFireEnergy] = 0;
+                ship.Int16Settings[ShipMultiFireEnergy] = 0;
+                ship.Int16Settings[ShipBombFireEnergy] = 0;
+                ship.Int16Settings[ShipBombFireEnergyUpgrade] = 0;
+                ship.Int16Settings[ShipLandmineFireEnergy] = 0;
+                ship.Int16Settings[ShipLandmineFireEnergyUpgrade] = 0;
+                ship.Int16Settings[ShipCloakEnergy] = 0;
+                ship.Int16Settings[ShipStealthEnergy] = 0;
+                ship.Int16Settings[ShipAntiWarpEnergy] = 0;
+                ship.Int16Settings[ShipXRadarEnergy] = 0;
+                ship.Int16Settings[ShipAfterburnerEnergy] = 0;
+                ship.Int16Settings[ShipBombThrust] = 0;
+                ship.Int16Settings[ShipAttachBounty] = 0;
+
+                // Weapons fire faster.
+                ship.Int16Settings[ShipBulletFireDelay] = 10;
+                ship.Int16Settings[ShipMultiFireDelay] = 10;
+                ship.Int16Settings[ShipBombFireDelay] = 10;
+                ship.Int16Settings[ShipLandmineFireDelay] = 10;
+
+                // More thrust, speed and recharge, and the ship starts at its maximums.
+                // The arithmetic is 16-bit, so a large value wraps.
+                unchecked
+                {
+                    ship.Int16Settings[ShipMaximumThrust] = (short)(ship.Int16Settings[ShipMaximumThrust] * 5 / 2);
+                    ship.Int16Settings[ShipMaximumSpeed] = (short)(ship.Int16Settings[ShipMaximumSpeed] * 3);
+                    ship.Int16Settings[ShipMaximumRecharge] = (short)(ship.Int16Settings[ShipMaximumRecharge] << 4);
+                }
+
+                ship.Int16Settings[ShipInitialRotation] = ship.Int16Settings[ShipMaximumRotation];
+                ship.Int16Settings[ShipInitialThrust] = ship.Int16Settings[ShipMaximumThrust];
+                ship.Int16Settings[ShipInitialSpeed] = ship.Int16Settings[ShipMaximumSpeed];
+                ship.Int16Settings[ShipInitialRecharge] = ship.Int16Settings[ShipMaximumRecharge];
+                ship.Int16Settings[ShipInitialEnergy] = ship.Int16Settings[ShipMaximumEnergy];
+
+                // Higher item limits.
+                ship.ByteSettings[ShipMaxMines] = 128;
+                ship.ByteSettings[ShipRepelMax] = 117;
+                ship.ByteSettings[ShipBurstMax] = 128;
+                ship.ByteSettings[ShipDecoyMax] = 128;
+                ship.ByteSettings[ShipThorMax] = 128;
+                ship.ByteSettings[ShipBrickMax] = 128;
+                ship.ByteSettings[ShipRocketMax] = 128;
+                ship.ByteSettings[ShipPortalMax] = 128;
+
+                ship.Int16Settings[ShipDamageFactor] = 100;
+                ship.Int16Settings[ShipPrizeShareLimit] = 999;
+                ship.Weapons.ShrapnelRate = 16;
+            }
+
+            settings.Int32Settings[BulletDamageLevel] = 0;
+            settings.Int32Settings[BulletDamageUpgrade] = 0;
+            settings.Int32Settings[BombDamageLevel] = 0;
+            settings.Int32Settings[BurstDamageLevel] = 0;
+            settings.Int16Settings[EngineShutdownTime] = 0;
+            settings.ByteSettings[MaxPerTeam] = 128;
+            settings.ByteSettings[TeamMaxMines] = 128;
+        }
+
+        private static int ShipShortIndex(string key) => Index(ClientSettingsConfig.ShipShortNames, key);
+
+        private static int ShipByteIndex(string key) => Index(ClientSettingsConfig.ShipByteNames, key);
+
+        private static int Index(string[] keys, string key)
+        {
+            int index = Array.IndexOf(keys, key);
+            return index >= 0 ? index : throw new InvalidOperationException($"Unknown client setting '{key}'.");
+        }
+
+        private static int Index((string Section, string Key)[] names, string section, string key)
+        {
+            int index = Array.IndexOf(names, (section, key));
+            return index >= 0 ? index : throw new InvalidOperationException($"Unknown client setting '{section}:{key}'.");
         }
 
         #endregion
