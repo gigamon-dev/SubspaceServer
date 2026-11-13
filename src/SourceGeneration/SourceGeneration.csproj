@@ -5,9 +5,8 @@
 		<LangVersion>Latest</LangVersion>
 		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
 		<IncludeBuildOutput>false</IncludeBuildOutput>
-		<Nullable>enable</Nullable>
-		<RootNamespace>SS.$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
 		<AssemblyName>SS.$(MSBuildProjectName)</AssemblyName>
+		<RootNamespace>SS.$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
 	</PropertyGroup>
 
 	<ItemGroup>

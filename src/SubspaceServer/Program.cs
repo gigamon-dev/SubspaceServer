@@ -251,7 +251,7 @@ X. Exit
     }
 
     
-    internal unsafe static partial class UnmanagedWinMM
+    internal static partial class UnmanagedWinMM
     {
         /// <summary>
         /// Requests a minimum resolution for periodic timers.
