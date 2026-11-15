@@ -1167,6 +1167,14 @@ namespace SS.Core.Modules
                     arenaList.Add(item);
                 }
 
+                if (isCurrent && playerCount < 1)
+                {
+                    // The player is in the arena, so it can't be empty.
+                    // This matters because the client identifies its current arena by a negative player count, and 0 can't be negative.
+                    // The count can be 0 when the player isn't included in the population counts (e.g., has the ExcludePopulation capability).
+                    playerCount = 1;
+                }
+
                 item.IsRemote = isRemote;
                 item.PlayerCount = playerCount > short.MaxValue ? short.MaxValue : (short)playerCount;
                 item.IsCurrent = isCurrent;
