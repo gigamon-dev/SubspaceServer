@@ -387,7 +387,12 @@ namespace SS.Core.Modules
 
                         case PlayerState.SendLoginResponse: ns = PlayerState.LoggedIn; break;
                         case PlayerState.DoFreqAndArenaSync: ns = PlayerState.WaitArenaSync1; break;
-                        case PlayerState.ArenaRespAndCBS: ns = PlayerState.Playing; break;
+                        case PlayerState.ArenaRespAndCBS:
+                            // The transition to PlayerState.Playing is purposely delayed until the player's turn in the pending actions loop below.
+                            // Other players entering the arena in the same batch must not be considered Playing until their own arena response is sent.
+                            // Otherwise, the player entering packets between players entering in the same batch would be sent twice.
+                            ns = PlayerState.ArenaRespAndCBS;
+                            break;
                         case PlayerState.LeavingArena: ns = PlayerState.DoArenaSync2; break;
                         case PlayerState.DoArenaSync2: ns = PlayerState.WaitArenaSync2; break;
                         case PlayerState.LeavingZone: ns = PlayerState.WaitDisconnectHolds; break;
@@ -525,6 +530,27 @@ namespace SS.Core.Modules
                         break;
 
                     case PlayerState.ArenaRespAndCBS:
+                        // Now it's this player's turn to transition to PlayerState.Playing.
+                        // The arena response sent below includes only the players already in the PlayerState.Playing state.
+                        // Players later in this batch are still in the PlayerState.ArenaRespAndCBS state, so they are not included.
+                        // Instead, they will be included in the arena response when it's their turn.
+                        bool isEntering;
+                        _playerData.WriteLock();
+                        try
+                        {
+                            // The player may have started leaving the arena since the batch was collected.
+                            isEntering = player.Status == PlayerState.ArenaRespAndCBS;
+                            if (isEntering)
+                                player.Status = PlayerState.Playing;
+                        }
+                        finally
+                        {
+                            _playerData.WriteUnlock();
+                        }
+
+                        if (!isEntering)
+                            break;
+
                         // Refresh scores in the PlayerEntering packets (Player.Packet).
                         // These packets will be sent later in the SendArenaResponse method call after this.
                         if (_scoreStats != null)
