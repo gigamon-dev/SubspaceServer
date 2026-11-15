@@ -78,6 +78,14 @@ namespace SS.Core.Modules
         private int _playersTotal;
         private int _playersPlaying;
         private DateTime? _populationLastRefreshed;
+
+        /// <summary>
+        /// Whether the population counts are known to be out of date (a player entered or left an arena since the last refresh).
+        /// When <see langword="true"/>, the next call to <see cref="IArenaManager.GetPopulationSummary"/> refreshes the counts,
+        /// regardless of <see cref="_populationRefreshThreshold"/>.
+        /// </summary>
+        private volatile bool _isPopulationStale;
+
         private readonly TimeSpan _populationRefreshThreshold = TimeSpan.FromMilliseconds(1000);
         private readonly ReaderWriterLockSlim _populationLock = new();
 
@@ -163,6 +171,7 @@ namespace SS.Core.Modules
             QueueRefreshKnownArenas();
 
             GlobalConfigChangedCallback.Register(broker, RefreshPermanentArenas);
+            PlayerActionCallback.Register(broker, Callback_PlayerAction);
 
             _iArenaManagerToken = Broker.RegisterInterface<IArenaManager>(this);
             _iArenaManagerInternalToken = Broker.RegisterInterface<IArenaManagerInternal>(this);
@@ -222,6 +231,7 @@ namespace SS.Core.Modules
                 return false;
 
             GlobalConfigChangedCallback.Unregister(broker, RefreshPermanentArenas);
+            PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
 
             if (_knownArenaWatcher is not null)
             {
@@ -392,6 +402,9 @@ namespace SS.Core.Modules
                     // Refresh population stats
                     total = playing = 0;
 
+                    // Cleared before counting, so that a player entering or leaving during the count marks it stale again.
+                    _isPopulationStale = false;
+
                     ICapabilityManager? capabilityManager = Broker.GetInterface<ICapabilityManager>();
 
                     try
@@ -480,7 +493,18 @@ namespace SS.Core.Modules
 
 
             // Local helper function
-            bool RefreshNeeded() => _populationLastRefreshed == null || (DateTime.UtcNow - _populationLastRefreshed.Value) >= _populationRefreshThreshold;
+            bool RefreshNeeded() => _isPopulationStale || _populationLastRefreshed == null || (DateTime.UtcNow - _populationLastRefreshed.Value) >= _populationRefreshThreshold;
+        }
+
+        private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
+        {
+            if (action == PlayerAction.EnterArena || action == PlayerAction.LeaveArena)
+            {
+                // The arena population counts changed.
+                // Make sure the next request for counts gets a refreshed result, rather than one that is up to the refresh threshold old.
+                // E.g., so that ?arena, sent immediately after entering an arena, includes the player in the arena they entered.
+                _isPopulationStale = true;
+            }
         }
 
         ArenaDataKey<T> IArenaManager.AllocateArenaData<T>()
