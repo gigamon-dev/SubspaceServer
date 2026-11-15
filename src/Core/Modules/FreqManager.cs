@@ -665,6 +665,25 @@ namespace SS.Core.Modules
             if (arena is null)
                 return;
 
+            _playerData.Lock();
+
+            try
+            {
+                if (IsEnteringPlayer(player, arena, out PlayerData? pd))
+                {
+                    // The player's ship/freq was changed while it's still entering the arena (e.g., forced by a module).
+                    // It isn't added to a Freq until it finishes entering (PlayerAction.EnterArena), which will use its new freq.
+                    // Until then, update what it's counted as, rather than also adding it to a Freq, which would count it twice.
+                    pd.EnteringFreqNum = newFreq;
+                    pd.EnteringShip = newShip;
+                    return;
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
             UpdateFreqs(arena, player, newFreq, oldFreq);
         }
 
