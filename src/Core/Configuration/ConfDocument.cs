@@ -170,6 +170,42 @@ namespace SS.Core.Configuration
             }
         }
 
+        /// <summary>
+        /// Adds the files that the document consists of to a set.
+        /// </summary>
+        /// <param name="files">The set to add the files to.</param>
+        public void AddFilesTo(HashSet<ConfFile> files)
+        {
+            ArgumentNullException.ThrowIfNull(files);
+
+            foreach (ConfFile file in _files)
+            {
+                files.Add(file);
+            }
+        }
+
+        /// <summary>
+        /// Releases the files that the document consists of, for when the document is no longer going to be used.
+        /// </summary>
+        /// <remarks>
+        /// This stops the document from listening for changes to the files, so that it doesn't keep them referenced.
+        /// The document has no settings afterwards, unless it's loaded again.
+        /// </remarks>
+        public void ReleaseFiles()
+        {
+            foreach (ConfFile file in _files)
+            {
+                file.Changed -= File_Changed;
+            }
+
+            _files.Clear();
+            _baseFile = null;
+            _lines.Clear();
+            _settings.Clear();
+            _updatingFile = null;
+            IsReloadNeeded = false;
+        }
+
         private void AddFile(ConfFile file)
         {
             ArgumentNullException.ThrowIfNull(file);

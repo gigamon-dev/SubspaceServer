@@ -56,6 +56,21 @@ namespace SS.Core.Modules
         /// </summary>
         private readonly Dictionary<string, DocumentInfo> _documents = [];
 
+        /// <summary>
+        /// Files that were found to no longer exist on disk, so that it's logged once rather than on every check.
+        /// </summary>
+        private readonly HashSet<ConfFile> _missingFiles = [];
+
+        /// <summary>
+        /// Whether there may be documents with no open handles, or files no longer used by any document, to remove.
+        /// </summary>
+        private bool _isCleanupNeeded = false;
+
+        /// <summary>
+        /// For <see cref="RemoveUnusedDocumentsAndFiles"/>, the files used by the remaining documents. Reused to avoid allocating.
+        /// </summary>
+        private readonly HashSet<ConfFile> _usedFiles = [];
+
         private readonly SemaphoreSlim _semaphore = new(1, 1);
         private bool _isDisposed;
 
@@ -141,54 +156,67 @@ namespace SS.Core.Modules
 
                 try
                 {
-                    // check if any document needs to be reloaded
-                    // or any file has been modified on disk and needs to be reloaded
-                    // note: checking files second since it requires I/O
-                    if (HasWork())
+                    // Remove documents that are no longer referenced by a handle, and files that are no longer referenced by a document,
+                    // so that they aren't checked on disk anymore (e.g., for an arena that was destroyed).
+                    if (_isCleanupNeeded)
                     {
-                        // reload files that have been modified on disk
-                        // note: this is done first, because it affects documents
-                        // (a document that consists of a file that was reloaded will need to be reloaded afterwards)
-                        foreach (ConfFile file in _files.Values)
-                        {
-                            if (file.IsReloadNeeded)
-                            {
-                                Log(LogLevel.Info, $"Reloading conf file '{file.Path}' from disk.");
+                        _isCleanupNeeded = false;
+                        RemoveUnusedDocumentsAndFiles();
+                    }
 
-                                try
-                                {
-                                    file.LoadAsync(CancellationToken.None).Wait();
-                                }
-                                catch (Exception ex)
-                                {
-                                    Log(LogLevel.Warn, $"Failed to reload conf file '{file.Path}'. {ex.Message}");
-                                }
-                            }
+                    // reload files that have been modified on disk
+                    // note: this is done first, because it affects documents
+                    // (a document that consists of a file that was reloaded will need to be reloaded afterwards)
+                    foreach (ConfFile file in _files.Values)
+                    {
+                        ConfFileDiskState diskState = file.GetDiskState();
+
+                        if (diskState == ConfFileDiskState.Missing)
+                        {
+                            // The file was deleted, or the folder it was in was deleted or renamed.
+                            // Keep using what was loaded from it, rather than trying to reload it.
+                            LogMissing(file);
+                            continue;
                         }
 
-                        // reload each document that needs to be reloaded
-                        // note: a document may need to be reloaded if any of the files it consists of was reloaded
-                        // or a file shared by multiple documents was updated by 1 of the documents (the other documents will need reloading)
-                        foreach (DocumentInfo docInfo in _documents.Values)
+                        if (_missingFiles.Remove(file))
                         {
-                            if (docInfo.Document.IsReloadNeeded)
-                            {
-                                Log(LogLevel.Info, $"Reloading settings for base conf '{docInfo.Path}'.");
-                                docInfo.Document.LoadAsync().Wait();
-                                docInfo.IsChangeNotificationPending = true;
-                            }
-
-                            if (docInfo.IsChangeNotificationPending)
-                            {
-                                docInfo.IsChangeNotificationPending = false;
-                                notifyList ??= _documentInfoListPool.Get();
-                                notifyList.Add(docInfo);
-                            }
+                            Log(LogLevel.Info, $"Conf file '{file.Path}' exists on disk again.");
                         }
 
-                        // TODO: remove documents that are no longer referenced by a handle
+                        if (diskState == ConfFileDiskState.Modified)
+                        {
+                            Log(LogLevel.Info, $"Reloading conf file '{file.Path}' from disk.");
 
-                        // TODO: remove files that are no longer referenced by a document
+                            try
+                            {
+                                file.LoadAsync(CancellationToken.None).Wait();
+                            }
+                            catch (Exception ex)
+                            {
+                                Log(LogLevel.Warn, $"Failed to reload conf file '{file.Path}'. {ex.Message}");
+                            }
+                        }
+                    }
+
+                    // reload each document that needs to be reloaded
+                    // note: a document may need to be reloaded if any of the files it consists of was reloaded
+                    // or a file shared by multiple documents was updated by 1 of the documents (the other documents will need reloading)
+                    foreach (DocumentInfo docInfo in _documents.Values)
+                    {
+                        if (docInfo.Document.IsReloadNeeded)
+                        {
+                            Log(LogLevel.Info, $"Reloading settings for base conf '{docInfo.Path}'.");
+                            docInfo.Document.LoadAsync().Wait();
+                            docInfo.IsChangeNotificationPending = true;
+                        }
+
+                        if (docInfo.IsChangeNotificationPending)
+                        {
+                            docInfo.IsChangeNotificationPending = false;
+                            notifyList ??= _documentInfoListPool.Get();
+                            notifyList.Add(docInfo);
+                        }
                     }
                 }
                 finally
@@ -213,22 +241,77 @@ namespace SS.Core.Modules
             return true;
 
 
-            bool HasWork()
-            {
-                foreach (DocumentInfo documentInfo in _documents.Values)
-                    if (documentInfo.Document.IsReloadNeeded || documentInfo.IsChangeNotificationPending)
-                        return true;
-
-                foreach (ConfFile file in _files.Values)
-                    if (file.IsReloadNeeded)
-                        return true;
-
-                return false;
-            }
-
             static void MainloopWork_NotifyChanged(DocumentInfo docInfo)
             {
                 docInfo.NotifyChanged();
+            }
+        }
+
+        /// <summary>
+        /// Logs that a file no longer exists on disk, if it wasn't already logged.
+        /// </summary>
+        /// <remarks>
+        /// The <see cref="_semaphore"/> must be held.
+        /// </remarks>
+        /// <param name="file">The file that no longer exists on disk.</param>
+        private void LogMissing(ConfFile file)
+        {
+            if (_missingFiles.Add(file))
+            {
+                Log(LogLevel.Warn, $"Conf file '{file.Path}' no longer exists on disk. The settings already loaded from it are still in use, and changes to them won't be saved unless the file exists again.");
+            }
+        }
+
+        /// <summary>
+        /// Removes documents that no longer have any open handles, and files that are no longer used by any document.
+        /// </summary>
+        /// <remarks>
+        /// The <see cref="_semaphore"/> must be held.
+        /// </remarks>
+        private void RemoveUnusedDocumentsAndFiles()
+        {
+            // Note: Removing from a Dictionary while enumerating it is allowed, and doesn't invalidate the enumerator.
+            foreach ((string path, DocumentInfo documentInfo) in _documents)
+            {
+                if (documentInfo.HasHandles)
+                    continue;
+
+                _documents.Remove(path);
+
+                // Stops the document from listening for changes to its files, which would otherwise keep them referenced.
+                documentInfo.Document.ReleaseFiles();
+
+                Log(LogLevel.Drivel, $"Closed base conf '{path}', which is no longer in use.");
+            }
+
+            try
+            {
+                foreach (DocumentInfo documentInfo in _documents.Values)
+                {
+                    documentInfo.Document.AddFilesTo(_usedFiles);
+                }
+
+                foreach ((string path, ConfFile file) in _files)
+                {
+                    if (_usedFiles.Contains(file))
+                        continue;
+
+                    if (file.IsDirty)
+                    {
+                        // There are changes that haven't been saved yet. Try again later, after they're saved.
+                        _isCleanupNeeded = true;
+                        continue;
+                    }
+
+                    _files.Remove(path);
+                    _missingFiles.Remove(file);
+
+                    Log(LogLevel.Drivel, $"Closed conf file '{path}', which is no longer in use.");
+                }
+            }
+            finally
+            {
+                _usedFiles.Clear();
             }
         }
 
@@ -244,6 +327,14 @@ namespace SS.Core.Modules
                     {
                         if (file.IsDirty)
                         {
+                            if (file.GetDiskState() == ConfFileDiskState.Missing)
+                            {
+                                // Don't recreate a file that was deleted, or try to write into a folder that was deleted or renamed.
+                                // The changes stay pending, and are saved if the file exists again (unless it's reloaded first).
+                                LogMissing(file);
+                                continue;
+                            }
+
                             Log(LogLevel.Info, $"Saving changes to conf file '{file.Path}'.");
 
                             try
@@ -337,7 +428,14 @@ namespace SS.Core.Modules
 
             try
             {
-                documentHandle.DocumentInfo?.CloseHandle(documentHandle);
+                DocumentInfo? documentInfo = documentHandle.DocumentInfo;
+                if (documentInfo is not null
+                    && documentInfo.CloseHandle(documentHandle)
+                    && !documentInfo.HasHandles)
+                {
+                    // The document is no longer in use. It's removed by the timer that checks for modified files.
+                    _isCleanupNeeded = true;
+                }
             }
             finally
             {
@@ -761,6 +859,20 @@ namespace SS.Core.Modules
                 }
 
                 return handle;
+            }
+
+            /// <summary>
+            /// Whether there are any open handles to the document.
+            /// </summary>
+            public bool HasHandles
+            {
+                get
+                {
+                    lock (_lock)
+                    {
+                        return _handles.Count > 0;
+                    }
+                }
             }
 
             public bool CloseHandle(DocumentHandle handle)
