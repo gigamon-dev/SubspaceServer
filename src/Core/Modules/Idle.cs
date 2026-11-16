@@ -92,7 +92,7 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _iIdleToken) != 0)
                 return false;
 
-            PlayerActionCallback.Register(broker, Callback_PlayerAction);
+            PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
 
             _commandManager.RemoveCommand("notavailable", Command_NotAvailable);
             _commandManager.RemoveCommand("nav", Command_NotAvailable);
