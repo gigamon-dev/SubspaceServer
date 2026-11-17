@@ -72,25 +72,32 @@ namespace SS.Core.ComponentInterfaces
     /// Choosing an item closes the select box, and sends the ?select command with the item's value and text.
     /// Closing it sends nothing, so the server cannot tell that it was closed.
     /// The server is able to tell the client to display a select box, but it is unable to hide it.
-    /// A client only has one select box, so opening one replaces the one that was open.
+    /// A client only has one select box, so displaying one replaces the one that was open.
     /// The select box stays open when the player changes arenas.
     /// </para>
     /// <para>
-    /// For each player, this service keeps track of the select box that was last opened for the player.
-    /// A player is no longer associated with a select box when:
+    /// So that select boxes opened by different modules don't replace each other, each player has a queue.
+    /// A select box is displayed to a player immediately if no other select box is displayed to the player.
+    /// Otherwise, it's queued, and displayed once the ones before it are done.
+    /// A select box that is displayed to a player is done when:
     /// <list type="bullet">
-    /// <item>the player selects one of its items,</item>
-    /// <item>another select box is opened for the player,</item>
-    /// <item>the select box times out (if it was opened with a timeout),</item>
-    /// <item>the select box is cancelled,</item>
-    /// <item>or the player leaves the arena (or disconnects).</item>
+    /// <item>the player selects one of its items (the next queued select box is displayed),</item>
+    /// <item>it times out, if it was opened with a timeout (it's replaced with the next queued select box, or if there isn't one, the expired select box described below),</item>
+    /// <item>it's cancelled (same as timing out),</item>
+    /// <item>or the player leaves the arena (or disconnects), which also removes the player's queued select boxes.</item>
     /// </list>
-    /// A ?select that doesn't match an item (value and text) of the select box that the player is associated with is ignored.
-    /// Once no players are associated with a select box, it is completed: its completed delegate is called, so that the state object can be reused.
+    /// The player may have closed a select box (ESC), which the server can't tell.
+    /// So, a select box that was opened without a timeout is only displayed for the SelectBox:QueueSwitchSeconds global setting while another one is queued.
+    /// Then the queued one is displayed instead, and the one that was displayed goes to the back of the player's queue.
+    /// A select box that was opened with a timeout is displayed until it times out.
+    /// A player can use the ?select command without arguments to display their select box again.
     /// </para>
     /// <para>
-    /// When a select box times out or is cancelled, the players still associated with it are sent a replacement select box,
-    /// with the same title and a single item, <see cref="Modules.SelectBox.ExpiredItemText"/>, which is ignored if selected.
+    /// A ?select that doesn't match an item (value and text) of the select box that is displayed to the player is ignored.
+    /// Once no players are associated with a select box (displayed or queued), it is completed: its completed delegate is called, so that the state object can be reused.
+    /// </para>
+    /// <para>
+    /// The expired select box has the same title and a single item, <see cref="Modules.SelectBox.ExpiredItemText"/>, which is ignored if selected.
     /// Players that already closed the select box (ESC) will see it open again.
     /// When a player leaves the arena, nothing is sent, so the select box may still be displayed in the new arena, and selecting an item from it is ignored.
     /// </para>
@@ -116,7 +123,7 @@ namespace SS.Core.ComponentInterfaces
     public interface ISelectBox : IComponentInterface
     {
         /// <summary>
-        /// Displays a select box to player(s).
+        /// Displays a select box to player(s), or queues it for those that another select box is displayed to.
         /// </summary>
         /// <typeparam name="TState">The type of the state object.</typeparam>
         /// <param name="target">A target representing which player(s) to display the select box to. Only players in an arena, using a client that supports select boxes, are included.</param>
@@ -129,7 +136,8 @@ namespace SS.Core.ComponentInterfaces
         /// It is called exactly once for each call to this method, including when the select box isn't displayed to anyone (immediately, in that case).
         /// </param>
         /// <param name="timeout">
-        /// How long to wait for players to select an item, or <see langword="null"/> to wait until the player selects an item or is no longer associated with the select box for another reason.
+        /// How long to wait for a player to select an item, from when it's displayed to the player (time spent queued doesn't count),
+        /// or <see langword="null"/> to wait until the player selects an item or is no longer associated with the select box for another reason.
         /// </param>
         /// <returns>A handle for cancelling the select box. It is empty if the select box wasn't displayed to anyone.</returns>
         SelectBoxHandle Open<TState>(
@@ -142,8 +150,9 @@ namespace SS.Core.ComponentInterfaces
             TimeSpan? timeout = null);
 
         /// <summary>
-        /// Cancels a select box.
-        /// The players still associated with it are sent a replacement select box (see <see cref="Modules.SelectBox.ExpiredItemText"/>), and it is completed.
+        /// Cancels a select box, and completes it.
+        /// For the players it's displayed to, it's replaced with the next queued select box, or if there isn't one, the expired select box (see <see cref="Modules.SelectBox.ExpiredItemText"/>).
+        /// For the players it's queued for, it's removed from the queue.
         /// </summary>
         /// <param name="handle">The handle that was returned when the select box was opened.</param>
         /// <returns><see langword="true"/> if the select box was cancelled. <see langword="false"/> if the handle is empty, or the select box was already completed.</returns>

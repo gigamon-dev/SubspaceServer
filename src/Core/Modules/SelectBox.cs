@@ -19,6 +19,7 @@ namespace SS.Core.Modules
     /// </remarks>
     public sealed class SelectBox(
         ICommandManager commandManager,
+        IConfigManager configManager,
         IMainloop mainloop,
         IMainloopTimer mainloopTimer,
         INetwork network,
@@ -26,6 +27,7 @@ namespace SS.Core.Modules
         IPlayerData playerData) : IModule, ISelectBox
     {
         private readonly ICommandManager _commandManager  = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
+        private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
         private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
         private readonly IMainloopTimer _mainloopTimer = mainloopTimer ?? throw new ArgumentNullException(nameof(mainloopTimer));
         private readonly INetwork _network = network ?? throw new ArgumentNullException(nameof(network));
@@ -37,7 +39,22 @@ namespace SS.Core.Modules
         private InterfaceRegistrationToken<ISelectBox>? _selectBoxRegistrationToken;
         private PlayerDataKey<PlayerData> _pdKey;
 
+        /// <summary>
+        /// The players that a select box is displayed to, for checking timeouts and switching to queued select boxes.
+        /// </summary>
+        private readonly HashSet<Player> _playersWithSelectBox = [];
+
+        /// <summary>
+        /// How long (in ticks) a select box without a timeout is displayed before a queued one is displayed instead. 0 = never.
+        /// </summary>
+        private int _queueSwitchTicks;
+
         private const string CommandName = "select";
+
+        /// <summary>
+        /// How often to check timeouts and whether to switch to a queued select box.
+        /// </summary>
+        private const int CheckIntervalMilliseconds = 500;
 
         /// <summary>
         /// The maximum # of bytes Continnum accepts for the <see cref="S2CPacketType.SelectBox"/> packet.
@@ -68,11 +85,24 @@ namespace SS.Core.Modules
 
         #region Module members
 
+        [ConfigHelp<int>("SelectBox", "QueueSwitchSeconds", ConfigScope.Global, Default = 30, Min = 0,
+            Description = """
+                How many seconds a select box that was opened without a timeout is displayed to a player,
+                while another select box is queued for the player, before the queued one is displayed instead.
+                The one that was displayed goes to the back of the player's queue.
+                This is because the player may have closed it (ESC), which the server can't tell.
+                A select box that was opened with a timeout is displayed until it times out.
+                0 = never (the queued one is displayed once the player selects an item).
+                """)]
         bool IModule.Load(IComponentBroker broker)
         {
+            int queueSwitchSeconds = _configManager.GetInt(_configManager.Global, "SelectBox", "QueueSwitchSeconds", ConfigHelp.Constants.Global.SelectBox.QueueSwitchSeconds.Default);
+            _queueSwitchTicks = queueSwitchSeconds > 0 ? Math.Min(queueSwitchSeconds, 1_000_000) * 100 : 0;
+
             _pdKey = _playerData.AllocatePlayerData<PlayerData>();
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
             _commandManager.AddCommand(CommandName, Command_select);
+            _mainloopTimer.SetTimer(MainloopTimer_Check, CheckIntervalMilliseconds, CheckIntervalMilliseconds, null);
             _selectBoxRegistrationToken = broker.RegisterInterface<ISelectBox>(this);
             return true;
         }
@@ -82,9 +112,10 @@ namespace SS.Core.Modules
             if (broker.UnregisterInterface(ref _selectBoxRegistrationToken) != 0)
                 return false;
 
+            _mainloopTimer.ClearTimer(MainloopTimer_Check, null);
             _commandManager.RemoveCommand(CommandName, Command_select);
             PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
-            _mainloopTimer.ClearTimer<Session>(MainloopTimer_Expire, null);
+            _playersWithSelectBox.Clear();
             _playerData.FreePlayerData(ref _pdKey);
             return true;
         }
@@ -113,8 +144,7 @@ namespace SS.Core.Modules
                 throw new InvalidOperationException("Must be called on the mainloop thread.");
 
             HashSet<Player> players = _objectPoolManager.PlayerSetPool.Get();
-            List<(Session Session, int Version)> replaced = s_sessionListPool.Get();
-            SelectBoxHandle handle = default;
+            HashSet<Player> displayNow = _objectPoolManager.PlayerSetPool.Get();
 
             try
             {
@@ -129,61 +159,50 @@ namespace SS.Core.Modules
                     return default;
                 }
 
+                // In ticks (1/100ths of a second). Limited, so that it can be compared with the difference between two ServerTicks.
+                int timeoutTicks = timeout is null ? 0 : (int)Math.Clamp(Math.Ceiling(timeout.Value.TotalMilliseconds / 10), 1, 100_000_000);
+
                 Session<TState> session = Session<TState>.Pool.Get();
-                session.Initialize(state, selected, completed);
+                session.Initialize(state, selected, completed, timeoutTicks);
                 session.BuildPacket(title, items);
+
+                ServerTick now = ServerTick.Now;
 
                 foreach (Player player in players)
                 {
                     if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
                         continue;
 
-                    // The client only has one select box, so this one replaces the one that was open.
-                    if (pd.SelectBoxSession is not null)
-                    {
-                        Session previous = pd.SelectBoxSession;
-                        previous.Players.Remove(player);
-
-                        if (previous.Players.Count == 0)
-                            replaced.Add((previous, previous.Version));
-                    }
-
-                    pd.SelectBoxSession = session;
                     session.Players.Add(player);
+
+                    if (pd.SelectBoxSession is null)
+                    {
+                        // No select box is displayed to the player, so display this one now.
+                        SetDisplayed(player, pd, session, now);
+                        displayNow.Add(player);
+                    }
+                    else
+                    {
+                        // The client only has one select box, and another one is displayed to the player.
+                        // Queue this one, to be displayed once the ones before it are done.
+                        pd.SelectBoxQueue.Add(session);
+                    }
                 }
 
                 if (session.Players.Count == 0)
                 {
-                    CompleteSession(session);
-                }
-                else
-                {
-                    _network.SendToSet(session.Players, session.Packet, NetSendFlags.Reliable);
-
-                    if (timeout is not null)
-                    {
-                        int timeoutMilliseconds = (int)Math.Clamp(Math.Ceiling(timeout.Value.TotalMilliseconds), 1, int.MaxValue);
-                        session.IsTimerSet = true;
-                        _mainloopTimer.SetTimer<Session>(MainloopTimer_Expire, timeoutMilliseconds, timeoutMilliseconds, session, session);
-                    }
-
-                    handle = new SelectBoxHandle(session, session.Version);
+                    session.Complete();
+                    return default;
                 }
 
-                // Complete the select boxes that were replaced for all of their players.
-                // This is done last, since it calls their completed delegates.
-                // A completed delegate can cancel one of the others, so check that each is still the same select box.
-                foreach ((Session previous, int version) in replaced)
-                {
-                    if (previous.IsActive && previous.Version == version)
-                        CompleteSession(previous);
-                }
+                if (displayNow.Count > 0)
+                    _network.SendToSet(displayNow, session.Packet, NetSendFlags.Reliable);
 
-                return handle;
+                return new SelectBoxHandle(session, session.Version);
             }
             finally
             {
-                s_sessionListPool.Return(replaced);
+                _objectPoolManager.PlayerSetPool.Return(displayNow);
                 _objectPoolManager.PlayerSetPool.Return(players);
             }
         }
@@ -196,21 +215,105 @@ namespace SS.Core.Modules
             if (handle.Session is not Session session || !session.IsActive || session.Version != handle.Version)
                 return false;
 
-            Expire(session);
+            foreach (Player player in session.Players)
+            {
+                if (!player.TryGetExtraData(_pdKey, out PlayerData? pd))
+                    continue;
+
+                if (pd.SelectBoxSession == session)
+                {
+                    // It's displayed to the player. Replace it with the next queued select box, or if there isn't one, the expired select box.
+                    ClearDisplayed(player, pd);
+
+                    if (!TryDisplayNext(player, pd))
+                        SendExpired(player, session);
+                }
+                else
+                {
+                    // It's queued for the player.
+                    pd.SelectBoxQueue.Remove(session);
+                }
+            }
+
+            session.Complete();
             return true;
         }
 
         #endregion
 
-        private bool MainloopTimer_Expire(Session session)
+        private bool MainloopTimer_Check()
         {
-            // Returning false stops the timer.
-            session.IsTimerSet = false;
+            if (_playersWithSelectBox.Count == 0)
+                return true;
 
-            if (session.IsActive)
-                Expire(session);
+            ServerTick now = ServerTick.Now;
+            HashSet<Player> due = _objectPoolManager.PlayerSetPool.Get();
 
-            return false;
+            try
+            {
+                foreach (Player player in _playersWithSelectBox)
+                {
+                    if (player.TryGetExtraData(_pdKey, out PlayerData? pd)
+                        && pd.SelectBoxSession is Session session
+                        && IsDue(pd, session, now))
+                    {
+                        due.Add(player);
+                    }
+                }
+
+                // This is done separately, since completing a select box calls its completed delegate, which can open or cancel select boxes.
+                foreach (Player player in due)
+                {
+                    // Check again, in case a completed delegate changed it.
+                    if (!player.TryGetExtraData(_pdKey, out PlayerData? pd)
+                        || pd.SelectBoxSession is not Session session
+                        || !IsDue(pd, session, now))
+                    {
+                        continue;
+                    }
+
+                    ClearDisplayed(player, pd);
+
+                    if (session.TimeoutTicks > 0)
+                    {
+                        // It timed out for the player.
+                        // Replace it with the next queued select box, or if there isn't one, the expired select box.
+                        if (!TryDisplayNext(player, pd))
+                            SendExpired(player, session);
+
+                        session.Players.Remove(player);
+
+                        if (session.Players.Count == 0)
+                            session.Complete();
+                    }
+                    else
+                    {
+                        // The player may have closed it (ESC), which the server can't tell.
+                        // Display the next queued select box instead, and put this one at the back of the queue.
+                        pd.SelectBoxQueue.Add(session);
+                        TryDisplayNext(player, pd);
+                    }
+                }
+            }
+            finally
+            {
+                _objectPoolManager.PlayerSetPool.Return(due);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Gets whether the select box displayed to a player timed out, or should be switched to the next queued select box.
+        /// </summary>
+        private bool IsDue(PlayerData pd, Session session, ServerTick now)
+        {
+            int displayedTicks = now - pd.SelectBoxDisplayedTick;
+
+            if (session.TimeoutTicks > 0)
+                return displayedTicks >= session.TimeoutTicks; // Displayed until it times out, even if others are queued.
+
+            return _queueSwitchTicks > 0 && pd.SelectBoxQueue.Count > 0 && displayedTicks >= _queueSwitchTicks;
         }
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
@@ -218,23 +321,53 @@ namespace SS.Core.Modules
             if (action != PlayerAction.LeaveArena && action != PlayerAction.Disconnect)
                 return;
 
-            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd) || pd.SelectBoxSession is not Session session)
+            if (!player.TryGetExtraData(_pdKey, out PlayerData? pd)
+                || (pd.SelectBoxSession is null && pd.SelectBoxQueue.Count == 0))
+            {
                 return;
+            }
 
             // Nothing is sent to the player. Continuum keeps displaying the select box in the new arena, and selecting from it is ignored.
-            pd.SelectBoxSession = null;
-            session.Players.Remove(player);
+            // The queued select boxes are never displayed to the player.
+            List<(Session Session, int Version)> sessions = s_sessionListPool.Get();
 
-            if (session.Players.Count == 0)
-                CompleteSession(session);
+            try
+            {
+                if (pd.SelectBoxSession is Session displayed)
+                {
+                    ClearDisplayed(player, pd);
+                    sessions.Add((displayed, displayed.Version));
+                }
+
+                foreach (Session queued in pd.SelectBoxQueue)
+                    sessions.Add((queued, queued.Version));
+
+                pd.SelectBoxQueue.Clear();
+
+                foreach ((Session session, _) in sessions)
+                    session.Players.Remove(player);
+
+                // Complete the select boxes that are no longer associated with any player.
+                // A completed delegate can cancel one of the others, so check that each is still the same select box.
+                foreach ((Session session, int version) in sessions)
+                {
+                    if (session.IsActive && session.Version == version && session.Players.Count == 0)
+                        session.Complete();
+                }
+            }
+            finally
+            {
+                s_sessionListPool.Return(sessions);
+            }
         }
 
         [CommandHelp(
             Targets = CommandTarget.None,
-            Args = "<item value> <item text>",
+            Args = "[<item value> <item text>]",
             Description = """
-                Selects an item from the select box that was last displayed.
+                Selects an item from the select box that is displayed.
                 Continuum sends this command when an item is chosen from a select box.
+                Without arguments, displays the select box again (e.g., if it was closed with ESC).
                 """)]
         private void Command_select(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
         {
@@ -243,6 +376,19 @@ namespace SS.Core.Modules
 
             if (!player.TryGetExtraData(_pdKey, out PlayerData? pd) || pd.SelectBoxSession is not Session session)
                 return;
+
+            if (parameters.IsWhiteSpace())
+            {
+                // Display it again.
+                _network.SendToOne(player, session.Packet, NetSendFlags.Reliable);
+
+                // The player wants to see it, so it isn't switched to a queued select box for a while.
+                // A select box with a timeout keeps its timeout.
+                if (session.TimeoutTicks == 0)
+                    pd.SelectBoxDisplayedTick = ServerTick.Now;
+
+                return;
+            }
 
             Span<Range> tokens = stackalloc Range[2];
             int tokenCount = parameters.Split(tokens, ' ', StringSplitOptions.TrimEntries);
@@ -260,8 +406,8 @@ namespace SS.Core.Modules
                 return;
 
             // Choosing an item closes the select box.
-            // Disassociate the player before calling the delegate, so that it can open another select box for the player.
-            pd.SelectBoxSession = null;
+            // Disassociate the player before calling the delegate, so that it can open another select box for the player, which is displayed immediately.
+            ClearDisplayed(player, pd);
             session.Players.Remove(player);
 
             int version = session.Version;
@@ -272,51 +418,63 @@ namespace SS.Core.Modules
             }
             finally
             {
+                // Display the next queued select box, unless the delegate displayed another one.
+                if (pd.SelectBoxSession is null)
+                    TryDisplayNext(player, pd);
+
                 // The delegate may have caused the select box to be completed already (e.g., cancelled it).
                 if (session.IsActive && session.Version == version && session.Players.Count == 0)
-                    CompleteSession(session);
+                    session.Complete();
             }
+        }
+
+        private void SetDisplayed(Player player, PlayerData pd, Session session, ServerTick now)
+        {
+            pd.SelectBoxSession = session;
+            pd.SelectBoxDisplayedTick = now;
+            _playersWithSelectBox.Add(player);
+        }
+
+        private void ClearDisplayed(Player player, PlayerData pd)
+        {
+            pd.SelectBoxSession = null;
+            _playersWithSelectBox.Remove(player);
         }
 
         /// <summary>
-        /// Sends a replacement select box to the players still associated with a select box, and completes it.
+        /// Displays the next select box in a player's queue, if there is one.
         /// </summary>
-        private void Expire(Session session)
+        /// <returns><see langword="true"/> if a select box was displayed.</returns>
+        private bool TryDisplayNext(Player player, PlayerData pd)
         {
-            if (session.Players.Count > 0)
-            {
-                foreach (Player player in session.Players)
-                {
-                    if (player.TryGetExtraData(_pdKey, out PlayerData? pd) && pd.SelectBoxSession == session)
-                        pd.SelectBoxSession = null;
-                }
+            if (pd.SelectBoxQueue.Count == 0)
+                return false;
 
-                // Same title, with a single item that is ignored if selected.
-                ReadOnlySpan<byte> titleWithTerminator = session.TitleWithTerminator;
-                Span<byte> buffer = stackalloc byte[1 + MaxTitleLength + 2 + MaxItemTextLength];
-                buffer[0] = (byte)S2CPacketType.SelectBox;
-                titleWithTerminator.CopyTo(buffer[1..]);
-                int length = 1 + titleWithTerminator.Length;
-                BinaryPrimitives.WriteInt16LittleEndian(buffer[length..], 0);
-                length += 2;
-                length += StringUtils.DefaultEncoding.GetBytes(ExpiredItemText, buffer[length..]);
-                buffer[length++] = 0; // null-terminator
+            Session next = pd.SelectBoxQueue[0];
+            pd.SelectBoxQueue.RemoveAt(0);
 
-                _network.SendToSet(session.Players, buffer[..length], NetSendFlags.Reliable);
-            }
-
-            CompleteSession(session);
+            SetDisplayed(player, pd, next, ServerTick.Now);
+            _network.SendToOne(player, next.Packet, NetSendFlags.Reliable);
+            return true;
         }
 
-        private void CompleteSession(Session session)
+        /// <summary>
+        /// Sends a player a select box to replace one that timed out or was cancelled:
+        /// the same title, with a single item that is ignored if selected.
+        /// </summary>
+        private void SendExpired(Player player, Session session)
         {
-            if (session.IsTimerSet)
-            {
-                _mainloopTimer.ClearTimer<Session>(MainloopTimer_Expire, session);
-                session.IsTimerSet = false;
-            }
+            ReadOnlySpan<byte> titleWithTerminator = session.TitleWithTerminator;
+            Span<byte> buffer = stackalloc byte[1 + MaxTitleLength + 2 + MaxItemTextLength];
+            buffer[0] = (byte)S2CPacketType.SelectBox;
+            titleWithTerminator.CopyTo(buffer[1..]);
+            int length = 1 + titleWithTerminator.Length;
+            BinaryPrimitives.WriteInt16LittleEndian(buffer[length..], 0);
+            length += 2;
+            length += StringUtils.DefaultEncoding.GetBytes(ExpiredItemText, buffer[length..]);
+            buffer[length++] = 0; // null-terminator
 
-            session.Complete();
+            _network.SendToOne(player, buffer[..length], NetSendFlags.Reliable);
         }
 
         #region Helper types
@@ -324,13 +482,25 @@ namespace SS.Core.Modules
         private class PlayerData : IResettable
         {
             /// <summary>
-            /// The select box that was last displayed to the player, if the player is still associated with it.
+            /// The select box that is displayed to the player (as far as the server can tell), if the player is still associated with it.
             /// </summary>
             public Session? SelectBoxSession;
+
+            /// <summary>
+            /// When <see cref="SelectBoxSession"/> was displayed to the player.
+            /// </summary>
+            public ServerTick SelectBoxDisplayedTick;
+
+            /// <summary>
+            /// The select boxes waiting to be displayed to the player, in order.
+            /// </summary>
+            public readonly List<Session> SelectBoxQueue = [];
 
             public bool TryReset()
             {
                 SelectBoxSession = null;
+                SelectBoxDisplayedTick = default;
+                SelectBoxQueue.Clear();
                 return true;
             }
         }
@@ -341,7 +511,7 @@ namespace SS.Core.Modules
         private abstract class Session
         {
             /// <summary>
-            /// The players that the select box is associated with.
+            /// The players that the select box is associated with (displayed or queued).
             /// </summary>
             public readonly HashSet<Player> Players = [];
 
@@ -356,16 +526,16 @@ namespace SS.Core.Modules
             public bool IsActive;
 
             /// <summary>
-            /// Whether a timer is set for the select box's timeout.
+            /// How long (in ticks) the select box is displayed to a player before it times out for the player. 0 = no timeout.
             /// </summary>
-            public bool IsTimerSet;
+            public int TimeoutTicks;
 
             private byte[]? _packet;
             private int _packetLength;
             private int _itemsOffset;
 
             /// <summary>
-            /// The <see cref="S2CPacketType.SelectBox"/> packet that was sent.
+            /// The <see cref="S2CPacketType.SelectBox"/> packet.
             /// </summary>
             public ReadOnlySpan<byte> Packet => _packet.AsSpan(0, _packetLength);
 
@@ -485,7 +655,7 @@ namespace SS.Core.Modules
                 Players.Clear();
                 Version++;
                 IsActive = false;
-                IsTimerSet = false;
+                TimeoutTicks = 0;
 
                 if (_packet is not null)
                 {
@@ -506,11 +676,12 @@ namespace SS.Core.Modules
             private SelectBoxItemSelectedDelegate<TState>? _selected;
             private SelectBoxCompletedDelegate<TState>? _completed;
 
-            public void Initialize(TState state, SelectBoxItemSelectedDelegate<TState> selected, SelectBoxCompletedDelegate<TState>? completed)
+            public void Initialize(TState state, SelectBoxItemSelectedDelegate<TState> selected, SelectBoxCompletedDelegate<TState>? completed, int timeoutTicks)
             {
                 _state = state;
                 _selected = selected;
                 _completed = completed;
+                TimeoutTicks = timeoutTicks;
                 IsActive = true;
             }
 

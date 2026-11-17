@@ -11,7 +11,7 @@ namespace Example.SelectBox;
 /// This is an example of how to use the <see cref="SS.Core.Modules.SelectBox"/> module.
 /// This example opens the select box when a player enters an arena.
 /// Selecting an choice, prints the choice to the player in a green arena chat message.
-/// If the player doesn't choose within 30 seconds, the select box expires.
+/// If the player doesn't choose within 30 seconds of it being displayed, the select box expires.
 /// </summary>
 /// <remarks>
 /// <para>
