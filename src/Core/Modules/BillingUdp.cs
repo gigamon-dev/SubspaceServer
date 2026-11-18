@@ -81,6 +81,22 @@ namespace SS.Core.Modules
         private int _bannerUploadPendingCount = 0;
         private readonly Lock _lock = new();
 
+        /// <summary>
+        /// Players by the connection ID that the billing server knows them by.
+        /// </summary>
+        /// <remarks>
+        /// Each login sent to the billing server is given a new connection ID, rather than using the player's PlayerId.
+        /// PlayerIds are reused, so with a slow enough billing server, a response meant for a player that has left
+        /// could otherwise be applied to a new player that was given the same PlayerId.
+        /// Synchronized with <see cref="_lock"/>.
+        /// </remarks>
+        private readonly Dictionary<int, Player> _connectionIdToPlayer = new(Constants.TargetPlayerCount);
+
+        /// <summary>
+        /// The next connection ID to give out. Synchronized with <see cref="_lock"/>.
+        /// </summary>
+        private int _nextConnectionId = 0;
+
         // Session reattach
         private ReattachPhase _reattachPhase = ReattachPhase.None;
         private BillingSessionReattachRun? _reattachRun;
@@ -413,7 +429,7 @@ namespace SS.Core.Modules
                             ipAddress,
                             loginPacket.Name,
                             loginPacket.Password,
-                            player.Id,
+                            AssignConnectionId(player, playerData),
                             loginPacket.MacId,
                             loginPacket.TimeZoneBias,
                             loginPacket.CVersion);
@@ -762,11 +778,11 @@ namespace SS.Core.Modules
                     return;
                 }
 
-                if (playerData.IsKnownToBiller)
+                if (playerData.IsKnownToBiller && playerData.ConnectionId is int connectionId)
                 {
                     Span<byte> packetBytes = stackalloc byte[S2B_UserDemographics.Length];
                     ref S2B_UserDemographics packet = ref MemoryMarshal.AsRef<S2B_UserDemographics>(packetBytes);
-                    packet = new(player.Id);
+                    packet = new(connectionId);
                     int packetLength = packet.SetData(data[1..]);
                     _networkClient.SendPacket(_cc!, packetBytes[..packetLength], NetSendFlags.Reliable);
 
@@ -1010,29 +1026,93 @@ namespace SS.Core.Modules
 
                 if (playerData.IsKnownToBiller)
                 {
-                    SendUserLogoff(player, playerData);
+                    SendUserLogoff(playerData);
                     playerData.IsKnownToBiller = false;
                 }
                 else if (playerData.Reattach is ReattachState.Pending or ReattachState.TimedOut
+                    && playerData.ConnectionId is int connectionId
                     && _reattachRun is not null
-                    && _reattachRun.Remove(player.Id)
+                    && _reattachRun.Remove(connectionId)
                     && _state == BillingState.LoggedIn)
                 {
                     // The billing server was asked to give the player's session back and has yet to
                     // answer. It handles what it is sent in order, so this ends the session if it does
-                    // give it back, and is ignored if it does not. Waiting for the answer instead would
-                    // risk logging off whoever is given the player's id next.
-                    SendUserLogoff(player, playerData);
+                    // give it back, and is ignored if it does not.
+                    SendUserLogoff(playerData);
                 }
 
                 playerData.Reattach = ReattachState.None;
+
+                // Anything the billing server sends for this connection ID from now on is ignored.
+                ReleaseConnectionId(playerData);
             }
         }
 
-        private void SendUserLogoff(Player player, PlayerData playerData)
+        /// <summary>
+        /// Gives a player a new connection ID for a login being sent to the billing server, replacing any connection ID it had.
+        /// </summary>
+        /// <remarks>
+        /// The <see cref="_lock"/> must be held.
+        /// </remarks>
+        /// <param name="player">The player.</param>
+        /// <param name="playerData">The player's data.</param>
+        /// <returns>The connection ID.</returns>
+        private int AssignConnectionId(Player player, PlayerData playerData)
         {
+            // A response to an earlier login attempt is not for this one.
+            ReleaseConnectionId(playerData);
+
+            // Non-negative, since a connection ID of -1 has special meaning in some packets (e.g., all players).
+            // Skips any still in use, in case of wrapping around.
+            int connectionId;
+
+            do
+            {
+                connectionId = _nextConnectionId;
+                _nextConnectionId = connectionId == int.MaxValue ? 0 : connectionId + 1;
+            }
+            while (!_connectionIdToPlayer.TryAdd(connectionId, player));
+
+            playerData.ConnectionId = connectionId;
+            return connectionId;
+        }
+
+        /// <summary>
+        /// Removes a player's connection ID, if it has one, so that it no longer maps to the player.
+        /// </summary>
+        /// <remarks>
+        /// The <see cref="_lock"/> must be held.
+        /// </remarks>
+        /// <param name="playerData">The player's data.</param>
+        private void ReleaseConnectionId(PlayerData playerData)
+        {
+            if (playerData.ConnectionId is int connectionId)
+            {
+                _connectionIdToPlayer.Remove(connectionId);
+                playerData.ConnectionId = null;
+            }
+        }
+
+        /// <summary>
+        /// Gets the player that the billing server knows by a connection ID.
+        /// </summary>
+        /// <remarks>
+        /// The <see cref="_lock"/> must be held.
+        /// </remarks>
+        /// <param name="connectionId">The connection ID.</param>
+        /// <returns>The player, or <see langword="null"/> if no player currently has the connection ID.</returns>
+        private Player? GetPlayerByConnectionId(int connectionId)
+        {
+            return _connectionIdToPlayer.TryGetValue(connectionId, out Player? player) ? player : null;
+        }
+
+        private void SendUserLogoff(PlayerData playerData)
+        {
+            if (playerData.ConnectionId is not int connectionId)
+                return;
+
             S2B_UserLogoff packet = new(
-                player.Id,
+                connectionId,
                 0, // TODO: put real reason here
                 0, 0, 0, 0); // TODO: get real latency numbers
 
@@ -1056,14 +1136,14 @@ namespace SS.Core.Modules
 
             lock (_lock)
             {
-                if (!playerData.IsKnownToBiller)
+                if (!playerData.IsKnownToBiller || playerData.ConnectionId is not int connectionId)
                     return;
 
                 if (type == ChatMessageType.Chat)
                 {
                     Span<byte> packetBytes = stackalloc byte[S2B_UserChannelChat.MaxLength];
                     ref S2B_UserChannelChat packet = ref MemoryMarshal.AsRef<S2B_UserChannelChat>(packetBytes);
-                    packet = new(player.Id);
+                    packet = new(connectionId);
                     ReadOnlySpan<char> channel = message.GetToken(';', out ReadOnlySpan<char> remaining);
 
                     // Note that this supports a channel name in place of the usual channel number.
@@ -1135,10 +1215,10 @@ namespace SS.Core.Modules
 
             lock (_lock)
             {
-                if (!playerData.IsKnownToBiller)
+                if (!playerData.IsKnownToBiller || playerData.ConnectionId is not int connectionId)
                     return;
 
-                _bannerUploadDictionary[player.Id] = new S2B_UserBanner(player.Id, in banner);
+                _bannerUploadDictionary[player.Id] = new S2B_UserBanner(connectionId, in banner);
             }
         }
 
@@ -1317,7 +1397,7 @@ namespace SS.Core.Modules
 
             lock (_lock)
             {
-                if (!playerData.IsKnownToBiller)
+                if (!playerData.IsKnownToBiller || playerData.ConnectionId is not int connectionId)
                     return;
 
                 if (target.Type != TargetType.Arena)
@@ -1331,7 +1411,7 @@ namespace SS.Core.Modules
 
                 Span<byte> packetBytes = stackalloc byte[S2B_UserCommand.MaxLength];
                 ref S2B_UserCommand packet = ref MemoryMarshal.AsRef<S2B_UserCommand>(packetBytes);
-                packet = new(player.Id);
+                packet = new(connectionId);
                 int length;
 
                 if (line.StartsWith("chat=", StringComparison.OrdinalIgnoreCase) || line.StartsWith("chat ", StringComparison.OrdinalIgnoreCase))
@@ -1670,9 +1750,11 @@ namespace SS.Core.Modules
                     if (player.TryGetExtraData(_pdKey, out PlayerData? playerData)
                         && playerData.Reattach == ReattachState.Held
                         && !playerData.IsKnownToBiller
-                        && playerData.AuthRequest is null)
+                        && playerData.AuthRequest is null
+                        && playerData.ConnectionId is int connectionId)
                     {
-                        _reattachRun.Add(player.Id, playerData.BillingUserId, playerData.BillerName);
+                        // Asked for by the connection ID the session was created with.
+                        _reattachRun.Add(connectionId, playerData.BillingUserId, playerData.BillerName);
                         playerData.Reattach = ReattachState.Pending;
                         count++;
                     }
@@ -1861,9 +1943,9 @@ namespace SS.Core.Modules
 
         private void ApplyReattachResult(BillingSessionReattachResult result)
         {
-            // A player who leaves is taken out of the run, so a result is always for a player who is
-            // still here. The state is checked anyway, since the id could otherwise be someone else's.
-            Player? player = _playerData.PidToPlayer(result.ConnectionId);
+            // A player who leaves is taken out of the run, and its connection ID is released, so a result
+            // is always for a player who is still here. The state is checked anyway.
+            Player? player = GetPlayerByConnectionId(result.ConnectionId);
             if (player is null || !player.TryGetExtraData(_pdKey, out PlayerData? playerData))
                 return;
 
@@ -1959,10 +2041,10 @@ namespace SS.Core.Modules
 
             ref B2S_UserLogin packet = ref MemoryMarshal.AsRef<B2S_UserLogin>(data);
 
-            Player? player = _playerData.PidToPlayer(packet.ConnectionId);
+            Player? player = GetPlayerByConnectionId(packet.ConnectionId);
             if (player is null)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Biller sent {nameof(B2S_UserLogin)} for unknown pid {packet.ConnectionId}.");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Biller sent {nameof(B2S_UserLogin)} for unknown connection id {packet.ConnectionId}.");
                 return;
             }
 
@@ -2205,7 +2287,7 @@ namespace SS.Core.Modules
 
             ref B2S_UserKickout packet = ref MemoryMarshal.AsRef<B2S_UserKickout>(data);
 
-            Player? player = _playerData.PidToPlayer(packet.ConnectionId);
+            Player? player = GetPlayerByConnectionId(packet.ConnectionId);
             if (player is not null)
             {
                 _playerData.KickPlayer(player);
@@ -2223,10 +2305,10 @@ namespace SS.Core.Modules
 
             ref B2S_UserCommandChat packet = ref MemoryMarshal.AsRef<B2S_UserCommandChat>(data);
 
-            Player? player = _playerData.PidToPlayer(packet.ConnectionId);
+            Player? player = GetPlayerByConnectionId(packet.ConnectionId);
             if (player is null)
             {
-                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Invalid {nameof(B2S_UserCommandChat)} - player not found ({packet.ConnectionId}).");
+                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Invalid {nameof(B2S_UserCommandChat)} - player not found (connection id {packet.ConnectionId}).");
                 return;
             }
 
@@ -2268,10 +2350,10 @@ namespace SS.Core.Modules
 
             ref B2S_UserChannelChat packet = ref MemoryMarshal.AsRef<B2S_UserChannelChat>(data);
 
-            Player? player = _playerData.PidToPlayer(packet.ConnectionId);
+            Player? player = GetPlayerByConnectionId(packet.ConnectionId);
             if (player is null)
             {
-                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Invalid {nameof(B2S_UserChannelChat)} - player not found ({packet.ConnectionId}).");
+                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Invalid {nameof(B2S_UserChannelChat)} - player not found (connection id {packet.ConnectionId}).");
                 return;
             }
 
@@ -2327,10 +2409,10 @@ namespace SS.Core.Modules
 
             ref B2S_PlayerRestrictions packet = ref MemoryMarshal.AsRef<B2S_PlayerRestrictions>(data);
 
-            Player? player = _playerData.PidToPlayer(packet.ConnectionId);
+            Player? player = GetPlayerByConnectionId(packet.ConnectionId);
             if (player is null)
             {
-                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Invalid {nameof(B2S_PlayerRestrictions)} - player not found ({packet.ConnectionId}).");
+                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Invalid {nameof(B2S_PlayerRestrictions)} - player not found (connection id {packet.ConnectionId}).");
                 return;
             }
 
@@ -2474,10 +2556,10 @@ namespace SS.Core.Modules
                 return;
             }
 
-            Player? player = _playerData.PidToPlayer(header.ConnectionId);
+            Player? player = GetPlayerByConnectionId(header.ConnectionId);
             if (player is null)
             {
-                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"B2S UserPacket unknown pid ({header.ConnectionId}).");
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"B2S UserPacket unknown connection id ({header.ConnectionId}).");
                 return;
             }
 
@@ -2573,7 +2655,7 @@ namespace SS.Core.Modules
                 {
                     ref readonly MulticastChannelChatRecipient recipient = ref recipients[i];
 
-                    Player? player = _playerData.PidToPlayer(recipient.ConnectionId);
+                    Player? player = GetPlayerByConnectionId(recipient.ConnectionId);
                     if (player is null)
                         continue;
 
@@ -2604,6 +2686,16 @@ namespace SS.Core.Modules
 
         private class PlayerData : IResettable
         {
+            /// <summary>
+            /// The connection ID the billing server knows the player by. See <see cref="_connectionIdToPlayer"/>.
+            /// </summary>
+            /// <remarks>
+            /// Given out when the player's login is sent to the billing server, and kept while the player is in the zone,
+            /// including when the connection to the billing server is lost, since it's how the player's session is asked for back.
+            /// Always set when <see cref="IsKnownToBiller"/> is <see langword="true"/>.
+            /// </remarks>
+            public int? ConnectionId;
+
             public uint BillingUserId;
             public TimeSpan Usage;
             public bool IsKnownToBiller;
@@ -2650,6 +2742,7 @@ namespace SS.Core.Modules
 
             bool IResettable.TryReset()
             {
+                ConnectionId = null;
                 BillingUserId = 0;
                 Usage = TimeSpan.Zero;
                 IsKnownToBiller = false;
