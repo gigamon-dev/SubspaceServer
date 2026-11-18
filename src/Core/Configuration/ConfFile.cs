@@ -72,16 +72,38 @@ namespace SS.Core.Configuration
 
         /// <summary>
         /// Gets whether the file needs to be reloaded from disk, based on the last modified timestamp of the file.
-        /// <see cref="false"/> for a <see cref="ConfFile"/> that is not yet saved to disk.
+        /// <see langword="false"/> for a <see cref="ConfFile"/> that is not yet saved to disk, or that no longer exists on disk.
         /// </summary>
-        public bool IsReloadNeeded
-        {
-            get
-            {
-                if (!TryGetLastModified(out DateTime value))
-                    return false;
+        public bool IsReloadNeeded => GetDiskState() == ConfFileDiskState.Modified;
 
-                return LastModified != value;
+        /// <summary>
+        /// Checks the file on disk, to see if it was modified or no longer exists.
+        /// </summary>
+        /// <remarks>
+        /// This does I/O.
+        /// </remarks>
+        /// <returns>The state of the file on disk.</returns>
+        public ConfFileDiskState GetDiskState()
+        {
+            if (_fileInfo is null)
+                return ConfFileDiskState.Unchanged; // not yet saved to disk
+
+            try
+            {
+                _fileInfo.Refresh();
+
+                // Note: LastWriteTimeUtc does not throw for a file that doesn't exist (it returns 1601-01-01), so this has to be checked separately.
+                if (!_fileInfo.Exists)
+                    return ConfFileDiskState.Missing;
+
+                return LastModified != _fileInfo.LastWriteTimeUtc
+                    ? ConfFileDiskState.Modified
+                    : ConfFileDiskState.Unchanged;
+            }
+            catch (Exception ex)
+            {
+                ReportError($"Error getting last write time of '{Path}'. {ex.Message}");
+                return ConfFileDiskState.Unchanged;
             }
         }
 
@@ -105,14 +127,15 @@ namespace SS.Core.Configuration
             if (string.IsNullOrWhiteSpace(Path))
                 throw new InvalidOperationException("A path is required.");
 
+            // Open the file before clearing anything, so that if it can't be opened (e.g., it no longer exists), what was loaded before is kept.
+            await using FileStream fileStream = await Task.Factory.StartNew(
+                static (obj) => new FileStream((string)obj!, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true),
+                Path).ConfigureAwait(false);
+
             LastModified = null;
             Lines.Clear();
             IsDirty = false;
             _lineNumber = 0;
-
-            await using FileStream fileStream = await Task.Factory.StartNew(
-                static (obj) => new FileStream((string)obj!, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true),
-                Path).ConfigureAwait(false);
 
             using StreamReader reader = new(fileStream, StringUtils.DefaultEncoding, true, -1, true); // leave open so that the FileStream.DisposeAsync will take care of it
 
@@ -184,6 +207,14 @@ namespace SS.Core.Configuration
             try
             {
                 _fileInfo.Refresh();
+
+                if (!_fileInfo.Exists)
+                {
+                    // LastWriteTimeUtc would be 1601-01-01, which isn't a real timestamp.
+                    value = default;
+                    return false;
+                }
+
                 value = _fileInfo.LastWriteTimeUtc;
                 return true;
             }
