@@ -74,7 +74,7 @@ namespace SS.Core.Modules
         private readonly SemaphoreSlim _semaphore = new(1, 1);
         private bool _isDisposed;
 
-        private readonly DefaultObjectPool<List<DocumentInfo>> _documentInfoListPool = new(new ListPooledObjectPolicy<DocumentInfo>() { InitialCapacity = 32 });
+        private readonly DefaultObjectPool<List<DocumentInfo>> _documentInfoListPool = new(new ListPooledObjectPolicy<DocumentInfo>() { InitialCapacity = Constants.TargetArenaCount });
 
         #region Module members
 
@@ -321,32 +321,29 @@ namespace SS.Core.Modules
 
             try
             {
-                if (IsAnyFileDirty())
+                foreach (ConfFile file in _files.Values)
                 {
-                    foreach (ConfFile file in _files.Values)
+                    if (file.IsDirty)
                     {
-                        if (file.IsDirty)
+                        if (file.GetDiskState() == ConfFileDiskState.Missing)
                         {
-                            if (file.GetDiskState() == ConfFileDiskState.Missing)
-                            {
-                                // Don't recreate a file that was deleted, or try to write into a folder that was deleted or renamed.
-                                // The changes stay pending, and are saved if the file exists again (unless it's reloaded first).
-                                LogMissing(file);
-                                continue;
-                            }
+                            // Don't recreate a file that was deleted, or try to write into a folder that was deleted or renamed.
+                            // The changes stay pending, and are saved if the file exists again (unless it's reloaded first).
+                            LogMissing(file);
+                            continue;
+                        }
 
-                            Log(LogLevel.Info, $"Saving changes to conf file '{file.Path}'.");
+                        Log(LogLevel.Info, $"Saving changes to conf file '{file.Path}'.");
 
-                            try
-                            {
-                                // save the file
-                                // Note: Also updates file.LastModified so that it doesn't appear as being modified to us and get reloaded
-                                file.SaveAsync().Wait();
-                            }
-                            catch (Exception ex)
-                            {
-                                Log(LogLevel.Warn, $"Failed to save changes to conf file '{file.Path}'. {ex.Message}");
-                            }
+                        try
+                        {
+                            // save the file
+                            // Note: Also updates file.LastModified so that it doesn't appear as being modified to us and get reloaded
+                            file.SaveAsync().Wait();
+                        }
+                        catch (Exception ex)
+                        {
+                            Log(LogLevel.Warn, $"Failed to save changes to conf file '{file.Path}'. {ex.Message}");
                         }
                     }
                 }
@@ -357,16 +354,6 @@ namespace SS.Core.Modules
             }
 
             return true;
-
-
-            bool IsAnyFileDirty()
-            {
-                foreach (ConfFile file in _files.Values)
-                    if (file.IsDirty)
-                        return true;
-
-                return false;
-            }
         }
 
         #endregion
