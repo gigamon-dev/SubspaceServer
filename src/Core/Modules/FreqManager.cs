@@ -430,7 +430,36 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        int oldFreqMetric = oldFreq != null ? GetFreqMetric(arena, oldFreqNum, oldFreq, balancer) : 0;
+                        // Whether the player counts on its old freq, so that the old freq is balanced against.
+                        // The player counts on it if it's in the old freq's Freq, or if it's still entering the arena on the old freq
+                        // (it isn't added to a Freq until it finishes entering, and the Freq may not exist yet).
+                        // Otherwise, the player isn't on a freq that is balanced: e.g., it's on the spectator freq (which has no Freq),
+                        // or it's being placed by Initial (Core sets its freq to -1 first).
+                        bool countsOnOldFreq;
+
+                        if (oldFreq != null)
+                        {
+                            countsOnOldFreq = true;
+                        }
+                        else if (oldFreqNum == arena.SpecFreq)
+                        {
+                            countsOnOldFreq = false;
+                        }
+                        else
+                        {
+                            _playerData.Lock();
+
+                            try
+                            {
+                                countsOnOldFreq = IsEnteringPlayer(player, arena, out PlayerData? pd) && pd.EnteringFreqNum == oldFreqNum;
+                            }
+                            finally
+                            {
+                                _playerData.Unlock();
+                            }
+                        }
+
+                        int oldFreqMetric = countsOnOldFreq ? GetFreqMetric(arena, oldFreqNum, oldFreq, balancer) : 0;
                         int newFreqMetric = GetFreqMetric(arena, newFreqNum, newFreq, balancer);
 
                         int playerMetric = GetPlayerMetric(player, balancer);
@@ -444,7 +473,7 @@ namespace SS.Core.Modules
                             errorMessage?.Append("Changing to that team would make it too powerful.");
                             return false;
                         }
-                        else if (oldFreq != null && oldFreqMetricPotential > 0 && balancer.GetMaximumDifference(arena, oldFreqNum, newFreqNum) < newFreqMetricPotential - oldFreqMetricPotential)
+                        else if (countsOnOldFreq && oldFreqMetricPotential > 0 && balancer.GetMaximumDifference(arena, oldFreqNum, newFreqNum) < newFreqMetricPotential - oldFreqMetricPotential)
                         {
                             errorMessage?.Append("Changing to that team would disrupt the balance between it and your current team.");
                             return false;
