@@ -11,11 +11,16 @@ namespace Example.SelectBox;
 /// This is an example of how to use the <see cref="SS.Core.Modules.SelectBox"/> module.
 /// This example opens the select box when a player enters an arena.
 /// Selecting an choice, prints the choice to the player in a green arena chat message.
+/// If the player doesn't choose within 30 seconds of it being displayed, the select box expires.
 /// </summary>
 /// <remarks>
 /// <para>
 /// This example shows everything written for high performance.
 /// It uses object pools for object reuse, rather than allocate objects that will be used once.
+/// </para>
+/// <para>
+/// A state object is passed when opening the select box. It is passed back when the player chooses an item.
+/// Once the select box is completed (no longer associated with any player), the state object is returned to its pool.
 /// </para>
 /// <para>
 /// To run the example, add this module to the conf/Modules.conf file.
@@ -32,18 +37,38 @@ public sealed class SelectBoxExample(
     private readonly ISelectBox _selectBox = selectBox ?? throw new ArgumentNullException(nameof(selectBox));
 
     private static readonly ObjectPool<List<SelectBoxItem>> s_selectBoxItemListPool = ObjectPool.Create(new ListPooledObjectPolicy<SelectBoxItem>());
+    private static readonly ObjectPool<MenuState> s_menuStatePool = ObjectPool.Create<MenuState>();
+
+    private static readonly TimeSpan MenuTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// The select boxes that aren't completed yet, so that they can be cancelled when the module is unloaded.
+    /// </summary>
+    private readonly HashSet<MenuState> _openMenus = [];
+
+    // The delegates are created once, rather than each time a select box is opened.
+    private SelectBoxItemSelectedDelegate<MenuState>? _menuSelected;
+    private SelectBoxCompletedDelegate<MenuState>? _menuCompleted;
 
     public bool Load(IComponentBroker broker)
     {
+        _menuSelected = Menu_Selected;
+        _menuCompleted = Menu_Completed;
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
-        SelectBoxItemSelectedCallback.Register(broker, Callback_SelectBoxItemSelected);
         return true;
     }
 
     public bool Unload(IComponentBroker broker)
     {
         PlayerActionCallback.Unregister(broker, Callback_PlayerAction);
-        SelectBoxItemSelectedCallback.Unregister(broker, Callback_SelectBoxItemSelected);
+
+        // Cancel the select boxes that aren't completed yet, so that the delegates aren't called after the module is unloaded.
+        // Cancelling calls the completed delegate, which removes it from the set. So, loop over a copy.
+        foreach (MenuState menu in new List<MenuState>(_openMenus))
+        {
+            _selectBox.Cancel(menu.Handle);
+        }
+
         return true;
     }
 
@@ -95,8 +120,17 @@ public sealed class SelectBoxExample(
                     items.Add(new SelectBoxItem(i, text[..charsWritten]));
                 }
 
+                // The state object to pass back to the delegates.
+                MenuState menu = s_menuStatePool.Get();
+                menu.ItemCount = items.Count;
+                _openMenus.Add(menu);
+
                 // Display the select box to the player.
-                _selectBox.Open(player, title, items);
+                SelectBoxHandle handle = _selectBox.Open(player, title, items, menu, _menuSelected!, _menuCompleted, MenuTimeout);
+
+                // If the select box wasn't displayed (e.g., the player's client doesn't support it), it's already completed.
+                if (_openMenus.Contains(menu))
+                    menu.Handle = handle;
             }
             finally
             {
@@ -109,8 +143,28 @@ public sealed class SelectBoxExample(
         }
     }
 
-    private void Callback_SelectBoxItemSelected(Player player, short itemValue, ReadOnlySpan<char> itemText)
+    private void Menu_Selected(Player player, short itemValue, ReadOnlySpan<char> itemText, MenuState menu)
     {
-        _chat.SendMessage(player, $"You selected option {itemValue} - {itemText}");
+        _chat.SendMessage(player, $"You selected option {itemValue} of {menu.ItemCount} - {itemText}");
+    }
+
+    private void Menu_Completed(MenuState menu)
+    {
+        // The select box no longer references the state object, so it can be reused.
+        _openMenus.Remove(menu);
+        s_menuStatePool.Return(menu);
+    }
+
+    private sealed class MenuState : IResettable
+    {
+        public SelectBoxHandle Handle;
+        public int ItemCount;
+
+        public bool TryReset()
+        {
+            Handle = default;
+            ItemCount = 0;
+            return true;
+        }
     }
 }
