@@ -943,6 +943,186 @@ namespace SS.Core.Modules
                 {
                     DoSpawnCallback(player, SpawnCallback.SpawnReason.Initial);
                 }
+
+                // The player's client is now in the game (it sent its first position packet), so it's ready for the positions of players in safe zones.
+                SendSafeZonePositions(player, arena, ad);
+            }
+        }
+
+        /// <summary>
+        /// Sends a player the positions of the other players in the arena that are in a safe zone.
+        /// </summary>
+        /// <remarks>
+        /// Safe zone transitions are sent to everyone in the arena when they happen (see <see cref="HandlePositionPacket"/>),
+        /// but a player that entered the arena afterwards missed them, and ordinary position packets are only sent to players within range.
+        /// Knowing which players are in a safe zone helps keep scores in sync.
+        /// Certain events (flag game victory, periodic reward, ball goal) can add points to a team,
+        /// and the client knows to not add points to players that are in a safe zone.
+        /// </remarks>
+        /// <param name="player">The player to send the positions to.</param>
+        /// <param name="arena">The arena the player is in.</param>
+        /// <param name="arenaData">The arena's data.</param>
+        private void SendSafeZonePositions(Player player, Arena arena, ArenaData arenaData)
+        {
+            if (!player.IsStandard)
+                return;
+
+            var advisors = arena.GetAdvisors<IPlayerPositionAdvisor>();
+            bool canBatch = (player.ClientFeatures & ClientFeatures.BatchPositions) != 0;
+
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player otherPlayer in _playerData.Players)
+                {
+                    if (otherPlayer == player
+                        || otherPlayer.Status != PlayerState.Playing
+                        || otherPlayer.Arena != arena
+                        || otherPlayer.Ship == ShipType.Spec
+                        || (!otherPlayer.Flags.SentPositionPacket && otherPlayer.Type != ClientType.Fake) // the stored position is from before the player entered the arena
+                        || !otherPlayer.TryGetExtraData(_pdKey, out PlayerData? otherPlayerData)
+                        || (otherPlayerData.Position.Status & PlayerPositionStatus.Safezone) == 0)
+                    {
+                        continue;
+                    }
+
+                    // The player's latest position, as it was sent to the server.
+                    C2S_PositionPacket pos = otherPlayerData.Position;
+
+                    // Only the position is being sent, not any weapon fire that was in the packet.
+                    pos.Weapon.Type = WeaponCodes.Null;
+
+                    // Same as for the position packets that are sent normally.
+                    if (arenaData.NoSafeAntiWarp)
+                        pos.Status &= ~PlayerPositionStatus.Antiwarp;
+
+                    // Consult the advisors to allow other modules to edit or drop the packet, the same as for the position packets that are sent normally.
+                    ExtraPositionData extra = new();
+                    int extraLength = 0;
+                    bool drop = false;
+
+                    foreach (var advisor in advisors)
+                    {
+                        advisor.EditPositionPacket(otherPlayer, ref pos);
+
+                        if (pos.X < 0 || pos.Y < 0)
+                        {
+                            drop = true;
+                            break;
+                        }
+                    }
+
+                    if (!drop)
+                    {
+                        foreach (var advisor in advisors)
+                        {
+                            advisor.EditIndividualPositionPacket(otherPlayer, player, ref pos, ref extra, ref extraLength);
+
+                            if (pos.X < 0 || pos.Y < 0)
+                            {
+                                drop = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (drop)
+                        continue;
+
+                    // The time is when the player sent the position, so there is no latency to account for.
+                    ushort time = (ushort)(pos.Time & 0xFFFF);
+
+                    // Reliable, the same as safe zone transitions.
+                    // The packet type is chosen the same way as for the position packets that are sent normally (without weapon fire).
+                    // Note: 0x39 (batched small position) is not an option since it can't hold any status, and the safe zone status is the point.
+                    if (canBatch
+                        && pos.Weapon.Type == WeaponCodes.Null
+                        && ((int)pos.Status & 0b11000000) == 0 // only the 6 lower bits, which includes Safezone
+                        && extraLength == 0 // no energy or extra data
+                        && ((uint)otherPlayer.Id & 0xFFFF_FC00) == 0 // PlayerId [0-1023]
+                        && pos.XSpeed >= -8192 && pos.XSpeed <= 8191
+                        && pos.YSpeed >= -8192 && pos.YSpeed <= 8191
+                        && pos.X >= 0 && pos.X <= 16383
+                        && pos.Y >= 0 && pos.Y <= 16383)
+                    {
+                        // 0x3A Large
+                        S2C_BatchedLargePositionSingle largeSingle = new();
+                        ref LargePosition large = ref largeSingle.Position;
+                        large.Status = pos.Status;
+                        large.PlayerId = (ushort)otherPlayer.Id;
+                        large.Rotation = pos.Rotation;
+                        large.Time = time;
+                        large.X = pos.X;
+                        large.Y = pos.Y;
+                        large.XSpeed = pos.XSpeed;
+                        large.YSpeed = pos.YSpeed;
+
+                        _network.SendToOne(player, ref largeSingle, NetSendFlags.Reliable);
+                    }
+                    else if (pos.Weapon.Type == WeaponCodes.Null
+                        && (pos.Bounty & 0xFF00) == 0 // bounty [0-255]
+                        && ((uint)otherPlayer.Id & 0xFFFF_FF00) == 0) // PlayerId [0-255]
+                    {
+                        // 0x28 Position
+                        S2C_PositionPacket sendPos = new();
+                        sendPos.Rotation = pos.Rotation;
+                        sendPos.Time = time;
+                        sendPos.X = pos.X;
+                        sendPos.C2SLatency = 0;
+                        sendPos.Bounty = (byte)pos.Bounty;
+                        sendPos.PlayerId = (byte)otherPlayer.Id;
+                        sendPos.Status = pos.Status;
+                        sendPos.YSpeed = pos.YSpeed;
+                        sendPos.Y = pos.Y;
+                        sendPos.XSpeed = pos.XSpeed;
+                        sendPos.Extra = extra;
+
+                        // move this field from the main packet to the extra data, in case they don't match.
+                        sendPos.Extra.Energy = (ushort)pos.Energy;
+
+                        ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref sendPos, 1));
+                        int length = S2C_PositionPacket.Length + extraLength;
+                        if (data.Length > length)
+                            data = data[..length];
+
+                        _network.SendToOne(player, data, NetSendFlags.Reliable);
+                    }
+                    else
+                    {
+                        // 0x05 Weapon, for a bounty over 255 or PlayerId over 255 (or if an advisor added weapon fire).
+                        S2C_WeaponsPacket wpn = new();
+                        wpn.Rotation = pos.Rotation;
+                        wpn.Time = time;
+                        wpn.X = pos.X;
+                        wpn.YSpeed = pos.YSpeed;
+                        wpn.PlayerId = (ushort)otherPlayer.Id;
+                        wpn.XSpeed = pos.XSpeed;
+                        wpn.Checksum = 0;
+                        wpn.Status = pos.Status;
+                        wpn.C2SLatency = 0;
+                        wpn.Y = pos.Y;
+                        wpn.Bounty = pos.Bounty;
+                        wpn.Weapon = pos.Weapon;
+                        wpn.Extra = extra;
+
+                        // move this field from the main packet to the extra data, in case they don't match.
+                        wpn.Extra.Energy = (ushort)pos.Energy;
+
+                        wpn.SetChecksum();
+
+                        ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref wpn, 1));
+                        int length = S2C_WeaponsPacket.Length + extraLength;
+                        if (data.Length > length)
+                            data = data[..length];
+
+                        _network.SendToOne(player, data, NetSendFlags.Reliable);
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
             }
         }
 
