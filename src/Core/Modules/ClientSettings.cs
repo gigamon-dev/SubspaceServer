@@ -159,6 +159,51 @@ namespace SS.Core.Modules
             }
         }
 
+        void IClientSettings.SendClientSettings(Player player, ClientSettingsModifier modifier)
+        {
+            ArgumentNullException.ThrowIfNull(modifier);
+
+            if (player is null)
+                return;
+
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return;
+
+            if (!arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
+                return;
+
+            lock (_lock)
+            {
+                SendOneSettings(player, arenaData, modifier);
+            }
+        }
+
+        bool IClientSettings.RestoreClientSettings(Player player)
+        {
+            if (player is null)
+                return false;
+
+            if (!player.TryGetExtraData(_pdkey, out PlayerData? playerData))
+                return false;
+
+            Arena? arena = player.Arena;
+            if (arena is null)
+                return false;
+
+            if (!arena.TryGetExtraData(_adkey, out ArenaData? arenaData))
+                return false;
+
+            lock (_lock)
+            {
+                if (!playerData.IsModified)
+                    return false;
+
+                SendOneSettings(player, arenaData);
+                return true;
+            }
+        }
+
         uint IClientSettings.GetChecksum(Player player, uint key)
         {
             if (player is null)
@@ -1056,7 +1101,7 @@ namespace SS.Core.Modules
             }
         }
 
-        private void SendOneSettings(Player player, ArenaData arenaData)
+        private void SendOneSettings(Player player, ArenaData arenaData, ClientSettingsModifier? modifier = null)
         {
             if (player is null)
                 return;
@@ -1071,6 +1116,10 @@ namespace SS.Core.Modules
 
             if (playerData.Settings.Type == (byte)S2CPacketType.Settings)
             {
+                // Kept as the player's settings, until the next send replaces them.
+                modifier?.Invoke(ref playerData.Settings);
+                playerData.IsModified = modifier is not null;
+
                 _network.SendToOne(
                     player,
                     ref playerData.Settings,
@@ -1122,10 +1171,16 @@ namespace SS.Core.Modules
             public S2C_ClientSettings Settings;
             public OverrideData OverrideData;
 
+            /// <summary>
+            /// Whether <see cref="Settings"/> were changed by a <see cref="ClientSettingsModifier"/>.
+            /// </summary>
+            public bool IsModified;
+
             public void Reset()
             {
                 Settings = default;
                 OverrideData = default;
+                IsModified = false;
             }
 
             bool IResettable.TryReset()

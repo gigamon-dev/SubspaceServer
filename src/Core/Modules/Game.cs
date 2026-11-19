@@ -152,6 +152,7 @@ namespace SS.Core.Modules
             {
                 _commandManager.AddCommand("spec", Command_spec);
                 _commandManager.AddCommand("energy", Command_energy);
+                _commandManager.AddCommand("thor", Command_thor);
             }
 
             _iGameToken = _broker.RegisterInterface<IGame>(this);
@@ -168,6 +169,7 @@ namespace SS.Core.Modules
             {
                 _commandManager.RemoveCommand("spec", Command_spec, null);
                 _commandManager.RemoveCommand("energy", Command_energy, null);
+                _commandManager.RemoveCommand("thor", Command_thor, null);
             }
 
             _chatNetwork?.RemoveHandler("CHANGEFREQ", ChatHandler_ChangeFreq);
@@ -392,7 +394,6 @@ namespace SS.Core.Modules
                 return;
 
             ReadOnlySpan<byte> shipResetBytes = [(byte)S2CPacketType.ShipReset];
-            _network.SendToTarget(target, shipResetBytes, NetSendFlags.Reliable);
 
             _playerData.Lock();
 
@@ -403,6 +404,14 @@ namespace SS.Core.Modules
                 try
                 {
                     _playerData.TargetToSet(target, players);
+
+                    // Players that were sent changed settings (e.g. ?super) get the usual ones first, so that their ships are reset with them.
+                    foreach (Player player in players)
+                    {
+                        _clientSettings.RestoreClientSettings(player);
+                    }
+
+                    _network.SendToTarget(target, shipResetBytes, NetSendFlags.Reliable);
 
                     foreach (Player player in players)
                     {
@@ -1355,6 +1364,13 @@ namespace SS.Core.Modules
                     pos.Status &= ~PlayerPositionStatus.Antiwarp;
                 }
 
+                // Send the player's thors at the level set by ?thor.
+                sbyte thorLevel = playerData.ThorLevel;
+                if (thorLevel >= 0 && pos.Weapon.Type == WeaponCodes.Thor)
+                {
+                    pos.Weapon.Level = (byte)thorLevel;
+                }
+
                 // if this is a plain position packet with no weapons, and is in
                 // the wrong order, there's no need to send it. but fake players
                 // never got data->pos.time initialized correctly, so do a
@@ -2031,6 +2047,9 @@ namespace SS.Core.Modules
                 }
             }
 
+            // The client resets the ship when it gets the ship change. If it was sent changed settings (e.g. ?super), send it the usual ones first.
+            _clientSettings.RestoreClientSettings(player);
+
             S2C_ShipChange packet = new((sbyte)ship, (short)player.Id, freq);
             ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
 
@@ -2104,6 +2123,9 @@ namespace SS.Core.Modules
 
                 player.Freq = freq;
             }
+
+            // The client resets a ship that changes freq outside a safe zone. If it was sent changed settings (e.g. ?super), send it the usual ones first.
+            _clientSettings.RestoreClientSettings(player);
 
             S2C_FreqChange packet = new((short)player.Id, freq);
             ReadOnlySpan<byte> data = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref packet, 1));
@@ -2203,6 +2225,9 @@ namespace SS.Core.Modules
             {
                 _playerData.Unlock();
             }
+
+            // The client resets the ship when it respawns. If it was sent changed settings (e.g. ?super), send it the usual ones before then.
+            _clientSettings.RestoreClientSettings(player);
 
             var killAdvisors = arena.GetAdvisors<IKillAdvisor>();
 
@@ -2719,6 +2744,62 @@ namespace SS.Core.Modules
             }
         }
 
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = "[<level>]",
+            Description = """
+                Sets the level that your thors, or the target player's, are sent to other
+                players at: 0 to 3 for L1 to L4 (lower values count as 0, higher as 3).
+                A thor's level sets its blast radius, damage and proximity range.
+                With no level, thors are sent at the level the player's client sent.
+                It lasts until the player disconnects.
+                """)]
+        private void Command_thor(ReadOnlySpan<char> command, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            bool isPrivate = target.TryGetPlayerTarget(out Player? targetPlayer);
+            if (!isPrivate)
+            {
+                if (player.Arena is null)
+                    return;
+
+                targetPlayer = player;
+            }
+
+            if (!targetPlayer!.TryGetExtraData(_pdKey, out PlayerData? pd))
+                return;
+
+            parameters = parameters.Trim();
+
+            if (parameters.IsEmpty)
+            {
+                pd.ThorLevel = -1;
+
+                if (isPrivate)
+                    _chat.SendMessage(player, $"Thor Adjust off for {targetPlayer.Name}");
+                else
+                    _chat.SendMessage(player, "Thor Adjust off");
+
+                return;
+            }
+
+            if (!int.TryParse(parameters, out int level))
+                level = 0;
+
+            pd.ThorLevel = ClampThorLevel(level);
+
+            if (isPrivate)
+                _chat.SendMessage(player, $"Thor Adjust {level} for {targetPlayer.Name}");
+            else
+                _chat.SendMessage(player, $"Thor Adjust {level}");
+        }
+
+        /// <summary>
+        /// Gets the thor level (0 to 3) for a ?thor value.
+        /// </summary>
+        /// <param name="value">The value given to ?thor.</param>
+        /// <returns>The value, limited to 0 to 3.</returns>
+        internal static sbyte ClampThorLevel(int value) => (sbyte)Math.Clamp(value, 0, 3);
+
         private void DoSpawnCallback(Player player, SpawnCallback.SpawnReason reason)
         {
             Arena? arena = player.Arena;
@@ -2945,6 +3026,11 @@ namespace SS.Core.Modules
             /// </summary>
             public ServerTick? BountyLastSent;
 
+            /// <summary>
+            /// The level (0 to 3) that the player's thors are sent to others at, set by ?thor. -1 means as the player's client sent it.
+            /// </summary>
+            public sbyte ThorLevel = -1;
+
             public bool TryReset()
             {
                 Position = new();
@@ -2966,6 +3052,7 @@ namespace SS.Core.Modules
                 LastWeaponTick = null;
                 LastWeaponFireDelay = 0;
                 BountyLastSent = null;
+                ThorLevel = -1;
                 return true;
             }
         }
