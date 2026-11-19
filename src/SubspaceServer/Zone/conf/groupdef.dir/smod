@@ -28,6 +28,9 @@ privcmd_watchgreen
 cmd_energy
 privcmd_energy
 
+cmd_sendallpos
+privcmd_sendallpos
+
 ; the following three should always go together
 cmd_quickfix
 cmd_getsettings

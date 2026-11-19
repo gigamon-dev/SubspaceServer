@@ -3,11 +3,14 @@ using SS.Core;
 using SS.Core.ComponentAdvisors;
 using SS.Core.ComponentCallbacks;
 using SS.Core.ComponentInterfaces;
+using SS.Core.Modules;
 using SS.Matchmaking.Advisors;
 using SS.Matchmaking.Callbacks;
 using SS.Matchmaking.Interfaces;
 using SS.Matchmaking.TeamVersus;
 using SS.Packets.Game;
+using SS.Utilities;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SS.Matchmaking.Modules
 {
@@ -20,18 +23,29 @@ namespace SS.Matchmaking.Modules
     /// </remarks>
     public sealed class MatchFocus(
         IComponentBroker broker,
+        IChat chat,
+        ICommandManager commandManager,
         IConfigManager configManager,
         IGame game,
         ILogManager logManager,
+        IMainloop mainloop,
         IObjectPoolManager objectPoolManager,
         IPlayerData playerData) : IModule, IArenaAttachableModule, IMatchFocus, IPlayerPositionAdvisor, IBricksAdvisor, IKillAdvisor
     {
         private readonly IComponentBroker _broker = broker ?? throw new ArgumentNullException(nameof(broker));
+        private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        private readonly ICommandManager _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
         private readonly IConfigManager _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
         private readonly IGame _game = game ?? throw new ArgumentNullException(nameof(game));
         private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IMainloop _mainloop = mainloop ?? throw new ArgumentNullException(nameof(mainloop));
         private readonly IObjectPoolManager _objectPoolManager = objectPoolManager ?? throw new ArgumentNullException(nameof(objectPoolManager));
         private readonly IPlayerData _playerData = playerData ?? throw new ArgumentNullException(nameof(playerData));
+
+        /// <summary>
+        /// Optional, for checking whether spectators are idle.
+        /// </summary>
+        private IIdle? _idle;
 
         private InterfaceRegistrationToken<IMatchFocus>? _iMatchFocusRegistrationToken;
 
@@ -50,10 +64,20 @@ namespace SS.Matchmaking.Modules
         /// </remarks>
         private const int TargetMatchCount = 64;
 
+        /// <summary>
+        /// How often (in ticks) a match's position packet recipients are refreshed, at most, for spectators going idle or becoming active again (SendAllPositions = All).
+        /// Nothing is fired when that happens, so it has to be checked periodically.
+        /// </summary>
+        private const int SendAllPositionsIdleRefreshTicks = 100;
+
+        private const string SendAllPosCommandName = "sendallpos";
+
         #region Module members
 
         bool IModule.Load(IComponentBroker broker)
         {
+            _idle = broker.GetInterface<IIdle>();
+
             _playerDataKey = _playerData.AllocatePlayerData<PlayerData>();
 
             PlayerActionCallback.Register(broker, Callback_PlayerAction);
@@ -80,11 +104,28 @@ namespace SS.Matchmaking.Modules
 
             _playerData.FreePlayerData(ref _playerDataKey);
 
+            if (_idle is not null)
+                broker.ReleaseInterface(ref _idle);
+
             return true;
         }
 
         [ConfigHelp<bool>("SS.Matchmaking.MatchFocus", "FilterKillPackets", ConfigScope.Arena, Default = false,
             Description = "Whether to suppress kill notification packets for players not focused on the same match. Spectators watching a specific match see only that match's kills; unattached spectators see all kills.")]
+        [ConfigHelp<SendAllPositionsMode>("SS.Matchmaking.MatchFocus", "SendAllPositions", ConfigScope.Arena, Default = SendAllPositionsMode.Off,
+            Description = """
+                Who is sent every position packet of the players in ships in a match, regardless of distance. Off: nobody.
+                Selected: the players focused on the match that were selected with the ?sendallpos command, in a ship or spectating
+                (regardless of SS.Matchmaking.MatchFocus:SendAllPositionsMaxPlaying).
+                InShip: players in ships in the match, and spectators of the match selected with the ?sendallpos command.
+                All: players in ships in the match, and spectators of the match that are following a player in a ship in it and are not idle.
+                InShip and All only apply while the match has at most SS.Matchmaking.MatchFocus:SendAllPositionsMaxPlaying players in ships.
+                Everyone else focused on the match is sent position packets using the normal rules.
+                """)]
+        [ConfigHelp<int>("SS.Matchmaking.MatchFocus", "SendAllPositionsMaxPlaying", ConfigScope.Arena, Default = 16, Min = 0,
+            Description = "The maximum # of players in ships in a match for every position packet to be sent, regardless of distance. Not used when SS.Matchmaking.MatchFocus:SendAllPositions is Selected. See SS.Matchmaking.MatchFocus:SendAllPositions.")]
+        [ConfigHelp<int>("SS.Matchmaking.MatchFocus", "SendAllPositionsSpectatorIdleSeconds", ConfigScope.Arena, Default = 120, Min = 0,
+            Description = "How long a spectator can be idle (see the SS.Core.Modules.Idle module) and still be sent every position packet. See SS.Matchmaking.MatchFocus:SendAllPositions.")]
         bool IArenaAttachableModule.AttachModule(Arena arena)
         {
             if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
@@ -99,14 +140,69 @@ namespace SS.Matchmaking.Modules
             arenaData.IBricksAdvisorRegistrationToken = arena.RegisterAdvisor<IBricksAdvisor>(this);
             arenaData.IKillAdvisorRegistrationToken = arena.RegisterAdvisor<IKillAdvisor>(this);
             arenaData.FilterKillPackets = _configManager.GetBool(arena.Cfg!, "SS.Matchmaking.MatchFocus", "FilterKillPackets", false);
+            arenaData.SendAllPositionsMode = _configManager.GetEnum(arena.Cfg!, "SS.Matchmaking.MatchFocus", "SendAllPositions", SendAllPositionsMode.Off);
+            arenaData.SendAllPositionsMaxPlaying = Math.Max(0, _configManager.GetInt(arena.Cfg!, "SS.Matchmaking.MatchFocus", "SendAllPositionsMaxPlaying", 16));
+            arenaData.SendAllPositionsSpectatorIdleLimit = TimeSpan.FromSeconds(Math.Max(0, _configManager.GetInt(arena.Cfg!, "SS.Matchmaking.MatchFocus", "SendAllPositionsSpectatorIdleSeconds", 120)));
+
+            // The recipients depend on the settings.
+            foreach (MatchFocusData matchFocusData in _matchDictionary.Values)
+            {
+                matchFocusData.SendAllPositionsRecipients.IsStale = true;
+            }
+
+            _commandManager.AddCommand(SendAllPosCommandName, Command_sendallpos, arena);
+
+            // This module provides the position packet recipients per match.
+            // The SendAllPositions module does it for the arena as a whole, which would conflict, so it can't be attached to the same arena.
+            foreach (IPlayerPositionAdvisor advisor in arena.GetAdvisors<IPlayerPositionAdvisor>())
+            {
+                if (advisor is SendAllPositions)
+                {
+                    _logManager.LogA(LogLevel.Warn, nameof(MatchFocus), arena, $"Detaching {nameof(SendAllPositions)}, this module provides the position packet recipients per match instead.");
+                    _chat.SendModMessage($"{nameof(SendAllPositions)} is being detached from arena {arena.Name}, {nameof(MatchFocus)} is attached to it and provides the position packet recipients per match instead.");
+
+                    // Detaching can't be done while a module is being attached, so do it afterwards.
+                    _mainloop.QueueMainWorkItem(MainloopWork_DetachSendAllPositions, arena);
+                    break;
+                }
+            }
 
             return true;
+        }
+
+        private async void MainloopWork_DetachSendAllPositions(Arena arena)
+        {
+            IModuleManager? moduleManager = _broker.GetInterface<IModuleManager>();
+            if (moduleManager is null)
+                return;
+
+            try
+            {
+                if (await moduleManager.DetachModuleAsync(typeof(SendAllPositions), arena))
+                {
+                    _logManager.LogA(LogLevel.Info, nameof(MatchFocus), arena, $"Detached {nameof(SendAllPositions)}.");
+                }
+                else
+                {
+                    _logManager.LogA(LogLevel.Warn, nameof(MatchFocus), arena, $"Failed to detach {nameof(SendAllPositions)}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logManager.LogA(LogLevel.Error, nameof(MatchFocus), arena, $"Error detaching {nameof(SendAllPositions)}. {ex.Message}");
+            }
+            finally
+            {
+                _broker.ReleaseInterface(ref moduleManager);
+            }
         }
 
         bool IArenaAttachableModule.DetachModule(Arena arena)
         {
             if (!_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
                 return false;
+
+            _commandManager.RemoveCommand(SendAllPosCommandName, Command_sendallpos, arena);
 
             if (!arena.UnregisterAdvisor(ref arenaData.IPlayerPositionAdvisorRegistrationToken))
                 return false;
@@ -124,6 +220,22 @@ namespace SS.Matchmaking.Modules
 
             ShipFreqChangeCallback.Unregister(arena, Callback_ShipFreqChange);
             SpectateChangedCallback.Unregister(arena, Callback_SpectateChanged);
+
+            // Selections (to be sent every position packet) only apply while the module is attached.
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player player in _playerData.Players)
+                {
+                    if (player.Arena == arena)
+                        ClearSendAllPositionsSelected(player);
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
 
             return true;
         }
@@ -150,6 +262,131 @@ namespace SS.Matchmaking.Modules
 
             // Drop the packet.
             positionPacket.X = positionPacket.Y = -1;
+            return true;
+        }
+
+        bool IPlayerPositionAdvisor.ProvidesPositionRecipients => true;
+
+        bool IPlayerPositionAdvisor.TryGetPositionRecipients(Player player, [NotNullWhen(true)] out HashSet<Player>? sendAll, [NotNullWhen(true)] out HashSet<Player>? sendNormal)
+        {
+            sendAll = null;
+            sendNormal = null;
+
+            // Only the position packets of players in ships are of interest (spectators don't have their position packets sent anyway).
+            if (player.Ship == ShipType.Spec)
+                return false;
+
+            Arena? arena = player.Arena;
+            if (arena is null
+                || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData)
+                || arenaData.SendAllPositionsMode == SendAllPositionsMode.Off)
+            {
+                return false;
+            }
+
+            if (!player.TryGetExtraData(_playerDataKey, out PlayerData? playerData)
+                || playerData.PlayingInMatch is not MatchFocusData matchFocusData)
+            {
+                return false;
+            }
+
+            // The recipients are kept per match, and only refreshed after something they depend on changes.
+            if (matchFocusData.SendAllPositionsRecipients.IsStale
+                || matchFocusData.SendAllPositionsRecipients.Arena != arena
+                || (arenaData.SendAllPositionsMode == SendAllPositionsMode.All && _idle is not null && ServerTick.Now - matchFocusData.SendAllPositionsRecipients.Refreshed >= SendAllPositionsIdleRefreshTicks))
+            {
+                RefreshRecipients(arena, arenaData, matchFocusData);
+            }
+
+            if (!matchFocusData.SendAllPositionsRecipients.IsActive)
+                return false;
+
+            sendAll = matchFocusData.SendAllPositionsRecipients.SendAll;
+            sendNormal = matchFocusData.SendAllPositionsRecipients.SendNormal;
+            return true;
+        }
+
+        /// <summary>
+        /// Refreshes the position packet recipients of a match.
+        /// </summary>
+        private void RefreshRecipients(Arena arena, ArenaData arenaData, MatchFocusData matchFocusData)
+        {
+            matchFocusData.SendAllPositionsRecipients.Clear();
+            matchFocusData.SendAllPositionsRecipients.IsStale = false;
+            matchFocusData.SendAllPositionsRecipients.Arena = arena;
+            matchFocusData.SendAllPositionsRecipients.Refreshed = ServerTick.Now;
+
+            if (arenaData.SendAllPositionsMode != SendAllPositionsMode.Selected)
+            {
+                // Only for a small match.
+                int playersInShips = 0;
+                foreach (Player otherPlayer in matchFocusData.Playing)
+                {
+                    if (otherPlayer.Arena == arena && otherPlayer.Ship != ShipType.Spec)
+                        playersInShips++;
+                }
+
+                if (playersInShips > arenaData.SendAllPositionsMaxPlaying)
+                    return;
+            }
+
+            // The players focused on the match, which are the only ones allowed the packets (see EditIndividualPositionPacket).
+            // Note: A player can be in both Playing and Spectators. That's fine since which set the player is added to is decided the same way for both.
+            foreach (Player otherPlayer in matchFocusData.Playing)
+            {
+                AddRecipient(otherPlayer);
+            }
+
+            foreach (Player otherPlayer in matchFocusData.Spectators)
+            {
+                AddRecipient(otherPlayer);
+            }
+
+            if (matchFocusData.SendAllPositionsRecipients.SendAll.Count > 0)
+                matchFocusData.SendAllPositionsRecipients.IsActive = true;
+            else
+                matchFocusData.SendAllPositionsRecipients.Clear(); // Nobody to send every packet to. Use the normal rules.
+
+            void AddRecipient(Player otherPlayer)
+            {
+                if (otherPlayer.Arena != arena || !otherPlayer.TryGetExtraData(_playerDataKey, out PlayerData? otherPlayerData))
+                    return;
+
+                bool isSendAll = arenaData.SendAllPositionsMode switch
+                {
+                    SendAllPositionsMode.Selected => otherPlayerData.IsSendAllPositionsSelected,
+                    SendAllPositionsMode.InShip => otherPlayer.Ship != ShipType.Spec || otherPlayerData.IsSendAllPositionsSelected,
+                    SendAllPositionsMode.All => otherPlayer.Ship != ShipType.Spec || IsActiveSpectator(otherPlayer, otherPlayerData, matchFocusData, arenaData),
+                    _ => false,
+                };
+
+                if (isSendAll)
+                    matchFocusData.SendAllPositionsRecipients.SendAll.Add(otherPlayer);
+                else
+                    matchFocusData.SendAllPositionsRecipients.SendNormal.Add(otherPlayer);
+            }
+        }
+
+        /// <summary>
+        /// Gets whether a spectator is actively watching a match: following a player in a ship in the match, and not idle.
+        /// </summary>
+        private bool IsActiveSpectator(Player spectator, PlayerData spectatorData, MatchFocusData matchFocusData, ArenaData arenaData)
+        {
+            Player? target = spectatorData.SpectateTarget;
+            if (target is null
+                || target.Arena != spectator.Arena
+                || target.Ship == ShipType.Spec
+                || !target.TryGetExtraData(_playerDataKey, out PlayerData? targetData)
+                || targetData.PlayingInMatch != matchFocusData)
+            {
+                return false;
+            }
+
+            // Idle spectators are sent position packets using the normal rules, until they're no longer idle.
+            IIdle? idle = _idle;
+            if (idle is not null && idle.GetIdle(spectator) >= arenaData.SendAllPositionsSpectatorIdleLimit)
+                return false;
+
             return true;
         }
 
@@ -269,6 +506,142 @@ namespace SS.Matchmaking.Modules
 
         #endregion
 
+        #region Commands
+
+        [CommandHelp(
+            Targets = CommandTarget.None | CommandTarget.Player,
+            Args = "[on | off]",
+            Description = """
+                Selects a player to be sent every position packet of the players in ships in the match they're focused on, regardless of distance.
+                Only for when SS.Matchmaking.MatchFocus:SendAllPositions is Selected (for anyone) or InShip (for spectators).
+                Sent to a player: on selects them, off unselects them, and no argument toggles.
+                Sent publicly: applies to the match you're playing in or spectating.
+                On (or no argument) selects the players that are currently in ships in it, and off unselects everyone focused on it.
+                A selection lasts until the player leaves the arena or the player's match ends.
+                """)]
+        private void Command_sendallpos(ReadOnlySpan<char> commandName, ReadOnlySpan<char> parameters, Player player, ITarget target)
+        {
+            Arena? arena = player.Arena;
+            if (arena is null || !_arenaDataDictionary.TryGetValue(arena, out ArenaData? arenaData))
+                return;
+
+            SendAllPositionsMode mode = arenaData.SendAllPositionsMode;
+            if (mode != SendAllPositionsMode.Selected && mode != SendAllPositionsMode.InShip)
+            {
+                _chat.SendMessage(player, $"?{SendAllPosCommandName} only applies when SS.Matchmaking.MatchFocus:SendAllPositions is {nameof(SendAllPositionsMode.Selected)} or {nameof(SendAllPositionsMode.InShip)}. It is {mode}.");
+                return;
+            }
+
+            if (!TryParseOnOff(parameters, out bool? on))
+            {
+                _chat.SendMessage(player, $"Usage: ?{SendAllPosCommandName} [on | off]");
+                return;
+            }
+
+            if (target.TryGetPlayerTarget(out Player? targetPlayer))
+            {
+                if (targetPlayer.Arena != arena || !targetPlayer.TryGetExtraData(_playerDataKey, out PlayerData? targetPlayerData))
+                    return;
+
+                bool select = on ?? !targetPlayerData.IsSendAllPositionsSelected;
+                if (targetPlayerData.IsSendAllPositionsSelected != select)
+                {
+                    targetPlayerData.IsSendAllPositionsSelected = select;
+                    InvalidateRecipients(targetPlayerData);
+                }
+
+                if (select)
+                {
+                    if (GetFocusedMatchData(targetPlayer) is null)
+                        _chat.SendMessage(player, $"{targetPlayer.Name} is selected to be sent every position packet (Mode: {mode}), but isn't playing in or spectating a match.");
+                    else
+                        _chat.SendMessage(player, $"{targetPlayer.Name} is selected to be sent every position packet (Mode: {mode}).");
+                }
+                else
+                {
+                    _chat.SendMessage(player, $"{targetPlayer.Name} is not selected to be sent every position packet (Mode: {mode}).");
+                }
+            }
+            else if (target.Type == TargetType.Arena)
+            {
+                MatchFocusData? matchFocusData = GetFocusedMatchData(player);
+                if (matchFocusData is null)
+                {
+                    _chat.SendMessage(player, $"You must be playing in or spectating a match to use ?{SendAllPosCommandName} publicly.");
+                    return;
+                }
+
+                bool select = on ?? true;
+                int count = 0;
+
+                // Selecting is for the players in ships. Unselecting is for everyone focused on the match.
+                foreach (Player otherPlayer in matchFocusData.Playing)
+                {
+                    if (otherPlayer.Arena == arena && (!select || otherPlayer.Ship != ShipType.Spec))
+                        SetSelected(otherPlayer);
+                }
+
+                if (!select)
+                {
+                    foreach (Player otherPlayer in matchFocusData.Spectators)
+                    {
+                        if (otherPlayer.Arena == arena)
+                            SetSelected(otherPlayer);
+                    }
+                }
+
+                if (select)
+                    _chat.SendMessage(player, $"Selected {count} player(s) in ships in the match to be sent every position packet (Mode: {mode}).");
+                else
+                    _chat.SendMessage(player, $"Unselected {count} player(s) in the match from being sent every position packet (Mode: {mode}).");
+
+                void SetSelected(Player otherPlayer)
+                {
+                    if (otherPlayer.TryGetExtraData(_playerDataKey, out PlayerData? otherPlayerData)
+                        && otherPlayerData.IsSendAllPositionsSelected != select)
+                    {
+                        otherPlayerData.IsSendAllPositionsSelected = select;
+                        InvalidateRecipients(otherPlayerData);
+                        count++;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Parses an on/off command argument.
+        /// </summary>
+        /// <param name="parameters">The argument.</param>
+        /// <param name="on"><see langword="true"/> for on, <see langword="false"/> for off, <see langword="null"/> for no argument.</param>
+        /// <returns><see langword="true"/> if the argument was valid. Otherwise, <see langword="false"/>.</returns>
+        private static bool TryParseOnOff(ReadOnlySpan<char> parameters, out bool? on)
+        {
+            parameters = parameters.Trim();
+
+            if (parameters.IsEmpty)
+            {
+                on = null;
+                return true;
+            }
+
+            if (parameters.Equals("on", StringComparison.OrdinalIgnoreCase) || parameters.Equals("1", StringComparison.OrdinalIgnoreCase))
+            {
+                on = true;
+                return true;
+            }
+
+            if (parameters.Equals("off", StringComparison.OrdinalIgnoreCase) || parameters.Equals("0", StringComparison.OrdinalIgnoreCase))
+            {
+                on = false;
+                return true;
+            }
+
+            on = null;
+            return false;
+        }
+
+        #endregion
+
         #region Callback handlers
 
         private void Callback_PlayerAction(Player player, PlayerAction action, Arena? arena)
@@ -297,8 +670,19 @@ namespace SS.Matchmaking.Modules
                     }
                 }
             }
+            else if (action == PlayerAction.EnterArena)
+            {
+                // Which of a match's players are in the same arena changed.
+                InvalidateRecipients(playerData);
+            }
             else if (action == PlayerAction.LeaveArena)
             {
+                playerData.SpectateTarget = null;
+                playerData.IsSendAllPositionsSelected = false;
+
+                // Which of a match's players are in the same arena changed.
+                InvalidateRecipients(playerData);
+
                 if (playerData.SpectatingMatch is not null)
                 {
                     // The SpectateChanged callback will get invoked. However, the handler will not clear the spectating state.
@@ -330,7 +714,9 @@ namespace SS.Matchmaking.Modules
         {
             if (!player.TryGetExtraData(_playerDataKey, out PlayerData? playerData))
                 return;
-            
+
+            InvalidateRecipients(playerData);
+
             if (oldShip == ShipType.Spec && newShip != ShipType.Spec)
             {
                 // The player was in spectator mode and changed into a ship.
@@ -425,6 +811,17 @@ namespace SS.Matchmaking.Modules
             if (!_matchDictionary.Remove(match, out MatchFocusData? matchFocusData))
                 return;
 
+            // Selections (to be sent every position packet) last until the player's match ends.
+            foreach (Player player in matchFocusData.Playing)
+            {
+                ClearSendAllPositionsSelected(player);
+            }
+
+            foreach (Player player in matchFocusData.Spectators)
+            {
+                ClearSendAllPositionsSelected(player);
+            }
+
             // Disassociate anyone spectating the match.
             while (matchFocusData.Spectators.Count > 0)
             {
@@ -503,6 +900,8 @@ namespace SS.Matchmaking.Modules
 
             _logManager.LogP(LogLevel.Drivel, nameof(MatchFocus), player, $"Spectate changed to: {(target is null ? "(none)" : target.Name)}");
 
+            playerData.SpectateTarget = target;
+
             IMatch? match = null;
 
             if (target is not null)
@@ -531,6 +930,9 @@ namespace SS.Matchmaking.Modules
                     ClearSpectating(player, playerData);
                 }
             }
+
+            // Whether the player is following a player in the match changed.
+            InvalidateRecipients(playerData);
         }
 
         #endregion
@@ -571,6 +973,7 @@ namespace SS.Matchmaking.Modules
             matchFocusData.Playing.Add(player);
             matchFocusData.Participants.Add(player);
             playerData.PlayingInMatch = matchFocusData;
+            matchFocusData.SendAllPositionsRecipients.IsStale = true;
 
             MatchFocusChangedCallback.Fire(player.Arena ?? _broker, player, oldMatch, GetFocusedMatchData(player)?.Match);
         }
@@ -587,6 +990,7 @@ namespace SS.Matchmaking.Modules
 
                 matchFocusData.Playing.Remove(player);
                 playerData.PlayingInMatch = null;
+                matchFocusData.SendAllPositionsRecipients.IsStale = true;
 
                 if (isDisconnect)
                 {
@@ -641,6 +1045,7 @@ namespace SS.Matchmaking.Modules
 
             matchFocusData.Spectators.Add(player);
             playerData.SpectatingMatch = matchFocusData;
+            matchFocusData.SendAllPositionsRecipients.IsStale = true;
 
             MatchFocusChangedCallback.Fire(player.Arena ?? _broker, player, oldMatch, GetFocusedMatchData(player)?.Match);
         }
@@ -655,6 +1060,7 @@ namespace SS.Matchmaking.Modules
                 IMatch? oldMatch = invokeCallback ? GetFocusedMatchData(player)?.Match : null;
 
                 playerData.SpectatingMatch.Spectators.Remove(player);
+                playerData.SpectatingMatch.SendAllPositionsRecipients.IsStale = true;
                 playerData.SpectatingMatch = null;
 
                 if (invokeCallback)
@@ -670,6 +1076,27 @@ namespace SS.Matchmaking.Modules
                 return null;
 
             return playerData.SpectatingMatch ?? playerData.PlayingInMatch;
+        }
+
+        /// <summary>
+        /// Marks the position packet recipients of the matches a player is associated with as needing to be refreshed.
+        /// </summary>
+        private static void InvalidateRecipients(PlayerData playerData)
+        {
+            if (playerData.PlayingInMatch is not null)
+                playerData.PlayingInMatch.SendAllPositionsRecipients.IsStale = true;
+
+            if (playerData.SpectatingMatch is not null)
+                playerData.SpectatingMatch.SendAllPositionsRecipients.IsStale = true;
+        }
+
+        private void ClearSendAllPositionsSelected(Player player)
+        {
+            if (player.TryGetExtraData(_playerDataKey, out PlayerData? playerData) && playerData.IsSendAllPositionsSelected)
+            {
+                playerData.IsSendAllPositionsSelected = false;
+                InvalidateRecipients(playerData);
+            }
         }
 
         #region Helper types
@@ -708,6 +1135,11 @@ namespace SS.Matchmaking.Modules
             /// </summary>
             public readonly HashSet<Player> Spectators = new(Constants.TargetPlayerCount);
 
+            /// <summary>
+            /// The position packet recipients for the match's players, for sending every position packet regardless of distance.
+            /// </summary>
+            public readonly PositionRecipients SendAllPositionsRecipients = new();
+
             bool IResettable.TryReset()
             {
                 Match = null;
@@ -716,7 +1148,62 @@ namespace SS.Matchmaking.Modules
                 Playing.Clear();
                 DisconnectedPlayingNameSet.Clear();
                 Spectators.Clear();
+                SendAllPositionsRecipients.Reset();
                 return true;
+            }
+        }
+
+        /// <summary>
+        /// The players to send a match's position packets to, for sending every position packet regardless of distance.
+        /// </summary>
+        /// <remarks>
+        /// These are kept, and only refreshed after something they depend on changes, rather than for every position packet.
+        /// </remarks>
+        private class PositionRecipients
+        {
+            /// <summary>
+            /// The players to send every position packet to, regardless of distance. Only valid when <see cref="IsActive"/> is <see langword="true"/>.
+            /// </summary>
+            public readonly HashSet<Player> SendAll = new(Constants.TargetPlayerCount);
+
+            /// <summary>
+            /// The players to send position packets to using the normal rules. Only valid when <see cref="IsActive"/> is <see langword="true"/>.
+            /// </summary>
+            public readonly HashSet<Player> SendNormal = new(Constants.TargetPlayerCount);
+
+            /// <summary>
+            /// Whether the recipients apply. If not, position packets are sent using the normal rules.
+            /// </summary>
+            public bool IsActive;
+
+            /// <summary>
+            /// Whether the recipients need to be refreshed, because something they depend on changed.
+            /// </summary>
+            public bool IsStale = true;
+
+            /// <summary>
+            /// The arena that the recipients were refreshed for.
+            /// </summary>
+            public Arena? Arena;
+
+            /// <summary>
+            /// When the recipients were last refreshed.
+            /// </summary>
+            public ServerTick Refreshed;
+
+            public void Clear()
+            {
+                SendAll.Clear();
+                SendNormal.Clear();
+                IsActive = false;
+            }
+
+            public void Reset()
+            {
+                Clear();
+                IsStale = true;
+                Arena = null;
+                Refreshed = default;
             }
         }
 
@@ -725,10 +1212,22 @@ namespace SS.Matchmaking.Modules
             public MatchFocusData? PlayingInMatch;
             public MatchFocusData? SpectatingMatch;
 
+            /// <summary>
+            /// The player that the player is spectating (following), if any.
+            /// </summary>
+            public Player? SpectateTarget;
+
+            /// <summary>
+            /// Whether the player was selected (with the ?sendallpos command) to be sent every position packet of the match the player is focused on.
+            /// </summary>
+            public bool IsSendAllPositionsSelected;
+
             bool IResettable.TryReset()
             {
                 PlayingInMatch = null;
                 SpectatingMatch = null;
+                SpectateTarget = null;
+                IsSendAllPositionsSelected = false;
                 return true;
             }
         }
@@ -739,6 +1238,9 @@ namespace SS.Matchmaking.Modules
             public AdvisorRegistrationToken<IBricksAdvisor>? IBricksAdvisorRegistrationToken;
             public AdvisorRegistrationToken<IKillAdvisor>? IKillAdvisorRegistrationToken;
             public bool FilterKillPackets;
+            public SendAllPositionsMode SendAllPositionsMode;
+            public int SendAllPositionsMaxPlaying;
+            public TimeSpan SendAllPositionsSpectatorIdleLimit;
 
             bool IResettable.TryReset()
             {
@@ -746,6 +1248,9 @@ namespace SS.Matchmaking.Modules
                 IBricksAdvisorRegistrationToken = null;
                 IKillAdvisorRegistrationToken = null;
                 FilterKillPackets = false;
+                SendAllPositionsMode = SendAllPositionsMode.Off;
+                SendAllPositionsMaxPlaying = 0;
+                SendAllPositionsSpectatorIdleLimit = TimeSpan.Zero;
                 return true;
             }
         }
