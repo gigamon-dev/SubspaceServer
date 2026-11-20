@@ -417,6 +417,20 @@ namespace SS.Core.Modules
                     Description = "Whether VIE protocol clients (i.e., Subspace 1.34 and bots) are allowed to connect to this port.")]
                 [ConfigHelp<bool>("Listen", "AllowCont", ConfigScope.Global, Default = true,
                     Description = "Whether Continuum clients are allowed to connect to this port.")]
+                [ConfigHelp<int>("Listen", "ReceiveBufferSize", ConfigScope.Global, Default = 0, Min = 0,
+                    Description = """
+                        The size (in bytes) of the receive buffer of the game socket.
+                        0 means use the operating system's default. Note: the
+                        operating system may limit the size (e.g., on Linux, by
+                        net.core.rmem_max).
+                        """)]
+                [ConfigHelp<int>("Listen", "SendBufferSize", ConfigScope.Global, Default = 0, Min = 0,
+                    Description = """
+                        The size (in bytes) of the send buffer of the game socket.
+                        0 means use the operating system's default. Note: the
+                        operating system may limit the size (e.g., on Linux, by
+                        net.core.wmem_max).
+                        """)]
                 ListenData? CreateListenDataSockets(int configIndex)
                 {
                     string configSection = (configIndex == 0) ? "Listen" : $"Listen{configIndex}";
@@ -455,6 +469,14 @@ namespace SS.Core.Modules
                         _logManager.LogM(LogLevel.Error, nameof(Network), $"Unable to create game socket. {ex.Message}");
                         return null;
                     }
+
+                    int receiveBufferSize = _configManager.GetInt(_configManager.Global, configSection, "ReceiveBufferSize", ListenSettings.ReceiveBufferSize.Default);
+                    if (receiveBufferSize > 0)
+                        SetBufferSize(gameSocket, configSection, true, receiveBufferSize);
+
+                    int sendBufferSize = _configManager.GetInt(_configManager.Global, configSection, "SendBufferSize", ListenSettings.SendBufferSize.Default);
+                    if (sendBufferSize > 0)
+                        SetBufferSize(gameSocket, configSection, false, sendBufferSize);
 
                     try
                     {
@@ -514,6 +536,38 @@ namespace SS.Core.Modules
                     }
 
                     return socket;
+                }
+
+                void SetBufferSize(Socket socket, string configSection, bool isReceive, int size)
+                {
+                    string bufferName = isReceive ? "receive" : "send";
+
+                    try
+                    {
+                        if (isReceive)
+                            socket.ReceiveBufferSize = size;
+                        else
+                            socket.SendBufferSize = size;
+
+                        // The operating system may adjust the size (e.g., Linux doubles it, and limits it to net.core.rmem_max or net.core.wmem_max).
+                        int actualSize = isReceive ? socket.ReceiveBufferSize : socket.SendBufferSize;
+                        if (actualSize < size)
+                        {
+                            _logManager.LogM(LogLevel.Warn, nameof(Network),
+                                $"[{configSection}] The game socket's {bufferName} buffer size was set to {actualSize} bytes, which is less than the configured {size} bytes. The operating system may be limiting it.");
+                        }
+                        else
+                        {
+                            _logManager.LogM(LogLevel.Info, nameof(Network),
+                                $"[{configSection}] The game socket's {bufferName} buffer size was set to {actualSize} bytes (configured: {size} bytes).");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // not fatal, the socket still works with the default size
+                        _logManager.LogM(LogLevel.Warn, nameof(Network),
+                            $"[{configSection}] Unable to set the game socket's {bufferName} buffer size to {size} bytes. {ex.Message}");
+                    }
                 }
             }
         }
