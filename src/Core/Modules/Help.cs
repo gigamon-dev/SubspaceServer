@@ -720,7 +720,7 @@ namespace SS.Core.Modules
                         if (type is null)
                             return null;
 
-                        if (typeof(IModule).IsAssignableFrom(type))
+                        if (typeof(IModule).IsAssignableFrom(type) || typeof(IAsyncModule).IsAssignableFrom(type))
                             return type;
                         else if (type.DeclaringType != null)
                             return GetModuleType(type.DeclaringType);
