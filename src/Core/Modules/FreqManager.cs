@@ -5,6 +5,7 @@ using SS.Core.ComponentInterfaces;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Threading;
 using GeneralSettings = SS.Core.ConfigHelp.Constants.Arena.General;
@@ -144,6 +145,14 @@ namespace SS.Core.Modules
 
                 ship = workingShip;
                 freq = workingFreqNum;
+
+                // Remember the assignment, so that the player is counted while it finishes entering the arena.
+                if (player.TryGetExtraData(_pdKey, out PlayerData? pd))
+                {
+                    pd.EnteringArena = arena;
+                    pd.EnteringFreqNum = workingFreqNum;
+                    pd.EnteringShip = workingShip;
+                }
             }
         }
 
@@ -383,12 +392,12 @@ namespace SS.Core.Modules
                     Freq? oldFreq = GetFreq(arena, oldFreqNum);
                     Freq? newFreq = GetFreq(arena, newFreqNum);
 
-                    if (newFreq != null && newFreq.IsRequired && newFreq.Players.Count == 0)
+                    if (newFreq != null && newFreq.IsRequired && GetFreqPlayerCount(arena, newFreq) == 0)
                     {
                         // Changing to an empty required team: always allow.
                         return true;
                     }
-                    else if (oldFreq != null && oldFreq.IsRequired && oldFreq.Players.Count == 1)
+                    else if (oldFreq != null && oldFreq.IsRequired && GetFreqPlayerCount(arena, oldFreq) == 1)
                     {
                         // The player cannot leave a required if they were the only player on it,
                         // unless they are going to another required team that has no players on it. <---- huh, what about this?
@@ -400,7 +409,7 @@ namespace SS.Core.Modules
                         // See if there are required teams that need to be filled.
                         foreach (Freq freq in ad.Freqs)
                         {
-                            if (freq.IsRequired && freq.Players.Count == 0)
+                            if (freq.IsRequired && GetFreqPlayerCount(arena, freq) == 0)
                             {
                                 // They shouldn't be changing to a team that isn't required
                                 // when there are still required teams to start up.
@@ -421,8 +430,37 @@ namespace SS.Core.Modules
 
                     try
                     {
-                        int oldFreqMetric = GetFreqMetric(oldFreq, balancer);
-                        int newFreqMetric = GetFreqMetric(newFreq, balancer);
+                        // Whether the player counts on its old freq, so that the old freq is balanced against.
+                        // The player counts on it if it's in the old freq's Freq, or if it's still entering the arena on the old freq
+                        // (it isn't added to a Freq until it finishes entering, and the Freq may not exist yet).
+                        // Otherwise, the player isn't on a freq that is balanced: e.g., it's on the spectator freq (which has no Freq),
+                        // or it's being placed by Initial (Core sets its freq to -1 first).
+                        bool countsOnOldFreq;
+
+                        if (oldFreq != null)
+                        {
+                            countsOnOldFreq = true;
+                        }
+                        else if (oldFreqNum == arena.SpecFreq)
+                        {
+                            countsOnOldFreq = false;
+                        }
+                        else
+                        {
+                            _playerData.Lock();
+
+                            try
+                            {
+                                countsOnOldFreq = IsEnteringPlayer(player, arena, out PlayerData? pd) && pd.EnteringFreqNum == oldFreqNum;
+                            }
+                            finally
+                            {
+                                _playerData.Unlock();
+                            }
+                        }
+
+                        int oldFreqMetric = countsOnOldFreq ? GetFreqMetric(arena, oldFreqNum, oldFreq, balancer) : 0;
+                        int newFreqMetric = GetFreqMetric(arena, newFreqNum, newFreq, balancer);
 
                         int playerMetric = GetPlayerMetric(player, balancer);
                         int oldFreqMetricPotential = oldFreqMetric - playerMetric;
@@ -435,7 +473,7 @@ namespace SS.Core.Modules
                             errorMessage?.Append("Changing to that team would make it too powerful.");
                             return false;
                         }
-                        else if (oldFreq != null && oldFreqMetricPotential > 0 && balancer.GetMaximumDifference(arena, oldFreqNum, newFreqNum) < newFreqMetricPotential - oldFreqMetricPotential)
+                        else if (countsOnOldFreq && oldFreqMetricPotential > 0 && balancer.GetMaximumDifference(arena, oldFreqNum, newFreqNum) < newFreqMetricPotential - oldFreqMetricPotential)
                         {
                             errorMessage?.Append("Changing to that team would disrupt the balance between it and your current team.");
                             return false;
@@ -450,7 +488,7 @@ namespace SS.Core.Modules
                                 if (freq == oldFreq || freq == newFreq)
                                     continue;
 
-                                int freqMetric = GetFreqMetric(freq, balancer);
+                                int freqMetric = GetFreqMetric(arena, freq.FreqNum, freq, balancer);
 
                                 if (balancer.GetMaximumDifference(arena, newFreqNum, freq.FreqNum) < newFreqMetricPotential - freqMetric)
                                 {
@@ -528,6 +566,12 @@ namespace SS.Core.Modules
                             && p.IsHuman
                             && p.Status == PlayerState.Playing
                             && p.Ship != ShipType.Spec)
+                        {
+                            count++;
+                        }
+                        else if (p.IsHuman
+                            && IsEnteringPlayer(p, arena, out PlayerData? pd)
+                            && pd.EnteringShip != ShipType.Spec)
                         {
                             count++;
                         }
@@ -624,9 +668,12 @@ namespace SS.Core.Modules
             if (action == PlayerAction.PreEnterArena)
             {
                 pd.Freq = null;
+                pd.EnteringArena = null;
             }
             else if (action == PlayerAction.EnterArena)
             {
+                // The player is done entering, from now on it's counted by being in its Freq.
+                pd.EnteringArena = null;
                 UpdateFreqs(arena!, player, player.Freq, arena!.SpecFreq);
             }
             else if (action == PlayerAction.LeaveArena)
@@ -646,6 +693,25 @@ namespace SS.Core.Modules
             Arena? arena = player.Arena;
             if (arena is null)
                 return;
+
+            _playerData.Lock();
+
+            try
+            {
+                if (IsEnteringPlayer(player, arena, out PlayerData? pd))
+                {
+                    // The player's ship/freq was changed while it's still entering the arena (e.g., forced by a module).
+                    // It isn't added to a Freq until it finishes entering (PlayerAction.EnterArena), which will use its new freq.
+                    // Until then, update what it's counted as, rather than also adding it to a Freq, which would count it twice.
+                    pd.EnteringFreqNum = newFreq;
+                    pd.EnteringShip = newShip;
+                    return;
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
 
             UpdateFreqs(arena, player, newFreq, oldFreq);
         }
@@ -767,6 +833,13 @@ namespace SS.Core.Modules
                         {
                             count++;
                         }
+                        else if (p.IsHuman
+                            && IsEnteringPlayer(p, arena, out PlayerData? pd)
+                            && pd.EnteringFreqNum == freqNum
+                            && (pd.EnteringShip != ShipType.Spec || ad.Config.SpectatorsCountForTeamSize))
+                        {
+                            count++;
+                        }
                     }
                 }
                 finally
@@ -827,13 +900,14 @@ namespace SS.Core.Modules
                         continue;
 
                     Freq? freq = GetFreq(arena, i);
-                    if (freq == null)
+                    if (freq == null && GetEnteringPlayerCount(arena, i) == 0)
                     {
+                        // The freq is empty.
                         result = i;
                         break;
                     }
 
-                    int freqMetric = GetFreqMetric(freq, balancer);
+                    int freqMetric = GetFreqMetric(arena, i, freq, balancer);
                     if (freqMetric <= balancer.GetMaxMetric(arena, i) - playerMetric
                         && (result == arena.SpecFreq || freqMetric < resultMetric))
                     {
@@ -853,8 +927,8 @@ namespace SS.Core.Modules
 
                         if (CanChangeToFreq(arena, player, i, errorMessage))
                         {
-                            if (freq == null
-                                || GetFreqMetric(freq, balancer) <= balancer.GetMaxMetric(arena, i) - playerMetric)
+                            if ((freq == null && GetEnteringPlayerCount(arena, i) == 0)
+                                || GetFreqMetric(arena, i, freq, balancer) <= balancer.GetMaxMetric(arena, i) - playerMetric)
                             {
                                 result = i;
                                 break;
@@ -912,11 +986,15 @@ namespace SS.Core.Modules
             return player.IsHuman ? balancer.GetPlayerMetric(player) : 0;
         }
 
-        private int GetFreqMetric(Freq? freq, IFreqBalancer balancer)
+        /// <summary>
+        /// Gets the metric of a freq, including the players that are still entering the arena on it.
+        /// </summary>
+        /// <param name="arena">The arena the freq is in.</param>
+        /// <param name="freqNum">The freq number.</param>
+        /// <param name="freq">The freq, or <see langword="null"/> if it doesn't exist (no players have finished entering the arena on it).</param>
+        /// <param name="balancer">The balancer to get player metrics from.</param>
+        private int GetFreqMetric(Arena arena, short freqNum, Freq? freq, IFreqBalancer balancer)
         {
-            if (freq == null)
-                return 0;
-
             ArgumentNullException.ThrowIfNull(balancer);
 
             _playerData.Lock(); // TODO: review this lock
@@ -927,9 +1005,20 @@ namespace SS.Core.Modules
             {
                 int result = 0;
 
-                foreach (Player player in freq.Players)
+                if (freq != null)
                 {
-                    result += GetPlayerMetric(player, balancer);
+                    foreach (Player player in freq.Players)
+                    {
+                        result += GetPlayerMetric(player, balancer);
+                    }
+                }
+
+                foreach (Player player in _playerData.Players)
+                {
+                    if (IsEnteringPlayer(player, arena, out PlayerData? pd) && pd.EnteringFreqNum == freqNum)
+                    {
+                        result += GetPlayerMetric(player, balancer);
+                    }
                 }
 
                 return result;
@@ -938,6 +1027,68 @@ namespace SS.Core.Modules
             {
                 _playerData.Unlock();
             }
+        }
+
+        /// <summary>
+        /// Gets the number of players on a freq, including the players that are still entering the arena on it.
+        /// </summary>
+        private int GetFreqPlayerCount(Arena arena, Freq freq)
+        {
+            return freq.Players.Count + GetEnteringPlayerCount(arena, freq.FreqNum);
+        }
+
+        /// <summary>
+        /// Gets the number of players that are still entering an arena on a freq.
+        /// </summary>
+        private int GetEnteringPlayerCount(Arena arena, short freqNum)
+        {
+            int count = 0;
+
+            _playerData.Lock();
+
+            try
+            {
+                foreach (Player player in _playerData.Players)
+                {
+                    if (IsEnteringPlayer(player, arena, out PlayerData? pd) && pd.EnteringFreqNum == freqNum)
+                    {
+                        count++;
+                    }
+                }
+            }
+            finally
+            {
+                _playerData.Unlock();
+            }
+
+            return count;
+        }
+
+        /// <summary>
+        /// Gets whether a player is still entering an arena, after being assigned a ship and freq by <see cref="IFreqManager.Initial"/>.
+        /// </summary>
+        /// <remarks>
+        /// The player data lock must be held.
+        /// </remarks>
+        /// <param name="player">The player to check.</param>
+        /// <param name="arena">The arena to check.</param>
+        /// <param name="pd">The player's data, with the assigned ship and freq.</param>
+        /// <returns><see langword="true"/> if the player is entering <paramref name="arena"/>; otherwise <see langword="false"/>.</returns>
+        private bool IsEnteringPlayer(Player player, Arena arena, [MaybeNullWhen(false)] out PlayerData pd)
+        {
+            // Players in these states have been assigned a ship and freq, but have not been added to their Freq yet.
+            // A player that leaves the arena before it finishes entering moves to another state (or is flagged to), so it stops being counted.
+            if (player.Arena == arena
+                && (player.Status == PlayerState.WaitArenaSync1 || player.Status == PlayerState.ArenaRespAndCBS)
+                && !player.Flags.LeaveArenaWhenDoneWaiting
+                && player.TryGetExtraData(_pdKey, out pd)
+                && pd.EnteringArena == arena)
+            {
+                return true;
+            }
+
+            pd = null;
+            return false;
         }
 
         private static ShipMask GetAllowableShips(Arena arena, Player player, ShipType ship, short freq, StringBuilder? errorMessage)
@@ -1124,9 +1275,33 @@ namespace SS.Core.Modules
         {
             public Freq? Freq;
 
+            /// <summary>
+            /// The arena that <see cref="IFreqManager.Initial"/> assigned the player a ship and freq for.
+            /// It is only considered while the player is still entering the arena. See <see cref="IsEnteringPlayer"/>.
+            /// </summary>
+            /// <remarks>
+            /// A player isn't added to its <see cref="FreqManager.Freq"/> until it finishes entering the arena (<see cref="PlayerAction.EnterArena"/>).
+            /// Until then, this is how the player gets included when balancing and checking limits.
+            /// Otherwise, players entering the arena at the same time (e.g., ?recyclearena) would all be placed as if the teams were empty.
+            /// </remarks>
+            public Arena? EnteringArena;
+
+            /// <summary>
+            /// The freq that <see cref="IFreqManager.Initial"/> assigned. Only valid when <see cref="EnteringArena"/> is set.
+            /// </summary>
+            public short EnteringFreqNum;
+
+            /// <summary>
+            /// The ship that <see cref="IFreqManager.Initial"/> assigned. Only valid when <see cref="EnteringArena"/> is set.
+            /// </summary>
+            public ShipType EnteringShip;
+
             public bool TryReset()
             {
                 Freq = null;
+                EnteringArena = null;
+                EnteringFreqNum = 0;
+                EnteringShip = ShipType.Spec;
                 return true;
             }
         }
