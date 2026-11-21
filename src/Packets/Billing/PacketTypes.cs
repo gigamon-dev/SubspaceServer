@@ -21,7 +21,19 @@
     public enum B2SPacketType : byte
     {
         UserLogin = 0x01,
+
+        /// <summary>
+        /// The billing server is telling the zone to shut down. There is no data after the type.
+        /// </summary>
+        ServerShutdown = 0x02,
+
         UserPrivateChat = 0x03,
+
+        /// <summary>
+        /// The billing server is telling the zone to recycle (shut down and restart). There is no data after the type.
+        /// </summary>
+        ServerRecycle = 0x04,
+
         UserKickout = 0x08,
         UserCommandChat = 0x09,
         UserChannelChat = 0x0A,

@@ -565,8 +565,16 @@ namespace SS.Core.Modules
                         ProcessUserLogin(data);
                         break;
 
+                    case B2SPacketType.ServerShutdown:
+                        ProcessServerShutdownOrRecycle(ExitCode.None, flags);
+                        break;
+
                     case B2SPacketType.UserPrivateChat:
                         ProcessUserPrivateChat(data);
+                        break;
+
+                    case B2SPacketType.ServerRecycle:
+                        ProcessServerShutdownOrRecycle(ExitCode.Recycle, flags);
                         break;
 
                     case B2SPacketType.UserKickout:
@@ -2141,6 +2149,50 @@ namespace SS.Core.Modules
             playerData.AuthRequest.Done();
             playerData.AuthRequest = null;
             _pendingAuths--;
+        }
+
+        /// <summary>
+        /// Processes a request from the billing server to shut down (<see cref="B2SPacketType.ServerShutdown"/>)
+        /// or recycle (<see cref="B2SPacketType.ServerRecycle"/>) the zone.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Subgame supports both, including with fix.dll. Subgame's billing packet handler shuts down the zone for 0x02,
+        /// and recycles it for 0x04. Fix.dll puts its own billing packet handler in front of it, but passes these two through unchanged.
+        /// </para>
+        /// <para>
+        /// The "Shutdown request from billing server ignored" and "Recycle request from billing server ignored" log messages
+        /// don't mean otherwise. They come from fix.dll's filter on every UDP datagram that subgame receives.
+        /// It drops a datagram from the billing server's IP (server.ini [Billing] IP) when its first byte is 0x02 or 0x04,
+        /// and logs one of those messages (at most once every 10 seconds).
+        /// That only matches the packet on its own, outside of the connection's reliable packets (00 03),
+        /// which is what someone spoofing the billing server's IP would send.
+        /// A billing server sends these in reliable packets, which start with 00, so they pass the filter and are handled.
+        /// </para>
+        /// <para>
+        /// Likewise, only a request that was received reliably is acted upon here.
+        /// </para>
+        /// <para>
+        /// A recycle is the same as <c>?recyclezone</c> or <c>?shutdown -r</c>: the server shuts down and exits with <see cref="ExitCode.Recycle"/>.
+        /// It doesn't restart itself. That's up to whatever started it, such as the run-server script (scripts/startup),
+        /// which restarts the server when it exits with that code. A zone that wasn't started with that script
+        /// (or something else that does the same) just shuts down.
+        /// </para>
+        /// </remarks>
+        /// <param name="exitCode"><see cref="ExitCode.None"/> to shut down, or <see cref="ExitCode.Recycle"/> to recycle.</param>
+        /// <param name="flags">How the packet was received.</param>
+        private void ProcessServerShutdownOrRecycle(ExitCode exitCode, NetReceiveFlags flags)
+        {
+            string action = exitCode == ExitCode.Recycle ? "recycle" : "shutdown";
+
+            if ((flags & NetReceiveFlags.Reliable) == 0)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Ignored a {action} request from the billing server, since it wasn't received reliably.");
+                return;
+            }
+
+            _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Received a {action} request from the billing server.");
+            _mainloop.Quit(exitCode);
         }
 
         private void ProcessUserPrivateChat(Span<byte> data)
