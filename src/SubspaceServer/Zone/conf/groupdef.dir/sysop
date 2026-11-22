@@ -67,6 +67,10 @@ rprivcmd_send
 
 cmd_ufo
 privcmd_ufo
+cmd_super
+privcmd_super
+cmd_thor
+privcmd_thor
 
 ; Matchmaking (TeamVersusMatch)
 cmd_loadmatchtype

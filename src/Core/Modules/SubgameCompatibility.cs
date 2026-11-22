@@ -64,6 +64,8 @@ namespace SS.Core.Modules
             {"*setfreq",    "setfreq -f"},
             {"*scorereset", "sg_scorereset"},
             {"*tmode",      "sg_tmode" },
+            {"*super",      "super"},
+            {"*thor",       "thor"},
         };
 
         private readonly Dictionary<string, string>.AlternateLookup<ReadOnlySpan<char>> _aliasesLookup;
