@@ -62,11 +62,16 @@ namespace SS.Replay
         playback of all aspects of the game including: flag games, crowns, 
         synchronization of doors & greens, etc.
         """)]
-    public sealed class ReplayModule : IModule, IReplayController, IFreqManagerEnforcerAdvisor
+    public sealed class ReplayModule : IAsyncModule, IReplayController, IFreqManagerEnforcerAdvisor
     {
         private const uint MapChecksumKey = 0x46692018;
         private const int MaxRecordBuffer = 4096;
         private const string ReplayCommandName = "replay";
+
+        /// <summary>
+        /// How long unloading waits for the recordings it stopped to finish writing their replay files.
+        /// </summary>
+        private static readonly TimeSpan RecordingEndTimeout = TimeSpan.FromSeconds(10);
 
         private readonly IArenaManager _arenaManager;
         private readonly IBalls _balls;
@@ -94,7 +99,14 @@ namespace SS.Replay
 
         private static readonly ArrayPool<byte> _recordBufferPool = ArrayPool<byte>.Create();
 
+        /// <summary>
+        /// The recorder tasks that haven't been cleaned up yet, including ones whose arena was destroyed, so that unloading can wait for them.
+        /// </summary>
+        private readonly HashSet<Task> _recorderTasks = [];
+        private readonly Lock _recorderTasksLock = new();
+
         private readonly Action<(Player Player, uint C2SLatency)> _mainloopWorkItem_C2SLatencyEstimateChanged;
+        private readonly Action<(Arena Arena, Task Task, BlockingCollection<RecordBuffer> Queue)> _mainloopWorkItem_EndRecording;
 
         public ReplayModule(
             IArenaManager arenaManager,
@@ -138,11 +150,12 @@ namespace SS.Replay
             _securitySeedSync = securitySeedSync ?? throw new ArgumentNullException(nameof(securitySeedSync));
 
             _mainloopWorkItem_C2SLatencyEstimateChanged = MainloopWorkItem_C2SLatencyEstimateChanged;
+            _mainloopWorkItem_EndRecording = MainloopWorkItem_EndRecording;
         }
 
         #region Module members
 
-        bool IModule.Load(IComponentBroker broker)
+        Task<bool> IAsyncModule.LoadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             _adKey = _arenaManager.AllocateArenaData<ArenaData>();
 
@@ -156,26 +169,114 @@ namespace SS.Replay
             SecuritySeedChangedCallback.Register(broker, Callback_SecuritySeedChanged);
 
             _iReplayControllerToken = broker.RegisterInterface<IReplayController>(this);
-            return true;
+            return Task.FromResult(true);
         }
 
-        bool IModule.Unload(IComponentBroker broker)
+        async Task<bool> IAsyncModule.UnloadAsync(IComponentBroker broker, CancellationToken cancellationToken)
         {
             if (broker.UnregisterInterface(ref _iReplayControllerToken) != 0)
                 return false;
+
+            // Remove the commands first, so that nothing can start another recording.
+            _commandManager.RemoveCommand(ReplayCommandName, Command_replay);
+            _commandManager.RemoveCommand("gamerecord", Command_replay);
+            _commandManager.RemoveCommand("rec", Command_replay);
+
+            await EndRecordingsAsync();
 
             ArenaActionCallback.Unregister(broker, Callback_ArenaAction);
             SecuritySeedChangedCallback.Unregister(broker, Callback_SecuritySeedChanged);
 
             _network.RemovePacket(C2SPacketType.Position, Packet_Position);
 
-            _commandManager.RemoveCommand("replay", Command_replay);
-            _commandManager.RemoveCommand("gamerecord", Command_replay);
-            _commandManager.RemoveCommand("rec", Command_replay);
-
             _arenaManager.FreeArenaData(ref _adKey);
 
             return true;
+        }
+
+        /// <summary>
+        /// Stops the recordings in progress and waits for them to finish writing their replay files, so that the files are complete.
+        /// </summary>
+        private async Task EndRecordingsAsync()
+        {
+            lock (_recorderTasksLock)
+            {
+                if (_recorderTasks.Count == 0)
+                    return;
+            }
+
+            // Stop them on the mainloop thread, since it's the one that adds events to them.
+            if (_mainloop.IsMainloop)
+            {
+                StopAllRecordings();
+            }
+            else
+            {
+                TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+                bool queued = _mainloop.QueueMainWorkItem(
+                    static state =>
+                    {
+                        try
+                        {
+                            state.Module.StopAllRecordings();
+                            state.Stopped.SetResult();
+                        }
+                        catch (Exception ex)
+                        {
+                            state.Stopped.SetException(ex);
+                        }
+                    },
+                    (Module: this, Stopped: stopped));
+
+                if (queued)
+                {
+                    await stopped.Task;
+                }
+                else
+                {
+                    // The mainloop isn't running anymore, so nothing is adding events to them.
+                    StopAllRecordings();
+                }
+            }
+
+            Task[] recorderTasks;
+
+            lock (_recorderTasksLock)
+            {
+                recorderTasks = [.. _recorderTasks];
+            }
+
+            try
+            {
+                await Task.WhenAll(recorderTasks).WaitAsync(RecordingEndTimeout);
+            }
+            catch (TimeoutException)
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(ReplayModule), $"Recordings didn't finish writing their replay files within {RecordingEndTimeout.TotalSeconds} seconds.");
+            }
+            catch (Exception ex)
+            {
+                // A recorder task failed (e.g., an I/O error when closing the file). It's done, so don't let it stop the unload.
+                _logManager.LogM(LogLevel.Warn, nameof(ReplayModule), $"Error ending a recording. {ex}");
+            }
+        }
+
+        private void StopAllRecordings()
+        {
+            _arenaManager.Lock();
+
+            try
+            {
+                foreach (Arena arena in _arenaManager.Arenas)
+                {
+                    StopRecording(arena);
+                }
+            }
+            finally
+            {
+                _arenaManager.Unlock();
+            }
         }
 
         #endregion
@@ -456,7 +557,7 @@ namespace SS.Replay
                 foreach (Arena arena in _arenaManager.Arenas)
                 {
                     if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
-                        return;
+                        continue;
 
                     if (ad.State == ReplayState.Recording && ad.RecorderQueue is not null && !ad.RecorderQueue.IsAddingCompleted)
                     {
@@ -590,6 +691,10 @@ namespace SS.Replay
                 if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                     return;
 
+                // This may have been queued to the mainloop thread while recording, and the recording stopped since.
+                if (ad.State != ReplayState.Recording || ad.RecorderQueue is null || ad.RecorderQueue.IsAddingCompleted)
+                    return;
+
                 RecordC2SLatencyEstimate(ad, player, c2sLatency);
             }
         }
@@ -629,7 +734,7 @@ namespace SS.Replay
                     return;
             }
 
-            if (ad.RecorderQueue!.IsAddingCompleted) // only the mainloop thread changes this, so it can't happen between here the Add method call since this is the mainloop
+            if (ad.RecorderQueue is null || ad.RecorderQueue.IsAddingCompleted) // only the mainloop thread changes this, so it can't happen between here the Add method call since this is the mainloop
                 return;
 
             ref readonly C2S_PositionPacket c2sPosition = ref MemoryMarshal.AsRef<C2S_PositionPacket>(data);
@@ -830,9 +935,25 @@ namespace SS.Replay
                 if (ad.RecorderTask is not null && !ad.RecorderTask.IsCompleted)
                     return false;
 
+                // Get what the file header needs from the arena before changing any state, since getting the map checksum throws if the map isn't loaded.
+                short specFreq = arena.SpecFreq;
+                uint mapChecksum;
+
+                try
+                {
+                    mapChecksum = _mapData.GetChecksum(arena, MapChecksumKey);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _logManager.LogA(LogLevel.Warn, nameof(ReplayModule), arena, $"Unable to start recording, could not get the map checksum. {ex.Message}");
+                    return false;
+                }
+
+                BlockingCollection<RecordBuffer> recorderQueue = [];
+
                 ad.State = ReplayState.Recording;
                 ad.StartedBy = recorder?.Name;
-                ad.RecorderQueue = [];
+                ad.RecorderQueue = recorderQueue;
 
                 ServerTick started = ServerTick.Now;
 
@@ -871,13 +992,35 @@ namespace SS.Replay
                 TurretKickoffCallback.Register(arena, Callback_TurretKickoff);
                 C2SLatencyEstimateChangedCallback.Register(arena, Callback_C2SLatencyEstimateChanged);
 
-                ad.RecorderTask = Task.Factory.StartNew(
-                    () =>
-                    {
-                        DoRecording(arena, path, started, comments);
-                        _mainloop.QueueMainWorkItem(MainloopWorkItem_EndRecording, arena);
-                    },
+                // The recorder task is given everything it needs, rather than reading it from the arena's data.
+                // That way, it can finish writing the replay file after the arena is destroyed or the module is unloaded.
+                Settings settings = ad.Settings;
+                string? startedBy = ad.StartedBy;
+
+                Task recorderTask = new(
+                    () => DoRecording(arena, path, started, comments, recorderQueue, settings, startedBy, specFreq, mapChecksum),
                     TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach);
+
+                ad.RecorderTask = recorderTask;
+
+                lock (_recorderTasksLock)
+                {
+                    _recorderTasks.Add(recorderTask);
+                }
+
+                // Clean up once the task has completed.
+                recorderTask.ContinueWith(
+                    static (task, state) =>
+                    {
+                        var (module, arena, recorderQueue) = ((ReplayModule, Arena, BlockingCollection<RecordBuffer>))state!;
+                        module._mainloop.QueueMainWorkItem(module._mainloopWorkItem_EndRecording, (arena, task, recorderQueue));
+                    },
+                    (this, arena, recorderQueue),
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+
+                recorderTask.Start(TaskScheduler.Default);
 
                 return true;
             }
@@ -1096,17 +1239,27 @@ namespace SS.Replay
             }
         }
 
-        private void DoRecording(Arena arena, string path, ServerTick started, string? comments)
+        /// <summary>
+        /// Writes a recording to a replay file. This is the body of the recorder task.
+        /// </summary>
+        /// <remarks>
+        /// It doesn't use the arena's data. Everything it needs is passed in when the recording is started.
+        /// That way, it can finish writing the replay file after the arena is destroyed or the module is unloaded.
+        /// </remarks>
+        private void DoRecording(
+            Arena arena,
+            string path,
+            ServerTick started,
+            string? comments,
+            BlockingCollection<RecordBuffer> recorderQueue,
+            Settings settings,
+            string? startedBy,
+            short specFreq,
+            uint mapChecksum)
         {
-            if (!arena.TryGetExtraData(_adKey, out ArenaData? ad))
-            {
-                LogAndNotify(arena, NotifyOption.None, "Missing ArenaData.");
-                return;
-            }
-
             if (string.IsNullOrWhiteSpace(path))
             {
-                LogAndNotify(arena, ad.Settings.NotifyPlaybackError, "Missing path of replay to record.");
+                LogAndNotify(arena, settings.NotifyRecordingError, startedBy, "Missing path of replay to record.");
                 path = Path.Combine("recordings", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{arena.Name}");
             }
             else if (!path.StartsWith("recordings", StringComparison.OrdinalIgnoreCase)
@@ -1127,7 +1280,7 @@ namespace SS.Replay
             }
             catch (Exception ex)
             {
-                LogAndNotify(arena, ad.Settings.NotifyRecordingError, $"Unable to create directory for replay file '{path}'.", ex);
+                LogAndNotify(arena, settings.NotifyRecordingError, startedBy, $"Unable to create directory for replay file '{path}'.", ex);
                 return;
             }
 
@@ -1140,20 +1293,22 @@ namespace SS.Replay
             }
             catch (Exception ex)
             {
-                LogAndNotify(arena, ad.Settings.NotifyRecordingError, $"Unable to create replay file '{path}'.", ex);
+                LogAndNotify(arena, settings.NotifyRecordingError, startedBy, $"Unable to create replay file '{path}'.", ex);
                 return;
             }
 
-            Notify(arena, ad.Settings.NotifyRecording, $"Started recording '{path}'.");
+            Notify(arena, settings.NotifyRecording, $"Started recording '{path}'.", startedBy);
 
             try
             {
-                BlockingCollection<RecordBuffer> recorderQueue;
-
-                lock (ad.Lock)
+                if (arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 {
-                    recorderQueue = ad.RecorderQueue ?? throw new Exception("The recorder queue was null.");
-                    ad.FileName = path;
+                    lock (ad.Lock)
+                    {
+                        // Only if the arena still has this recording.
+                        if (ad.RecorderQueue == recorderQueue)
+                            ad.FileName = path;
+                    }
                 }
 
                 int commentsLength = comments is not null ? StringUtils.DefaultEncoding.GetByteCount(comments) + 1 : 0;
@@ -1167,10 +1322,10 @@ namespace SS.Replay
                     Events = 0, // This will be updated at the end.
                     EndTime = 0, // This will be updated at the end.
                     MaxPlayerId = 0, // This will be updated at the end.
-                    SpecFreq = (uint)arena.SpecFreq,
+                    SpecFreq = (uint)specFreq,
                     Recorded = DateTimeOffset.UtcNow,
-                    MapChecksum = _mapData.GetChecksum(arena, MapChecksumKey),
-                    Recorder = ad.StartedBy,
+                    MapChecksum = mapChecksum,
+                    Recorder = startedBy,
                     ArenaName = arena.Name
                 };
 
@@ -1302,13 +1457,13 @@ namespace SS.Replay
             }
             catch (Exception ex)
             {
-                LogAndNotify(arena, ad.Settings.NotifyRecordingError, $"Error recording to '{path}'.", ex);
+                LogAndNotify(arena, settings.NotifyRecordingError, startedBy, $"Error recording to '{path}'.", ex);
             }
             finally
             {
                 fileStream.Dispose();
 
-                Notify(arena, ad.Settings.NotifyRecording, $"Stopped recording '{path}'.");
+                Notify(arena, settings.NotifyRecording, $"Stopped recording '{path}'.", startedBy);
             }
         }
 
@@ -1318,41 +1473,50 @@ namespace SS.Replay
         /// <remarks>
         /// This is executed on the mainloop thread since the mainloop thread is the producer.
         /// It is important that it's done on the mainloop thread because the <see cref="Packet_Position"/> method is registered globally and occurs on the mainloop thread.
+        /// It's queued by a continuation of the recorder task, so the task has completed.
         /// </remarks>
-        /// <param name="arena"></param>
-        private void MainloopWorkItem_EndRecording(Arena arena)
+        /// <param name="state">The arena, and the recording's task and queue.</param>
+        private void MainloopWorkItem_EndRecording((Arena Arena, Task Task, BlockingCollection<RecordBuffer> Queue) state)
         {
             Debug.Assert(_mainloop.IsMainloop);
 
-            if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
-                return;
+            (Arena arena, Task recorderTask, BlockingCollection<RecordBuffer> recorderQueue) = state;
 
-            // Make sure callbacks are unregistered and the queue is marked as complete for adding.
-            // If the recording was told to stop, then this will have already been done and calling it again will do nothing.
-            // If the recording errored out, then this will bring it into the state we're expecting.
-            StopRecording(arena);
-
-            lock (ad.Lock)
+            // The arena may not have this recording anymore (e.g., the arena was destroyed, or the module was unloaded).
+            if (arena.TryGetExtraData(_adKey, out ArenaData? ad))
             {
-                Debug.Assert(ad.RecorderTask!.IsCompleted);
-
-                ad.State = ReplayState.None;
-                ad.FileName = null;
-                ad.StartedBy = null;
-
-                // If there are any remaining queued items, make sure to return their buffers to the pool.
-                while (!ad.RecorderQueue!.IsCompleted)
+                lock (ad.Lock)
                 {
-                    if (!ad.RecorderQueue.TryTake(out RecordBuffer recordBuffer))
-                        continue;
+                    if (ad.RecorderTask == recorderTask)
+                    {
+                        // Make sure callbacks are unregistered and the queue is marked as complete for adding.
+                        // If the recording was told to stop, then this will have already been done and calling it again will do nothing.
+                        // If the recording errored out, then this will bring it into the state we're expecting.
+                        StopRecording(arena);
 
-                    _recordBufferPool.Return(recordBuffer.Buffer, true);
+                        ad.State = ReplayState.None;
+                        ad.FileName = null;
+                        ad.StartedBy = null;
+                        ad.RecorderQueue = null;
+                        ad.RecorderTask = null;
+                    }
                 }
+            }
 
-                ad.RecorderQueue.Dispose();
-                ad.RecorderQueue = null;
+            // If there are any remaining queued items, make sure to return their buffers to the pool.
+            if (!recorderQueue.IsAddingCompleted)
+                recorderQueue.CompleteAdding();
 
-                ad.RecorderTask = null;
+            while (recorderQueue.TryTake(out RecordBuffer recordBuffer))
+            {
+                _recordBufferPool.Return(recordBuffer.Buffer, true);
+            }
+
+            recorderQueue.Dispose();
+
+            lock (_recorderTasksLock)
+            {
+                _recorderTasks.Remove(recorderTask);
             }
         }
 
@@ -2486,6 +2650,21 @@ namespace SS.Replay
 
         private void LogAndNotify(Arena arena, NotifyOption notifyOption, string message, Exception? ex = null)
         {
+            Log(arena, message, ex);
+            Notify(arena, notifyOption, message);
+        }
+
+        /// <summary>
+        /// Logs and notifies, given who started the recording or playback (rather than reading it from the arena's data).
+        /// </summary>
+        private void LogAndNotify(Arena arena, NotifyOption notifyOption, string? startedBy, string message, Exception? ex = null)
+        {
+            Log(arena, message, ex);
+            Notify(arena, notifyOption, message, startedBy);
+        }
+
+        private void Log(Arena arena, string message, Exception? ex)
+        {
             StringBuilder sb = _objectPoolManager.StringBuilderPool.Get();
 
             try
@@ -2504,8 +2683,6 @@ namespace SS.Replay
             {
                 _objectPoolManager.StringBuilderPool.Return(sb);
             }
-
-            Notify(arena, notifyOption, message);
         }
 
         private void Notify(Arena arena, NotifyOption notifyOption, string message)
@@ -2513,12 +2690,23 @@ namespace SS.Replay
             if (arena is null || !arena.TryGetExtraData(_adKey, out ArenaData? ad))
                 return;
 
+            Notify(arena, notifyOption, message, ad.StartedBy);
+        }
+
+        /// <summary>
+        /// Notifies, given who started the recording or playback (rather than reading it from the arena's data).
+        /// </summary>
+        private void Notify(Arena arena, NotifyOption notifyOption, string message, string? startedBy)
+        {
+            if (arena is null)
+                return;
+
             if (notifyOption == NotifyOption.Player)
             {
-                if (string.IsNullOrWhiteSpace(ad.StartedBy))
+                if (string.IsNullOrWhiteSpace(startedBy))
                     return;
 
-                Player? player = _playerData.FindPlayer(ad.StartedBy);
+                Player? player = _playerData.FindPlayer(startedBy);
                 if (player is null
                     || player.Arena != arena
                     || player.Status != PlayerState.Playing)
