@@ -2181,13 +2181,43 @@ namespace SS.Core.Modules
         /// </remarks>
         /// <param name="exitCode"><see cref="ExitCode.None"/> to shut down, or <see cref="ExitCode.Recycle"/> to recycle.</param>
         /// <param name="flags">How the packet was received.</param>
+        [ConfigHelp<bool>("Billing", "HonorRecycleRequests", ConfigScope.Global, Default = true,
+            Description = "Whether to recycle when the billing server says to.")]
+        [ConfigHelp<bool>("Billing", "HonorShutdownRequests", ConfigScope.Global, Default = true,
+            Description = "Whether to shutdown when the billing server says to.")]
         private void ProcessServerShutdownOrRecycle(ExitCode exitCode, NetReceiveFlags flags)
         {
-            string action = exitCode == ExitCode.Recycle ? "recycle" : "shutdown";
+            string action;
+            string honorKey;
+            bool honorDefault;
+
+            if (exitCode == ExitCode.Recycle)
+            {
+                action = "recycle";
+                honorKey = "HonorRecycleRequests";
+                honorDefault = BillingSettings.HonorRecycleRequests.Default;
+            }
+            else if (exitCode == ExitCode.None)
+            {
+                action = "shutdown";
+                honorKey = "HonorShutdownRequests";
+                honorDefault = BillingSettings.HonorShutdownRequests.Default;
+            }
+            else
+            {
+                _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Unsupported exit code for shutdown or recycle (exitCode: {exitCode}).");
+                return;
+            }
 
             if ((flags & NetReceiveFlags.Reliable) == 0)
             {
                 _logManager.LogM(LogLevel.Warn, nameof(BillingUdp), $"Ignored a {action} request from the billing server, since it wasn't received reliably.");
+                return;
+            }
+
+            if (!_configManager.GetBool(_configManager.Global, "Billing", honorKey, honorDefault))
+            {
+                _logManager.LogM(LogLevel.Info, nameof(BillingUdp), $"Billing server requested a {action}, but honoring such requests is disabled (Billing:{honorKey}).");
                 return;
             }
 
