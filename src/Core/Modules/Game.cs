@@ -1638,10 +1638,49 @@ namespace SS.Core.Modules
                         DoSpawnCallback(player, SpawnCallback.SpawnReason.AfterDeath);
                     }
 
-                    foreach (Player otherPlayer in _playerData.Players)
+                    // Determine who to consider sending the packet to.
+                    // An advisor can provide the recipients, e.g., for a small game where every packet is sent to the players in it regardless of distance.
+                    // Otherwise, every player is considered.
+                    // The sets belong to the advisor, and are only read here.
+                    HashSet<Player>? sendAllPlayers = null;
+                    HashSet<Player>? sendNormalPlayers = null;
+
+                    foreach (var advisor in advisors)
+                    {
+                        if (advisor.ProvidesPositionRecipients
+                            && advisor.TryGetPositionRecipients(player, out sendAllPlayers, out sendNormalPlayers))
+                        {
+                            break;
+                        }
+                    }
+
+                    if (sendAllPlayers is not null && sendNormalPlayers is not null)
+                    {
+                        foreach (Player otherPlayer in sendAllPlayers)
+                        {
+                            SendPositionTo(otherPlayer, true, ref pos, ref extra);
+                        }
+
+                        // Note: An advisor is not to provide a player in both sets.
+                        foreach (Player otherPlayer in sendNormalPlayers)
+                        {
+                            SendPositionTo(otherPlayer, false, ref pos, ref extra);
+                        }
+                    }
+                    else
+                    {
+                        foreach (Player otherPlayer in _playerData.Players)
+                        {
+                            SendPositionTo(otherPlayer, false, ref pos, ref extra);
+                        }
+                    }
+
+                    // Sends the position packet to a player, if the player should be sent it.
+                    // ignoreDistance: Whether to send it regardless of distance (an advisor provided the player as one to send every packet to).
+                    void SendPositionTo(Player otherPlayer, bool ignoreDistance, ref C2S_PositionPacket pos, ref ExtraPositionData extra)
                     {
                         if (!otherPlayer.TryGetExtraData(_pdKey, out PlayerData? otherPlayerData))
-                            continue;
+                            return;
 
                         if (otherPlayer.Status == PlayerState.Playing
                             && otherPlayer.IsStandard
@@ -1657,7 +1696,8 @@ namespace SS.Core.Modules
                             else
                                 range = otherPlayer.Xres + otherPlayer.Yres;
 
-                            if (dist <= range
+                            if (ignoreDistance
+                                || dist <= range
                                 || sendToAll
                                 || otherPlayerData.Speccing == player // always send to spectators of the player
                                 || otherPlayer.Attached == player.Id // always send to turreters
