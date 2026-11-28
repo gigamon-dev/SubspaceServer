@@ -27,14 +27,11 @@ namespace Example.SelectBox;
 /// The Module.conf included with the server has it commented out. Umcomment it and run server.
 /// </para>
 /// </remarks>
-public sealed class SelectBoxExample(
-    IChat chat,
-    IPrng prng,
-    ISelectBox selectBox) : IModule
+public sealed class SelectBoxExample : IModule
 {
-    private readonly IChat _chat = chat ?? throw new ArgumentNullException(nameof(chat));
-    private readonly IPrng _prng = prng ?? throw new ArgumentNullException(nameof(prng));
-    private readonly ISelectBox _selectBox = selectBox ?? throw new ArgumentNullException(nameof(selectBox));
+    private readonly IChat _chat;
+    private readonly IPrng _prng;
+    private readonly ISelectBox _selectBox;
 
     private static readonly ObjectPool<List<SelectBoxItem>> s_selectBoxItemListPool = ObjectPool.Create(new ListPooledObjectPolicy<SelectBoxItem>());
     private static readonly ObjectPool<MenuState> s_menuStatePool = ObjectPool.Create<MenuState>();
@@ -47,13 +44,24 @@ public sealed class SelectBoxExample(
     private readonly HashSet<MenuState> _openMenus = [];
 
     // The delegates are created once, rather than each time a select box is opened.
-    private SelectBoxItemSelectedDelegate<MenuState>? _menuSelected;
-    private SelectBoxCompletedDelegate<MenuState>? _menuCompleted;
+    private readonly SelectBoxItemSelectedDelegate<MenuState> _menuSelected;
+    private readonly SelectBoxCompletedDelegate<MenuState> _menuCompleted;
+
+    public SelectBoxExample(
+        IChat chat,
+        IPrng prng,
+        ISelectBox selectBox)
+    {
+        _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        _prng = prng ?? throw new ArgumentNullException(nameof(prng));
+        _selectBox = selectBox ?? throw new ArgumentNullException(nameof(selectBox));
+
+        _menuSelected = Menu_Selected;
+        _menuCompleted = Menu_Completed;
+    }
 
     public bool Load(IComponentBroker broker)
     {
-        _menuSelected = Menu_Selected;
-        _menuCompleted = Menu_Completed;
         PlayerActionCallback.Register(broker, Callback_PlayerAction);
         return true;
     }
@@ -126,7 +134,7 @@ public sealed class SelectBoxExample(
                 _openMenus.Add(menu);
 
                 // Display the select box to the player.
-                SelectBoxHandle handle = _selectBox.Open(player, title, items, menu, _menuSelected!, _menuCompleted, MenuTimeout);
+                SelectBoxHandle handle = _selectBox.Open(player, title, items, menu, _menuSelected, _menuCompleted, MenuTimeout);
 
                 // If the select box wasn't displayed (e.g., the player's client doesn't support it), it's already completed.
                 if (_openMenus.Contains(menu))
