@@ -417,17 +417,17 @@ namespace SS.Core.Modules
                     Description = "Whether VIE protocol clients (i.e., Subspace 1.34 and bots) are allowed to connect to this port.")]
                 [ConfigHelp<bool>("Listen", "AllowCont", ConfigScope.Global, Default = true,
                     Description = "Whether Continuum clients are allowed to connect to this port.")]
-                [ConfigHelp<int>("Listen", "ReceiveBufferSize", ConfigScope.Global, Default = 0, Min = 0,
+                [ConfigHelp<int>("Listen", "ReceiveBufferSize", ConfigScope.Global, Default = -1, Min = -1,
                     Description = """
                         The size (in bytes) of the receive buffer of the game socket.
-                        0 means use the operating system's default. Note: the
+                        -1 means use the operating system's default. Note: the
                         operating system may limit the size (e.g., on Linux, by
                         net.core.rmem_max).
                         """)]
-                [ConfigHelp<int>("Listen", "SendBufferSize", ConfigScope.Global, Default = 0, Min = 0,
+                [ConfigHelp<int>("Listen", "SendBufferSize", ConfigScope.Global, Default = -1, Min = -1,
                     Description = """
                         The size (in bytes) of the send buffer of the game socket.
-                        0 means use the operating system's default. Note: the
+                        -1 means use the operating system's default. Note: the
                         operating system may limit the size (e.g., on Linux, by
                         net.core.wmem_max).
                         """)]
@@ -471,11 +471,11 @@ namespace SS.Core.Modules
                     }
 
                     int receiveBufferSize = _configManager.GetInt(_configManager.Global, configSection, "ReceiveBufferSize", ListenSettings.ReceiveBufferSize.Default);
-                    if (receiveBufferSize > 0)
+                    if (receiveBufferSize >= 0)
                         SetBufferSize(gameSocket, configSection, true, receiveBufferSize);
 
                     int sendBufferSize = _configManager.GetInt(_configManager.Global, configSection, "SendBufferSize", ListenSettings.SendBufferSize.Default);
-                    if (sendBufferSize > 0)
+                    if (sendBufferSize >= 0)
                         SetBufferSize(gameSocket, configSection, false, sendBufferSize);
 
                     try
